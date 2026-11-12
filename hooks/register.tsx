@@ -1907,7 +1907,6 @@ async function runDemoPress(
   let applied = { stale: true } as Applied
   let sent = null as DemoSent | null
   const holds = await readHolds($)
-  const held = new Set(Object.keys(holds.replies))
   await update($, DEMO, d => {
     if (!d) return d
     const sample = emptySession()
@@ -1927,7 +1926,7 @@ async function runDemoPress(
     applied = r
     const { [rowId]: _replaced, ...notes } = d.notes
     if ('stale' in r) return { ...d, notes: { ...notes, [rowId]: { note: 'stale' as const, at: now } } }
-    const after = demoAfterPress({ lastActions: d.lastActions, turns: d.turns }, r, held)
+    const after = demoAfterPress({ lastActions: d.lastActions, turns: d.turns }, r)
     sent = demoSent(r, after.turns)
 
     return { ...d, ...after, notes }

@@ -77,6 +77,7 @@ function linkLabel(text2) {
 }
 
 // ../hooks/ask-match.ts
+var CLOSED_CONTEXT_LIMIT = 12;
 function words(text2) {
   return text2.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
 }
@@ -127,11 +128,6 @@ function sameAsk(a, b) {
 }
 
 // ../hooks/ledger-close.ts
-var MAX_CLOSED = 12;
-function pruneClosed(ledger, keep) {
-  const pruned2 = (records) => records.filter((r, n) => n >= records.length - MAX_CLOSED || keep.has(r.id));
-  return { ...ledger, closed: pruned2(ledger.closed), closedFindings: pruned2(ledger.closedFindings) };
-}
 function idNumber(id) {
   return Number(id.match(/\d+/)?.[0] ?? Number.NaN);
 }
@@ -638,7 +634,7 @@ function carryText(ledger, title) {
   }
   if (ledger.closed.length > 0) {
     out.push("Recently closed:");
-    for (const d of ledger.closed) out.push(`- "${d.ask}" \u2192 ${outcomeText(d)}`);
+    for (const d of ledger.closed.slice(-CLOSED_CONTEXT_LIMIT)) out.push(`- "${d.ask}" \u2192 ${outcomeText(d)}`);
   }
   return out.join(NL2);
 }
@@ -2331,10 +2327,6 @@ function prTabOf(s, lastActions, now, shownSince, settleWindowMs) {
 
 // ../hooks/session-presses.ts
 function pruned(s) {
-  const inPlace = [
-    ...Object.entries(s.lastActions).map(([id, a]) => ({ id, at: a.at })),
-    ...[...s.ledger.closed, ...s.ledger.closedFindings].map((c) => ({ id: c.id, at: closedAt(c) }))
-  ].flatMap((x) => isShownSince(x.at, s.shownSince) ? [x.id] : []);
   const views = Object.fromEntries(
     Object.entries(s.prViews.views).filter(
       ([ref]) => isViewKept(s.prViews, s.ledger, s.lastActions, ref, s.shownSince)
@@ -2343,7 +2335,6 @@ function pruned(s) {
   const isViewDropped = Object.keys(views).length < Object.keys(s.prViews.views).length;
   return {
     ...s,
-    ledger: pruneClosed(s.ledger, /* @__PURE__ */ new Set([...s.heldRows, ...inPlace])),
     prViews: isViewDropped ? { ...s.prViews, views } : s.prViews
   };
 }

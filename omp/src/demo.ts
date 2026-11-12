@@ -41,11 +41,7 @@ export function demoSource(deps: {
       const at = deps.now()
       const r = pressOn(state, p, at, { settleWindowMs: deps.settleWindowMs, holds }, { comparePage: deps.comparePage })
       if ('stale' in r) return { error: null, note: 'stale', isUnconfirmed: false }
-      const after = demoAfterPress(
-        { lastActions: state.lastActions, turns: state.presence },
-        r,
-        new Set(Object.keys(holds.replies)),
-      )
+      const after = demoAfterPress({ lastActions: state.lastActions, turns: state.presence }, r)
       state = {
         ...state,
         ledger: after.ledger,

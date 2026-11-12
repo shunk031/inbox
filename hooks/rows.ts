@@ -227,11 +227,24 @@ export function settledRowIds(rows: RowView[]): string[] {
 }
 
 export function closedShown<T extends { id: string }>(closed: readonly T[], drawnSettled: ReadonlySet<string>): T[] {
-  return closed.filter(d => !drawnSettled.has(d.id)).slice(0, CLOSED_SHOWN)
+  return closedHistoryPlan(closed, drawnSettled).rows
 }
 
 export function closedTotal(closed: { id: string }[], drawnSettled: ReadonlySet<string>): number {
   return closed.filter(d => !drawnSettled.has(d.id)).length
+}
+
+export type ClosedHistoryPlan<T> = { rows: T[]; total: number; earlier: string | null }
+
+/** The collapsed closed list shared by each look: the newest three rows and a count of the rest. */
+export function closedHistoryPlan<T extends { id: string }>(
+  closed: readonly T[],
+  drawnSettled: ReadonlySet<string>,
+): ClosedHistoryPlan<T> {
+  const all = closed.filter(d => !drawnSettled.has(d.id))
+  const rows = all.slice(0, CLOSED_SHOWN)
+
+  return { rows, total: all.length, earlier: earlierLabel(all.length, rows.length) }
 }
 
 export function foldLabel(total: number): string {

@@ -26,7 +26,6 @@ import type { RowPress } from './presses'
 import {
   canUndoRefused,
   DOT,
-  earlierLabel,
   foldLabel,
   type ResultMark,
   rowTitle,
@@ -270,8 +269,13 @@ export function paneRowParts(
         `fold-row-${key}`,
       )
     )
-  const closedFold = (kind: FoldKind, closed: ClosedLine[], total: number, isUnfolded: boolean) => {
-    const earlier = earlierLabel(total, closed.length)
+  const closedFold = (
+    kind: FoldKind,
+    closed: ClosedLine[],
+    total: number,
+    isUnfolded: boolean,
+    earlier: string | null,
+  ) => {
     return closed.length === 0
       ? []
       : [

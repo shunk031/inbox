@@ -35,6 +35,25 @@ describe('applyUpdate', () => {
     expect(latestBatch(second).map(i => i.id)).toEqual(['i4'])
   })
 
+  test('a closed ask outside the newest 12 can be added again, while a recent close is still skipped', () => {
+    const opened = applyUpdate(
+      EMPTY,
+      parseReply(Array.from({ length: 14 }, (_, n) => `NEW: do | - | Task ${n + 1} | - | -`).join('\n'))!,
+      1,
+      1,
+    )
+    const closed = opened.items.reduce(
+      (ledger, item, n) => closeItem(ledger, item.id, { how: 'answered', outcome: 'done' }, n + 2),
+      opened,
+    )
+
+    const oldAgain = applyUpdate({ ...closed, turn: 2 }, parseReply('NEW: do | - | Task 1 | - | -')!, 30, 2, 30)
+    const recentAgain = applyUpdate({ ...closed, turn: 2 }, parseReply('NEW: do | - | Task 14 | - | -')!, 30, 2, 30)
+
+    expect(oldAgain.items.map(i => i.ask)).toEqual(['Task 1'])
+    expect(recentAgain.items).toEqual([])
+  })
+
   test('unanswered questions and tasks stay open past the old expiry age and a full list', () => {
     const oldItems = Array.from({ length: 20 }, (_, n) => ({
       id: 'i' + (n + 1),

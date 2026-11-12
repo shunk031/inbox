@@ -1,4 +1,5 @@
 import type { Closed, Finding, Item, Ledger, Told } from '../types'
+import { CLOSED_CONTEXT_LIMIT } from './ask-match'
 import { NL, outcomeText } from './ledger-prompt'
 import type { Host } from './model-text'
 import { isOpen } from './status-limits'
@@ -148,7 +149,7 @@ export function carryText(ledger: Ledger, title: string): string | null {
   }
   if (ledger.closed.length > 0) {
     out.push('Recently closed:')
-    for (const d of ledger.closed) out.push(`- "${d.ask}" → ${outcomeText(d)}`)
+    for (const d of ledger.closed.slice(-CLOSED_CONTEXT_LIMIT)) out.push(`- "${d.ask}" → ${outcomeText(d)}`)
   }
 
   return out.join(NL)

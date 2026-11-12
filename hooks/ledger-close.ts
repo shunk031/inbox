@@ -2,8 +2,6 @@ import type { Closed, ClosedFinding, Finding, Item, Ledger } from '../types'
 import { keyWords, restates } from './ask-match'
 import type { Host } from './model-text'
 
-const MAX_CLOSED = 12
-
 export function closedRecord(item: Item, closing: Closing, now: number): Closed {
   const { id, kind, ask, label } = item
 
@@ -108,17 +106,6 @@ export function asksAbout(item: Pick<Item, 'ask' | 'label'>, finding: Finding, i
   const itemPrs = prNumbers(`${item.label ?? ''} ${item.ask}`)
 
   return [...prNumbers(`${finding.title} ${finding.detail}`)].some(n => itemPrs.has(n))
-}
-
-/**
- * Cuts each closed list to its newest MAX_CLOSED records, and keeps every older record whose id is in `keep`.
- * closeItem, closeFinding and applyUpdate do not cut, so each host runs this on every ledger it commits.
- */
-export function pruneClosed(ledger: Ledger, keep: ReadonlySet<string>): Ledger {
-  const pruned = <T extends { id: string }>(records: T[]) =>
-    records.filter((r, n) => n >= records.length - MAX_CLOSED || keep.has(r.id))
-
-  return { ...ledger, closed: pruned(ledger.closed), closedFindings: pruned(ledger.closedFindings) }
 }
 
 function idNumber(id: string): number {
