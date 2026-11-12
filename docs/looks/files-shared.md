@@ -29,7 +29,7 @@ Part of [the look map](../looks.md#files).
 | `hooks/ledger.ts` | Shared module. The empty ledger, how many sessions each host keeps, and the upgrade of a saved ledger. |
 | `hooks/reply-parse.ts` | Shared module. The parser that reads the inbox model's answer into an `Update`: its update lines, help steps, commands and todos. |
 | `hooks/ask-match.ts` | Shared module. Whether two asks say the same thing, whether a new ask repeats an open or closed one, and which option a recommendation names. |
-| `hooks/ledger-close.ts` | Shared module. Closing and reopening items and findings, pruning closed records, and whether a closed record counts as handled, dismissed or lapsed. |
+| `hooks/ledger-close.ts` | Shared module. Closing and reopening items and findings, and whether a closed record counts as handled, dismissed or lapsed. |
 | `hooks/ledger-update.ts` | Shared module. Applying a parsed update to the ledger, and adding findings and the items the agent records. Re-recording an item may replace its detail; per-reply updates keep it. |
 | `hooks/host-tasks.ts` | Shared module. The agent's own task list: how each host's tool calls become `Session.hostTasks`, and the `<tasks>` lines the Status call reads. |
 | `hooks/status.ts` | Shared module. The parser for the Status call's lines, and `askStatus`, which asks the call again when its answer holds prose. |
@@ -53,7 +53,7 @@ Part of [the look map](../looks.md#files).
 | `hooks/session-files.ts` | Shared module. The empty session, a session's saved file name, which saved files may be deleted, and `upgradeSession`, which converts a session an earlier build saved to the current shape. |
 | `hooks/session-turns.ts` | Shared module. A turn's start and end, each prompt and the press that sent it, turn activity, and what a shell command's output shows. `endTurn` queues the turn's exchange, and `applied` applies the ledger call's answer to it. |
 | `hooks/session-status.ts` | Shared module. Saving the Status call's answer or why it failed, and when a running turn's Status call is due. Whether an update or a catch-up is due, and `appliedCatchUp`, which applies a catch-up's answer. A forked conversation's ledger, and when a look at the Status starts and ends. |
-| `hooks/session-presses.ts` | Shared module. `pressOn` applies a press to a session, and `completedAttempt` records the outcome of sending a press's message. `recorded` applies the agent's `record` and `close` calls. Also the rows a look holds in place, `pruned`, which cuts closed records before each save, and `withFetchedPrs`, which merges fetched PRs into the session. |
+| `hooks/session-presses.ts` | Shared module. `pressOn` applies a press to a session, and `completedAttempt` records the outcome of sending a press's message. `recorded` applies the agent's `record` and `close` calls. Also the rows a look holds in place, `pruned`, which drops PR views no look needs, and `withFetchedPrs`, which merges fetched PRs into the session. |
 | `hooks/session-view.ts` | Shared module. `sessionView` builds the view each look draws, including the PRs tab. `showsRunningMark` says whether a text look draws a running mark. |
 | `hooks/conversation.ts` | Shared module. `flattenConversation` turns a conversation's `Turn`s into the text a catch-up reads, and clips it. Each host maps its own conversation to turns. |
 | `hooks/clients.ts` | Shared module. The parity record: how each host supports each feature, and why where it does not. |
