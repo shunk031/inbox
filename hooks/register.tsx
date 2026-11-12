@@ -244,12 +244,26 @@ import { paneRowFrame } from './pane-row-frame'
 import { paneRows } from './pane-rows'
 import { paneFrame } from './pane-frame'
 import { paneRowParts } from './pane-row-parts'
+import { documentBytes, withDocumentPreview } from './document'
+import type { DocumentFile } from './document'
 import type { PaneClient, PaneHandlers, Row } from './pane-context'
 import { panePrBlocks, panePrRows } from './pane-prs'
 import { paneStatusLines } from './pane-status-lines'
 import { paneStatus } from './pane-status'
 import { paneHelp } from './pane-help'
 import { foldOf, upgradedUnfolded, withFold } from './fold-keys'
+
+function documentFile($: EngineInterface): DocumentFile {
+  return {
+    stat: path =>
+      $.fs.stat(path, { resolve: true }).then(({ realPath, kind, size }) => ({
+        path: realPath ?? '',
+        isFile: kind === 'file',
+        size,
+      })),
+    read: (path, limit) => $.fs.read(path, { as: 'bytes' }).then(({ base64 }) => documentBytes(base64, limit)),
+  }
+}
 
 const TAB = atom({ plugin: 'inbox', key: 'tab' } as const, 'needsYou' as Tab)
 /**
@@ -525,11 +539,9 @@ async function replaceDrawn($: EngineInterface, change: (s: ModSession) => Sessi
 }
 
 /**
- * Changes the session of `owner`. While its conversation is drawn, the change runs on the drawn session and is
- * written only if no other write landed meanwhile; otherwise it runs again on what landed. Once the conversation
- * moved on, the change goes to its saved session. A change that returns the session it was given writes nothing.
- * Every write saves the pane's `held` rows and its showing of the real session, and prunes the session with `pruned`.
- * A write that changes more than the running turn saves.
+ * Updates a drawn session, retrying when another write lands; after the pane moves on, updates saved state. No-op
+ * changes write nothing. Each write saves held rows and the pane's showing, then prunes with `pruned`. Writes affecting
+ * more than the running turn are saved.
  */
 async function changeSession(
   $: EngineInterface,
@@ -1140,9 +1152,10 @@ async function runTool(
   toolUseId: string | undefined,
 ): Promise<string> {
   const now = await $.clock.now()
+  const toolInput = tool === 'record' ? await withDocumentPreview(input, documentFile($)) : input
   let answer: Omit<ToolAnswer, 'ledger'> = { result: '', personLine: null }
   await commit($, currentOwner(), s => {
-    const r = recorded(CLAUDE_CODE, s, tool, input, now)
+    const r = recorded(CLAUDE_CODE, s, tool, toolInput, now)
     answer = r
     return r.state
   })
@@ -1156,12 +1169,8 @@ async function runTool(
 }
 
 /**
- * Opens the pane, or raises it, asking for the keyboard. The surface grants
- * that only while the prompt holds the keys over an empty composer.
- *
- * Escape closes a pane opened with `closeOnEscape` as its close mark does, and `ui.close` names both the
- * person's. So while a reply field is open the pane opens without it: Escape then only hands the keys back,
- * and the pane's render closes the field.
+ * Opens or raises the pane, taking keys only when the prompt holds them over an empty composer. With a reply open,
+ * `closeOnEscape` is off, so Escape returns the keys and the pane closes the field.
  */
 function openPane($: EngineInterface, isFieldOpen = false) {
   paneState.paneClosesOnEscape = !isFieldOpen
@@ -1181,11 +1190,7 @@ function openPane($: EngineInterface, isFieldOpen = false) {
   return opened
 }
 
-/**
- * Starts a look while the Status shows in the pane, and ends it when it stops showing there. Both are
- * idempotent, so every place that opens, closes or changes the pane's page can call it, after `syncShown`. The sample
- * leaves the real session's look alone. `isOpen` is whether the pane shows, when the caller knows.
- */
+/** Tracks the visible Status page; demo sessions do not change the real session's look. */
 async function syncLook($: EngineInterface, isOpen?: boolean) {
   if (await read($, DEMO)) return
   const [page, isPaneOpen, now] = await Promise.all([readPage($), isOpen ?? isPaneShown($), $.clock.now()])
@@ -1194,11 +1199,7 @@ async function syncLook($: EngineInterface, isOpen?: boolean) {
   followDelegates($, isShown)
 }
 
-/**
- * Asks Herdr about the running delegates each `HERDR_CHECK_MS` while the Status shows, and once as it starts to
- * show, so a delegate's row follows Herdr while this session waits. The first tick after the Status stops showing
- * stops the timer.
- */
+/** Refreshes Herdr delegates once and every `HERDR_CHECK_MS` while Status is visible. */
 function followDelegates($: EngineInterface, isShown: boolean) {
   if (!isShown) {
     paneState.herdrCheckTimer?.cancel()
@@ -1225,11 +1226,7 @@ async function checkDelegates($: EngineInterface) {
   await commit($, owner, s => statusChanged(s, o => delegatesSettled(o, states, at)))
 }
 
-/**
- * Starts a showing when the pane opens or shows another tab or the sample, and ends it when the pane closes. A row that
- * closes during a showing stays in place no longer than it lasts, as `isSettledInPlace` says. Every write of the shown
- * tab calls it before the pane draws the tab. Idempotent without `since`, like `syncLook`.
- */
+/** Tracks each tab show so settled rows stay visible until the person leaves. */
 async function syncShown($: EngineInterface, { isOpen, since }: Showing = {}) {
   const [tab, isDemo, isPaneOpen, now] = await Promise.all([
     readShownTab($),

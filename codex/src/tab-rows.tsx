@@ -1,6 +1,14 @@
 import { ledgerActions } from './row-actions'
 import { clipLabel } from '../../hooks/text'
-import { allRows, DOT, replyHint, ROW_COPY, shortAgo, shownOptionDescriptions } from '../../hooks/rows'
+import {
+  allRows,
+  documentPreviewLine,
+  DOT,
+  replyHint,
+  ROW_COPY,
+  shortAgo,
+  shownOptionDescriptions,
+} from '../../hooks/rows'
 import { drawnLists, rowAfterClose } from '../../hooks/action-plan'
 import { isRowTab } from '../../hooks/tabs'
 import { feedbackOf } from '../../hooks/feedback'
@@ -164,7 +172,7 @@ function itemRow(v: View, r: RowView): Row {
     // A next build draws the Status, so only it names the subject an ask holds up.
     ...(v.isNextBuild === true && r.holdsUpLine ? { holdsUp: r.holdsUpLine } : {}),
     age: r.at === null ? undefined : shortAgo(v.at - r.at),
-    ...(r.detail || described.length > 0
+    ...(r.detail || described.length > 0 || r.document
       ? {
           body: (
             <div>
@@ -175,6 +183,7 @@ function itemRow(v: View, r: RowView): Row {
                   <span class="muted">: {o.description}</span>
                 </p>
               ))}
+              {r.document ? <p class="document-preview">{documentPreviewLine(r)}</p> : null}
             </div>
           ),
         }
@@ -210,6 +219,7 @@ function findingRow(v: View, r: RowView, f: Finding): Row {
             <code title={f.path}>{r.fileName}</code>
           </p>
         ) : null}
+        {r.document ? <p class="document-preview">{documentPreviewLine(r)}</p> : null}
       </div>
     ),
     ...rowKeys(r),

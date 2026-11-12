@@ -11,9 +11,24 @@ import { childPos, holdsUpLineOf, type PaneRowLines } from './pane-row-lines'
 import type { PaneRowParts } from './pane-row-parts'
 import type { PaneRows } from './pane-rows'
 import { ROW_COLUMNS } from './pane-sizes'
-import { closedHistoryPlan, closedTotal, DOT, replyHint, ROW_COPY, rowTitle, type RowView, waitingCount } from './rows'
+import {
+  closedHistoryPlan,
+  closedTotal,
+  documentPreviewLine,
+  DOT,
+  replyHint,
+  ROW_COPY,
+  rowTitle,
+  type RowView,
+  waitingCount,
+} from './rows'
 import { type TerminalSpan, terminalTextLines } from './terminal-text'
 import { ago } from './text'
+
+export function clippedDocumentPreview(preview: string | null, width: number, lines: number) {
+  const spans = preview ? terminalTextLines(preview, width, lines) : []
+  return { spans, bodyLines: Math.max(0, lines - spans.length) }
+}
 
 export function paneAskRows(
   {
@@ -36,6 +51,7 @@ export function paneAskRows(
     const asked = r.at === null ? undefined : `${DOT}${ago(now - r.at)}`
     const isHandedOff = r.state.is === 'handedOff'
     const holdsUpLine = holdsUpLineOf(r)
+    const preview = documentPreviewLine(r)
 
     return {
       id: r.id,
@@ -57,23 +73,56 @@ export function paneAskRows(
           }
         : {}),
       hasSecondLine: r.replyKind === 'answer',
-      body: r.detail ? <Text wrap="wrap">{inlineText(r.detail)}</Text> : null,
-      clippedBody: (lines, width) =>
-        lines < 1 || !r.detail ? null : (
-          <Text wrap="wrap">{terminalText(terminalTextLines(r.detail, width, lines))}</Text>
-        ),
+      body:
+        r.detail || preview ? (
+          <Box flexDirection="column" rowGap={blankLine}>
+            {r.detail ? <Text wrap="wrap">{inlineText(r.detail)}</Text> : null}
+            {preview ? (
+              <Text wrap="wrap" color={pal.muted}>
+                {preview}
+              </Text>
+            ) : null}
+          </Box>
+        ) : null,
+      clippedBody: (lines, width) => {
+        if (lines < 1 || (!r.detail && !preview)) return null
+        const { spans: previewLines, bodyLines: detailLines } = clippedDocumentPreview(preview, width, lines)
+
+        return (
+          <Box flexDirection="column" rowGap={blankLine}>
+            {r.detail && detailLines > 0 ? (
+              <Text wrap="wrap">{terminalText(terminalTextLines(r.detail, width, detailLines))}</Text>
+            ) : null}
+            {previewLines.length > 0 ? (
+              <Text wrap="wrap" color={pal.muted}>
+                {terminalText(previewLines)}
+              </Text>
+            ) : null}
+          </Box>
+        )
+      },
       keys: () => rowKeyActions(r, optionsShown.includes(r.id)).keys,
       moreKeys: () => rowKeyActions(r, optionsShown.includes(r.id)).more,
       typeHint: replyHint(r, 'Claude'),
     }
   }
-  const findingBody = (detail: string, path: string | null, fitted?: TerminalSpan[][]) => (
+  const findingBody = (
+    detail: string,
+    path: string | null,
+    preview: string | TerminalSpan[][] | null,
+    fitted?: TerminalSpan[][],
+  ) => (
     <Box flexDirection="column" rowGap={blankLine}>
       <Text wrap="wrap">{fitted ? terminalText(fitted) : inlineText(detail)}</Text>
       {path ? (
         <Text wrap="wrap">
           <Text color={pal.muted}>{ROW_COPY.relevantFile}</Text>
           <Text color="permission">{path}</Text>
+        </Text>
+      ) : null}
+      {preview ? (
+        <Text wrap="wrap" color={pal.muted}>
+          {Array.isArray(preview) ? terminalText(preview) : preview}
         </Text>
       ) : null}
     </Box>
@@ -88,15 +137,23 @@ export function paneAskRows(
     titleContent: inlineText(r.title),
     titleAfter: `${DOT}${ago(now - (r.at ?? now))}`,
     line: { text: linkLabel(r.title) },
-    body: findingBody(r.detail ?? '', r.fileName),
-    clippedBody: (lines, width) =>
-      lines < 1
-        ? null
-        : findingBody(
-            r.detail ?? '',
-            lines > 1 ? r.fileName : null,
-            terminalTextLines(r.detail ?? '', width, Math.max(1, lines - (r.fileName && lines > 1 ? 1 : 0))),
-          ),
+    body: findingBody(r.detail ?? '', r.fileName, documentPreviewLine(r)),
+    clippedBody: (lines, width) => {
+      if (lines < 1) return null
+      const path = r.fileName && lines > 1 ? r.fileName : null
+      const { spans: previewLines, bodyLines: detailLines } = clippedDocumentPreview(
+        lines > 2 ? documentPreviewLine(r) : null,
+        width,
+        lines - (path ? 1 : 0),
+      )
+
+      return findingBody(
+        r.detail ?? '',
+        path,
+        previewLines.length > 0 ? previewLines : null,
+        terminalTextLines(r.detail ?? '', width, detailLines),
+      )
+    },
     typeHint: replyHint(r, 'Claude'),
     keys: () => rowKeyActions(r, true).keys,
     moreKeys: () => rowKeyActions(r, true).more,

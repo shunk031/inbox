@@ -133,3 +133,25 @@ test('option feedback and outcomes draw real OSC 8 links', async () => {
     applyHyperlinkSetting('auto')
   }
 })
+
+test('omp shows the recorded Markdown excerpt under its item', () => {
+  const source = screenOf()
+  const row = source.view.needsYou.questions.find(item => item.state.is === 'open')!
+  const screen = {
+    ...source,
+    view: {
+      ...source.view,
+      needsYou: {
+        ...source.view.needsYou,
+        questions: source.view.needsYou.questions.map(item =>
+          item.id === row.id
+            ? { ...item, document: '/reports/rollout.md', documentPreview: '# One region first.' }
+            : item,
+        ),
+      },
+    },
+  }
+  const drawn = drawPanel(screen, { ...INITIAL_UI, selectedId: row.id }, 80, NOW, style, 20)
+
+  expect(drawn.lines.map(strip).join('\n')).toContain('Report preview: # One region first.')
+})

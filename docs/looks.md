@@ -8,6 +8,8 @@ Inline Markdown links use `hooks/inline.ts` for parsing and href validation in a
 
 Question and task explanations live in `Item.detail`, are carried to each renderer as `RowView.detail`, and survive inbox-model updates. Only the agent's `record` call sets or replaces this field.
 
+An item or finding may carry a local Markdown report path and a short excerpt. `hooks/document.ts` validates and reads the resolved file when the agent records it, then shares the plain-text preview with each look.
+
 ## Files
 
 Shared modules are in `hooks/`. Every host consumes them, directly or through a build. They import only shared modules and shared types. `scripts/check-structure.mjs` checks those boundaries, including type imports. Codex and omp type checking need no generated Claude engine types.

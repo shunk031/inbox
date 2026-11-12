@@ -192,9 +192,23 @@ export function addFinding(
   ledger: Ledger,
   finding: Omit<Finding, 'id'>,
 ): { ledger: Ledger; id: string; isAdded: boolean; expired: Finding | null; dismissed: ClosedFinding | null } {
-  const same =
-    ledger.findings.find(f => sameAsk(f.title, finding.title)) ?? ledger.items.find(i => restates(i.ask, finding.title))
-  if (same) return { ledger, id: same.id, isAdded: false, expired: null, dismissed: null }
+  const sameFinding = ledger.findings.find(f => sameAsk(f.title, finding.title))
+  const same = sameFinding ?? ledger.items.find(i => restates(i.ask, finding.title))
+  if (same) {
+    const findings =
+      finding.document && sameFinding
+        ? ledger.findings.map(f =>
+            f.id === same.id ? { ...f, document: finding.document, documentPreview: finding.documentPreview } : f,
+          )
+        : ledger.findings
+    return {
+      ledger: findings === ledger.findings ? ledger : { ...ledger, findings },
+      id: same.id,
+      isAdded: false,
+      expired: null,
+      dismissed: null,
+    }
+  }
   const dismissed =
     ledger.closedFindings.findLast(f => f.how === 'dismissed' && repeatsSubject(f.title, finding.title)) ?? null
   if (dismissed) return { ledger, id: dismissed.id, isAdded: false, expired: null, dismissed }
@@ -223,6 +237,7 @@ type AgentItemResult =
       isNewlyMarked: boolean
       newRec: string | null
       hasNewDetail: boolean
+      hasNewDocument: boolean
     }
   | { ledger: Ledger; is: 'closed'; record: Closed }
 
@@ -234,7 +249,10 @@ type AgentItemResult =
  */
 export function addAgentItem(
   ledger: Ledger,
-  entry: Pick<Item, 'kind' | 'ask' | 'options' | 'rec' | 'helps' | 'isDesignChoice' | 'detail'>,
+  entry: Pick<
+    Item,
+    'kind' | 'ask' | 'options' | 'rec' | 'helps' | 'isDesignChoice' | 'detail' | 'document' | 'documentPreview'
+  >,
   now: number,
 ): AgentItemResult {
   const candidate = { ...entry, label: null }
@@ -246,6 +264,10 @@ export function addAgentItem(
     const isDesignChoice = openItem.isDesignChoice === true || entry.isDesignChoice === true
     const rec = restatedRec(openItem.options, openItem.rec, entry.rec)
     const hasNewDetail = entry.detail !== undefined && entry.detail !== openItem.detail
+    const hasNewDocument =
+      entry.document !== undefined &&
+      (entry.document !== openItem.document ||
+        (entry.documentPreview !== undefined && entry.documentPreview !== openItem.documentPreview))
     const reported = {
       ...openItem,
       helps,
@@ -253,6 +275,12 @@ export function addAgentItem(
       rec,
       reportedAt: now,
       ...(hasNewDetail ? { detail: entry.detail } : {}),
+      ...(hasNewDocument
+        ? {
+            document: entry.document,
+            ...(entry.documentPreview !== undefined ? { documentPreview: entry.documentPreview } : {}),
+          }
+        : {}),
     }
     const items = ledger.items.map(i => (i === openItem ? reported : i))
 
@@ -264,6 +292,7 @@ export function addAgentItem(
       isNewlyMarked: isDesignChoice && openItem.isDesignChoice !== true,
       newRec: rec !== openItem.rec ? rec : null,
       hasNewDetail,
+      hasNewDocument,
     }
   }
   const isAskable = (c: Closed) => c.how === 'expired' || c.how === 'claude'

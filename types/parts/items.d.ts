@@ -6,6 +6,10 @@ export type Item = {
   ask: string
   /** The agent's explanation of why it asked and what each option or step leads to. */
   detail?: string
+  /** An optional Markdown report path, recorded by the agent and shown only to the user. */
+  document?: string
+  /** A short excerpt from the document, shown under the item. */
+  documentPreview?: string
   options: string[]
   /** The option the agent recommended, exactly as `options` has it. */
   rec: string | null

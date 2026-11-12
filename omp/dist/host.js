@@ -4,6 +4,7 @@
 // src/host.ts
 import { randomUUID } from "crypto";
 import { existsSync } from "fs";
+import { open, realpath, stat as stat4 } from "fs/promises";
 import { homedir } from "os";
 import { dirname as dirname2, join as join4 } from "path";
 import { fileURLToPath } from "url";
@@ -2251,6 +2252,11 @@ var ROW_COPY = {
   relevantFile: "Relevant file: ",
   allOptions: (count) => `All ${count} options`
 };
+function documentPreviewLine(row) {
+  if (!row.document)
+    return null;
+  return `Report preview: ${row.documentPreview || baseName(row.document) || "Markdown document"}`;
+}
 function optionDescriptionsOf(item, actions) {
   const descriptions = item?.optionDescriptions;
   if (!descriptions)
@@ -4014,9 +4020,18 @@ function withUpdate(item, updated) {
   return { ...item, options, rec: restatedRec(options, item.rec, change.rec) };
 }
 function addFinding(ledger, finding) {
-  const same = ledger.findings.find((f) => sameAsk(f.title, finding.title)) ?? ledger.items.find((i) => restates(i.ask, finding.title));
-  if (same)
-    return { ledger, id: same.id, isAdded: false, expired: null, dismissed: null };
+  const sameFinding = ledger.findings.find((f) => sameAsk(f.title, finding.title));
+  const same = sameFinding ?? ledger.items.find((i) => restates(i.ask, finding.title));
+  if (same) {
+    const findings = finding.document && sameFinding ? ledger.findings.map((f) => f.id === same.id ? { ...f, document: finding.document, documentPreview: finding.documentPreview } : f) : ledger.findings;
+    return {
+      ledger: findings === ledger.findings ? ledger : { ...ledger, findings },
+      id: same.id,
+      isAdded: false,
+      expired: null,
+      dismissed: null
+    };
+  }
   const dismissed = ledger.closedFindings.findLast((f) => f.how === "dismissed" && repeatsSubject(f.title, finding.title)) ?? null;
   if (dismissed)
     return { ledger, id: dismissed.id, isAdded: false, expired: null, dismissed };
@@ -4042,13 +4057,18 @@ function addAgentItem(ledger, entry, now) {
     const isDesignChoice = openItem.isDesignChoice === true || entry.isDesignChoice === true;
     const rec = restatedRec(openItem.options, openItem.rec, entry.rec);
     const hasNewDetail = entry.detail !== undefined && entry.detail !== openItem.detail;
+    const hasNewDocument = entry.document !== undefined && (entry.document !== openItem.document || entry.documentPreview !== undefined && entry.documentPreview !== openItem.documentPreview);
     const reported = {
       ...openItem,
       helps,
       isDesignChoice,
       rec,
       reportedAt: now,
-      ...hasNewDetail ? { detail: entry.detail } : {}
+      ...hasNewDetail ? { detail: entry.detail } : {},
+      ...hasNewDocument ? {
+        document: entry.document,
+        ...entry.documentPreview !== undefined ? { documentPreview: entry.documentPreview } : {}
+      } : {}
     };
     const items = ledger.items.map((i) => i === openItem ? reported : i);
     return {
@@ -4058,7 +4078,8 @@ function addAgentItem(ledger, entry, now) {
       addedSteps: helps.length - openItem.helps.length,
       isNewlyMarked: isDesignChoice && openItem.isDesignChoice !== true,
       newRec: rec !== openItem.rec ? rec : null,
-      hasNewDetail
+      hasNewDetail,
+      hasNewDocument
     };
   }
   const isAskable = (c) => c.how === "expired" || c.how === "claude";
@@ -4117,7 +4138,11 @@ var RECORD_SCHEMA = {
       type: "string",
       description: "For a question or task: why you ask and what it holds up; for a question, what each option leads to. For a finding: why it matters and what you would do. Use short paragraphs and links where useful."
     },
-    path: { type: "string", description: "For a finding: the file it is about, if one." }
+    path: { type: "string", description: "For a finding: the file it is about, if one." },
+    document: {
+      type: "string",
+      description: "For a Markdown report the user should read in the inbox: its absolute local file path."
+    }
   },
   required: ["kind"]
 };
@@ -4164,6 +4189,7 @@ function recordDescription(host) {
 - question: a decision, approval or piece of information only the user has, which you need before you go on. Give options, and rec when you recommend one. Fill detail with why you ask and what each option leads to. This includes an act you hold until they say so, such as "say when you want those committed".
 - task: a step only the user can do, such as signing in or running a command with their password. Put the commands, files and links in steps, and fill detail with what holds the task up and what the step leads to. A step your own tools can take is not a task: take it, or ask for their OK as a question when it changes something other people see.
 - finding: something outside the current task that deserves their attention. It waits in ${host.findingsIn} until it is closed, and the user can ask you to address it or discuss it. Record what a careful senior engineer would flag to a teammate, once you have checked it. Leave out style nits, anything the user already decided, todos or ideas the user mentioned, problems in your own change, progress, and anything only the user can do or decide: handle those in your reply, or record them as a question or task.
+For any kind with a Markdown report the user should read, give its absolute local path in document. The inbox checks the file and shows a short excerpt; do not use this field for a file they should edit.
 Do not record rhetorical questions, offers to continue when continuing is the default, FYIs, or invitations to look at finished work.`;
 }
 var CLOSE_DESCRIPTION = `Close an open item or finding by its id, such as i35 or f12, as listed in the latest "inbox:" text beside the user's prompt. Pass the user's answer when their message answered it, and a reason otherwise.`;
@@ -4218,22 +4244,36 @@ function recordItem(host, ledger, input, now) {
   const leftOut = helps.length < steps.length ? input.kind === "task" ? " Some steps were not a command, a file path or a link, so they are left out." : " Some steps were not an absolute file path or a link, so they are left out." : "";
   const isDesignChoice = input.kind === "question" && input.design_choice === true;
   const detail = cutInline(typeof input.detail === "string" ? input.detail.trim() : "", MAX_ITEM_DETAIL);
-  const r = addAgentItem(ledger, { kind: input.kind, ask, options, rec, helps, isDesignChoice, ...detail ? { detail } : {} }, now);
+  const document = cut(input.document, 4096) || undefined;
+  const documentPreview = document ? cut(input.document_preview, 180) || undefined : undefined;
+  const documentError = cut(input.document_error, 160);
+  const documentNote = documentError ? ` The Markdown report was not attached: ${documentError}` : "";
+  const r = addAgentItem(ledger, {
+    kind: input.kind,
+    ask,
+    options,
+    rec,
+    helps,
+    isDesignChoice,
+    ...detail ? { detail } : {},
+    ...document ? { document, documentPreview } : {}
+  }, now);
   if (r.is === "open") {
     const changes = [
       ...r.addedSteps > 0 ? ["added its new steps"] : [],
       ...r.isNewlyMarked ? ["marked it as a design choice"] : [],
       ...r.hasNewDetail ? ["replaced its detail"] : [],
+      ...r.hasNewDocument ? ["updated its Markdown report"] : [],
       ...r.newRec ? [`changed its recommendation to ${r.newRec}`] : []
     ];
     const updated = changes.length > 0 ? ` and ${changes.join(" and ")}` : "";
-    return unchanged(r.ledger, `Already open, so this record updated it${updated}.${leftOut}`);
+    return unchanged(r.ledger, `Already open, so this record updated it${updated}.${leftOut}${documentNote}`);
   }
   if (r.is === "closed")
     return unchanged(ledger, `Not recorded: ${closedHow(r.record)}. Ask it again only if they bring it up.`);
   return {
     ledger: r.ledger,
-    result: `Recorded. The user sees it in ${host.surface}.` + leftOut,
+    result: `Recorded. The user sees it in ${host.surface}.` + leftOut + documentNote,
     personLine: `${input.kind === "question" ? "Question" : "Task"}: ${ask}`
   };
 }
@@ -4243,15 +4283,19 @@ function recordFinding(host, ledger, input, now) {
   if (title === "" || detail === "")
     return unchanged(ledger, "Not recorded: a finding needs a title and a detail.");
   const path = cut(input.path, 300);
+  const document = cut(input.document, 4096) || undefined;
+  const documentPreview = document ? cut(input.document_preview, 180) || undefined : undefined;
+  const documentError = cut(input.document_error, 160);
+  const documentNote = documentError ? ` The Markdown report was not attached: ${documentError}` : "";
   const kind = input.finding_kind === "opportunity" ? "opportunity" : "issue";
-  const r = addFinding(ledger, { kind, title, detail, path: path || null, at: now });
+  const r = addFinding(ledger, { kind, title, detail, path: path || null, document, documentPreview, at: now });
   if (r.dismissed)
-    return unchanged(ledger, `Not recorded: the user already closed this (${r.dismissed.outcome}). Record it again only if they bring it up.`);
+    return unchanged(ledger, `Not recorded: the user already closed this (${r.dismissed.outcome}). Record it again only if they bring it up.${documentNote}`);
   if (!r.isAdded)
-    return unchanged(r.ledger, "Already recorded.");
+    return unchanged(r.ledger, `Already recorded.${documentNote}`);
   return {
     ledger: r.ledger,
-    result: `Recorded. The user sees it in ${host.findingsIn}.` + (r.expired ? ` The list was full, so the oldest finding closed: ${r.expired.title}.` : ""),
+    result: `Recorded. The user sees it in ${host.findingsIn}.` + (r.expired ? ` The list was full, so the oldest finding closed: ${r.expired.title}.` : "") + documentNote,
     personLine: `${kind === "opportunity" ? "Opportunity" : "Issue"}: ${title}`
   };
 }
@@ -4782,6 +4826,8 @@ function inboxView({
     const heldSubject = state.is === "open" ? heldSubjectOf(ledger.overview, row.id) : null;
     return {
       ...row,
+      document: row.item?.document ?? row.finding?.document ?? null,
+      documentPreview: row.item?.documentPreview ?? row.finding?.documentPreview ?? null,
       state,
       feedback,
       actions,
@@ -5036,6 +5082,46 @@ function withFetchedPrs(s, fetched, branchRef, isGhSignedOut) {
   };
 }
 
+// ../hooks/document.ts
+var DOCUMENT_LIMIT = 64 * 1024;
+var ANSI = /(?:\u001B\[[0-?]*[ -/]*[@-~]|\u001B\][^\u0007\u009C]*(?:\u0007|\u001B\\|\u009C)|\u001B[PX^_][\s\S]*?(?:\u001B\\|\u009C)|\u001B[@-_]|\u009B[0-?]*[ -/]*[@-~]|\u009D[^\u0007\u009C]*(?:\u0007|\u001B\\|\u009C)|[\u0090\u0098\u009E\u009F][\s\S]*?\u009C)/g;
+var CONTROLS = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F]/g;
+async function readDocument(path, file) {
+  try {
+    const target = await file.stat(path);
+    if (!target.isFile || !/\.md$/i.test(target.path))
+      return { error: "The document must resolve to a regular .md file." };
+    if (target.size > DOCUMENT_LIMIT)
+      return { error: "The document is larger than the 64 KiB limit." };
+    const bytes = await file.read(target.path, DOCUMENT_LIMIT);
+    if (bytes.byteLength > DOCUMENT_LIMIT)
+      return { error: "The document is larger than the 64 KiB limit." };
+    const text = new TextDecoder().decode(bytes).replace(ANSI, "").replace(/\r\n/g, `
+`).replace(CONTROLS, "");
+    return { text };
+  } catch (error) {
+    return {
+      error: error.code === "ENOENT" ? "The document file is missing." : "The document could not be read."
+    };
+  }
+}
+function documentExcerpt(text) {
+  const excerpt = text.trim().replace(/\s+/gu, " ");
+  const chars = [...excerpt];
+  return chars.length > 180 ? `${chars.slice(0, 180).join("")}\u2026` : excerpt;
+}
+async function withDocumentPreview(input, file) {
+  const path = typeof input.document === "string" ? input.document.trim() : "";
+  if (!path)
+    return input;
+  if (path.length > 4096)
+    return { ...input, document: undefined, document_error: "The document path is too long." };
+  if (!/^(?:\/|[a-z]:[\\/]|\\\\)/i.test(path))
+    return { ...input, document: undefined, document_error: "The document path must be absolute." };
+  const result = await readDocument(path, file);
+  return "text" in result ? { ...input, document: path, document_preview: documentExcerpt(result.text) } : { ...input, document: undefined, document_error: result.error };
+}
+
 // ../hooks/host-prs.ts
 var PRS_REFRESH_MS = 120000;
 var NEW_PR_FETCH_MS = 15000;
@@ -5181,10 +5267,10 @@ function emptyText(tab, agent) {
 }
 
 // src/panel-text.ts
-var ANSI = new RegExp(`\\x1b\\[[0-9;]*m|${OSC8.source}`, "g");
+var ANSI2 = new RegExp(`\\x1b\\[[0-9;]*m|${OSC8.source}`, "g");
 var ANSI_SPLIT = new RegExp(`(\\x1b\\[[0-9;]*m|${OSC8.source})`, "g");
 var ANSI_PART = new RegExp(`^(?:\\x1b\\[[0-9;]*m|${OSC8.source})$`);
-var visibleLength = (s) => cellWidth(s.replace(ANSI, ""));
+var visibleLength = (s) => cellWidth(s.replace(ANSI2, ""));
 function linkedText(text, link) {
   return parseInline(text).map((s) => s.link ? link ? `\x1B[4m${link(s.link, s.text)}\x1B[24m` : s.text : s.text).join("");
 }
@@ -5608,7 +5694,9 @@ function lineOfRow(row) {
     title: rowTitle(row, AGENT),
     isDim: state.is === "settled",
     age: f?.is === "done" ? f.at : row.at,
-    detail: row.detail,
+    detail: [row.detail, documentPreviewLine(row)].filter(Boolean).join(`
+
+`) || null,
     file: row.fileName,
     feedback: feedbackLabel && f ? { text: feedbackLabel, tone: feedbackTone(f), source: f } : null,
     settled: state.is === "settled" ? {
@@ -9820,6 +9908,25 @@ function turnHandlers(context, sessions) {
 }
 
 // src/host.ts
+var documentFile = {
+  stat: async (path) => {
+    const target = await realpath(path);
+    const info = await stat4(target);
+    return { path: target, isFile: info.isFile(), size: info.size };
+  },
+  read: async (path, limit) => {
+    const file = await open(path, "r");
+    try {
+      if (!(await file.stat()).isFile())
+        return new Uint8Array(limit + 1);
+      const bytes = new Uint8Array(limit + 1);
+      const { bytesRead } = await file.read(bytes, 0, bytes.length, 0);
+      return bytes.subarray(0, bytesRead);
+    } finally {
+      await file.close();
+    }
+  }
+};
 var INBOX_MODEL_TIMEOUT_MS = 120000;
 var BAND_KEY = "inbox-band";
 var hyperlinkTools = () => import("@oh-my-pi/pi-tui/render");
@@ -10010,8 +10117,9 @@ function createInbox(pi, deps = defaultDeps) {
         if (isUnattended(ctx))
           return { content: [{ type: "text", text: "The inbox is not shown in this session." }] };
         let answer = { result: "", personLine: null };
+        const input = name === "record" ? await withDocumentPreview(args, documentFile) : args;
         await change(sessionIdOf(ctx), (s) => {
-          const r = recorded(OMP, s, name, args, deps.now());
+          const r = recorded(OMP, s, name, input, deps.now());
           answer = r;
           return r.state;
         });

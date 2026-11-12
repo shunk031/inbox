@@ -2654,6 +2654,8 @@ function inboxView({
     const heldSubject = state.is === "open" ? heldSubjectOf(ledger.overview, row.id) : null;
     return {
       ...row,
+      document: row.item?.document ?? row.finding?.document ?? null,
+      documentPreview: row.item?.documentPreview ?? row.finding?.documentPreview ?? null,
       state,
       feedback,
       actions,

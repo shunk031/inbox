@@ -214,3 +214,22 @@ test('Codex shows option feedback with a label and links its settled outcome', a
   )
   assert.doesNotMatch(root.querySelector('.closed-list .outcome')?.textContent ?? '', /\[PR 7171\]/)
 })
+
+test('Codex shows the recorded Markdown excerpt under its item', async () => {
+  const browser = new Window()
+  Object.assign(globalThis, { window: browser, document: browser.document, parent: browser.parent })
+  const { demoState } = await import('../src/demo')
+  const { viewOf } = await import('../src/core')
+  const { listsOf } = await import('../src/tab-rows')
+  const state = demoState(1000)
+  const item = state.ledger.items[0]!
+  state.ledger.items = state.ledger.items.map(row =>
+    row.id === item.id ? { ...row, document: '/reports/rollout.md', documentPreview: '# One region first.' } : row,
+  )
+  const view = { ...viewOf(state, 1000), thread: 'test', devPage: '', isFetchingPrs: false, isGhMissing: false }
+  const row = listsOf(view, new Set()).byTab.needsYou.find(candidate => candidate.id === item.id)!
+  const root = document.createElement('div')
+  render(h('div', null, row.body), root)
+
+  assert.equal(root.querySelector('.document-preview')?.textContent, 'Report preview: # One region first.')
+})

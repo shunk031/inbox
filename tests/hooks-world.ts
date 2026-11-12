@@ -49,6 +49,7 @@ class World {
   surfaces: RenderSurface[] = []
 
   files: string[] = []
+  documentFile: { path: string; realPath: string; text: string } | null = null
 
   copied: string[] = []
   toasts: string[] = []
@@ -149,6 +150,7 @@ export function world($: Engine, on: On, prompts: string[], vars: Record<string,
   w.sessionId = 'session-1'
   w.surfaces = []
   w.files = []
+  w.documentFile = null
   w.copied = []
   w.toasts = []
   w.theme = ''
@@ -233,10 +235,27 @@ export function world($: Engine, on: On, prompts: string[], vars: Record<string,
   })
   on('fs.exists', (_$, e) => ({ value: w.files.some(f => e.path.endsWith(f)) }))
   on('fs.read', (_$, e) => {
+    if (w.documentFile && [w.documentFile.path, w.documentFile.realPath].includes(e.path)) {
+      const bytes = new TextEncoder().encode(w.documentFile.text)
+      return e.as === 'bytes'
+        ? { value: { base64: btoa(Array.from(bytes, byte => String.fromCharCode(byte)).join('')) } }
+        : { value: w.documentFile.text }
+    }
     if (!e.path.endsWith('/.claude-plugin/plugin.json')) throw new Error(`ENOENT: ${e.path}`)
     return { value: JSON.stringify({ name: 'inbox', version: '1.2.3' }) }
   })
-  on('fs.stat', () => ({ value: { kind: 'file' as const, size: 1, mtimeMs: 1, isLink: false } }))
+  on('fs.stat', (_$, e) => ({
+    value: {
+      kind: 'file' as const,
+      size:
+        w.documentFile && [w.documentFile.path, w.documentFile.realPath].includes(e.path)
+          ? new TextEncoder().encode(w.documentFile.text).byteLength
+          : 1,
+      mtimeMs: 1,
+      isLink: false,
+      realPath: w.documentFile?.path === e.path ? w.documentFile.realPath : e.path,
+    },
+  }))
   on('process.run', async (_$, e) => {
     w.ran.push([...e.argv])
     if (w.isGhMissing && e.argv[0] === 'gh') throw new Error('spawn gh ENOENT')

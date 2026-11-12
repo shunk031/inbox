@@ -8,6 +8,7 @@ import type { HelpStep } from './help-steps'
 import type { RowPress } from './presses'
 import { offersUndo } from './pressed'
 import { RUNNING_MARK, SUBJECT_MARKS, CLOSED_MARKS } from './help'
+import { baseName } from './open-targets'
 import { canUndoClose } from './timing'
 import type { Feedback } from './feedback'
 import type { InboxView } from './view'
@@ -106,6 +107,8 @@ export type RowView = {
   replyKind: 'answer' | 'reply'
   item: Item | null
   finding: Finding | null
+  document: string | null
+  documentPreview: string | null
   steps: HelpStep[]
   state: RowState
   feedback: Feedback | null
@@ -117,6 +120,12 @@ export type RowView = {
    * on a next build, which draws the Status.
    */
   holdsUpLine: string | null
+}
+
+export function documentPreviewLine(row: Pick<RowView, 'document' | 'documentPreview'>): string | null {
+  if (!row.document) return null
+
+  return `Report preview: ${row.documentPreview || baseName(row.document) || 'Markdown document'}`
 }
 
 type OptionDescription = { label: string; description: string; isFolded: boolean }

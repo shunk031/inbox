@@ -6,6 +6,7 @@ export const SHARED = [
   'clients',
   'conversation',
   'demo',
+  'document',
   'dialogs',
   'gh',
   'help',
