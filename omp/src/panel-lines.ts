@@ -263,7 +263,6 @@ export function groupEntries(g: Group, unfolded: readonly FoldKind[]): Entry[] {
   })
   if (!isUnfolded) return out
   out.push(...history.rows.map((d): Entry => ({ kind: 'row', line: closedLines(d) })))
-  if (history.earlier) out.push({ kind: 'note', text: history.earlier, indent: 5 })
 
   return out
 }

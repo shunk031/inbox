@@ -94,7 +94,7 @@ function GroupEnd({
   history: ClosedHistoryPlan<ClosedLine>
   now: number
 }) {
-  const { rows: closed, total, earlier } = history
+  const { rows: closed, total } = history
   const isUnfolded = unfolded.has(group)
   const isListed = total > 0 && (isUnfolded || closingFolds.has(group))
 
@@ -138,7 +138,6 @@ function GroupEnd({
               </div>
             </div>
           ))}
-          {earlier ? <div class="earlier muted">{earlier}</div> : null}
         </div>
       ) : null}
     </>

@@ -99,6 +99,51 @@ test('Claude closes an item or finding that no longer applies, by the id it read
   await arrive($)
 })
 
+test('terminal and desktop list every closed question under Closed and fold the full list back', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  world($, on, [])
+  w.paneState = { isShown: true, isFocused: true }
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  const terminal = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 36 } })
+
+  for (let n = 1; n <= 5; n++) {
+    await $.tool.call({
+      tool: 'mcp__inbox__record',
+      kind: 'question',
+      ask: `History question ${n}?`,
+      options: ['Yes', 'No'],
+    })
+    await $.tool.call({ tool: 'mcp__inbox__close', id: `i${n}`, answer: `Answer ${n}` } as never)
+  }
+  await clock.settle()
+  await leaveAndReturn(terminal, clock, 'needsYou')
+  await terminal.press({ key: 'fold-question' })
+  await clock.settle()
+  for (let n = 1; n <= 5; n++) {
+    expect(await terminal.find({ key: `closed-i${n}` })).toBeDefined()
+    expect(await terminal.find({ text: new RegExp(`^Answer ${n}$`) })).toBeDefined()
+    expect((await terminal.find({ key: `closed-i${n}` }))?.text).toMatch(/now/)
+  }
+  await terminal.press({ key: 'fold-question' })
+  await clock.settle()
+  for (let n = 1; n <= 5; n++) expect(await terminal.find({ key: `closed-i${n}` })).toBeUndefined()
+
+  const desktop = await $.ui.mount({ ...PANE, surface: 'desktop', props: { ...PANE.props, bodyColumns: 36 } })
+  await $.session.attach({ surface: 'desktop', clientId: 'desktop:default' })
+  await clock.settle()
+  await desktop.post({ isUnfolded: true }, { in: 'fold-question' })
+  await clock.settle()
+  for (let n = 1; n <= 5; n++) {
+    expect(await desktop.find({ key: `closed-i${n}` })).toBeDefined()
+    expect((await desktop.find({ key: `closed-i${n}` }))?.text).toContain(`Answer ${n}`)
+    expect((await desktop.find({ key: `closed-i${n}` }))?.text).toMatch(/now/)
+  }
+  await desktop.post({ isUnfolded: false }, { in: 'fold-question' })
+  await clock.settle()
+  for (let n = 1; n <= 5; n++) expect(await desktop.find({ key: `closed-i${n}` })).toBeUndefined()
+  await arrive($)
+})
+
 test(
   'Dismiss settles a question in place with Undo, which brings it back open and selected, a second close reaches Claude too, and a message typed while Undo lasts folds the row when Undo ends',
   { timeoutMs: 20_000 },

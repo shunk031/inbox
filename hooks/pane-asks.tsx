@@ -219,7 +219,7 @@ export function paneAskTabs(
         g.kind,
         ROW_COLUMNS.tree.handleAt,
       )
-      const tail = closedFold(g.kind, history.rows, history.total, isUnfolded, history.earlier)
+      const tail = closedFold(g.kind, history.rows, history.total, isUnfolded)
 
       return [
         section([
@@ -296,7 +296,7 @@ export function paneAskTabs(
           g.kind,
           ROW_COLUMNS.tree.handleAt,
         ),
-        ...closedFold(g.kind, closed, history.total, unfolded.includes(g.kind), history.earlier),
+        ...closedFold(g.kind, closed, history.total, unfolded.includes(g.kind)),
       ])
     })
 

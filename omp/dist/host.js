@@ -2131,7 +2131,6 @@ var NEEDS_YOU_GROUPS = [
   { kind: "question", title: "Questions", list: "questions" },
   { kind: "task", title: "Tasks", list: "tasks" }
 ];
-var CLOSED_SHOWN = 3;
 function closedRowState(closed, at, now, settleWindowMs, delivery) {
   return {
     is: "settled",
@@ -2209,19 +2208,18 @@ function allRows(v) {
 function settledRowIds(rows) {
   return rows.filter((r) => r.state.is === "settled").map((r) => r.id);
 }
+function closedShown(closed, drawnSettled) {
+  return closedHistoryPlan(closed, drawnSettled).rows;
+}
 function closedTotal(closed, drawnSettled) {
-  return closed.filter((d) => !drawnSettled.has(d.id)).length;
+  return closedShown(closed, drawnSettled).length;
 }
 function closedHistoryPlan(closed, drawnSettled) {
-  const all = closed.filter((d) => !drawnSettled.has(d.id));
-  const rows = all.slice(0, CLOSED_SHOWN);
-  return { rows, total: all.length, earlier: earlierLabel(all.length, rows.length) };
+  const rows = closed.filter((d) => !drawnSettled.has(d.id));
+  return { rows, total: rows.length };
 }
 function foldLabel(total) {
   return `${total} closed`;
-}
-function earlierLabel(total, shown) {
-  return total > shown ? `${total - shown} earlier` : null;
 }
 function deliveryLabel(state, label) {
   return state === "queued" ? `Queued: ${label}` : `Not confirmed: ${label}`;
@@ -5576,8 +5574,6 @@ function groupEntries(g, unfolded) {
   if (!isUnfolded)
     return out;
   out.push(...history.rows.map((d) => ({ kind: "row", line: closedLines(d) })));
-  if (history.earlier)
-    out.push({ kind: "note", text: history.earlier, indent: 5 });
   return out;
 }
 function pressFeedback(screen, id, now, isMarkDone = false) {
