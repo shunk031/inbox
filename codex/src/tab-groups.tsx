@@ -130,7 +130,7 @@ function GroupEnd({
                 <ResultMarkView mark={d.mark} />
                 <div class="content tight">
                   <div class="muted">{inlineHtml(d.ask)}</div>
-                  <div class="outcome">{settledLabel(d.outcomeLabel, d.delivery)}</div>
+                  <div class="outcome">{inlineHtml(settledLabel(d.outcomeLabel, d.delivery))}</div>
                   {canUndoRefused(d.delivery) ? (
                     <button
                       type="button"

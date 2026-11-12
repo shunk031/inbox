@@ -6,6 +6,8 @@ import { closeByAgent, closeItem } from '../hooks/ledger-close'
 import { addAgentItem, applyUpdate } from '../hooks/ledger-update'
 import { parseReply, stepHelp } from '../hooks/reply-parse'
 import { recordClose, recordItem } from '../hooks/tools'
+import { actionsOf } from '../hooks/action-plan'
+import { pressed } from '../hooks/pressed'
 
 describe('items the agent recorded', () => {
   const ask = {
@@ -73,6 +75,32 @@ describe('items the agent recorded', () => {
       [['Memcached'], 'Already open, so this record updated it.', null],
       [['Memcached'], 'Already open, so this record updated it.', null],
     ])
+  })
+
+  test('option caps use the visible label while the press keeps the full link', () => {
+    const option = '[PR 7171](https://github.com/anthropics/claude-code/pull/7171)'
+    const result = recordItem(
+      CLAUDE_CODE,
+      EMPTY,
+      { kind: 'question', ask: 'Merge this PR?', options: [option, 'No'], rec: option },
+      1000,
+    )
+    const item = result.ledger.items[0]!
+    const actions = actionsOf({ id: item.id, item, finding: null, steps: [] }, undefined, { is: 'open' }, null)
+    const answer = pressed(
+      result.ledger,
+      undefined,
+      { action: 'answer', id: item.id, option },
+      { now: 1100, turnsStarted: 1, extraSteps: [], comparePage: '' },
+    )
+    if ('stale' in answer) throw new Error('Expected the recorded answer to be current.')
+
+    expect(option.length).toBeGreaterThan(60)
+    expect(item.options).toEqual([option, 'No'])
+    expect(item.rec).toBe(option)
+    expect(actions.find(action => action.press.action === 'answer')?.label).toBe('PR 7171')
+    expect(answer.last?.text).toBe(option)
+    expect(answer.effects[0]?.kind === 'send' && answer.effects[0].text).toContain(option)
   })
 
   test('a record or close gives the person a line naming what it changed, and none when it changed nothing', () => {

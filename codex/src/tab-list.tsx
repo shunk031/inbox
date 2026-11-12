@@ -19,6 +19,7 @@ import { drawnTab, shownSettled, selectedIndex, open, select, isOpenGuarded, row
 import { discardReply } from './tab-press'
 import { act, listsOf } from './tab-rows'
 import { feedbackLabel, noteOf, isFeedbackShown, inlineHtml, pulseInStep, ResultMarkView, UndoPlace } from './tab-parts'
+import { linkLabel } from '../../hooks/inline'
 
 const LIST_OF = { question: 'questions', task: 'tasks', finding: 'findings' } as const
 
@@ -134,7 +135,7 @@ export function ListRow({
       {row.meta ? <span class="meta">{row.meta}</span> : null}
       {last ? (
         <span class={`after ${afterTone ? `tone-${afterTone}` : ''}`}>
-          {isSelected || isClosing ? `${DOT}${last}` : last}
+          {isSelected || isClosing ? `${DOT}${linkLabel(last)}` : linkLabel(last)}
         </span>
       ) : null}
       {row.holdsUp ? (
@@ -181,7 +182,7 @@ export function ListRow({
         )}
       </div>
       <span class="side" data-room={SENDING}>
-        {isInSide ? <span class="side-label">{label}</span> : null}
+        {isInSide ? <span class="side-label">{inlineHtml(label ?? '')}</span> : null}
         {side}
       </span>
       {isSelected || isClosing ? <Panel row={row} isClosing={isClosing} status={statusUnder} /> : null}
@@ -232,7 +233,7 @@ function Panel({ row, isClosing, status }: { row: Row; isClosing: boolean; statu
         }
         isBlocked={isOpenGuarded}
       />
-      {status ? <div class="muted">{status}</div> : null}
+      {status ? <div class="muted">{inlineHtml(status)}</div> : null}
       {copied ? (
         <div>
           <div class="muted">Copy {copied.name} from here:</div>
@@ -268,7 +269,7 @@ function SettledView({ settled: r, panel }: { settled: RowView; panel: Row | und
             <span class="what">{inlineHtml(r.title)}</span>
             <span class="outcome-label">
               {DOT}
-              {settledLabel(state.label, state.delivery)}
+              {inlineHtml(settledLabel(state.label, state.delivery))}
             </span>
             {error ? (
               <span class="tone-error">

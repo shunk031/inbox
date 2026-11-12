@@ -3,6 +3,8 @@ import { hyperlinkTools, panelLink } from '../src/host'
 import { cutTitle, fit, linkedText, spread, visibleLength } from '../src/panel-text'
 import { INITIAL_UI, drawPanel } from '../src/panel'
 import { handleKey } from '../src/panel-keys'
+import { drawLine } from '../src/panel-draw'
+import { blankLine } from '../src/panel-lines'
 import { NOW, screenOf, style, strip } from './panel-harness'
 
 test('fits real omp OSC 8 links at narrow and wide panel widths', async () => {
@@ -104,6 +106,29 @@ test('finding titles and details draw real OSC 8 links', async () => {
     expect(output).toContain('https://example.com/release')
     expect(plain).toContain('Read PR 7171')
     expect(plain).toContain('See release notes')
+  } finally {
+    applyHyperlinkSetting('auto')
+  }
+})
+
+test('option feedback and outcomes draw real OSC 8 links', async () => {
+  const { applyHyperlinkSetting, urlHyperlink } = await hyperlinkTools()
+  applyHyperlinkSetting('always')
+  try {
+    const option = '[PR 7171](https://github.com/anthropics/claude-code/pull/7171)'
+    const source = screenOf()
+    const draw = { screen: source, ui: INITIAL_UI, width: 80, now: NOW, style: { ...style, link: urlHyperlink } }
+    const feedback = blankLine('i1')
+    feedback.title = 'Merge this PR?'
+    feedback.feedback = { text: `✓ ${option}`, tone: 'done', source: null }
+    const settled = blankLine('i1')
+    settled.title = 'Merge this PR?'
+    settled.settled = { label: option, tone: 'done', undo: null }
+    const lines = [...drawLine(feedback, false, draw), ...drawLine(settled, false, draw)]
+
+    expect(lines.join('\n').match(/\x1b\]8;id=/g)).toHaveLength(2)
+    expect(lines.join('\n')).toContain('https://github.com/anthropics/claude-code/pull/7171')
+    expect(lines.map(strip).join('\n')).toContain('✓ PR 7171')
   } finally {
     applyHyperlinkSetting('auto')
   }

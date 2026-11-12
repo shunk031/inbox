@@ -38,16 +38,54 @@ import {
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 
+// ../hooks/inline.ts
+var INLINE = /`([^`\n]+)`|\*\*(?=\S)(.+?)(?<=\S)\*\*(?!\*)|~~(?=\S)(.+?)(?<=\S)~~|(?<![\w*])\*(?=\S)([^*\n]+?)(?<=\S)\*(?![\w*])|(?<!\w)_(?=\S)([^_\n]+?)(?<=\S)_(?!\w)|\[([^\]\n]+)\]\((https:\/\/[^\s)]+)\)/gi;
+function httpsHref(url) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:" || !parsed.hostname || parsed.username || parsed.password) return null;
+    const href = parsed.origin + [parsed.pathname, parsed.search, parsed.hash].join("").replace(/@/g, "%40");
+    return href.length <= 2048 ? href : null;
+  } catch {
+    return null;
+  }
+}
+function parseInline(text2, outer = {}) {
+  const spans = [];
+  let at = 0;
+  for (const m of text2.matchAll(INLINE)) {
+    if (m.index > at) spans.push({ ...outer, text: text2.slice(at, m.index) });
+    const [, code, bold, strike, star, under, label, url] = m;
+    if (code !== void 0) spans.push({ ...outer, text: code, code: true });
+    else if (bold !== void 0) spans.push(...parseInline(bold, { ...outer, bold: true }));
+    else if (strike !== void 0) spans.push(...parseInline(strike, { ...outer, strike: true }));
+    else if (star !== void 0 || under !== void 0)
+      spans.push({ ...outer, text: star ?? under ?? "", italic: true });
+    else {
+      const href = httpsHref(url ?? "");
+      spans.push(
+        href ? { ...outer, text: label ?? "", link: href } : { ...outer, text: `${label ?? ""} (${url ?? ""})` }
+      );
+    }
+    at = m.index + m[0].length;
+  }
+  if (at < text2.length) spans.push({ ...outer, text: text2.slice(at) });
+  return spans;
+}
+function linkLabel(text2) {
+  return parseInline(text2).map((span) => span.text).join("");
+}
+
 // ../hooks/ask-match.ts
 function words(text2) {
   return text2.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
 }
 function recommendedOption(options, rec) {
   if (!rec) return null;
-  const named = new Set(words(rec));
+  const named = new Set(words(linkLabel(rec)));
   let best = null;
   for (const option of options) {
-    const w = words(option);
+    const w = words(linkLabel(option));
     if (w.length > words(best ?? "").length && w.every((x) => named.has(x))) best = option;
   }
   const label = (text2) => text2.match(/^\s*\(?([a-z]|\d{1,2})\s*[:.)]/i)?.[1]?.toLowerCase();
@@ -1644,7 +1682,7 @@ function optionDescriptionsOf(item, actions) {
   return actions.flatMap((a) => {
     if (a.press.action !== "answer" || !Object.hasOwn(descriptions, a.press.option)) return [];
     const description = descriptions[a.press.option];
-    return [{ label: clipLabel(a.press.option, OPTION_LABEL_CHARS), description, isFolded: a.isFolded }];
+    return [{ label: clipLabel(linkLabel(a.press.option), OPTION_LABEL_CHARS), description, isFolded: a.isFolded }];
   });
 }
 function isWaitingRow(row) {
@@ -2025,7 +2063,7 @@ function actionsOf(row, last, state, feedback) {
   const options = item.rec && item.options.includes(item.rec) ? [item.rec, ...item.options.filter((o) => o !== item.rec)] : item.options;
   return [
     ...options.map(
-      (option, n) => action({ action: "answer", id, option }, clipLabel(option, OPTION_LABEL_CHARS), "mark", {
+      (option, n) => action({ action: "answer", id, option }, clipLabel(linkLabel(option), OPTION_LABEL_CHARS), "mark", {
         isPrimary: option === item.rec,
         isFolded: isFolding && n >= OPTIONS_FOLD_AT - 1
       })

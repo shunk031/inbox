@@ -2,6 +2,7 @@ import type { Item, Closed, PressKind, Finding } from '../types'
 import { closedState } from './ledger-close'
 import type { ClosedState } from './ledger-close'
 import { clipLabel, ago } from './text'
+import { linkLabel } from './inline'
 import { capitalized } from './press-labels'
 import type { HelpStep } from './help-steps'
 import type { RowPress } from './presses'
@@ -131,7 +132,7 @@ export function optionDescriptionsOf(item: Item | null, actions: ActionView[]): 
     if (a.press.action !== 'answer' || !Object.hasOwn(descriptions, a.press.option)) return []
     const description = descriptions[a.press.option]!
 
-    return [{ label: clipLabel(a.press.option, OPTION_LABEL_CHARS), description, isFolded: a.isFolded }]
+    return [{ label: clipLabel(linkLabel(a.press.option), OPTION_LABEL_CHARS), description, isFolded: a.isFolded }]
   })
 }
 

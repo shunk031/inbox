@@ -161,10 +161,10 @@ const MAX_OPTION = 60
 const MAX_OPTIONS = 8
 const MAX_STEPS = 3
 
-function list(value: unknown, max: number, each: number): string[] {
+function list(value: unknown, max: number, each: number, inline = false): string[] {
   return Array.isArray(value)
     ? value
-        .map(v => cut(v, each))
+        .map(v => (inline ? cutInline(typeof v === 'string' ? v : '', each) : cut(v, each)))
         .filter(Boolean)
         .slice(0, max)
     : []
@@ -186,10 +186,11 @@ export function recordItem(host: Host, ledger: Ledger, input: Record<string, unk
     return unchanged(ledger, 'Not recorded: kind must be question, task or finding.')
   const ask = cutInline(typeof input.ask === 'string' ? input.ask.trim() : '', MAX_ASK)
   if (ask === '') return unchanged(ledger, `Not recorded: a ${input.kind} needs an ask.`)
-  const options = input.kind === 'question' ? list(input.options, MAX_OPTIONS, MAX_OPTION) : []
+  const options = input.kind === 'question' ? list(input.options, MAX_OPTIONS, MAX_OPTION, true) : []
   if (input.kind === 'question' && options.length === 0)
     return unchanged(ledger, 'Not recorded: a question needs at least one option.')
-  const recInput = input.kind === 'question' ? cut(input.rec, MAX_OPTION) : ''
+  const recInput =
+    input.kind === 'question' ? cutInline(typeof input.rec === 'string' ? input.rec : '', MAX_OPTION) : ''
   const rec = recInput === '' ? null : recommendedOption(options, recInput)
   if (recInput !== '' && rec === null) return unchanged(ledger, 'Not recorded: rec must be one of the options.')
   const steps = list(input.steps, MAX_STEPS + 3, 4000)

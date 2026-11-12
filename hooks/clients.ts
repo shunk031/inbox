@@ -60,6 +60,7 @@ export type FeatureId =
   | 'markdown-item-links'
   | 'item-explanations'
   | 'finding-links'
+  | 'option-links'
 
 type Support = { kind: 'full' } | { kind: 'different' | 'unsupported'; reason: string }
 
@@ -133,6 +134,7 @@ export const CLIENTS: Record<ClientId, Client> = {
       'markdown-item-links': { kind: 'full' },
       'item-explanations': { kind: 'full' },
       'finding-links': { kind: 'full' },
+      'option-links': { kind: 'full' },
     },
   },
   codex: {
@@ -264,6 +266,7 @@ export const CLIENTS: Record<ClientId, Client> = {
       'markdown-item-links': { kind: 'full' },
       'item-explanations': { kind: 'full' },
       'finding-links': { kind: 'full' },
+      'option-links': { kind: 'full' },
     },
   },
   omp: {
@@ -353,6 +356,10 @@ export const CLIENTS: Record<ClientId, Client> = {
         reason: 'A selected detail that exceeds the panel scrolls with ↑ and ↓; j and k move between rows.',
       },
       'finding-links': {
+        kind: 'different',
+        reason: 'The panel uses OSC 8 links only when omp enables them for its terminal; otherwise it shows the label.',
+      },
+      'option-links': {
         kind: 'different',
         reason: 'The panel uses OSC 8 links only when omp enables them for its terminal; otherwise it shows the label.',
       },

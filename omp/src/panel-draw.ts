@@ -11,7 +11,7 @@ import type { ResultMark } from '../../hooks/rows'
 import { focusOf } from './panel-keys'
 import { AGENT, INDENT, UNLED_INDENT, isShut } from './panel-lines'
 import type { ButtonFace, Lead, Line } from './panel-lines'
-import { cutTitle, fit, indented, indentedLinks, linkedText, spread, visibleLength, wrapText } from './panel-text'
+import { cutTitle, fit, indentedLinks, linkedText, spread, visibleLength, wrapText } from './panel-text'
 import type { PanelScreen, PanelUi, Style, Tone } from './panel'
 
 export type Draw = { screen: PanelScreen; ui: PanelUi; width: number; now: number; style: Style }
@@ -136,9 +136,9 @@ export function drawLine(line: Line, isSelected: boolean, d: Draw): string[] {
       : null
   const mark = markText(line.mark, now, s)
   const after = line.settled
-    ? `  ${mark}${line.settled.tone === 'done' ? s.tone('done', line.settled.label) : s.dim(line.settled.label)}${line.settled.undo ? `  ${s.dim('u Undo')}` : ''}`
+    ? `  ${mark}${line.settled.tone === 'done' ? s.tone('done', linkedText(line.settled.label, s.link)) : s.dim(linkedText(line.settled.label, s.link))}${line.settled.undo ? `  ${s.dim('u Undo')}` : ''}`
     : line.feedback && !statusUnder
-      ? `  ${mark}${feedbackPaint(line.feedback.tone, s)(line.feedback.text)}`
+      ? `  ${mark}${feedbackPaint(line.feedback.tone, s)(linkedText(line.feedback.text, s.link))}`
       : ''
   // omp marks a selected item with ❯, its `nav.cursor` symbol, and keeps ▸ and ▾ for expand and collapse.
   const cursor = isSelected ? s.tone('accent', '❯') : ' '
@@ -181,12 +181,13 @@ export function drawLine(line: Line, isSelected: boolean, d: Draw): string[] {
   }
   if (statusUnder) {
     const markCells = mark ? 2 : 0
-    const [first, ...rest] = indented(
+    const [first, ...rest] = indentedLinks(
       statusUnder.text,
       indent + markCells,
       width,
       4,
       feedbackPaint(statusUnder.tone, s),
+      s.link,
     )
     if (first !== undefined) out.push(' '.repeat(indent) + mark + first.slice(indent + markCells), ...rest)
   }

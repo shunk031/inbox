@@ -4,7 +4,7 @@ Status: current. Read this before you change the UI or a business rule.
 
 The inbox has four looks: `terminal`, `desktop`, `codex` and `omp`. A look is one way the inbox is drawn, and `GLOSSARY.md` defines it with host, shared module, adapter and difference on purpose. The rule is that shared modules decide and adapters draw. If a rule decides what a row says, which action leads, when a tab counts as empty or what text appears, it lives in a shared module. An adapter decides only how its look draws that. The plan for finishing this split is `docs/plans/three-looks.md`.
 
-Question, task and finding links use `hooks/inline.ts` for parsing and href validation. Each look draws a native link where its host supports one, and otherwise keeps readable label text; the OMP terminal capability is recorded under "Differences on purpose".
+Inline Markdown links use `hooks/inline.ts` for parsing and href validation in asks, task steps, options, feedback, outcomes, and finding titles and details. Each look draws a native link where its host supports one, and otherwise keeps readable label text; the OMP terminal capability is recorded under "Differences on purpose".
 
 Question and task explanations live in `Item.detail`, are carried to each renderer as `RowView.detail`, and survive inbox-model updates. Only the agent's `record` call sets or replaces this field.
 
