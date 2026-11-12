@@ -191,7 +191,10 @@ export function inboxView({
     return isHandedOff(last, turns) ? { is: 'handedOff' } : { is: 'open' }
   }
   const rowOf = (
-    row: Omit<RowView, 'state' | 'feedback' | 'actions' | 'optionDescriptions' | 'holdsUpLine'>,
+    row: Omit<
+      RowView,
+      'state' | 'feedback' | 'actions' | 'optionDescriptions' | 'holdsUpLine' | 'document' | 'documentPreview'
+    >,
   ): RowView => {
     const state = stateOf(row.id)
     const last = lastActions[row.id]
@@ -203,6 +206,8 @@ export function inboxView({
 
     return {
       ...row,
+      document: row.item?.document ?? row.finding?.document ?? null,
+      documentPreview: row.item?.documentPreview ?? row.finding?.documentPreview ?? null,
       state,
       feedback,
       actions,

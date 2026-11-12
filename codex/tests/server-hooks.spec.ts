@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { writeFileSync } from 'node:fs'
+import { symlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -19,6 +19,32 @@ test('Codex’s own tool calls reach their session through the turn metadata', a
   )
   assert.match(r.result.content[0]?.text ?? '', /^Recorded\. /)
   assert.equal((await readState(dir, 's1')).ledger.findings[0]?.title, 'No lint script')
+})
+
+test('a recorded Markdown report outside the project folder contributes its safe preview', async () => {
+  const { dir, call } = await setup(0)
+  const reportDir = tempDir()
+  const target = join(reportDir, 'report.md')
+  const document = join(reportDir, 'current.md')
+  writeFileSync(target, '# Release plan\n\nShip to one region first.')
+  symlinkSync(target, document)
+
+  await call(
+    'record',
+    {
+      kind: 'question',
+      ask: 'Which rollout should we use?',
+      options: ['One region', 'All regions'],
+      document,
+    },
+    { 'x-codex-turn-metadata': { session_id: 's1', thread_id: 's1' } },
+  )
+
+  const item = (await readState(dir, 's1')).ledger.items.find(item => item.ask === 'Which rollout should we use?')
+  assert.deepEqual(
+    { document: item?.document, preview: item?.documentPreview },
+    { document, preview: '# Release plan Ship to one region first.' },
+  )
 })
 
 test('a tool call from Codex in a turn UserPromptSubmit never recorded shows the hook skipped; the tab’s own calls show nothing', async () => {

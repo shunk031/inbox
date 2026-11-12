@@ -57,6 +57,10 @@ const RECORD_SCHEMA = {
         'For a question or task: why you ask and what it holds up; for a question, what each option leads to. For a finding: why it matters and what you would do. Use short paragraphs and links where useful.',
     },
     path: { type: 'string', description: 'For a finding: the file it is about, if one.' },
+    document: {
+      type: 'string',
+      description: 'For a Markdown report the user should read in the inbox: its absolute local file path.',
+    },
   },
   required: ['kind'],
 }
@@ -110,6 +114,7 @@ function recordDescription(host: Host): string {
 - question: a decision, approval or piece of information only the user has, which you need before you go on. Give options, and rec when you recommend one. Fill detail with why you ask and what each option leads to. This includes an act you hold until they say so, such as "say when you want those committed".
 - task: a step only the user can do, such as signing in or running a command with their password. Put the commands, files and links in steps, and fill detail with what holds the task up and what the step leads to. A step your own tools can take is not a task: take it, or ask for their OK as a question when it changes something other people see.
 - finding: something outside the current task that deserves their attention. It waits in ${host.findingsIn} until it is closed, and the user can ask you to address it or discuss it. Record what a careful senior engineer would flag to a teammate, once you have checked it. Leave out style nits, anything the user already decided, todos or ideas the user mentioned, problems in your own change, progress, and anything only the user can do or decide: handle those in your reply, or record them as a question or task.
+For any kind with a Markdown report the user should read, give its absolute local path in document. The inbox checks the file and shows a short excerpt; do not use this field for a file they should edit.
 Do not record rhetorical questions, offers to continue when continuing is the default, FYIs, or invitations to look at finished work.`
 }
 
@@ -208,9 +213,22 @@ export function recordItem(host: Host, ledger: Ledger, input: Record<string, unk
 
   const isDesignChoice = input.kind === 'question' && input.design_choice === true
   const detail = cutInline(typeof input.detail === 'string' ? input.detail.trim() : '', MAX_ITEM_DETAIL)
+  const document = cut(input.document, 4096) || undefined
+  const documentPreview = document ? cut(input.document_preview, 180) || undefined : undefined
+  const documentError = cut(input.document_error, 160)
+  const documentNote = documentError ? ` The Markdown report was not attached: ${documentError}` : ''
   const r = addAgentItem(
     ledger,
-    { kind: input.kind, ask, options, rec, helps, isDesignChoice, ...(detail ? { detail } : {}) },
+    {
+      kind: input.kind,
+      ask,
+      options,
+      rec,
+      helps,
+      isDesignChoice,
+      ...(detail ? { detail } : {}),
+      ...(document ? { document, documentPreview } : {}),
+    },
     now,
   )
   if (r.is === 'open') {
@@ -218,18 +236,19 @@ export function recordItem(host: Host, ledger: Ledger, input: Record<string, unk
       ...(r.addedSteps > 0 ? ['added its new steps'] : []),
       ...(r.isNewlyMarked ? ['marked it as a design choice'] : []),
       ...(r.hasNewDetail ? ['replaced its detail'] : []),
+      ...(r.hasNewDocument ? ['updated its Markdown report'] : []),
       ...(r.newRec ? [`changed its recommendation to ${r.newRec}`] : []),
     ]
     const updated = changes.length > 0 ? ` and ${changes.join(' and ')}` : ''
 
-    return unchanged(r.ledger, `Already open, so this record updated it${updated}.${leftOut}`)
+    return unchanged(r.ledger, `Already open, so this record updated it${updated}.${leftOut}${documentNote}`)
   }
   if (r.is === 'closed')
     return unchanged(ledger, `Not recorded: ${closedHow(r.record)}. Ask it again only if they bring it up.`)
 
   return {
     ledger: r.ledger,
-    result: `Recorded. The user sees it in ${host.surface}.` + leftOut,
+    result: `Recorded. The user sees it in ${host.surface}.` + leftOut + documentNote,
     personLine: `${input.kind === 'question' ? 'Question' : 'Task'}: ${ask}`,
   }
 }
@@ -239,21 +258,26 @@ function recordFinding(host: Host, ledger: Ledger, input: Record<string, unknown
   const detail = cutInline(typeof input.detail === 'string' ? input.detail : '', 600)
   if (title === '' || detail === '') return unchanged(ledger, 'Not recorded: a finding needs a title and a detail.')
   const path = cut(input.path, 300)
+  const document = cut(input.document, 4096) || undefined
+  const documentPreview = document ? cut(input.document_preview, 180) || undefined : undefined
+  const documentError = cut(input.document_error, 160)
+  const documentNote = documentError ? ` The Markdown report was not attached: ${documentError}` : ''
   const kind = input.finding_kind === 'opportunity' ? 'opportunity' : 'issue'
-  const r = addFinding(ledger, { kind, title, detail, path: path || null, at: now })
+  const r = addFinding(ledger, { kind, title, detail, path: path || null, document, documentPreview, at: now })
 
   if (r.dismissed)
     return unchanged(
       ledger,
-      `Not recorded: the user already closed this (${r.dismissed.outcome}). Record it again only if they bring it up.`,
+      `Not recorded: the user already closed this (${r.dismissed.outcome}). Record it again only if they bring it up.${documentNote}`,
     )
-  if (!r.isAdded) return unchanged(r.ledger, 'Already recorded.')
+  if (!r.isAdded) return unchanged(r.ledger, `Already recorded.${documentNote}`)
 
   return {
     ledger: r.ledger,
     result:
       `Recorded. The user sees it in ${host.findingsIn}.` +
-      (r.expired ? ` The list was full, so the oldest finding closed: ${r.expired.title}.` : ''),
+      (r.expired ? ` The list was full, so the oldest finding closed: ${r.expired.title}.` : '') +
+      documentNote,
     personLine: `${kind === 'opportunity' ? 'Opportunity' : 'Issue'}: ${title}`,
   }
 }

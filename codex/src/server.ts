@@ -1,3 +1,5 @@
+import { open, realpath, stat } from 'node:fs/promises'
+
 import { delegatesSettled } from '../../hooks/children'
 import type { Run } from '../../hooks/gh'
 import { delegatesInHerdr, herdrCheckGate } from '../../hooks/herdr'
@@ -21,6 +23,26 @@ import type { SessionState } from './state'
 import { CODEX, inboxToolText } from './texts'
 import { applyFeedFiles } from '../../hooks/feed'
 import { readFeedFiles } from '../../feed-reader'
+import { withDocumentPreview } from '../../hooks/document'
+
+const documentFile = {
+  stat: async (path: string) => {
+    const target = await realpath(path)
+    const info = await stat(target)
+    return { path: target, isFile: info.isFile(), size: info.size }
+  },
+  read: async (path: string, limit: number) => {
+    const file = await open(path, 'r')
+    try {
+      if (!(await file.stat()).isFile()) return new Uint8Array(limit + 1)
+      const bytes = new Uint8Array(limit + 1)
+      const { bytesRead } = await file.read(bytes, 0, bytes.length, 0)
+      return bytes.subarray(0, bytesRead)
+    } finally {
+      await file.close()
+    }
+  },
+}
 
 export type ServerDeps = {
   dir: string
@@ -112,8 +134,9 @@ export function makeServer(deps: ServerDeps): (m: Message) => Promise<Record<str
       case 'close':
       case 'order_prs': {
         let result = ''
+        const toolInput = name === 'record' ? await withDocumentPreview(args, documentFile) : args
         await updateState(dir, id, s => {
-          const r = recorded(CODEX, s, name, args, now())
+          const r = recorded(CODEX, s, name, toolInput, now())
           result = r.result
           return heard(r.state)
         })

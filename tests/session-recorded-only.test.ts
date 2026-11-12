@@ -12,6 +12,8 @@ const THRESHOLDS = {
   ask: 'Keep only the two 10-minute thresholds?',
   options: ['Keep 5 and 15 USD', 'Keep all four'],
   rec: 'Keep 5 and 15 USD',
+  document: '/reports/thresholds.md',
+  document_preview: 'Threshold comparison.',
 }
 
 const REPLY =
@@ -32,7 +34,13 @@ const recordedThenReplied = (s: Session): Session => {
   return finishTurn({ ...s, ledger }, REPLY)
 }
 
-const asRecorded = { options: THRESHOLDS.options, rec: THRESHOLDS.rec, from: 'record' }
+const asRecorded = {
+  options: THRESHOLDS.options,
+  rec: THRESHOLDS.rec,
+  from: 'record',
+  document: THRESHOLDS.document,
+  documentPreview: THRESHOLDS.document_preview,
+}
 
 test('with recordedItemsOnly, an update adds no ask and keeps a recorded ask as recorded, but still adds its steps and closes it on the answer', async () => {
   let answer = ANSWER
@@ -93,6 +101,10 @@ test('without recordedItemsOnly, the same update adds the asks it found and chan
 
   const after = (await host.read()).ledger
   expect(after.items[0]).toMatchObject({ options: ['Keep 10 USD', 'Keep 20 USD'], rec: 'Keep 20 USD' })
+  expect(after.items[0]).toMatchObject({
+    document: THRESHOLDS.document,
+    documentPreview: THRESHOLDS.document_preview,
+  })
   expect(after.items.map(i => i.ask)).toContain('Ready to start on add a dark theme?')
   expect(after.items.length).toBeGreaterThan(2)
 })

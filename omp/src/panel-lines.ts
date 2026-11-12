@@ -6,6 +6,7 @@ import {
   settledTone,
   closedHistoryPlan,
   closedTotal,
+  documentPreviewLine,
   foldLabel,
   isWaitingRow,
   waitingCount,
@@ -179,7 +180,7 @@ function lineOfRow(row: RowView): Line {
     isDim: state.is === 'settled',
     // As in the terminal, a row a press finished reads the press's age.
     age: f?.is === 'done' ? f.at : row.at,
-    detail: row.detail,
+    detail: [row.detail, documentPreviewLine(row)].filter(Boolean).join('\n\n') || null,
     file: row.fileName,
     feedback: feedbackLabel && f ? { text: feedbackLabel, tone: feedbackTone(f), source: f } : null,
     settled:

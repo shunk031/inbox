@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
+import { open, realpath, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -15,6 +16,7 @@ import { herdrReporter } from '../../hooks/herdr'
 import type { Run } from '../../hooks/gh'
 import { COMPARE_PAGE_FILE } from '../../hooks/press-messages'
 import { recorded } from '../../hooks/session-presses'
+import { withDocumentPreview } from '../../hooks/document'
 import { prFetchTracker } from '../../hooks/host-prs'
 import type { SessionHost } from '../../hooks/session-host'
 import { agentTools } from '../../hooks/tools'
@@ -39,6 +41,25 @@ import { sessionCalls } from './host-sessions'
 import { MESSAGE_TYPE, turnHandlers } from './host-turns'
 import { shownLine } from './omp-messages'
 import type { ToolDetails } from './omp-messages'
+
+const documentFile = {
+  stat: async (path: string) => {
+    const target = await realpath(path)
+    const info = await stat(target)
+    return { path: target, isFile: info.isFile(), size: info.size }
+  },
+  read: async (path: string, limit: number) => {
+    const file = await open(path, 'r')
+    try {
+      if (!(await file.stat()).isFile()) return new Uint8Array(limit + 1)
+      const bytes = new Uint8Array(limit + 1)
+      const { bytesRead } = await file.read(bytes, 0, bytes.length, 0)
+      return bytes.subarray(0, bytesRead)
+    } finally {
+      await file.close()
+    }
+  },
+}
 
 const INBOX_MODEL_TIMEOUT_MS = 120_000
 
@@ -318,8 +339,10 @@ export function createInbox(pi: ExtensionAPI, deps: HostDeps = defaultDeps): Inb
       execute: async (_toolCallId, args, _signal, _onUpdate, ctx) => {
         if (isUnattended(ctx)) return { content: [{ type: 'text', text: 'The inbox is not shown in this session.' }] }
         let answer: Omit<ToolAnswer, 'ledger'> = { result: '', personLine: null }
+        const input =
+          name === 'record' ? await withDocumentPreview(args as Record<string, unknown>, documentFile) : args
         await change(sessionIdOf(ctx), s => {
-          const r = recorded(OMP, s, name, args as Record<string, unknown>, deps.now())
+          const r = recorded(OMP, s, name, input as Record<string, unknown>, deps.now())
           answer = r
 
           return r.state

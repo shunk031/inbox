@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
-import { writeFileSync } from 'node:fs'
+import { symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { guidanceText } from '../../hooks/model-text'
@@ -43,6 +43,26 @@ test('a record call shows in the next prompt as a hidden message', async () => {
   const next = await prompt('How is it going?')
   expect(next.message).toMatchObject({ display: false, attribution: 'agent' })
   expect(next.message.content).toContain('Try the CLI by hand')
+})
+
+test('a record call reads a Markdown report outside the project folder for its preview', async () => {
+  createInbox(pi(), deps())
+  const target = join(w.dir, 'report.md')
+  const document = join(w.dir, 'current.md')
+  writeFileSync(target, '# Release plan\n\nShip to one region first.')
+  symlinkSync(target, document)
+
+  await record({
+    kind: 'question',
+    ask: 'Which rollout should we use?',
+    options: ['One region', 'All regions'],
+    document,
+  })
+
+  expect(state().ledger.items[0]).toMatchObject({
+    document,
+    documentPreview: '# Release plan Ship to one region first.',
+  })
 })
 
 test('a prompt with nothing to tell the agent returns no message', async () => {

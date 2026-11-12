@@ -127,6 +127,10 @@ export type Item = {
   ask: string
   /** The agent's explanation of why it asked and what each option or step leads to. */
   detail?: string
+  /** An optional Markdown report path, recorded by the agent and shown only to the user. */
+  document?: string
+  /** A short excerpt from the document, shown under the item. */
+  documentPreview?: string
   options: string[]
   /** The option the agent recommended, exactly as `options` has it. */
   rec: string | null
@@ -291,6 +295,10 @@ export type Finding = {
   detail: string
   /** The file it is about, as Claude gave it. */
   path: string | null
+  /** An optional Markdown report path, recorded by the agent and shown only to the user. */
+  document?: string
+  /** A short excerpt from the document, shown under the finding. */
+  documentPreview?: string
   at: number
   /** The item that replaced this finding by asking about it. A finding closed as "asked as iN" reopens when that item closes with the work undone. */
   askedAs?: string
@@ -673,6 +681,7 @@ declare module 'claude-code' {
       title?: string
       detail?: string
       path?: string
+      document?: string
     }
     mcp__inbox__close: {
       id: string
