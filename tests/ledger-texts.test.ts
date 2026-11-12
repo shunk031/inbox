@@ -2,9 +2,11 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import { CLAUDE_CODE, MAX_TOOL_DESCRIPTION, guidedCloseDescription } from '../hooks/model-text'
 import { answerNote, carryText, questionNumbers } from '../hooks/inbox-text'
-import { buildPrompt } from '../hooks/ledger-prompt'
+import { ledgerBlocks, buildPrompt } from '../hooks/ledger-prompt'
+import { CLOSED_CONTEXT_LIMIT } from '../hooks/ask-match'
 import { EMPTY } from '../hooks/ledger'
 import { applyUpdate } from '../hooks/ledger-update'
+import { closeItem } from '../hooks/ledger-close'
 import { parseReply, tasksRunBy } from '../hooks/reply-parse'
 import { readCommandRow, resetTime, stopKindOf } from '../hooks/claude'
 import { herdrTokens } from '../hooks/herdr'
@@ -109,6 +111,32 @@ describe('carryText', () => {
     expect(carryText(EMPTY, 'T')).toBe(null)
     const text = carryText(applyUpdate(EMPTY, parseReply(REPLY)!, 1, 1), 'T')
     expect(text).toContain('(1) "Rename greet.mjs to hello.mjs?"')
+  })
+
+  test('model text keeps only the newest 12 closed asks', () => {
+    const opened = applyUpdate(
+      EMPTY,
+      parseReply(
+        Array.from({ length: CLOSED_CONTEXT_LIMIT + 2 }, (_, n) => `NEW: do | - | Ask ${n + 1} | - | -`).join('\n'),
+      )!,
+      1,
+      1,
+    )
+    const closed = opened.items.reduce(
+      (ledger, item, n) => closeItem(ledger, item.id, { how: 'answered', outcome: 'done' }, n + 2),
+      opened,
+    )
+    const decided = ledgerBlocks(closed)[2]!
+    const withOpen = { ...closed, items: [{ ...opened.items[0]!, id: 'i15', ask: 'A current open ask' }] }
+    const carried = carryText(withOpen, 'Start')!
+
+    expect(CLOSED_CONTEXT_LIMIT).toBe(12)
+    expect(decided.split('\n').slice(1, -1)).toHaveLength(CLOSED_CONTEXT_LIMIT)
+    expect(decided).not.toContain('Ask 1 →')
+    expect(decided).toContain('Ask 14 →')
+    expect(carried.match(/^- ".*" → /gm)).toHaveLength(CLOSED_CONTEXT_LIMIT)
+    expect(carried).not.toContain('Ask 1 →')
+    expect(carried).toContain('Ask 14" →')
   })
 })
 

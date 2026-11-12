@@ -1,5 +1,5 @@
 import type { Closed, Exchange, Item, Ledger } from '../types'
-import { isAskedForChoices, LIST_CHOICES } from './ask-match'
+import { CLOSED_CONTEXT_LIMIT, isAskedForChoices, LIST_CHOICES } from './ask-match'
 import type { Host } from './model-text'
 import { clipMiddle, numberBlocks } from './text'
 
@@ -65,6 +65,7 @@ export function ledgerBlocks(ledger: Ledger): string[] {
     .join(NL)
   const findings = ledger.findings.map(f => `${f.id} | ${f.kind}: ${f.title}`).join(NL)
   const closed = ledger.closed
+    .slice(-CLOSED_CONTEXT_LIMIT)
     .filter(d => d.how !== 'expired' && !isAskedForChoices(d))
     .map(d => `${d.ask} → ${outcomeText(d)}`)
     .join(NL)

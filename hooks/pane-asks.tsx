@@ -11,7 +11,7 @@ import { childPos, holdsUpLineOf, type PaneRowLines } from './pane-row-lines'
 import type { PaneRowParts } from './pane-row-parts'
 import type { PaneRows } from './pane-rows'
 import { ROW_COLUMNS } from './pane-sizes'
-import { closedShown, closedTotal, DOT, replyHint, ROW_COPY, rowTitle, type RowView, waitingCount } from './rows'
+import { closedHistoryPlan, closedTotal, DOT, replyHint, ROW_COPY, rowTitle, type RowView, waitingCount } from './rows'
 import { type TerminalSpan, terminalTextLines } from './terminal-text'
 import { ago } from './text'
 
@@ -209,7 +209,7 @@ export function paneAskTabs(
   const needsYouView = () => {
     const groups = needsYouGroups.flatMap(g => {
       const { entries } = g
-      const closed = closedShown(view.needsYou.closed[g.list], settledIn(entries))
+      const history = closedHistoryPlan(view.needsYou.closed[g.list], settledIn(entries))
       if (isUnread) return []
       const isUnfolded = unfolded.includes(g.kind)
       const open = divided(
@@ -219,7 +219,7 @@ export function paneAskTabs(
         g.kind,
         ROW_COLUMNS.tree.handleAt,
       )
-      const tail = closedFold(g.kind, closed, closedTotal(view.needsYou.closed[g.list], settledIn(entries)), isUnfolded)
+      const tail = closedFold(g.kind, history.rows, history.total, isUnfolded)
 
       return [
         section([
@@ -276,7 +276,8 @@ export function paneAskTabs(
       return emptyState(emptyText('findings', 'Claude'))
     const groups = lists.findingGroups.map(g => {
       const closedOf = view.findings.closed.filter(f => f.kind === g.kind)
-      const closed = closedShown(closedOf, settled).map(f => ({
+      const history = closedHistoryPlan(closedOf, settled)
+      const closed = history.rows.map(f => ({
         id: f.id,
         ask: f.title,
         at: f.closedAt,
@@ -295,7 +296,7 @@ export function paneAskTabs(
           g.kind,
           ROW_COLUMNS.tree.handleAt,
         ),
-        ...closedFold(g.kind, closed, closedTotal(closedOf, settled), unfolded.includes(g.kind)),
+        ...closedFold(g.kind, closed, history.total, unfolded.includes(g.kind)),
       ])
     })
 

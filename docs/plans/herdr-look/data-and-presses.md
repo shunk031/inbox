@@ -20,7 +20,7 @@ Each host publishes its session to a file. The mod reads that file and builds th
 
   `session` holds only the shared fields. Each host drops its own fields, such as Codex's `herdrReport` or the mod's `revision`. `agent` is the name the shared texts use, as in "Tell Claude".
 - **How.** Write to a temporary file in the same folder, then rename it over the old one, so the mod never reads half a file. Codex and omp rename with Node's `fs.rename`. Claude Code's `$.fs` has no rename or delete, so the mod renames with `$.process.run(['mv', …])`. The spike wrote with `$.fs.write` straight to the file and did not check for torn reads. Its mod retried a parse that failed.
-- **Size.** Herdr's `readTextFile` reads at most 1 MiB. The demo session is 7.7 KB. The mod's saved sessions are already pruned by `pruned()`. A host that would publish more than 1 MiB publishes the session without closed items beyond those the view shows, and the look says when it does.
+- **Size.** Herdr's `readTextFile` reads at most 1 MiB. The demo session is 7.7 KB. Closed records keep their items for the session's lifetime, so a session file grows with its history. `KEPT_SESSIONS = 40` bounds saved files, not their size. A host that publishes more than 1 MiB needs to say when it cannot publish the whole session.
 
 ### Who computes the view
 

@@ -4,9 +4,8 @@ import type { PrAction } from '../../hooks/pr-press'
 import {
   canUndoRefused,
   settledTone,
-  closedShown,
+  closedHistoryPlan,
   closedTotal,
-  earlierLabel,
   foldLabel,
   isWaitingRow,
   waitingCount,
@@ -242,7 +241,8 @@ function closedLines(d: ClosedLine): Line {
 
 export function groupEntries(g: Group, unfolded: readonly FoldKind[]): Entry[] {
   const settled = settledIn(g)
-  const total = closedTotal(g.closed, settled)
+  const history = closedHistoryPlan(g.closed, settled)
+  const total = history.total
   const out: Entry[] = [
     { kind: 'heading', text: g.title, count: waitingCount(g.rows), ...(g.mark ? { mark: g.mark } : {}) },
   ]
@@ -262,10 +262,7 @@ export function groupEntries(g: Group, unfolded: readonly FoldKind[]): Entry[] {
     },
   })
   if (!isUnfolded) return out
-  const shown = closedShown(g.closed, settled)
-  out.push(...shown.map((d): Entry => ({ kind: 'row', line: closedLines(d) })))
-  const earlier = earlierLabel(total, shown.length)
-  if (earlier) out.push({ kind: 'note', text: earlier, indent: 5 })
+  out.push(...history.rows.map((d): Entry => ({ kind: 'row', line: closedLines(d) })))
 
   return out
 }

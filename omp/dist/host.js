@@ -452,6 +452,7 @@ function cutInline(text, max) {
 }
 
 // ../hooks/ask-match.ts
+var CLOSED_CONTEXT_LIMIT = 12;
 function words2(text) {
   return text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
 }
@@ -562,8 +563,9 @@ function matchOpen(items, a, sameBatch = new Set) {
   return items.findIndex((i) => i.id === a.label || sameAsk(i.ask, a.ask) || !sameBatch.has(i.id) && i.kind === a.kind && restates(i.ask, a.ask));
 }
 function repeatsClosed(closed, a, since) {
-  const recent = closed.filter((c) => c.at >= since && !isAskedForChoices(c));
-  const settled = closed.filter((c) => c.at < since && c.how !== "expired");
+  const context = closed.slice(-CLOSED_CONTEXT_LIMIT);
+  const recent = context.filter((c) => c.at >= since && !isAskedForChoices(c));
+  const settled = context.filter((c) => c.at < since && c.how !== "expired");
   return matchOpen(recent, a) >= 0 || a.label !== null && recent.some((c) => c.label === a.label) || settled.some((c) => repeatsSettled(c, a));
 }
 var LIST_CHOICES = "List the choices";
@@ -579,7 +581,6 @@ function repeatsSettled(c, a) {
 }
 
 // ../hooks/ledger-close.ts
-var MAX_CLOSED = 12;
 function closedRecord(item, closing, now) {
   const { id, kind, ask, label } = item;
   return { id, kind, ask, ...label ? { label } : {}, ...closing, at: now, item };
@@ -646,10 +647,6 @@ function asksAbout(item, finding, isClaimed = false) {
   }
   const itemPrs = prNumbers(`${item.label ?? ""} ${item.ask}`);
   return [...prNumbers(`${finding.title} ${finding.detail}`)].some((n) => itemPrs.has(n));
-}
-function pruneClosed(ledger, keep) {
-  const pruned = (records) => records.filter((r, n) => n >= records.length - MAX_CLOSED || keep.has(r.id));
-  return { ...ledger, closed: pruned(ledger.closed), closedFindings: pruned(ledger.closedFindings) };
 }
 function idNumber(id) {
   return Number(id.match(/\d+/)?.[0] ?? Number.NaN);
@@ -2134,7 +2131,6 @@ var NEEDS_YOU_GROUPS = [
   { kind: "question", title: "Questions", list: "questions" },
   { kind: "task", title: "Tasks", list: "tasks" }
 ];
-var CLOSED_SHOWN = 3;
 function closedRowState(closed, at, now, settleWindowMs, delivery) {
   return {
     is: "settled",
@@ -2213,16 +2209,17 @@ function settledRowIds(rows) {
   return rows.filter((r) => r.state.is === "settled").map((r) => r.id);
 }
 function closedShown(closed, drawnSettled) {
-  return closed.filter((d) => !drawnSettled.has(d.id)).slice(0, CLOSED_SHOWN);
+  return closedHistoryPlan(closed, drawnSettled).rows;
 }
 function closedTotal(closed, drawnSettled) {
-  return closed.filter((d) => !drawnSettled.has(d.id)).length;
+  return closedShown(closed, drawnSettled).length;
+}
+function closedHistoryPlan(closed, drawnSettled) {
+  const rows = closed.filter((d) => !drawnSettled.has(d.id));
+  return { rows, total: rows.length };
 }
 function foldLabel(total) {
   return `${total} closed`;
-}
-function earlierLabel(total, shown) {
-  return total > shown ? `${total - shown} earlier` : null;
 }
 function deliveryLabel(state, label) {
   return state === "queued" ? `Queued: ${label}` : `Not confirmed: ${label}`;
@@ -2420,7 +2417,7 @@ Write plainly. No jargon, no filler, no markdown.`;
 function ledgerBlocks(ledger) {
   const open = ledger.items.map((i) => `${i.id} | ${MODEL_KIND[i.kind]} | ${i.label ?? "-"} | ${i.ask} | ${i.options.join(" / ") || "-"} | ${i.rec ?? "-"} | ${i.isDesignChoice ? "design" : "-"}`).join(NL4);
   const findings = ledger.findings.map((f) => `${f.id} | ${f.kind}: ${f.title}`).join(NL4);
-  const closed = ledger.closed.filter((d) => d.how !== "expired" && !isAskedForChoices(d)).map((d) => `${d.ask} \u2192 ${outcomeText(d)}`).join(NL4);
+  const closed = ledger.closed.slice(-CLOSED_CONTEXT_LIMIT).filter((d) => d.how !== "expired" && !isAskedForChoices(d)).map((d) => `${d.ask} \u2192 ${outcomeText(d)}`).join(NL4);
   return [
     `<open>${NL4}${open}${NL4}</open>`,
     `<findings>${NL4}${findings}${NL4}</findings>`,
@@ -3964,7 +3961,7 @@ function addAgentItem(ledger, entry, now) {
     };
   }
   const isAskable = (c) => c.how === "expired" || c.how === "claude";
-  const repeated = ledger.closed.findLast((c) => !isAskable(c) && repeatsSettled(c, candidate));
+  const repeated = ledger.closed.slice(-CLOSED_CONTEXT_LIMIT).findLast((c) => !isAskable(c) && repeatsSettled(c, candidate));
   if (repeated)
     return { ledger, is: "closed", record: repeated };
   const id = `i${ledger.nextId}`;
@@ -4277,7 +4274,7 @@ function closedGroups(v, tab, isUnfolded) {
 function isRowTabRunning(v, tab, isUnfolded) {
   const rows = tab === "needsYou" ? [...v.needsYou.questions, ...v.needsYou.tasks] : v.findings.rows;
   const settled = new Set(settledRowIds(rows));
-  const closed = closedGroups(v, tab, isUnfolded).flatMap((g) => g.isUnfolded ? closedShown(g.rows, settled) : []);
+  const closed = closedGroups(v, tab, isUnfolded).flatMap((g) => g.isUnfolded ? closedHistoryPlan(g.rows, settled).rows : []);
   return rows.some((r) => rowResultMark(r)?.isRunning) || closed.some((d) => d.mark.isRunning);
 }
 function isTabEmpty({
@@ -4915,15 +4912,10 @@ function withHolds(s, holds) {
   return { ...s, heldRows: Object.keys(holds.replies), shownSince: holds.shownSince };
 }
 function pruned(s) {
-  const inPlace = [
-    ...Object.entries(s.lastActions).map(([id, a]) => ({ id, at: a.at })),
-    ...[...s.ledger.closed, ...s.ledger.closedFindings].map((c) => ({ id: c.id, at: closedAt(c) }))
-  ].flatMap((x) => isShownSince(x.at, s.shownSince) ? [x.id] : []);
   const views = Object.fromEntries(Object.entries(s.prViews.views).filter(([ref]) => isViewKept(s.prViews, s.ledger, s.lastActions, ref, s.shownSince)));
   const isViewDropped = Object.keys(views).length < Object.keys(s.prViews.views).length;
   return {
     ...s,
-    ledger: pruneClosed(s.ledger, new Set([...s.heldRows, ...inPlace])),
     prViews: isViewDropped ? { ...s.prViews, views } : s.prViews
   };
 }
@@ -5557,7 +5549,8 @@ function closedLines(d) {
 }
 function groupEntries(g, unfolded) {
   const settled = settledIn(g);
-  const total = closedTotal(g.closed, settled);
+  const history = closedHistoryPlan(g.closed, settled);
+  const total = history.total;
   const out = [
     { kind: "heading", text: g.title, count: waitingCount(g.rows), ...g.mark ? { mark: g.mark } : {} }
   ];
@@ -5580,11 +5573,7 @@ function groupEntries(g, unfolded) {
   });
   if (!isUnfolded)
     return out;
-  const shown = closedShown(g.closed, settled);
-  out.push(...shown.map((d) => ({ kind: "row", line: closedLines(d) })));
-  const earlier = earlierLabel(total, shown.length);
-  if (earlier)
-    out.push({ kind: "note", text: earlier, indent: 5 });
+  out.push(...history.rows.map((d) => ({ kind: "row", line: closedLines(d) })));
   return out;
 }
 function pressFeedback(screen, id, now, isMarkDone = false) {
@@ -7576,13 +7565,13 @@ function demoReplied(s, sent) {
   ]));
   return { lastActions, turns };
 }
-function demoAfterPress(before, r, held) {
+function demoAfterPress(before, r) {
   const lasts = Object.fromEntries(Object.entries(r.lasts).map(([id, { delivery: _unsent, ...l }]) => [
     id,
     l.result?.state === "pending" ? { ...l, result: finishedResult(l.result, [], l.result.at) } : l
   ]));
   return {
-    ledger: pruneClosed(r.ledger, held),
+    ledger: r.ledger,
     lastActions: withLasts(before.lastActions, lasts, r.drop),
     turns: isSent(r) ? { ...before.turns, turnsStarted: before.turns.turnsStarted + 1 } : before.turns
   };
@@ -8642,7 +8631,7 @@ function demoSource(deps) {
       const r = pressOn(state, p, at, { settleWindowMs: deps.settleWindowMs, holds }, { comparePage: deps.comparePage });
       if ("stale" in r)
         return { error: null, note: "stale", isUnconfirmed: false };
-      const after = demoAfterPress({ lastActions: state.lastActions, turns: state.presence }, r, new Set(Object.keys(holds.replies)));
+      const after = demoAfterPress({ lastActions: state.lastActions, turns: state.presence }, r);
       state = {
         ...state,
         ledger: after.ledger,

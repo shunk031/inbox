@@ -26,7 +26,6 @@ import type { RowPress } from './presses'
 import {
   canUndoRefused,
   DOT,
-  earlierLabel,
   foldLabel,
   type ResultMark,
   rowTitle,
@@ -271,7 +270,6 @@ export function paneRowParts(
       )
     )
   const closedFold = (kind: FoldKind, closed: ClosedLine[], total: number, isUnfolded: boolean) => {
-    const earlier = earlierLabel(total, closed.length)
     return closed.length === 0
       ? []
       : [
@@ -289,26 +287,7 @@ export function paneRowParts(
                 </Box>,
               ]
             : []),
-          ...(isUnfolded ? closed.map((d, n) => closedRow(d, childPos(n, closed.length + (earlier ? 1 : 0)))) : []),
-          ...(isUnfolded && earlier
-            ? [
-                look === 'desktop'
-                  ? desktopFrame({
-                      key: `earlier-${kind}`,
-                      indent: DESKTOP_MARK_CELLS,
-                      isMarkHung: false,
-                      padY: space.rowPad / 2,
-                      children: <Text color={pal.age}>{earlier}</Text>,
-                    })
-                  : treeRow(
-                      childPos(closed.length, closed.length + 1),
-                      null,
-                      <Text color={pal.age}>{earlier}</Text>,
-                      `earlier-${kind}`,
-                      1,
-                    ),
-              ]
-            : []),
+          ...(isUnfolded ? closed.map((d, n) => closedRow(d, childPos(n, closed.length))) : []),
         ]
   }
   const svgClientElements = hasClient && 'Svg' in elements ? elements : null

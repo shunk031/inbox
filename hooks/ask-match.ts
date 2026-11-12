@@ -2,6 +2,8 @@ import type { Closed, Item } from '../types'
 import type { Update } from './reply-parse'
 import { linkLabel } from './inline'
 
+export const CLOSED_CONTEXT_LIMIT = 12
+
 export function words(text: string): string[] {
   return text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []
 }
@@ -159,8 +161,9 @@ export function matchOpen(
  * An ask closed before the prompt repeats a settled item as `repeatsSettled` says.
  */
 export function repeatsClosed(closed: Closed[], a: Update['added'][number], since: number): boolean {
-  const recent = closed.filter(c => c.at >= since && !isAskedForChoices(c))
-  const settled = closed.filter(c => c.at < since && c.how !== 'expired')
+  const context = closed.slice(-CLOSED_CONTEXT_LIMIT)
+  const recent = context.filter(c => c.at >= since && !isAskedForChoices(c))
+  const settled = context.filter(c => c.at < since && c.how !== 'expired')
 
   return (
     matchOpen(recent, a) >= 0 ||

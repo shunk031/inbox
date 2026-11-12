@@ -1,6 +1,7 @@
 import type { Closed, ClosedFinding, Exchange, Finding, Item, Ledger, Press, PressKind } from '../types'
 import {
   matchOpen,
+  CLOSED_CONTEXT_LIMIT,
   recommendedOption,
   repeatsClosed,
   repeatsSettled,
@@ -262,7 +263,9 @@ export function addAgentItem(
     }
   }
   const isAskable = (c: Closed) => c.how === 'expired' || c.how === 'claude'
-  const repeated = ledger.closed.findLast(c => !isAskable(c) && repeatsSettled(c, candidate))
+  const repeated = ledger.closed
+    .slice(-CLOSED_CONTEXT_LIMIT)
+    .findLast(c => !isAskable(c) && repeatsSettled(c, candidate))
   if (repeated) return { ledger, is: 'closed', record: repeated }
 
   const id = `i${ledger.nextId}`

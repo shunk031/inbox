@@ -24,9 +24,6 @@ export const NEEDS_YOU_GROUPS: { kind: Item['kind']; title: string; list: 'quest
   { kind: 'question', title: 'Questions', list: 'questions' },
   { kind: 'task', title: 'Tasks', list: 'tasks' },
 ]
-
-export const CLOSED_SHOWN = 3
-
 export type ClosedDelivery = 'sending' | 'queued' | 'unconfirmed' | { error: string; canUndo: boolean } | null
 
 export type RowState =
@@ -227,19 +224,27 @@ export function settledRowIds(rows: RowView[]): string[] {
 }
 
 export function closedShown<T extends { id: string }>(closed: readonly T[], drawnSettled: ReadonlySet<string>): T[] {
-  return closed.filter(d => !drawnSettled.has(d.id)).slice(0, CLOSED_SHOWN)
+  return closedHistoryPlan(closed, drawnSettled).rows
 }
 
 export function closedTotal(closed: { id: string }[], drawnSettled: ReadonlySet<string>): number {
-  return closed.filter(d => !drawnSettled.has(d.id)).length
+  return closedShown(closed, drawnSettled).length
+}
+
+export type ClosedHistoryPlan<T> = { rows: T[]; total: number }
+
+/** The closed rows shared by each look, newest first. */
+export function closedHistoryPlan<T extends { id: string }>(
+  closed: readonly T[],
+  drawnSettled: ReadonlySet<string>,
+): ClosedHistoryPlan<T> {
+  const rows = closed.filter(d => !drawnSettled.has(d.id))
+
+  return { rows, total: rows.length }
 }
 
 export function foldLabel(total: number): string {
   return `${total} closed`
-}
-
-export function earlierLabel(total: number, shown: number): string | null {
-  return total > shown ? `${total - shown} earlier` : null
 }
 
 export function shortAgo(ms: number): string {

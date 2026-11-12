@@ -3,7 +3,7 @@ import { describe, expect, test } from 'claude-code/testing'
 import { CLAUDE_CODE } from '../hooks/model-text'
 import { EMPTY } from '../hooks/ledger'
 import { closeByAgent, closeFinding, closeItem, reopenFinding, reopenItem } from '../hooks/ledger-close'
-import { addFinding, applyUpdate } from '../hooks/ledger-update'
+import { addAgentItem, addFinding, applyUpdate } from '../hooks/ledger-update'
 import { parseReply } from '../hooks/reply-parse'
 import { recordClose } from '../hooks/tools'
 import type { Item } from '../types'
@@ -37,6 +37,19 @@ describe('reopening', () => {
       closed: [{ id: 'i2', kind: 'question' as const, ask: 'Push?', outcome: 'done', how: 'done' as const, at: 1 }],
     }
     expect(reopenItem(closed, 'i2')).toBe(closed)
+  })
+
+  test('an ask closed 13 records ago can be recorded again while a recent close still blocks it', () => {
+    const items = Array.from({ length: 14 }, (_, n) => item(`i${n + 1}`))
+    const closed = items.reduce(
+      (ledger, current, n) => closeItem(ledger, current.id, { how: 'answered', outcome: 'done' }, n + 2),
+      { ...EMPTY, nextId: 15, items },
+    )
+    const record = (ask: string) =>
+      addAgentItem(closed, { kind: 'question', ask, options: [], rec: null, helps: [], isDesignChoice: false }, 20)
+
+    expect(record(items[0]!.ask).is).toBe('added')
+    expect(record(items.at(-1)!.ask)).toMatchObject({ is: 'closed', record: { id: items.at(-1)!.id } })
   })
 
   test('a closed finding goes back as it was', () => {

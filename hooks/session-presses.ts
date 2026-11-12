@@ -1,5 +1,4 @@
 import { linkDialogs } from './dialogs'
-import { closedAt, pruneClosed } from './ledger-close'
 import type { Host } from './model-text'
 import { applyPrPress } from './pr-tab'
 import { isPrPress, pressRowId } from './pr-press'
@@ -14,7 +13,6 @@ import type { RowPress } from './presses'
 import { toolAnswer } from './tools'
 import type { AgentTool, ToolAnswer } from './tools'
 import { allRows } from './rows'
-import { isShownSince } from './timing'
 import { outAction, pressFeedbackIn } from './feedback'
 import type { Holds } from './timing'
 import type { RowState } from './rows'
@@ -138,16 +136,8 @@ export function withHolds<S extends Session>(s: S, holds: Holds): S {
   return { ...s, heldRows: Object.keys(holds.replies), shownSince: holds.shownSince }
 }
 
-/**
- * `s` as every write saves it. Each closed list is cut to its newest records, and keeps the records of the rows a look
- * still draws: the rows `heldRows` names, and the rows closed or pressed since `shownSince`. A PR's view goes once
- * `isViewKept` no longer keeps it.
- */
+/** `s` as every write saves it. Closed asks and findings stay for this session; a PR view goes once `isViewKept` no longer keeps it. */
 export function pruned<S extends Session>(s: S): S {
-  const inPlace = [
-    ...Object.entries(s.lastActions).map(([id, a]) => ({ id, at: a.at })),
-    ...[...s.ledger.closed, ...s.ledger.closedFindings].map(c => ({ id: c.id, at: closedAt(c) })),
-  ].flatMap(x => (isShownSince(x.at, s.shownSince) ? [x.id] : []))
   const views = Object.fromEntries(
     Object.entries(s.prViews.views).filter(([ref]) =>
       isViewKept(s.prViews, s.ledger, s.lastActions, ref, s.shownSince),
@@ -157,7 +147,6 @@ export function pruned<S extends Session>(s: S): S {
 
   return {
     ...s,
-    ledger: pruneClosed(s.ledger, new Set([...s.heldRows, ...inPlace])),
     prViews: isViewDropped ? { ...s.prViews, views } : s.prViews,
   }
 }

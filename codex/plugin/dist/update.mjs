@@ -88,6 +88,7 @@ function linkLabel(text2) {
 }
 
 // ../hooks/ask-match.ts
+var CLOSED_CONTEXT_LIMIT = 12;
 function words(text2) {
   return text2.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
 }
@@ -197,8 +198,9 @@ function matchOpen(items, a, sameBatch = /* @__PURE__ */ new Set()) {
   );
 }
 function repeatsClosed(closed, a, since) {
-  const recent = closed.filter((c) => c.at >= since && !isAskedForChoices(c));
-  const settled = closed.filter((c) => c.at < since && c.how !== "expired");
+  const context = closed.slice(-CLOSED_CONTEXT_LIMIT);
+  const recent = context.filter((c) => c.at >= since && !isAskedForChoices(c));
+  const settled = context.filter((c) => c.at < since && c.how !== "expired");
   return matchOpen(recent, a) >= 0 || a.label !== null && recent.some((c) => c.label === a.label) || settled.some((c) => repeatsSettled(c, a));
 }
 var LIST_CHOICES = "List the choices";
@@ -212,7 +214,6 @@ function repeatsSettled(c, a) {
 }
 
 // ../hooks/ledger-close.ts
-var MAX_CLOSED = 12;
 function closedRecord(item, closing, now) {
   const { id, kind, ask, label } = item;
   return { id, kind, ask, ...label ? { label } : {}, ...closing, at: now, item };
@@ -260,10 +261,6 @@ function asksAbout(item, finding, isClaimed = false) {
   }
   const itemPrs = prNumbers(`${item.label ?? ""} ${item.ask}`);
   return [...prNumbers(`${finding.title} ${finding.detail}`)].some((n) => itemPrs.has(n));
-}
-function pruneClosed(ledger, keep) {
-  const pruned2 = (records) => records.filter((r, n) => n >= records.length - MAX_CLOSED || keep.has(r.id));
-  return { ...ledger, closed: pruned2(ledger.closed), closedFindings: pruned2(ledger.closedFindings) };
 }
 function idNumber(id) {
   return Number(id.match(/\d+/)?.[0] ?? Number.NaN);
@@ -1026,7 +1023,7 @@ function ledgerBlocks(ledger) {
     (i) => `${i.id} | ${MODEL_KIND[i.kind]} | ${i.label ?? "-"} | ${i.ask} | ${i.options.join(" / ") || "-"} | ${i.rec ?? "-"} | ${i.isDesignChoice ? "design" : "-"}`
   ).join(NL4);
   const findings = ledger.findings.map((f) => `${f.id} | ${f.kind}: ${f.title}`).join(NL4);
-  const closed = ledger.closed.filter((d) => d.how !== "expired" && !isAskedForChoices(d)).map((d) => `${d.ask} \u2192 ${outcomeText(d)}`).join(NL4);
+  const closed = ledger.closed.slice(-CLOSED_CONTEXT_LIMIT).filter((d) => d.how !== "expired" && !isAskedForChoices(d)).map((d) => `${d.ask} \u2192 ${outcomeText(d)}`).join(NL4);
   return [
     `<open>${NL4}${open3}${NL4}</open>`,
     `<findings>${NL4}${findings}${NL4}</findings>`,
@@ -2801,10 +2798,6 @@ function prTabOf(s, lastActions, now, shownSince, settleWindowMs) {
 
 // ../hooks/session-presses.ts
 function pruned(s) {
-  const inPlace = [
-    ...Object.entries(s.lastActions).map(([id, a]) => ({ id, at: a.at })),
-    ...[...s.ledger.closed, ...s.ledger.closedFindings].map((c) => ({ id: c.id, at: closedAt(c) }))
-  ].flatMap((x) => isShownSince(x.at, s.shownSince) ? [x.id] : []);
   const views = Object.fromEntries(
     Object.entries(s.prViews.views).filter(
       ([ref]) => isViewKept(s.prViews, s.ledger, s.lastActions, ref, s.shownSince)
@@ -2813,7 +2806,6 @@ function pruned(s) {
   const isViewDropped = Object.keys(views).length < Object.keys(s.prViews.views).length;
   return {
     ...s,
-    ledger: pruneClosed(s.ledger, /* @__PURE__ */ new Set([...s.heldRows, ...inPlace])),
     prViews: isViewDropped ? { ...s.prViews, views } : s.prViews
   };
 }

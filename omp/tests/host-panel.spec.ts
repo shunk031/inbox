@@ -229,7 +229,7 @@ test('a look starts when the panel shows the Status and ends on another tab or w
   expect(state().ledger.overview.look).toBeNull()
 })
 
-test('every row the agent closes while the panel shows its tab keeps its closed record through more closes than the Closed list keeps, until the panel closes', async () => {
+test('every row the agent closes while the panel shows its tab keeps its closed record after the panel closes', async () => {
   const inbox = createInbox(pi(), deps())
   for (let n = 0; n < 14; n++) await record({ kind: 'task', ask: `Task ${n}` })
   const ids = state().ledger.items.map((i: { id: string }) => i.id)
@@ -245,5 +245,5 @@ test('every row the agent closes while the panel shows its tab keeps its closed 
   inbox.closePanel(makeCtx())
   await settle()
   await record({ kind: 'task', ask: 'One more' })
-  expect(state().ledger.closed.map((c: { id: string }) => c.id)).toEqual(ids.slice(2))
+  expect(state().ledger.closed.map((c: { id: string }) => c.id)).toEqual(ids)
 })
