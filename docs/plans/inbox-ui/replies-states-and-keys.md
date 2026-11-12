@@ -27,7 +27,7 @@ The UI names the result, not the model call or tool. The failure text is `Last u
 
 Every host with `canCatchUp` reads the whole conversation on its next update, so a failed ledger always retries and the failure text ends with `It retries after your next message.` A host that cannot read its conversation, a Codex thread without a `transcriptPath`, promises the retry only while an exchange is pending. A second failure drops the exchange and keeps the warning until a catch-up covers it. If a conversation that has a path cannot be read or parsed, nothing is pending and the ledger is failed, the promise is false: the run reports it unreadable and has nothing to retry. All hosts advance applied turns after a failed update, so a handed-off row can return to the count.
 
-An expired item closes as `Expired`. The rule behind it, 12 prompts or more than 20 open, belongs to the per-turn update.
+Questions and tasks stay open until answered or explicitly closed, regardless of turn count or how many are open.
 
 ### 2.7 Empty, loading and error states
 

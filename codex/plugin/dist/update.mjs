@@ -519,8 +519,6 @@ function todoAsk(work) {
 }
 
 // ../hooks/ledger-update.ts
-var MAX_OPEN = 20;
-var STALE_AFTER = 12;
 var UNFOUNDED_MOOT = /^no longer applies:.*(\b(not|never) (related|relevant|addressed|mentioned|discussed|answered|raised|part of)\b|\bunrelated\b|\b(still|stays) open\b|\boutside (the|this)\b|\bnothing\b.*\b(touch|address|mention|relate))/i;
 var EXPIRED = "expired, unanswered";
 function restatedRec(options, old, stated) {
@@ -610,16 +608,14 @@ function applyUpdate(ledger, u, now, turn, promptAt = now) {
     nextId += 1;
     added += 1;
   }
-  const kept = items.filter((i) => i.from === "record" || turn - i.turn <= STALE_AFTER).slice(-MAX_OPEN);
-  for (const i of items) if (!kept.includes(i)) closed.push(closedRecord(i, { outcome: EXPIRED, how: "expired" }, now));
   const askedBy = /* @__PURE__ */ new Map();
   for (const a of u.asked) {
     const id = typeof a.item === "number" ? addedIds[a.item] : a.item;
-    const asker = kept.find((i) => i.id === id);
+    const asker = items.find((i) => i.id === id);
     const finding = ledger.findings.find((f) => f.id === a.id);
     if (asker && finding && asksAbout(asker, finding, true)) askedBy.set(a.id, asker.id);
   }
-  for (const i of kept.filter((i2) => created.has(i2.id)))
+  for (const i of items.filter((i2) => created.has(i2.id)))
     for (const f of ledger.findings) if (!askedBy.has(f.id) && asksAbout(i, f)) askedBy.set(f.id, i.id);
   const { findings, closedFindings } = ledger.findings.reduce((l, f) => {
     const asker = askedBy.get(f.id);
@@ -630,7 +626,7 @@ function applyUpdate(ledger, u, now, turn, promptAt = now) {
   return reopenAskedFindings(
     {
       ...ledger,
-      items: kept,
+      items,
       closed,
       findings,
       closedFindings,

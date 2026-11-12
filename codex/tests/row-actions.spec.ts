@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { applyPress } from '../../hooks/press-reducer'
 import type { RowPress } from '../../hooks/presses'
+import { shortAgo } from '../../hooks/rows'
 import { PRESS_GUARD_MS, SETTLED_MS } from '../../hooks/timing'
 import type { Holds } from '../../hooks/timing'
 import { recordClose, recordItem } from '../../hooks/tools'
@@ -227,6 +228,39 @@ test('the actual Codex tab replaces actions and shortcuts while replying, restor
       await pause(POLL_MS + 100)
       assert.doesNotMatch(root.querySelector('.row.settled')?.textContent ?? '', /Publish the notes/)
       assert.match(root.textContent ?? '', /3 closed/)
+
+      const closedAt = Date.now() - 60_000
+      const answerItem = recordItem(
+        CODEX,
+        state.ledger,
+        { kind: 'question', ask: 'Which cache should the API use?', options: ['Redis', 'Deno'] },
+        closedAt,
+      )
+      const answerId = answerItem.ledger.items.at(-1)!.id
+      const answered = recordClose(CODEX, answerItem.ledger, { id: answerId, answer: 'Deno' }, closedAt)
+      const explainItem = recordItem(
+        CODEX,
+        answered.ledger,
+        { kind: 'question', ask: 'Explain the command output?', options: ['It is clear', 'Show me'] },
+        closedAt,
+      )
+      const explainId = explainItem.ledger.items.at(-1)!.id
+      state.ledger = recordClose(
+        CODEX,
+        explainItem.ledger,
+        { id: explainId, reason: 'explained in chat' },
+        closedAt,
+      ).ledger
+      await pause(POLL_MS + 100)
+      root.querySelector<HTMLButtonElement>('[data-fold=\"question\"]')!.click()
+      await pause(POLL_MS + 100)
+      const history = [...root.querySelectorAll('.closed-list .entry')]
+      const answeredRow = history.find(row => row.textContent?.includes('Which cache should the API use?'))
+      const explainedRow = history.find(row => row.textContent?.includes('Explain the command output?'))
+      assert.match(answeredRow?.textContent ?? '', /Deno/)
+      assert.equal(answeredRow?.querySelector('.side')?.textContent, shortAgo(Date.now() - closedAt))
+      assert.match(explainedRow?.textContent ?? '', /Closed by Codex: explained in chat/)
+      assert.equal(explainedRow?.querySelector('.side')?.textContent, shortAgo(Date.now() - closedAt))
     } finally {
       Date.now = realNow
     }

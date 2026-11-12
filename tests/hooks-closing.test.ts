@@ -52,7 +52,7 @@ test('Claude closes an item or finding that no longer applies, by the id it read
   expect(await pane.find({ key: 'row-i1' })).toBeUndefined()
   expect(await pane.find({ key: 'settled-i1' })).toBeDefined()
   expect(await pane.find({ text: /^Deno$/ })).toBeDefined()
-  expect((await close({ id: 'i2', reason: 'no longer applies' })).result).toBe(
+  expect((await close({ id: 'i2', reason: 'explained in chat' })).result).toBe(
     'Closed. The user sees it in the /inbox pane with its outcome. Name it by what it says, never by its id.',
   )
   expect((await close({ id: 'f3', reason: 'fixed' })).result).toBe(
@@ -70,9 +70,12 @@ test('Claude closes an item or finding that no longer applies, by the id it read
   await leaveAndReturn(pane, clock, 'needsYou')
   expect(await pane.find({ key: 'settled-i1' })).toBeUndefined()
   expect(await pane.find({ text: /^Deno$/ })).toBeUndefined()
+  await clock.advance(51_000)
   await pane.press({ key: 'fold-question' })
   expect(await pane.find({ text: /^Deno$/ })).toBeDefined()
-  expect(await pane.find({ text: /^Closed by Claude: no longer applies$/ })).toBeDefined()
+  expect(await pane.find({ text: /^Closed by Claude: explained in chat$/ })).toBeDefined()
+  expect((await pane.find({ key: 'closed-i1' }))?.text).toMatch(/1m/)
+  expect((await pane.find({ key: 'closed-i2' }))?.text).toMatch(/1m/)
 
   await pane.press({ key: 'tab-findings' })
   expect(await pane.find({ key: 'row-f3' })).toBeUndefined()
@@ -82,6 +85,17 @@ test('Claude closes an item or finding that no longer applies, by the id it read
   await pane.press({ key: 'fold-issue' })
   expect(await pane.find({ text: /^README is stale$/ })).toBeDefined()
   expect(await pane.find({ text: /^Closed by Claude: fixed$/ })).toBeDefined()
+  await pane.press({ key: 'tab-needsYou' })
+
+  const desktop = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await $.session.attach({ surface: 'desktop', clientId: 'desktop:default' })
+  await clock.settle()
+  await desktop.post({ isUnfolded: true }, { in: 'fold-question' })
+  await clock.settle()
+  expect((await desktop.find({ key: 'closed-i1' }))?.text).toMatch(/Deno/)
+  expect((await desktop.find({ key: 'closed-i1' }))?.text).toMatch(/1m/)
+  expect((await desktop.find({ key: 'closed-i2' }))?.text).toMatch(/Closed by Claude: explained in chat/)
+  expect((await desktop.find({ key: 'closed-i2' }))?.text).toMatch(/1m/)
   await arrive($)
 })
 
