@@ -3084,45 +3084,49 @@ export const register: Register = on => {
     const prViews = shownPrs.map(x => x.pr)
     const pal = paletteFor(theme, look)
     const inlineText = (text: string) =>
-      parseInline(text).map((s, n) => (
-        <Text key={String(n)}>
+      parseInline(text).map((s, n) =>
+        s.link ? (
+          <Link key={String(n)} href={s.link} label={s.text} />
+        ) : (
           <Text
+            key={String(n)}
             bold={s.bold}
             italic={s.italic}
             strikethrough={s.strike}
-            underline={s.link ? true : undefined}
             color={s.code ? 'permission' : undefined}
           >
             {s.text}
           </Text>
-          {s.link ? <Text color={pal.muted}>{` ${s.link}`}</Text> : null}
-        </Text>
-      ))
+        ),
+      )
     const terminalText = (lines: TerminalSpan[][]) =>
       lines.flatMap((line, n) => [
         ...(n > 0 ? ['\n'] : []),
-        ...line.map((span, i) => (
-          <Text
-            key={`${n}-${i}`}
-            bold={span.bold}
-            italic={span.italic}
-            strikethrough={span.strike}
-            underline={span.link ? true : undefined}
-            color={
-              span.isNeedsYou
-                ? (pal.tone.needsYou ?? pal.mark.needsYou)
-                : span.isDone
-                  ? (pal.tone.done ?? pal.mark.done)
-                  : span.isLinkAddress || span.isMuted
-                    ? pal.muted
-                    : span.code
-                      ? 'permission'
-                      : undefined
-            }
-          >
-            {span.text}
-          </Text>
-        )),
+        ...line.map((span, i) =>
+          span.link ? (
+            <Link key={`${n}-${i}`} href={span.link} label={span.text} />
+          ) : (
+            <Text
+              key={`${n}-${i}`}
+              bold={span.bold}
+              italic={span.italic}
+              strikethrough={span.strike}
+              color={
+                span.isNeedsYou
+                  ? (pal.tone.needsYou ?? pal.mark.needsYou)
+                  : span.isDone
+                    ? (pal.tone.done ?? pal.mark.done)
+                    : span.isMuted
+                      ? pal.muted
+                      : span.code
+                        ? 'permission'
+                        : undefined
+              }
+            >
+              {span.text}
+            </Text>
+          ),
+        ),
       ])
     const raise = {
       dimColor: false,
@@ -3372,6 +3376,7 @@ export const register: Register = on => {
         ...client,
         look,
         Text,
+        inlineText,
         pal,
         Box,
         blankLine,

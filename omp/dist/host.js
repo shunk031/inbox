@@ -206,10 +206,27 @@ function clipLabel(text, max) {
   return text.length > max ? `${text.slice(0, max - 1)}\u2026` : text;
 }
 function cutForEllipsis(line, fits) {
-  const parts = [...graphemes.segment(line)].map((p) => p.segment);
+  const parts = [];
+  let at = 0;
+  for (const match of line.matchAll(ANSI_TOKEN)) {
+    parts.push(...[...graphemes.segment(line.slice(at, match.index))].map((p) => p.segment), match[0]);
+    at = match.index + match[0].length;
+  }
+  parts.push(...[...graphemes.segment(line.slice(at))].map((p) => p.segment));
   while (parts.length > 0 && !fits(`${parts.join("")}\u2026`))
     parts.pop();
-  return parts.join("").replace(/[\s.,;:]+$/, "");
+  let result = parts.join("");
+  const trailingControl = new RegExp(`(?:\\x1b\\[[0-9;]*m|${OSC8.source})$`);
+  const controls = [];
+  while (true) {
+    const match = result.match(trailingControl);
+    if (!match)
+      break;
+    controls.unshift(match[0]);
+    result = result.slice(0, -match[0].length);
+  }
+  result = result.replace(/[\s.,;:]+$/, "") + controls.join("");
+  return closeOpenLink(result);
 }
 var PHRASE_END = /[,;](?=\s)|\s(?=and\s)/g;
 function cutAtPhrase(text, fits) {
@@ -224,6 +241,14 @@ function clipMiddle(text, max, head) {
   return `${text.slice(0, head)}${NL2}\u2026[cut]${NL2}${text.slice(text.length - (max - head))}`;
 }
 var graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+var OSC8 = /\x1b\]8;[^;\x07\x1b]*;[^\x07\x1b]*(?:\x07|\x1b\\)/g;
+var ANSI_TOKEN = new RegExp(`\\x1b\\[[0-9;]*m|${OSC8.source}`, "g");
+function closeOpenLink(text) {
+  let isOpen = false;
+  for (const match of text.matchAll(OSC8))
+    isOpen = !/;;(?:\x07|\x1b\\)$/.test(match[0]);
+  return isOpen ? `${text}\x1B]8;;\x1B\\` : text;
+}
 var ZERO_WIDTH = /^[\p{Mn}\p{Me}\p{Cc}\p{Cf}]+$/u;
 var EMOJI = /\p{Emoji_Presentation}|\uFE0F/u;
 var WIDE = /^[\u1100-\u115F\u2E80-\u303E\u3041-\u33FF\u3400-\u4DBF\u4E00-\u9FFF\uA000-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6\u{20000}-\u{3FFFD}]/u;
@@ -3516,6 +3541,52 @@ function applyPrPress(ledger, prState, lastActions, p, ctx) {
   }
 }
 
+// ../hooks/inline.ts
+var INLINE = /`([^`\n]+)`|\*\*(?=\S)(.+?)(?<=\S)\*\*(?!\*)|~~(?=\S)(.+?)(?<=\S)~~|(?<![\w*])\*(?=\S)([^*\n]+?)(?<=\S)\*(?![\w*])|(?<!\w)_(?=\S)([^_\n]+?)(?<=\S)_(?!\w)|\[([^\]\n]+)\]\((https:\/\/[^\s)]+)\)/gi;
+function httpsHref(url) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:" || !parsed.hostname || parsed.username || parsed.password)
+      return null;
+    const href = parsed.origin + [parsed.pathname, parsed.search, parsed.hash].join("").replace(/@/g, "%40");
+    return href.length <= 2048 ? href : null;
+  } catch {
+    return null;
+  }
+}
+function parseInline(text, outer = {}) {
+  const spans = [];
+  let at = 0;
+  for (const m of text.matchAll(INLINE)) {
+    if (m.index > at)
+      spans.push({ ...outer, text: text.slice(at, m.index) });
+    const [, code, bold, strike, star, under, label, url] = m;
+    if (code !== undefined)
+      spans.push({ ...outer, text: code, code: true });
+    else if (bold !== undefined)
+      spans.push(...parseInline(bold, { ...outer, bold: true }));
+    else if (strike !== undefined)
+      spans.push(...parseInline(strike, { ...outer, strike: true }));
+    else if (star !== undefined || under !== undefined)
+      spans.push({ ...outer, text: star ?? under ?? "", italic: true });
+    else {
+      const href = httpsHref(url ?? "");
+      spans.push(href ? { ...outer, text: label ?? "", link: href } : { ...outer, text: `${label ?? ""} (${url ?? ""})` });
+    }
+    at = m.index + m[0].length;
+  }
+  if (at < text.length)
+    spans.push({ ...outer, text: text.slice(at) });
+  return spans;
+}
+function linkLabel(text) {
+  return parseInline(text).map((span) => span.text).join("");
+}
+function cutInline(text, max) {
+  const visible = linkLabel(text);
+  return visible.length > max ? visible.slice(0, max) : text.trim();
+}
+
 // ../hooks/reply-parse.ts
 var NL5 = `
 `;
@@ -3712,6 +3783,10 @@ function todoAsk(work) {
 }
 function stepHelp(step) {
   const value = step.trim();
+  const named = value.match(/^\[([^\]\n]+)\]\((https:\/\/[^\s)]+)\)$/i);
+  const href = named ? parseInline(value).find((span) => span.link)?.link : undefined;
+  if (named && href)
+    return readHelp("link", href, named[1], [], null);
   if (/^https?:\/\//i.test(value))
     return readHelp("link", value, null, [], null);
   if (/^(?:\/|~\/|\.{1,2}\/)\S*$/.test(value))
@@ -4028,7 +4103,7 @@ function recordItem(host, ledger, input, now) {
     return recordFinding(host, ledger, input, now);
   if (input.kind !== "question" && input.kind !== "task")
     return unchanged(ledger, "Not recorded: kind must be question, task or finding.");
-  const ask = cut(input.ask, MAX_ASK);
+  const ask = cutInline(typeof input.ask === "string" ? input.ask.trim() : "", MAX_ASK);
   if (ask === "")
     return unchanged(ledger, `Not recorded: a ${input.kind} needs an ask.`);
   const options = input.kind === "question" ? list(input.options, MAX_OPTIONS, MAX_OPTION) : [];
@@ -5009,21 +5084,26 @@ function emptyText(tab, agent) {
 }
 
 // src/panel-text.ts
-var ANSI = /\x1b\[[0-9;]*m/g;
+var ANSI = new RegExp(`\\x1b\\[[0-9;]*m|${OSC8.source}`, "g");
+var ANSI_SPLIT = new RegExp(`(\\x1b\\[[0-9;]*m|${OSC8.source})`, "g");
+var ANSI_PART = new RegExp(`^(?:\\x1b\\[[0-9;]*m|${OSC8.source})$`);
 var visibleLength = (s) => cellWidth(s.replace(ANSI, ""));
+function linkedText(text, link) {
+  return parseInline(text).map((s) => s.link ? link ? `\x1B[4m${link(s.link, s.text)}\x1B[24m` : s.text : s.text).join("");
+}
 function fit(s, width) {
   if (visibleLength(s) <= width)
     return s;
   let out = "";
   let n = 0;
-  for (const part of s.split(/(\x1b\[[0-9;]*m)/)) {
-    if (part.startsWith("\x1B[")) {
+  for (const part of s.split(ANSI_SPLIT)) {
+    if (ANSI_PART.test(part)) {
       out += part;
       continue;
     }
     const cells = cellWidth(part);
     if (n + cells > width - 1)
-      return `${out}${cutToCells(part, width - 1 - n)}\u2026\x1B[0m`;
+      return `${closeOpenLink(out + cutToCells(part, width - 1 - n))}\u2026\x1B[0m`;
     out += part;
     n += cells;
   }
@@ -5032,7 +5112,22 @@ function fit(s, width) {
 var MARKED_TITLE_CELLS = 12;
 function cutTitle(title, room) {
   const cells = Math.max(MARKED_TITLE_CELLS, room);
-  return cellWidth(title) <= cells ? title : `${cutToCells(title, cells - 1)}\u2026`;
+  if (visibleLength(title) <= cells)
+    return title;
+  let out = "";
+  let used = 0;
+  for (const part of title.split(ANSI_SPLIT)) {
+    if (ANSI_PART.test(part)) {
+      out += part;
+      continue;
+    }
+    const shown = cutToCells(part, cells - 1 - used);
+    out += shown;
+    used += cellWidth(shown);
+    if (shown !== part)
+      break;
+  }
+  return `${closeOpenLink(out)}\u2026`;
 }
 function spread(left, right, width) {
   const gap = width - visibleLength(left) - visibleLength(right);
@@ -5960,7 +6055,8 @@ function drawLine(line, isSelected, d) {
   const after = line.settled ? `  ${mark}${line.settled.tone === "done" ? s.tone("done", line.settled.label) : s.dim(line.settled.label)}${line.settled.undo ? `  ${s.dim("u Undo")}` : ""}` : line.feedback && !statusUnder ? `  ${mark}${feedbackPaint(line.feedback.tone, s)(line.feedback.text)}` : "";
   const cursor = isSelected ? s.tone("accent", "\u276F") : " ";
   const head = ` ${" ".repeat(pad)}${cursor} ${line.rank ? s.dim(line.rank) : ""}${leadText(line.lead, s)}`;
-  const shownTitle = line.mark ? cutTitle(line.title, width - visibleLength(head) - visibleLength(status) - visibleLength(after)) : line.title;
+  const titleText = line.row?.type === "finding" ? linkLabel(line.title) : linkedText(line.title, s.link);
+  const shownTitle = line.mark ? cutTitle(titleText, width - visibleLength(head) - visibleLength(status) - visibleLength(after)) : titleText;
   const title = line.isDim ? s.dim(shownTitle) : isSelected ? s.bold(shownTitle) : shownTitle;
   const age = line.age !== null && line.settled === null ? s.dim(ago(now - line.age)) : "";
   out.push(spread(`${head}${title}${status}${after}`, `${age} `, width));
@@ -5971,7 +6067,7 @@ function drawLine(line, isSelected, d) {
   if (holdsUp)
     out.push(fit(`${" ".repeat(indent)}${s.tone(HELD_MARK.tone, HELD_MARK.mark)} ${s.dim(holdsUp)}`, width));
   if (line.detail && (isSelected || line.isDetailShown))
-    out.push(...indented(line.detail, indent, width, 4, s.dim));
+    out.push(...indented(linkLabel(line.detail), indent, width, 4, s.dim));
   if (!isSelected)
     return out;
   if (line.file)
@@ -8520,7 +8616,7 @@ function truecolor(hex, text) {
 function truecolorFill(hex, text) {
   return `${ESC}48;2;${rgbOf(hex)}m${text}${ESC}49m`;
 }
-function styleOf(theme) {
+function styleOf(theme, link) {
   const tones = theme.isLight ? LIGHT_TONES : DARK_TONES;
   const tints = theme.isLight ? LIGHT_BANNER_TINTS : DARK_BANNER_TINTS;
   return {
@@ -8529,7 +8625,8 @@ function styleOf(theme) {
     inverse: theme.inverse.bind(theme),
     underline: theme.underline.bind(theme),
     tone: (name, text) => name === "sep" || name === "accent" ? theme.fg(name === "sep" ? "statusLineSep" : "accent", text) : truecolor(tones[name], text),
-    banner: (tone, part, text) => part === "line" ? truecolor(tints[tone].line, text) : truecolorFill(tints[tone].fill, text)
+    banner: (tone, part, text) => part === "line" ? truecolor(tints[tone].line, text) : truecolorFill(tints[tone].fill, text),
+    ...link ? { link } : {}
   };
 }
 
@@ -9476,6 +9573,15 @@ function turnHandlers(context, sessions) {
 // src/host.ts
 var INBOX_MODEL_TIMEOUT_MS = 120000;
 var BAND_KEY = "inbox-band";
+var hyperlinkTools = () => import("@oh-my-pi/pi-tui/render");
+async function panelLink(load = hyperlinkTools) {
+  try {
+    const { isHyperlinkEnabled, urlHyperlink } = await load();
+    return isHyperlinkEnabled() ? urlHyperlink : undefined;
+  } catch {
+    return;
+  }
+}
 async function defaultComplete(model, context, options) {
   const { completeSimple } = await import("@oh-my-pi/pi-ai");
   return completeSimple(model, context, options);
@@ -9689,6 +9795,7 @@ function createInbox(pi, deps = defaultDeps) {
   async function openPanelUi(ctx, isDemo) {
     const openedAt = deps.now();
     const { parseKey, extractPrintableText, truncateToWidth } = await import("@oh-my-pi/pi-tui");
+    const link = await panelLink();
     const source = isDemo ? demoSource({
       now: deps.now,
       after: (fn, ms) => void ctx.setTimeout(fn, ms),
@@ -9705,7 +9812,7 @@ function createInbox(pi, deps = defaultDeps) {
       await ctx.ui.custom((tui, theme, _keybindings, done) => {
         const panel = createPanel({
           source,
-          style: styleOf(theme),
+          style: styleOf(theme, link),
           now: deps.now,
           openedAt,
           requestRender: () => tui.requestRender(),
@@ -9755,5 +9862,7 @@ function host_default(pi) {
 }
 export {
   createInbox,
-  host_default as default
+  host_default as default,
+  hyperlinkTools,
+  panelLink
 };

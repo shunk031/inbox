@@ -142,6 +142,8 @@ function clipLabel(text2, max) {
   return text2.length > max ? `${text2.slice(0, max - 1)}\u2026` : text2;
 }
 var graphemes = new Intl.Segmenter(void 0, { granularity: "grapheme" });
+var OSC8 = /\x1b\]8;[^;\x07\x1b]*;[^\x07\x1b]*(?:\x07|\x1b\\)/g;
+var ANSI_TOKEN = new RegExp(`\\x1b\\[[0-9;]*m|${OSC8.source}`, "g");
 var EMOJI = new RegExp("\\p{Emoji_Presentation}|\\uFE0F", "u");
 function ago(ms) {
   const min = Math.round(ms / 6e4);

@@ -2,6 +2,7 @@ import { rowsIn, settledIn } from './action-plan'
 import { bannerOf, emptyText, isResumable, READING_TEXT, stopBanner } from './banners'
 import { DESKTOP_CHARS_PER_CELL } from './desktop-metrics'
 import { FINDING_GROUPS, HELD_MARK } from './help'
+import { linkLabel } from './inline'
 import { READ_FAILED_TEXT } from './mod-sessions'
 import { sessionState } from './mod-state'
 import type { PaneBase, PaneHandlers, Row } from './pane-context'
@@ -41,7 +42,8 @@ export function paneAskRows(
       view: r,
       handle: '',
       ...(isHandedOff ? { fold: {} } : {}),
-      title: rowTitle(r, look),
+      title: linkLabel(rowTitle(r, look)),
+      titleContent: inlineText(rowTitle(r, look)),
       titleAfter: asked,
       ...(r.at === null ? {} : { at: r.at }),
       ...(holdsUpLine
@@ -63,7 +65,7 @@ export function paneAskRows(
   }
   const findingBody = (detail: string, path: string | null, fitted?: TerminalSpan[][]) => (
     <Box flexDirection="column" rowGap={blankLine}>
-      <Text wrap="wrap">{fitted ? terminalText(fitted) : inlineText(detail)}</Text>
+      <Text wrap="wrap">{fitted ? terminalText(fitted) : inlineText(linkLabel(detail))}</Text>
       {path ? (
         <Text wrap="wrap">
           <Text color={pal.muted}>{ROW_COPY.relevantFile}</Text>
@@ -78,9 +80,10 @@ export function paneAskRows(
     at: r.at ?? undefined,
     handle: '',
     ...(r.state.is === 'handedOff' ? { fold: {} } : {}),
-    title: r.title,
+    title: linkLabel(r.title),
+    titleContent: inlineText(linkLabel(r.title)),
     titleAfter: `${DOT}${ago(now - (r.at ?? now))}`,
-    line: { text: r.title },
+    line: { text: linkLabel(r.title) },
     body: findingBody(r.detail ?? '', r.fileName),
     clippedBody: (lines, width) =>
       lines < 1
@@ -88,7 +91,7 @@ export function paneAskRows(
         : findingBody(
             r.detail ?? '',
             lines > 1 ? r.fileName : null,
-            terminalTextLines(r.detail ?? '', width, Math.max(1, lines - (r.fileName && lines > 1 ? 1 : 0))),
+            terminalTextLines(linkLabel(r.detail ?? ''), width, Math.max(1, lines - (r.fileName && lines > 1 ? 1 : 0))),
           ),
     typeHint: replyHint(r, 'Claude'),
     keys: () => rowKeyActions(r, true).keys,

@@ -57,6 +57,7 @@ export type FeatureId =
   | 'status-view-ask'
   | 'status-goal'
   | 'status-done-fold'
+  | 'markdown-item-links'
 
 type Support = { kind: 'full' } | { kind: 'different' | 'unsupported'; reason: string }
 
@@ -127,6 +128,7 @@ export const CLIENTS: Record<ClientId, Client> = {
       'status-view-ask': { kind: 'full' },
       'status-goal': { kind: 'full' },
       'status-done-fold': { kind: 'full' },
+      'markdown-item-links': { kind: 'full' },
     },
   },
   codex: {
@@ -255,6 +257,7 @@ export const CLIENTS: Record<ClientId, Client> = {
         reason:
           'A done fold takes clicks only, as View does: the Codex Status has no row selection and is used by clicking.',
       },
+      'markdown-item-links': { kind: 'full' },
     },
   },
   omp: {
@@ -335,6 +338,10 @@ export const CLIENTS: Record<ClientId, Client> = {
       'status-view-ask': { kind: 'full' },
       'status-goal': { kind: 'full' },
       'status-done-fold': { kind: 'full' },
+      'markdown-item-links': {
+        kind: 'different',
+        reason: 'The panel uses OSC 8 links only when omp enables them for its terminal; otherwise it shows the label.',
+      },
     },
   },
 }

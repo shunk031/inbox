@@ -4,7 +4,7 @@ import { CLAUDE_CODE } from '../hooks/model-text'
 import { EMPTY } from '../hooks/ledger'
 import { closeByAgent, closeItem } from '../hooks/ledger-close'
 import { addAgentItem, applyUpdate } from '../hooks/ledger-update'
-import { parseReply } from '../hooks/reply-parse'
+import { parseReply, stepHelp } from '../hooks/reply-parse'
 import { recordClose, recordItem } from '../hooks/tools'
 
 describe('items the agent recorded', () => {
@@ -16,6 +16,19 @@ describe('items the agent recorded', () => {
     helps: [],
   }
   const recorded = (turn = 1) => addAgentItem({ ...EMPTY, turn }, ask, 1000).ledger
+
+  test('reads named HTTPS task steps with the shared normalized href', () => {
+    expect(stepHelp('[GitHub](https://github.com)')).toMatchObject({
+      kind: 'link',
+      url: 'https://github.com/',
+      name: 'GitHub',
+    })
+    expect(stepHelp('[@](https://GITHUB.com/a@b)')).toMatchObject({
+      kind: 'link',
+      url: 'https://github.com/a%40b',
+      name: '@',
+    })
+  })
 
   test("a CLOSED line closes one only with the person's answer", () => {
     for (const outcome of ['done: picked Redis', 'no longer applies: cache dropped', 'no longer applies', 'moot', ''])

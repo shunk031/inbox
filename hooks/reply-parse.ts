@@ -1,4 +1,5 @@
 import type { Help, Item, Ledger } from '../types'
+import { parseInline } from './inline'
 import { keyWords, recommendedOption, words } from './ask-match'
 import { codeBlocks, dash } from './text'
 
@@ -276,6 +277,9 @@ export function todoAsk(work: string): string {
 /** A step for a task: a link, a file or a command. Anything else is not usable and returns null. */
 export function stepHelp(step: string): Help | null {
   const value = step.trim()
+  const named = value.match(/^\[([^\]\n]+)\]\((https:\/\/[^\s)]+)\)$/i)
+  const href = named ? parseInline(value).find(span => span.link)?.link : undefined
+  if (named && href) return readHelp('link', href, named[1]!, [], null)
   if (/^https?:\/\//i.test(value)) return readHelp('link', value, null, [], null)
   if (/^(?:\/|~\/|\.{1,2}\/)\S*$/.test(value)) return readHelp('open', value, null, [], null)
 
