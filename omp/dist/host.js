@@ -3525,6 +3525,10 @@ function readKind(kind) {
 }
 var NEEDS_PERSON = /(?:^|[\s;&|])(?:login|logout|signin|sign-in|sudo|passwd|ssh-add|ssh-keygen)(?=[\s:]|$)|\binit --interactive\b/i;
 var PERSON_ONLY_REASON = /credential|password|passphrase|secret|\btoken|\b2fa\b|\bmfa\b|\bdevice\b|phone|android|tablet|account|sign(?:ed)?[- ]?in|log(?:ged)?[- ]?in|only you|you hold|your (?:mac|machine|laptop|computer|keychain)|\bsudo\b/i;
+function recordedAsksOnly(u) {
+  const stillAsked = new Set(u.updated.filter((c) => c.options || c.rec).map((c) => c.id));
+  return { ...u, closed: u.closed.filter((c) => !stillAsked.has(c.id)), added: [], updated: [], todos: [] };
+}
 function readHelp(kind, value, name, blocks, source) {
   const isQuoted = (text) => source === null || source.includes(text);
   const block = value.match(/^block\s+(\d+)$/i);
@@ -8217,6 +8221,9 @@ function orderedKeys() {
     }
   };
 }
+function isRecordedItemsOnly(value) {
+  return value === "1" || value === "true";
+}
 async function askOverConversation(ask, names, s, screen, conversation) {
   if (!conversation)
     return { kind: "unreadable" };
@@ -8244,6 +8251,7 @@ async function reconcileUpdateStatus(host) {
 }
 async function runUpdates(host) {
   let canCatchUp = host.catchUp !== undefined;
+  const kept = (u) => u && host.recordedItemsOnly ? recordedAsksOnly(u) : u;
   const wantsCatchUp = (s) => canCatchUp && needsCatchUp(s);
   const hasWork = (s) => s.pending.length > 0 || wantsCatchUp(s);
   const writing = [];
@@ -8271,7 +8279,7 @@ async function runUpdates(host) {
                 canCatchUp = false;
                 continue;
               }
-              const parsed = reply.kind === "reply" ? parseReply(reply.text, reply.source) : null;
+              const parsed = kept(reply.kind === "reply" ? parseReply(reply.text, reply.source) : null);
               const at = await host.now();
               const after = await host.update((x) => appliedCatchUp(x, s, parsed, at));
               if (!parsed)
@@ -8283,7 +8291,7 @@ async function runUpdates(host) {
             const next = s.pending[0];
             const promptAt = await host.now();
             const reply = await host.ask(buildPrompt(s.ledger, next.ex), systemText(host.names)).catch(() => null);
-            const parsed = parsedReply(next.ex, reply);
+            const parsed = kept(parsedReply(next.ex, reply));
             let isApplied = false;
             const after = await host.update(async (x) => {
               isApplied = false;
@@ -9189,6 +9197,7 @@ function sessionCalls(context) {
       inOrder: (fn) => resultsOrder.run(id, fn),
       background: (results) => deps.background(results),
       ...deps.isNextBuild ? { records: statusRecords(dir, id) } : {},
+      recordedItemsOnly: isRecordedItemsOnly(deps.recordedItemsOnly),
       catchUp: (s) => askOverConversation(host.ask, OMP, s, screenText(OMP, openPanels.has(id), panelScreenTab(id)), conversationText(ctx))
     };
   }
@@ -9502,7 +9511,8 @@ var defaultDeps = {
     return;
   }),
   isUsageLimit: isUsageLimitOutcome,
-  herdrPane: process.env.HERDR_PANE_ID || null
+  herdrPane: process.env.HERDR_PANE_ID || null,
+  recordedItemsOnly: process.env.INBOX_RECORDED_ITEMS_ONLY
 };
 var messageOf = (err) => err instanceof Error ? err.message : String(err);
 function byNewestRevision(a, b) {

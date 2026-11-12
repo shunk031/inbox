@@ -22,6 +22,8 @@ import {
   orderedKeys,
   reconcileUpdateStatus as reconcileStatus,
   runUpdates as runSessionUpdates,
+  isRecordedItemsOnly,
+  RECORDED_ITEMS_ONLY,
 } from '../../hooks/session-host'
 import type { Ask } from '../../hooks/session-host'
 import { refreshStatus as refreshSessionStatus } from '../../hooks/status-records'
@@ -245,6 +247,7 @@ export const runUpdates = (
     names: CODEX,
     inOrder: inOrderFor(dir, sessionId),
     records,
+    recordedItemsOnly: isRecordedItemsOnly(process.env[RECORDED_ITEMS_ONLY]),
     catchUp: async s =>
       askOverConversation(
         ask,

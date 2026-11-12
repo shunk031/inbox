@@ -307,6 +307,10 @@ function readKind(kind) {
 }
 var NEEDS_PERSON = /(?:^|[\s;&|])(?:login|logout|signin|sign-in|sudo|passwd|ssh-add|ssh-keygen)(?=[\s:]|$)|\binit --interactive\b/i;
 var PERSON_ONLY_REASON = /credential|password|passphrase|secret|\btoken|\b2fa\b|\bmfa\b|\bdevice\b|phone|android|tablet|account|sign(?:ed)?[- ]?in|log(?:ged)?[- ]?in|only you|you hold|your (?:mac|machine|laptop|computer|keychain)|\bsudo\b/i;
+function recordedAsksOnly(u) {
+  const stillAsked = new Set(u.updated.filter((c) => c.options || c.rec).map((c) => c.id));
+  return { ...u, closed: u.closed.filter((c) => !stillAsked.has(c.id)), added: [], updated: [], todos: [] };
+}
 function readHelp(kind, value, name, blocks, source) {
   const isQuoted = (text2) => source === null || source.includes(text2);
   const block = value.match(/^block\s+(\d+)$/i);
@@ -3767,6 +3771,10 @@ function orderedKeys() {
     }
   };
 }
+var RECORDED_ITEMS_ONLY = "INBOX_RECORDED_ITEMS_ONLY";
+function isRecordedItemsOnly(value) {
+  return value === "1" || value === "true";
+}
 async function askOverConversation(ask, names, s, screen, conversation) {
   if (!conversation) return { kind: "unreadable" };
   const text2 = await ask(transcriptCatchUpPrompt(s.ledger, screen, conversation), systemText(names)).catch(() => null);
@@ -3779,6 +3787,7 @@ async function askOverConversation(ask, names, s, screen, conversation) {
 }
 async function runUpdates(host) {
   let canCatchUp = host.catchUp !== void 0;
+  const kept = (u) => u && host.recordedItemsOnly ? recordedAsksOnly(u) : u;
   const wantsCatchUp = (s) => canCatchUp && needsCatchUp(s);
   const hasWork = (s) => s.pending.length > 0 || wantsCatchUp(s);
   const writing = [];
@@ -3801,7 +3810,7 @@ async function runUpdates(host) {
                 canCatchUp = false;
                 continue;
               }
-              const parsed2 = reply2.kind === "reply" ? parseReply(reply2.text, reply2.source) : null;
+              const parsed2 = kept(reply2.kind === "reply" ? parseReply(reply2.text, reply2.source) : null);
               const at = await host.now();
               const after2 = await host.update((x) => appliedCatchUp(x, s, parsed2, at));
               if (!parsed2) return "stop";
@@ -3812,7 +3821,7 @@ async function runUpdates(host) {
             const next = s.pending[0];
             const promptAt = await host.now();
             const reply = await host.ask(buildPrompt(s.ledger, next.ex), systemText(host.names)).catch(() => null);
-            const parsed = parsedReply(next.ex, reply);
+            const parsed = kept(parsedReply(next.ex, reply));
             let isApplied = false;
             const after = await host.update(async (x) => {
               isApplied = false;
@@ -4244,6 +4253,7 @@ var runUpdates2 = (dir, sessionId, ask, now, onWrite, records) => runUpdates({
   names: CODEX,
   inOrder: inOrderFor(dir, sessionId),
   records,
+  recordedItemsOnly: isRecordedItemsOnly(process.env[RECORDED_ITEMS_ONLY]),
   catchUp: async (s) => askOverConversation(
     ask,
     CODEX,

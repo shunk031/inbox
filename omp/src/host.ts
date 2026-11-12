@@ -70,6 +70,8 @@ export type HostDeps = {
   isUsageLimit: (status: number | undefined, message: string) => Promise<boolean>
   /** The Herdr pane omp runs in, from `HERDR_PANE_ID`, or null outside Herdr. */
   herdrPane: string | null
+  /** The value of `INBOX_RECORDED_ITEMS_ONLY`, which `isRecordedItemsOnly` reads. */
+  recordedItemsOnly: string | undefined
 }
 
 async function defaultComplete(
@@ -120,6 +122,7 @@ const defaultDeps: HostDeps = {
   background: work => void work.catch(() => undefined),
   isUsageLimit: isUsageLimitOutcome,
   herdrPane: process.env.HERDR_PANE_ID || null,
+  recordedItemsOnly: process.env.INBOX_RECORDED_ITEMS_ONLY,
 }
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err))

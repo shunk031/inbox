@@ -10,7 +10,13 @@ import { endTurn, turnEnded } from '../../hooks/session-turns'
 import { forkedFrom, hasLedger, isUnseen, statusChanged } from '../../hooks/session-status'
 import { sessionView } from '../../hooks/session-view'
 import { delegatesSettled } from '../../hooks/children'
-import { askOverConversation, orderedKeys, reconcileUpdateStatus, runUpdates } from '../../hooks/session-host'
+import {
+  askOverConversation,
+  isRecordedItemsOnly,
+  orderedKeys,
+  reconcileUpdateStatus,
+  runUpdates,
+} from '../../hooks/session-host'
 import type { SessionHost, UpdateHost } from '../../hooks/session-host'
 import { fetchPrs } from '../../hooks/host-prs'
 import { wakeForDone } from '../../hooks/host-press'
@@ -164,6 +170,7 @@ export function sessionCalls(context: HostContext) {
       inOrder: fn => resultsOrder.run(id, fn),
       background: results => deps.background(results),
       ...(deps.isNextBuild ? { records: statusRecords(dir, id) } : {}),
+      recordedItemsOnly: isRecordedItemsOnly(deps.recordedItemsOnly),
       catchUp: s =>
         askOverConversation(
           host.ask,

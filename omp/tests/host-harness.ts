@@ -166,6 +166,7 @@ export const deps = (): HostDeps => ({
   },
   isUsageLimit: async (_status, message) => /usage limit/i.test(message),
   herdrPane: null,
+  recordedItemsOnly: undefined,
 })
 
 export const settle = async () => {

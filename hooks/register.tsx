@@ -61,7 +61,7 @@ import {
   taskNotice,
   waitsOnDelegate,
 } from './children'
-import { runUpdates } from './session-host'
+import { isRecordedItemsOnly, runUpdates } from './session-host'
 import { fetchPrs as fetchSessionPrs, isPrFetchDue } from './host-prs'
 import { refreshStatus, type StatusCall, type StatusRecords, type RecordFiles } from './status-records'
 import { startPress, wakeForDone as wakeSessionForDone } from './host-press'
@@ -1031,6 +1031,7 @@ function updateLedger($: EngineInterface) {
       inOrder: fn => resultsOrder.run(owner.id, fn),
       background: statuses => void statuses,
       records: recordsOf($, owner),
+      recordedItemsOnly: mod.recordedItemsOnly,
     })
     if (isCurrent(owner)) void publishStatus($)
   })
@@ -2143,7 +2144,11 @@ async function readVersion($: EngineInterface) {
 async function initializeInbox($: EngineInterface) {
   // A hot reload keeps state an older build wrote. Draws start once isOn is set, and they read the current shape and
   // the tabs that the next-build mark decides.
-  await Promise.all([upgradeState($), readVersion($)])
+  await Promise.all([
+    upgradeState($),
+    readVersion($),
+    $.env.get('INBOX_RECORDED_ITEMS_ONLY').then(v => void (mod.recordedItemsOnly = isRecordedItemsOnly(v))),
+  ])
   mod.isOn = true
   mod.toolsRefused = false
   paneState.compareRedrawAt = null
