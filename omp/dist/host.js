@@ -4149,8 +4149,8 @@ function recordItem(host, ledger, input, now) {
   };
 }
 function recordFinding(host, ledger, input, now) {
-  const title = cut(input.title, 120);
-  const detail = cut(input.detail, 600);
+  const title = cutInline(typeof input.title === "string" ? input.title : "", 120);
+  const detail = cutInline(typeof input.detail === "string" ? input.detail : "", 600);
   if (title === "" || detail === "")
     return unchanged(ledger, "Not recorded: a finding needs a title and a detail.");
   const path = cut(input.path, 300);
@@ -6134,7 +6134,7 @@ function drawLine(line, isSelected, d) {
   const after = line.settled ? `  ${mark}${line.settled.tone === "done" ? s.tone("done", line.settled.label) : s.dim(line.settled.label)}${line.settled.undo ? `  ${s.dim("u Undo")}` : ""}` : line.feedback && !statusUnder ? `  ${mark}${feedbackPaint(line.feedback.tone, s)(line.feedback.text)}` : "";
   const cursor = isSelected ? s.tone("accent", "\u276F") : " ";
   const head = ` ${" ".repeat(pad)}${cursor} ${line.rank ? s.dim(line.rank) : ""}${leadText(line.lead, s)}`;
-  const titleText = line.row?.type === "finding" ? linkLabel(line.title) : linkedText(line.title, s.link);
+  const titleText = linkedText(line.title, s.link);
   const shownTitle = line.mark ? cutTitle(titleText, width - visibleLength(head) - visibleLength(status) - visibleLength(after)) : titleText;
   const title = line.isDim ? s.dim(shownTitle) : isSelected ? s.bold(shownTitle) : shownTitle;
   const age = line.age !== null && line.settled === null ? s.dim(ago(now - line.age)) : "";
@@ -6146,7 +6146,7 @@ function drawLine(line, isSelected, d) {
   if (holdsUp)
     out.push(fit(`${" ".repeat(indent)}${s.tone(HELD_MARK.tone, HELD_MARK.mark)} ${s.dim(holdsUp)}`, width));
   if (line.detail && (isSelected || line.isDetailShown))
-    out.push(...indentedLinks(line.row?.type === "finding" ? linkLabel(line.detail) : line.detail, indent, width, isSelected && line.row?.type !== "finding" ? Infinity : 4, s.dim, s.link));
+    out.push(...indentedLinks(line.detail, indent, width, isSelected && line.row?.type !== "finding" ? Infinity : 4, s.dim, s.link));
   if (!isSelected)
     return out;
   if (line.file)

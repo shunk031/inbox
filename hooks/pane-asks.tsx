@@ -69,7 +69,7 @@ export function paneAskRows(
   }
   const findingBody = (detail: string, path: string | null, fitted?: TerminalSpan[][]) => (
     <Box flexDirection="column" rowGap={blankLine}>
-      <Text wrap="wrap">{fitted ? terminalText(fitted) : inlineText(linkLabel(detail))}</Text>
+      <Text wrap="wrap">{fitted ? terminalText(fitted) : inlineText(detail)}</Text>
       {path ? (
         <Text wrap="wrap">
           <Text color={pal.muted}>{ROW_COPY.relevantFile}</Text>
@@ -85,7 +85,7 @@ export function paneAskRows(
     handle: '',
     ...(r.state.is === 'handedOff' ? { fold: {} } : {}),
     title: linkLabel(r.title),
-    titleContent: inlineText(linkLabel(r.title)),
+    titleContent: inlineText(r.title),
     titleAfter: `${DOT}${ago(now - (r.at ?? now))}`,
     line: { text: linkLabel(r.title) },
     body: findingBody(r.detail ?? '', r.fileName),
@@ -95,7 +95,7 @@ export function paneAskRows(
         : findingBody(
             r.detail ?? '',
             lines > 1 ? r.fileName : null,
-            terminalTextLines(linkLabel(r.detail ?? ''), width, Math.max(1, lines - (r.fileName && lines > 1 ? 1 : 0))),
+            terminalTextLines(r.detail ?? '', width, Math.max(1, lines - (r.fileName && lines > 1 ? 1 : 0))),
           ),
     typeHint: replyHint(r, 'Claude'),
     keys: () => rowKeyActions(r, true).keys,

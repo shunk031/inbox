@@ -237,8 +237,8 @@ export function recordItem(host: Host, ledger: Ledger, input: Record<string, unk
 }
 
 function recordFinding(host: Host, ledger: Ledger, input: Record<string, unknown>, now: number): ToolAnswer {
-  const title = cut(input.title, 120)
-  const detail = cut(input.detail, 600)
+  const title = cutInline(typeof input.title === 'string' ? input.title : '', 120)
+  const detail = cutInline(typeof input.detail === 'string' ? input.detail : '', 600)
   if (title === '' || detail === '') return unchanged(ledger, 'Not recorded: a finding needs a title and a detail.')
   const path = cut(input.path, 300)
   const kind = input.finding_kind === 'opportunity' ? 'opportunity' : 'issue'

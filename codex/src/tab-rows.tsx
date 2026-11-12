@@ -198,11 +198,12 @@ function findingRow(v: View, r: RowView, f: Finding): Row {
     ...resultHandle(r),
     kind: f.kind,
     ...(isHandedOff ? { fold: {} } : {}),
-    title: inlineHtml(linkLabel(r.title)),
+    title: inlineHtml(r.title),
+    ...(inlineLinks(r.title).length > 0 ? { titleLabel: linkLabel(r.title) } : {}),
     age: r.at === null ? undefined : shortAgo(v.at - r.at),
     body: (
       <div>
-        <p style={{ whiteSpace: 'pre-line' }}>{inlineHtml(linkLabel(r.detail ?? ''))}</p>
+        <p style={{ whiteSpace: 'pre-line' }}>{inlineHtml(r.detail ?? '')}</p>
         {f.path ? (
           <p>
             <span class="muted">{ROW_COPY.relevantFile}</span>

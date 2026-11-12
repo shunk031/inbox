@@ -19,7 +19,6 @@ import { drawnTab, shownSettled, selectedIndex, open, select, isOpenGuarded, row
 import { discardReply } from './tab-press'
 import { act, listsOf } from './tab-rows'
 import { feedbackLabel, noteOf, isFeedbackShown, inlineHtml, pulseInStep, ResultMarkView, UndoPlace } from './tab-parts'
-import { linkLabel } from '../../hooks/inline'
 
 const LIST_OF = { question: 'questions', task: 'tasks', finding: 'findings' } as const
 
@@ -266,7 +265,7 @@ function SettledView({ settled: r, panel }: { settled: RowView; panel: Row | und
       <div class="content">
         <div class="settled-head">
           <div class="settled-line">
-            <span class="what">{inlineHtml(r.finding ? linkLabel(r.title) : r.title)}</span>
+            <span class="what">{inlineHtml(r.title)}</span>
             <span class="outcome-label">
               {DOT}
               {settledLabel(state.label, state.delivery)}
