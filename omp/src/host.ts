@@ -10,6 +10,7 @@ import type { AssistantMessage, Context, Model } from '@oh-my-pi/pi-ai'
 import type { ExtensionAPI, ExtensionContext } from '@oh-my-pi/pi-coding-agent'
 
 import { TIMED_OUT_CODE, UNSTARTABLE_CODE } from '../../hooks/gh'
+import { FEED_POLL_MS } from '../../hooks/feed'
 import { herdrReporter } from '../../hooks/herdr'
 import type { Run } from '../../hooks/gh'
 import { COMPARE_PAGE_FILE } from '../../hooks/press-messages'
@@ -83,6 +84,7 @@ export type HostDeps = {
   herdrPane: string | null
   /** The value of `INBOX_RECORDED_ITEMS_ONLY`, which `isRecordedItemsOnly` reads. */
   recordedItemsOnly: string | undefined
+  feedPath?: string
 }
 
 async function defaultComplete(
@@ -134,6 +136,7 @@ const defaultDeps: HostDeps = {
   isUsageLimit: isUsageLimitOutcome,
   herdrPane: process.env.HERDR_PANE_ID || null,
   recordedItemsOnly: process.env.INBOX_RECORDED_ITEMS_ONLY,
+  feedPath: process.env.INBOX_FEED,
 }
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err))
@@ -270,15 +273,29 @@ export function createInbox(pi: ExtensionAPI, deps: HostDeps = defaultDeps): Inb
   const { start } = turns
   const activity = activityHandlers(context, sessions)
   const { inbox, liveSource } = panelCalls(context, sessions)
+  let stopFeedTimer: () => void = () => {}
+  const startSession = async (ctx: ExtensionContext, parentFile?: string) => {
+    stopFeedTimer()
+    await start(ctx, parentFile)
+    if (!deps.feedPath || isUnattended(ctx)) return
+    const timer = ctx.setInterval(() => deps.background(inbox.feedWhenDue(ctx)), FEED_POLL_MS)
+    stopFeedTimer = () => ctx.clearTimer(timer)
+    await inbox.feedWhenDue(ctx)
+  }
 
   pi.events.on('task:subagent:lifecycle', activity.onSubagentLifecycle)
   pi.events.on('task:subagent:progress', activity.onSubagentProgress)
-  pi.on('session_start', (_event, ctx) => start(ctx))
-  pi.on('session_switch', (event, ctx) => start(ctx, event.reason === 'fork' ? event.previousSessionFile : undefined))
+  pi.on('session_start', (_event, ctx) => startSession(ctx))
+  pi.on('session_switch', (event, ctx) =>
+    startSession(ctx, event.reason === 'fork' ? event.previousSessionFile : undefined),
+  )
   // A `/btw` promotion, a fork from an entry and a command's branch give the session a new id, with the old file as
   // `previousSessionFile`. A `/branch` in the same file keeps the id, and the fork step then finds nothing to copy.
-  pi.on('session_branch', (event, ctx) => start(ctx, event.previousSessionFile))
-  pi.on('session_shutdown', turns.onSessionShutdown)
+  pi.on('session_branch', (event, ctx) => startSession(ctx, event.previousSessionFile))
+  pi.on('session_shutdown', (event, ctx) => {
+    stopFeedTimer()
+    return turns.onSessionShutdown(event, ctx)
+  })
   pi.on('before_agent_start', turns.onBeforeAgentStart)
   pi.on('input', turns.onInput)
   pi.on('agent_start', turns.onAgentStart)

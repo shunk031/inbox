@@ -17,6 +17,7 @@ export const SHARED = [
   'ask-match',
   'ledger-close',
   'ledger-update',
+  'feed',
   'reply-parse',
   'host-tasks',
   'status',

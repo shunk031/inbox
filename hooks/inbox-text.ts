@@ -135,7 +135,7 @@ export function statusCarryText(ledger: Ledger): string | null {
 }
 
 export function carryText(ledger: Ledger, title: string): string | null {
-  const findings = ledger.findings
+  const findings = ledger.findings.filter(f => !f.feedKey)
   const lines = statusSummaryLines(ledger)
   if (lines.length === 0 && ledger.items.length === 0 && findings.length === 0) return null
   const out = [title, ...lines]
@@ -158,6 +158,7 @@ export function carryText(ledger: Ledger, title: string): string | null {
 export const CLOSE_ID_RULE = 'A close id is only for the close tool. Never write one in a reply.'
 
 export function inboxText(host: Host, ledger: Ledger, isOpen: boolean): string {
+  const findings = ledger.findings.filter(f => !f.feedKey)
   const out = [
     `inbox: what waits on the user, as of your last reply. Anything not listed here is closed. ${CLOSE_ID_RULE}`,
   ]
@@ -167,9 +168,9 @@ export function inboxText(host: Host, ledger: Ledger, isOpen: boolean): string {
   } else {
     out.push('Nothing is waiting on the user.')
   }
-  if (ledger.findings.length > 0) {
+  if (findings.length > 0) {
     out.push('Findings you recorded, still open:')
-    for (const f of ledger.findings) out.push(findingLine(f))
+    for (const f of findings) out.push(findingLine(f))
   }
   out.push(isOpen ? `The user has ${host.surface} open beside the conversation.` : `${surfaceAtStart(host)} is closed.`)
 

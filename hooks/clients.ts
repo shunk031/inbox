@@ -21,6 +21,7 @@ export type FeatureId =
   | 'tool-output-urls'
   | 'pr-link-from-output'
   | 'pr-arrivals'
+  | 'feed-findings'
   | 'prs-empty-hint'
   | 'gh-signed-out-notice'
   | 'link-open-rule'
@@ -85,6 +86,7 @@ export const CLIENTS: Record<ClientId, Client> = {
       'tool-output-urls': { kind: 'full' },
       'pr-link-from-output': { kind: 'full' },
       'pr-arrivals': { kind: 'full' },
+      'feed-findings': { kind: 'full' },
       'prs-empty-hint': { kind: 'full' },
       'gh-signed-out-notice': { kind: 'full' },
       'link-open-rule': { kind: 'full' },
@@ -168,6 +170,10 @@ export const CLIENTS: Record<ClientId, Client> = {
           "Codex runs no hook for a long command's output, so the inbox reads the turn's shell commands from the rollout at Stop. A PR that `gh pr create` opened is linked when the turn ends, not when the command finishes.",
       },
       'pr-arrivals': { kind: 'full' },
+      'feed-findings': {
+        kind: 'different',
+        reason: 'Codex has no idle timer, so it applies the feed at hooks and Inbox tab view requests.',
+      },
       'prs-empty-hint': {
         kind: 'different',
         reason: 'The Codex app calls a conversation a chat, so its hint says chat where the mod says session.',
@@ -289,6 +295,7 @@ export const CLIENTS: Record<ClientId, Client> = {
       'tool-output-urls': { kind: 'full' },
       'pr-link-from-output': { kind: 'full' },
       'pr-arrivals': { kind: 'full' },
+      'feed-findings': { kind: 'full' },
       'prs-empty-hint': { kind: 'full' },
       'gh-signed-out-notice': { kind: 'full' },
       'link-open-rule': { kind: 'full' },

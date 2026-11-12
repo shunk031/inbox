@@ -544,9 +544,10 @@ function isPersonsAnswer(outcome) {
   return outcome.trim() !== "" && !NOT_AN_ANSWER.test(outcome);
 }
 function applyUpdate(ledger, u, now, turn, promptAt = now) {
+  const feedIds = new Set(ledger.findings.filter((f) => f.feedKey).map((f) => f.id));
   const stillAsked = new Set(u.updated.filter((c) => c.options || c.rec).map((c) => c.id));
   const closing = new Map(
-    u.closed.filter((c) => !stillAsked.has(c.id) && !UNFOUNDED_MOOT.test(c.outcome)).map((c) => [c.id, c.outcome])
+    u.closed.filter((c) => !feedIds.has(c.id) && !stillAsked.has(c.id) && !UNFOUNDED_MOOT.test(c.outcome)).map((c) => [c.id, c.outcome])
   );
   const closed = [...ledger.closed];
   const items = [];
@@ -599,7 +600,7 @@ function applyUpdate(ledger, u, now, turn, promptAt = now) {
       options: ["Proceed", "Not yet"],
       rec: null
     };
-    const isKnown = items.some((i) => restates(i.ask, work)) || ledger.findings.some((f) => restates(f.title, work)) || repeatsClosed(ledger.closed, { ...todo, helps: [] }, promptAt);
+    const isKnown = items.some((i) => restates(i.ask, work)) || ledger.findings.some((f) => !f.feedKey && restates(f.title, work)) || repeatsClosed(ledger.closed, { ...todo, helps: [] }, promptAt);
     if (isKnown) continue;
     items.push({ ...todo, helps: [], id: `i${nextId}`, turn, at: now, from: "update" });
     nextId += 1;
@@ -613,7 +614,7 @@ function applyUpdate(ledger, u, now, turn, promptAt = now) {
     if (asker && finding && asksAbout(asker, finding, true)) askedBy.set(a.id, asker.id);
   }
   for (const i of items.filter((i2) => created.has(i2.id)))
-    for (const f of ledger.findings) if (!askedBy.has(f.id) && asksAbout(i, f)) askedBy.set(f.id, i.id);
+    for (const f of ledger.findings) if (!f.feedKey && !askedBy.has(f.id) && asksAbout(i, f)) askedBy.set(f.id, i.id);
   const { findings, closedFindings } = ledger.findings.reduce((l, f) => {
     const asker = askedBy.get(f.id);
     const outcome = closing.get(f.id);
@@ -1022,7 +1023,7 @@ function ledgerBlocks(ledger) {
   const open3 = ledger.items.map(
     (i) => `${i.id} | ${MODEL_KIND[i.kind]} | ${i.label ?? "-"} | ${i.ask} | ${i.options.join(" / ") || "-"} | ${i.rec ?? "-"} | ${i.isDesignChoice ? "design" : "-"}`
   ).join(NL4);
-  const findings = ledger.findings.map((f) => `${f.id} | ${f.kind}: ${f.title}`).join(NL4);
+  const findings = ledger.findings.filter((f) => !f.feedKey).map((f) => `${f.id} | ${f.kind}: ${f.title}`).join(NL4);
   const closed = ledger.closed.slice(-CLOSED_CONTEXT_LIMIT).filter((d) => d.how !== "expired" && !isAskedForChoices(d)).map((d) => `${d.ask} \u2192 ${outcomeText(d)}`).join(NL4);
   return [
     `<open>${NL4}${open3}${NL4}</open>`,
@@ -1731,7 +1732,8 @@ var LISTED_TABS = TAB_NAMES.filter((t) => isListedTab(t.id));
 // ../hooks/help.ts
 var FINDING_GROUPS = {
   issue: { title: "Issues", mark: "\u25B2", tone: "issue" },
-  opportunity: { title: "Opportunities", mark: "\u2726", tone: "done" }
+  opportunity: { title: "Opportunities", mark: "\u2726", tone: "done" },
+  progress: { title: "Progress", mark: "\u21BB", tone: "findings" }
 };
 var SUBJECT_MARKS = {
   working: { mark: "\u25CF", tone: null },
@@ -1784,6 +1786,12 @@ var MARK_LEGEND = [
     tone: FINDING_GROUPS.opportunity.tone,
     isRunning: false,
     words: "Opportunity: something that could be better"
+  },
+  {
+    mark: FINDING_GROUPS.progress.mark,
+    tone: FINDING_GROUPS.progress.tone,
+    isRunning: false,
+    words: "Progress reported by the feed"
   }
 ];
 var STATUS_ONLY_MARKS = /* @__PURE__ */ new Set([IDLE_MARK.mark, SUBJECT_MARKS.queued.mark, SUBJECT_MARKS["waits-on-other"].mark]);

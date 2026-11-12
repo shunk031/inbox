@@ -5,9 +5,13 @@ import type { Look } from './rows'
 import { shownTabs, isRowTab } from './tabs'
 import type { ShownTab } from './tabs'
 
-export const FINDING_GROUPS: Record<Finding['kind'], { title: string; mark: string; tone: 'issue' | 'done' }> = {
+export const FINDING_GROUPS: Record<
+  Finding['kind'],
+  { title: string; mark: string; tone: 'issue' | 'done' | 'findings' }
+> = {
   issue: { title: 'Issues', mark: '▲', tone: 'issue' },
   opportunity: { title: 'Opportunities', mark: '✦', tone: 'done' },
+  progress: { title: 'Progress', mark: '↻', tone: 'findings' },
 }
 
 /** A mark's tone on the Status. Null draws it muted. */
@@ -79,6 +83,12 @@ export const MARK_LEGEND: readonly LegendEntry[] = [
     tone: FINDING_GROUPS.opportunity.tone,
     isRunning: false,
     words: 'Opportunity: something that could be better',
+  },
+  {
+    mark: FINDING_GROUPS.progress.mark,
+    tone: FINDING_GROUPS.progress.tone,
+    isRunning: false,
+    words: 'Progress reported by the feed',
   },
 ]
 

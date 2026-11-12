@@ -31,6 +31,7 @@ Part of [the look map](../looks.md#files).
 | `hooks/ask-match.ts` | Shared module. Whether two asks say the same thing, whether a new ask repeats an open or closed one, and which option a recommendation names. |
 | `hooks/ledger-close.ts` | Shared module. Closing and reopening items and findings, and whether a closed record counts as handled, dismissed or lapsed. |
 | `hooks/ledger-update.ts` | Shared module. Applying a parsed update to the ledger, and adding findings and the items the agent records. Re-recording an item may replace its detail; per-reply updates keep it. |
+| `hooks/feed.ts` | Shared module. Validating progress-feed snapshots, reconciling each file's entries and expiring stale findings. |
 | `hooks/host-tasks.ts` | Shared module. The agent's own task list: how each host's tool calls become `Session.hostTasks`, and the `<tasks>` lines the Status call reads. |
 | `hooks/status.ts` | Shared module. The parser for the Status call's lines, and `askStatus`, which asks the call again when its answer holds prose. |
 | `hooks/status-limits.ts` | Shared module. The Status's limits on words, subjects and children, `EMPTY_SESSION_STATUS`, `isOpen`, and the helpers that clip a text and compare subject names. |

@@ -77,6 +77,7 @@ import { prMarkId, threadSentIn } from './pr-rows'
 import { failingChecks, prRefs, prNeedsYou, waitingThreads } from './prs'
 import { EMPTY, KEPT_SESSIONS, isBlankLedger } from './ledger'
 import { closeItem } from './ledger-close'
+import { FEED_POLL_MS, feedPoll } from './mod-feed'
 import { tasksRunBy } from './reply-parse'
 import { CLAUDE_CODE, guidedCloseDescription } from './model-text'
 import { statusCarryText, screenText, type ScreenTab } from './inbox-text'
@@ -460,10 +461,7 @@ const OLD_UNTRACKED_SENT = atom(
   [] as { sessionId: string; text: string }[],
 )
 
-/**
- * The session as an older build left it in its separate fields, for a hot reload into this build. A sent message
- * whose record those fields lost is kept as an uncertain record, so its arrival cannot be credited to a newer press.
- */
+/** Merges legacy fields; uncertain sends cannot credit later presses. */
 async function fromOldFields($: EngineInterface): Promise<Session> {
   const [id, ledger, presence, prViews, stop, lastActions, sent, untracked] = await Promise.all([
     $.session.id(),
@@ -883,7 +881,10 @@ function commitLedger(
   change: (l: Ledger) => Ledger,
   owner: Owner = currentOwner(),
 ): Promise<Session> {
-  return commit($, owner, s => ({ ...s, ledger: change(s.ledger) }))
+  return commit($, owner, s => {
+    const ledger = change(s.ledger)
+    return ledger === s.ledger ? s : { ...s, ledger }
+  })
 }
 
 /**
@@ -2140,14 +2141,25 @@ async function readVersion($: EngineInterface) {
   mod.statusRecordsFolder = mod.isNextBuild ? await recordsFolder($).catch(() => null) : null
 }
 
+async function startFeed($: EngineInterface) {
+  const path = await $.env.get('INBOX_FEED')
+  if (!path) return null
+  const poll = feedPoll(
+    path,
+    [p => $.fs.stat(p), p => $.fs.list(p), p => $.fs.exists(p), p => $.fs.read(p)],
+    () => $.clock.now(),
+    update => commitLedger($, update, currentOwner()),
+  )
+  return () => $.session.id().then(poll)
+}
+
 async function initializeInbox($: EngineInterface) {
-  // A hot reload keeps state an older build wrote. Draws start once isOn is set, and they read the current shape and
-  // the tabs that the next-build mark decides.
   await Promise.all([
     upgradeState($),
     readVersion($),
     $.env.get('INBOX_RECORDED_ITEMS_ONLY').then(v => void (mod.recordedItemsOnly = isRecordedItemsOnly(v))),
   ])
+  const feed = await startFeed($)
   mod.isOn = true
   mod.toolsRefused = false
   paneState.compareRedrawAt = null
@@ -2158,7 +2170,6 @@ async function initializeInbox($: EngineInterface) {
     registerInboxCommand($),
     ...agentTools(CLAUDE_CODE).map(tool => $.tool.register(tool).catch(refused)),
   ])
-  // A pane kept across a hot reload is already drawn.
   if (mod.toolsRefused) await redrawPane($)
   for (const interval of mod.intervals) interval.cancel()
   mod.intervals = [
@@ -2168,9 +2179,10 @@ async function initializeInbox($: EngineInterface) {
     $.clock.every(PR_POLL_MS, () => {
       void pollPrs($)
     }),
+    ...(feed ? [$.clock.every(FEED_POLL_MS, () => void feed())] : []),
   ]
   await loadConversation($, await $.session.id())
-  // After loadConversation, which brings saved state up to date.
+  void feed?.()
   await redrawAfterReload($)
 }
 

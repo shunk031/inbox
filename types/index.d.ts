@@ -286,7 +286,7 @@ export type Draft = { text: string; since: number }
 
 export type Finding = {
   id: string
-  kind: 'issue' | 'opportunity'
+  kind: 'issue' | 'opportunity' | 'progress'
   title: string
   detail: string
   /** The file it is about, as Claude gave it. */
@@ -294,6 +294,10 @@ export type Finding = {
   at: number
   /** The item that replaced this finding by asking about it. A finding closed as "asked as iN" reopens when that item closes with the work undone. */
   askedAs?: string
+  /** The external progress-feed entry that owns this finding. */
+  feedKey?: string
+  /** The snapshot file that owns this finding. */
+  feedSource?: string
 }
 
 export type FoldKind = Item['kind'] | Finding['kind']

@@ -56,6 +56,7 @@ export function createHandler(
     loadError,
     isPluginFolderGone,
     isNextBuild: existsSync(join(dirname(dirname(fileURLToPath(import.meta.url))), NEXT_BUILD_MARK)),
+    feedPath: process.env.INBOX_FEED,
     comparePage: join(dirname(fileURLToPath(import.meta.url)), COMPARE_PAGE_FILE),
     openCatchUp: startUpdate && {
       codexHome: process.env.CODEX_HOME || join(homedir(), '.codex'),

@@ -63,7 +63,10 @@ export function ledgerBlocks(ledger: Ledger): string[] {
         `${i.id} | ${MODEL_KIND[i.kind]} | ${i.label ?? '-'} | ${i.ask} | ${i.options.join(' / ') || '-'} | ${i.rec ?? '-'} | ${i.isDesignChoice ? 'design' : '-'}`,
     )
     .join(NL)
-  const findings = ledger.findings.map(f => `${f.id} | ${f.kind}: ${f.title}`).join(NL)
+  const findings = ledger.findings
+    .filter(f => !f.feedKey)
+    .map(f => `${f.id} | ${f.kind}: ${f.title}`)
+    .join(NL)
   const closed = ledger.closed
     .slice(-CLOSED_CONTEXT_LIMIT)
     .filter(d => d.how !== 'expired' && !isAskedForChoices(d))
