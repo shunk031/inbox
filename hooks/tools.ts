@@ -8,6 +8,7 @@ import { linkedPrs, MAX_ORDERED_PRS } from './pr-fetch'
 import type { Closed, Help, Ledger } from '../types'
 
 const NAME_BY_CONTENT = 'Name it by what it says, never by its id.'
+const MAX_ITEM_DETAIL = 1200
 
 const RECORD_SCHEMA = {
   type: 'object',
@@ -52,7 +53,8 @@ const RECORD_SCHEMA = {
     title: { type: 'string', description: 'For a finding: what it is, in at most 12 plain words.' },
     detail: {
       type: 'string',
-      description: 'For a finding: why it matters and what you would do, in one or two sentences.',
+      description:
+        'For a question or task: why you ask and what it holds up; for a question, what each option leads to. For a finding: why it matters and what you would do. Use short paragraphs and links where useful.',
     },
     path: { type: 'string', description: 'For a finding: the file it is about, if one.' },
   },
@@ -105,8 +107,8 @@ function orderDescription(host: Host): string {
 
 function recordDescription(host: Host): string {
   return `Record something the user must see in ${host.surface}, and still say it in your reply. Use it in the turn you raise it, once for each thing.
-- question: a decision, approval or piece of information only the user has, which you need before you go on. Give options, and rec when you recommend one. This includes an act you hold until they say so, such as "say when you want those committed".
-- task: a step only the user can do, such as signing in or running a command with their password. Put the commands, files and links in steps. A step your own tools can take is not a task: take it, or ask for their OK as a question when it changes something other people see.
+- question: a decision, approval or piece of information only the user has, which you need before you go on. Give options, and rec when you recommend one. Fill detail with why you ask and what each option leads to. This includes an act you hold until they say so, such as "say when you want those committed".
+- task: a step only the user can do, such as signing in or running a command with their password. Put the commands, files and links in steps, and fill detail with what holds the task up and what the step leads to. A step your own tools can take is not a task: take it, or ask for their OK as a question when it changes something other people see.
 - finding: something outside the current task that deserves their attention. It waits in ${host.findingsIn} until it is closed, and the user can ask you to address it or discuss it. Record what a careful senior engineer would flag to a teammate, once you have checked it. Leave out style nits, anything the user already decided, todos or ideas the user mentioned, problems in your own change, progress, and anything only the user can do or decide: handle those in your reply, or record them as a question or task.
 Do not record rhetorical questions, offers to continue when continuing is the default, FYIs, or invitations to look at finished work.`
 }
@@ -204,11 +206,17 @@ export function recordItem(host: Host, ledger: Ledger, input: Record<string, unk
       : ''
 
   const isDesignChoice = input.kind === 'question' && input.design_choice === true
-  const r = addAgentItem(ledger, { kind: input.kind, ask, options, rec, helps, isDesignChoice }, now)
+  const detail = cutInline(typeof input.detail === 'string' ? input.detail.trim() : '', MAX_ITEM_DETAIL)
+  const r = addAgentItem(
+    ledger,
+    { kind: input.kind, ask, options, rec, helps, isDesignChoice, ...(detail ? { detail } : {}) },
+    now,
+  )
   if (r.is === 'open') {
     const changes = [
       ...(r.addedSteps > 0 ? ['added its new steps'] : []),
       ...(r.isNewlyMarked ? ['marked it as a design choice'] : []),
+      ...(r.hasNewDetail ? ['replaced its detail'] : []),
       ...(r.newRec ? [`changed its recommendation to ${r.newRec}`] : []),
     ]
     const updated = changes.length > 0 ? ` and ${changes.join(' and ')}` : ''

@@ -9,7 +9,7 @@ Part of [the look map](../looks.md#files).
 | `hooks/pane-context.ts` | Mod only. The types the Pane render hands its drawing files: `PaneBase` for the values the render computed, `PaneClient` for whether the surface draws Clients, `PaneHandlers` for the calls that need `$`, and `Row`, the shape every list row is drawn from. |
 | `hooks/pane-frame.tsx` | Mod only. The pane's frame in both looks: the tab bar, the inline rail, banners, the status line and the footer. |
 | `hooks/pane-row-frame.tsx` | Mod only. `desktopFrame`, the frame a desktop row, group title, PR block or Status row draws in: its mark column, side column and padding. |
-| `hooks/pane-asks.tsx` | Mod only. The Asks and Finds tabs: question, task and finding rows, the Needs you and Finds groups, and a tab's empty state. |
+| `hooks/pane-asks.tsx` | Mod only. The Asks and Finds tabs: question, task and finding rows with their details, the Needs you and Finds groups, and a tab's empty state. |
 | `hooks/pane-rows.tsx` | Mod only. `listRow`, which draws one list row, selected or not, in both looks. |
 | `hooks/pane-row-lines.tsx` | Mod only. The parts a row's lines are drawn from: marks, tree lines, ages, feedback labels, an unselected row's line, and the props of the desktop row Client. |
 | `hooks/pane-row-keys.tsx` | Mod only. A row's buttons: keyed buttons, the desktop follow-up links, the terminal's action lines and a reply field's actions. |

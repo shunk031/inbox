@@ -125,6 +125,8 @@ export type Item = {
   /** The agent's own number or id for it ("1", "D3"), so "1. yes" maps back. */
   label: string | null
   ask: string
+  /** The agent's explanation of why it asked and what each option or step leads to. */
+  detail?: string
   options: string[]
   /** The option the agent recommended, exactly as `options` has it. */
   rec: string | null

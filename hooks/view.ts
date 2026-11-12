@@ -219,7 +219,7 @@ export function inboxView({
       number: n ?? null,
       title: item.ask,
       at: item.at,
-      detail: null,
+      detail: item.detail ?? null,
       fileName: null,
       replyKind: item.kind === 'question' ? 'answer' : 'reply',
       item,

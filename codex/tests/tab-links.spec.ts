@@ -79,3 +79,23 @@ test('a Codex linked title stays outside the row selector and its accessible lab
   await new Promise(resolve => setTimeout(resolve, 0))
   assert.equal(selected, 0)
 })
+
+test('Codex shows a question explanation with paragraph breaks and linked labels', async () => {
+  const browser = new Window()
+  Object.assign(globalThis, { window: browser, document: browser.document, parent: browser.parent })
+  const { demoState } = await import('../src/demo')
+  const { viewOf } = await import('../src/core')
+  const { listsOf } = await import('../src/tab-rows')
+  const state = demoState(1000)
+  const item = state.ledger.items[0]!
+  const detail = 'This choice blocks the release.\n\nRead [release notes](https://example.com/release).'
+  state.ledger.items = state.ledger.items.map(row => (row.id === item.id ? { ...row, detail } : row))
+  const view = { ...viewOf(state, 1000), thread: 'test', devPage: '', isFetchingPrs: false, isGhMissing: false }
+  const row = listsOf(view, new Set()).byTab.needsYou.find(candidate => candidate.id === item.id)!
+  const root = document.createElement('div')
+  render(h('div', null, row.body), root)
+
+  assert.equal(root.querySelector('p')?.style.whiteSpace, 'pre-line')
+  assert.equal(root.querySelector('p')?.textContent, 'This choice blocks the release.\n\nRead release notes.')
+  assert.equal(root.querySelector('a')?.getAttribute('href'), 'https://example.com/release')
+})

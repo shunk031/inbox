@@ -3949,7 +3949,15 @@ function addAgentItem(ledger, entry, now) {
     const helps = entry.helps.reduce(withHelp, openItem.helps);
     const isDesignChoice = openItem.isDesignChoice === true || entry.isDesignChoice === true;
     const rec = restatedRec(openItem.options, openItem.rec, entry.rec);
-    const reported = { ...openItem, helps, isDesignChoice, rec, reportedAt: now };
+    const hasNewDetail = entry.detail !== undefined && entry.detail !== openItem.detail;
+    const reported = {
+      ...openItem,
+      helps,
+      isDesignChoice,
+      rec,
+      reportedAt: now,
+      ...hasNewDetail ? { detail: entry.detail } : {}
+    };
     const items = ledger.items.map((i) => i === openItem ? reported : i);
     return {
       ledger: { ...ledger, items },
@@ -3957,7 +3965,8 @@ function addAgentItem(ledger, entry, now) {
       id: openItem.id,
       addedSteps: helps.length - openItem.helps.length,
       isNewlyMarked: isDesignChoice && openItem.isDesignChoice !== true,
-      newRec: rec !== openItem.rec ? rec : null
+      newRec: rec !== openItem.rec ? rec : null,
+      hasNewDetail
     };
   }
   const isAskable = (c) => c.how === "expired" || c.how === "claude";
@@ -3978,6 +3987,7 @@ function addAgentItem(ledger, entry, now) {
 
 // ../hooks/tools.ts
 var NAME_BY_CONTENT = "Name it by what it says, never by its id.";
+var MAX_ITEM_DETAIL = 1200;
 var RECORD_SCHEMA = {
   type: "object",
   properties: {
@@ -4016,7 +4026,7 @@ var RECORD_SCHEMA = {
     title: { type: "string", description: "For a finding: what it is, in at most 12 plain words." },
     detail: {
       type: "string",
-      description: "For a finding: why it matters and what you would do, in one or two sentences."
+      description: "For a question or task: why you ask and what it holds up; for a question, what each option leads to. For a finding: why it matters and what you would do. Use short paragraphs and links where useful."
     },
     path: { type: "string", description: "For a finding: the file it is about, if one." }
   },
@@ -4062,8 +4072,8 @@ function orderDescription(host) {
 }
 function recordDescription(host) {
   return `Record something the user must see in ${host.surface}, and still say it in your reply. Use it in the turn you raise it, once for each thing.
-- question: a decision, approval or piece of information only the user has, which you need before you go on. Give options, and rec when you recommend one. This includes an act you hold until they say so, such as "say when you want those committed".
-- task: a step only the user can do, such as signing in or running a command with their password. Put the commands, files and links in steps. A step your own tools can take is not a task: take it, or ask for their OK as a question when it changes something other people see.
+- question: a decision, approval or piece of information only the user has, which you need before you go on. Give options, and rec when you recommend one. Fill detail with why you ask and what each option leads to. This includes an act you hold until they say so, such as "say when you want those committed".
+- task: a step only the user can do, such as signing in or running a command with their password. Put the commands, files and links in steps, and fill detail with what holds the task up and what the step leads to. A step your own tools can take is not a task: take it, or ask for their OK as a question when it changes something other people see.
 - finding: something outside the current task that deserves their attention. It waits in ${host.findingsIn} until it is closed, and the user can ask you to address it or discuss it. Record what a careful senior engineer would flag to a teammate, once you have checked it. Leave out style nits, anything the user already decided, todos or ideas the user mentioned, problems in your own change, progress, and anything only the user can do or decide: handle those in your reply, or record them as a question or task.
 Do not record rhetorical questions, offers to continue when continuing is the default, FYIs, or invitations to look at finished work.`;
 }
@@ -4118,11 +4128,13 @@ function recordItem(host, ledger, input, now) {
   const helps = steps.flatMap((step) => stepHelp(step) ?? []).filter(isUsable).slice(0, MAX_STEPS);
   const leftOut = helps.length < steps.length ? input.kind === "task" ? " Some steps were not a command, a file path or a link, so they are left out." : " Some steps were not an absolute file path or a link, so they are left out." : "";
   const isDesignChoice = input.kind === "question" && input.design_choice === true;
-  const r = addAgentItem(ledger, { kind: input.kind, ask, options, rec, helps, isDesignChoice }, now);
+  const detail = cutInline(typeof input.detail === "string" ? input.detail.trim() : "", MAX_ITEM_DETAIL);
+  const r = addAgentItem(ledger, { kind: input.kind, ask, options, rec, helps, isDesignChoice, ...detail ? { detail } : {} }, now);
   if (r.is === "open") {
     const changes = [
       ...r.addedSteps > 0 ? ["added its new steps"] : [],
       ...r.isNewlyMarked ? ["marked it as a design choice"] : [],
+      ...r.hasNewDetail ? ["replaced its detail"] : [],
       ...r.newRec ? [`changed its recommendation to ${r.newRec}`] : []
     ];
     const updated = changes.length > 0 ? ` and ${changes.join(" and ")}` : "";
@@ -4695,7 +4707,7 @@ function inboxView({
       number: n ?? null,
       title: item.ask,
       at: item.at,
-      detail: null,
+      detail: item.detail ?? null,
       fileName: null,
       replyKind: item.kind === "question" ? "answer" : "reply",
       item,
@@ -5160,6 +5172,58 @@ function indented(text, indent, width, maxLines, paint) {
   if (wrapped.length > maxLines)
     shown[maxLines - 1] = `${cutForEllipsis(shown[maxLines - 1], (t) => cellWidth(t) <= room)}\u2026`;
   return shown.map((l) => " ".repeat(indent) + paint(l));
+}
+function indentedLinks(text, indent, width, maxLines, paint, link) {
+  const room = Math.max(10, width - indent - 1);
+  const lines = [[]];
+  let used = 0;
+  let hasSpace = false;
+  for (const span of parseInline(text)) {
+    const value = span.link && !link ? `${span.text} (${span.link})` : span.text;
+    for (const part of value.split(/(\n|[^\S\n]+)/).filter(Boolean)) {
+      if (part === `
+`) {
+        lines.push([]);
+        used = 0;
+        hasSpace = false;
+        continue;
+      }
+      if (/^\s+$/.test(part)) {
+        hasSpace = true;
+        continue;
+      }
+      const gap = used > 0 && hasSpace ? 1 : 0;
+      const shown = cellWidth(part) > room ? `${cutToCells(part, room - 1)}\u2026` : part;
+      const url = span.link && link ? span.link : undefined;
+      if (used > 0 && used + cellWidth(shown) + gap > room) {
+        lines.push([]);
+        used = 0;
+      }
+      const current = lines.at(-1);
+      if (used > 0 && hasSpace)
+        current.push({ text: " ", ...url ? { url } : {} });
+      current.push({ text: shown, ...url ? { url } : {} });
+      used += (used > 0 && hasSpace ? 1 : 0) + cellWidth(shown);
+      hasSpace = false;
+    }
+  }
+  const shown = lines.slice(0, maxLines);
+  if (lines.length > maxLines && shown.length > 0) {
+    const last = shown.at(-1);
+    const cut = cutForEllipsis(last.map((part) => part.text).join(""), (value) => cellWidth(value) <= room);
+    last.splice(0, last.length, { text: `${cut}\u2026` });
+  }
+  return shown.map((parts) => {
+    const runs = parts.reduce((out, part) => {
+      const last = out.at(-1);
+      if (last && last.url === part.url)
+        last.text += part.text;
+      else
+        out.push({ ...part });
+      return out;
+    }, []);
+    return " ".repeat(indent) + paint(runs.map((part) => part.url && link ? `\x1B[4m${link(part.url, part.text)}\x1B[24m` : part.text).join(""));
+  });
 }
 
 // src/panel-page.ts
@@ -5801,7 +5865,15 @@ function defaultFocus(line) {
 }
 var focusOf2 = (line, ui) => ui.focus?.rowId === line.id ? Math.min(ui.focus.index, line.buttons.length - 1) : defaultFocus(line);
 function withSelection(ui, id) {
-  return { ...ui, selectedId: id, focus: null, opened: ui.opened === id ? ui.opened : null, openedAt: 0 };
+  return {
+    ...ui,
+    selectedId: id,
+    focus: null,
+    detailTop: 0,
+    detailScrollMax: 0,
+    opened: ui.opened === id ? ui.opened : null,
+    openedAt: 0
+  };
 }
 var withTab = (ui, tab, now) => ({
   ...withSelection(ui, null),
@@ -5887,6 +5959,13 @@ function handleKey(screen, ui, key, now, text) {
     return { ui: base };
   if ((base.isHelpShown || isPage) && (isUp || key === "down" || key === "j"))
     return { ui: { ...base, pageTop: Math.max(0, base.pageTop + (isUp ? -1 : 1)) } };
+  if (!isPage && selected?.detail && base.detailScrollMax > 0 && (key === "up" || key === "down"))
+    return {
+      ui: {
+        ...base,
+        detailTop: Math.max(0, Math.min(base.detailScrollMax, base.detailTop + (key === "up" ? -1 : 1)))
+      }
+    };
   const selectable = lines.filter(isSelectable);
   const at = selectable.findIndex((l) => l.id === selected?.id);
   if ((key === "up" || key === "k" || key === "down" || key === "j") && selectable.length > 0) {
@@ -6067,7 +6146,7 @@ function drawLine(line, isSelected, d) {
   if (holdsUp)
     out.push(fit(`${" ".repeat(indent)}${s.tone(HELD_MARK.tone, HELD_MARK.mark)} ${s.dim(holdsUp)}`, width));
   if (line.detail && (isSelected || line.isDetailShown))
-    out.push(...indented(linkLabel(line.detail), indent, width, 4, s.dim));
+    out.push(...indentedLinks(line.row?.type === "finding" ? linkLabel(line.detail) : line.detail, indent, width, isSelected && line.row?.type !== "finding" ? Infinity : 4, s.dim, s.link));
   if (!isSelected)
     return out;
   if (line.file)
@@ -6153,13 +6232,19 @@ function tabBar(d) {
   const { naming, layout } = fitTabs(TAB_FORMS, (naming, form) => visibleLength(lineOf(naming, form)) <= width);
   return spread(lineOf(naming, layout), ui.isHelpShown ? "" : s.dim("esc to close "), width);
 }
-function footer(d, isPageScrolling) {
+function footer(d, isPageScrolling, isDetailScrolling = false) {
   const { screen, ui, width, style: s } = d;
   const out = [s.dim("\u2500".repeat(width))];
   const status = footerStatus(ui.tab, screen.view.status, { isFetching: screen.isFetchingPrs, hasPrs: screen.view.prs.drawn.length > 0 }, screen.view.statusPage.error);
   if (status.text)
     out.push(` ${s.dim(status.text)}`);
-  const hints = ui.typing !== null ? [`\u21B5 ${ui.typing === GOAL_KEYS_ID ? GOAL_FIELD.submit : ROW_COPY.send}`, `esc ${ROW_COPY.cancel}`] : ui.isHelpShown ? [...isPageScrolling ? ["\u2191\u2193 scroll"] : [], "esc close help"] : isRowTab(ui.tab) ? ["\u2190\u2192 pick", "\u21B5 press", "\u2191\u2193 move", "tab switch", "? help"] : [
+  const hints = ui.typing !== null ? [`\u21B5 ${ui.typing === GOAL_KEYS_ID ? GOAL_FIELD.submit : ROW_COPY.send}`, `esc ${ROW_COPY.cancel}`] : ui.isHelpShown ? [...isPageScrolling ? ["\u2191\u2193 scroll"] : [], "esc close help"] : isRowTab(ui.tab) ? [
+    "\u2190\u2192 pick",
+    "\u21B5 press",
+    ...isDetailScrolling ? ["\u2191\u2193 scroll", "j k move"] : ["\u2191\u2193 move"],
+    "tab switch",
+    "? help"
+  ] : [
     ...statusHints(screen.view.statusPage, ui.selectedId),
     ...isPageScrolling ? ["\u2191\u2193 scroll"] : [],
     "tab switch",
@@ -6185,17 +6270,24 @@ function pageWindow(body, top, room, s) {
     ...below > 0 ? [moreLines("\u2193", below, s)] : []
   ];
 }
-function scrolled(body, selectedAt, room, s) {
+function scrolled(body, selectedAt, room, s, selectedTop = 0, isSelectedScrollable = false) {
   const [first = 0, last = 0] = selectedAt;
-  let start = Math.min(Math.max(0, first - 1), body.length - room);
-  if (last > start + room - 2)
+  let start = isSelectedScrollable ? Math.min(first + selectedTop, last - room + 2) : Math.min(Math.max(0, first - 1), body.length - room);
+  if (!isSelectedScrollable && last > start + room - 2)
     start = Math.min(Math.max(first, last - room + 2), body.length - room);
   const end = start + room;
   const clip = body.slice(start, end);
-  if (start > 0)
-    clip[0] = s.dim(`  \u2191 ${start} more lines`);
-  if (end < body.length)
-    clip[clip.length - 1] = s.dim(`  \u2193 ${body.length - end} more lines`);
+  if (isSelectedScrollable) {
+    if (start > first)
+      clip[0] = s.dim(`  \u2191 ${start - first} more lines`);
+    if (end <= last)
+      clip[clip.length - 1] = s.dim(`  \u2193 ${last - end + 1} more lines`);
+  } else {
+    if (start > 0)
+      clip[0] = s.dim(`  \u2191 ${start} more lines`);
+    if (end < body.length)
+      clip[clip.length - 1] = s.dim(`  \u2193 ${body.length - end} more lines`);
+  }
   return clip;
 }
 function statusHints(page, selectedId) {
@@ -6219,6 +6311,8 @@ var INITIAL_UI = {
   resuming: null,
   opened: null,
   pageTop: 0,
+  detailTop: 0,
+  detailScrollMax: 0,
   pageReveal: null,
   openedAt: 0,
   shownSince: 0,
@@ -6295,8 +6389,11 @@ function drawPanel(screen, ui, width, now, style, height, minHeight = 0) {
   const roomBeside = (foot) => height === undefined ? Infinity : Math.max(6, height - head.length - foot.length);
   const isPage = ui.isHelpShown || !isRowTab(ui.tab);
   const isPageTaller = isPage && body.length > roomBeside(footer(d, false));
-  const foot = footer(d, isPageTaller);
+  const selectedLines = selectedAt[1] - selectedAt[0] + 1;
+  const isDetailScrolling = !isPage && selected?.detail !== null && selected?.detail !== undefined && selectedLines > roomBeside(footer(d, false)) - 2;
+  const foot = footer(d, isPageTaller, isDetailScrolling);
   const room = roomBeside(foot);
+  const detailScrollMax = !isPage && selected?.detail !== null && selected?.detail !== undefined ? Math.max(0, selectedLines - room + 2) : 0;
   const blanks = (shown) => Array(Math.max(0, minHeight - head.length - shown.length - foot.length)).fill("");
   const isOverflowing = body.length > room;
   const [keysAt = 0, last = 0] = pageSelectedAt ?? [];
@@ -6305,8 +6402,13 @@ function drawPanel(screen, ui, width, now, style, height, minHeight = 0) {
   const isRevealed = pageSelectedAt !== null && (ui.pageReveal === true || ui.pageReveal === pageSelected?.id);
   const top = isRevealed ? Math.min(Math.max(ui.pageTop, last - room + 2), Math.max(0, first - 1)) : ui.pageTop;
   const pageTop = isPage ? Math.min(Math.max(0, top), isOverflowing ? body.length - room + 1 : 0) : ui.pageTop;
-  const shown = !isOverflowing ? body : isPage ? pageWindow(body, pageTop, room, style) : scrolled(body, selectedAt, room, style);
-  return { lines: [...head, ...shown, ...blanks(shown), ...foot].map((l) => fit(l, width)), pageTop, isRevealed };
+  const shown = !isOverflowing ? body : isPage ? pageWindow(body, pageTop, room, style) : scrolled(body, selectedAt, room, style, Math.min(ui.detailTop, detailScrollMax), detailScrollMax > 0);
+  return {
+    lines: [...head, ...shown, ...blanks(shown), ...foot].map((l) => fit(l, width)),
+    pageTop,
+    detailScrollMax,
+    isRevealed
+  };
 }
 function tallestTabHeight(screen, ui, width, now, style, height) {
   const heights = shownTabs(screen.isNextBuild === true).map((t) => drawPanel(screen, t.id === ui.tab ? ui : withTab(ui, t.id, now), width, now, style, height).lines.length);
@@ -6414,7 +6516,13 @@ function createPanel(deps) {
       heldHeight ??= tallestTabHeight(screen, ui, width, now, style, maxHeight);
       const drawn = drawPanel(screen, ui, width, now, style, maxHeight, Math.min(heldHeight, maxHeight ?? Infinity));
       heldHeight = Math.max(heldHeight, drawn.lines.length);
-      ui = { ...ui, pageTop: drawn.pageTop, pageReveal: drawn.isRevealed ? null : ui.pageReveal };
+      ui = {
+        ...ui,
+        pageTop: drawn.pageTop,
+        detailTop: Math.min(ui.detailTop, drawn.detailScrollMax),
+        detailScrollMax: drawn.detailScrollMax,
+        pageReveal: drawn.isRevealed ? null : ui.pageReveal
+      };
       return drawn.lines;
     },
     handleInput(key, text) {
