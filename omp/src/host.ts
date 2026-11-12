@@ -43,6 +43,17 @@ const INBOX_MODEL_TIMEOUT_MS = 120_000
 
 const BAND_KEY = 'inbox-band'
 
+export const hyperlinkTools = () => import('@oh-my-pi/pi-tui/render')
+
+export async function panelLink(load = hyperlinkTools): Promise<((url: string, text: string) => string) | undefined> {
+  try {
+    const { isHyperlinkEnabled, urlHyperlink } = await load()
+    return isHyperlinkEnabled() ? urlHyperlink : undefined
+  } catch {
+    return undefined
+  }
+}
+
 type Complete = (
   model: Model,
   context: Context,
@@ -351,6 +362,7 @@ export function createInbox(pi: ExtensionAPI, deps: HostDeps = defaultDeps): Inb
   async function openPanelUi(ctx: ExtensionContext, isDemo: boolean): Promise<void> {
     const openedAt = deps.now()
     const { parseKey, extractPrintableText, truncateToWidth } = await import('@oh-my-pi/pi-tui')
+    const link = await panelLink()
     const source = isDemo
       ? demoSource({
           now: deps.now,
@@ -368,7 +380,7 @@ export function createInbox(pi: ExtensionAPI, deps: HostDeps = defaultDeps): Inb
       await ctx.ui.custom<null>((tui, theme, _keybindings, done) => {
         const panel = createPanel({
           source,
-          style: styleOf(theme),
+          style: styleOf(theme, link),
           now: deps.now,
           openedAt,
           requestRender: () => tui.requestRender(),

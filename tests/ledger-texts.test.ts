@@ -8,7 +8,8 @@ import { applyUpdate } from '../hooks/ledger-update'
 import { parseReply, tasksRunBy } from '../hooks/reply-parse'
 import { readCommandRow, resetTime, stopKindOf } from '../hooks/claude'
 import { herdrTokens } from '../hooks/herdr'
-import { parseInline } from '../hooks/inline'
+import { cutInline, httpsHref, inlineLinks, linkLabel, parseInline } from '../hooks/inline'
+import { terminalTextLines } from '../hooks/terminal-text'
 import { EMPTY_SESSION_STATUS } from '../hooks/status-limits'
 import { emptySession } from '../hooks/session-files'
 import { sessionView } from '../hooks/session-view'
@@ -206,5 +207,36 @@ describe('parseInline', () => {
     expect(parseInline('a ** b, 2 * 3 * 4, snake_case_name, [x](javascript:alert(1)) and `open')).toEqual([
       { text: 'a ** b, 2 * 3 * 4, snake_case_name, [x](javascript:alert(1)) and `open' },
     ])
+  })
+
+  test('normalizes HTTPS hrefs, encodes @ in paths and leaves overlong links as plain text', () => {
+    expect(parseInline('[GitHub](https://GITHUB.com/a@b)')).toEqual([
+      { text: 'GitHub', link: 'https://github.com/a%40b' },
+    ])
+    const longUrl = `https://example.com/${'a'.repeat(2050)}`
+    expect(httpsHref(longUrl)).toBeNull()
+    expect(parseInline(`[Long](${longUrl})`)).toEqual([{ text: `Long (${longUrl})` }])
+  })
+
+  test('uses visible labels for link titles and keeps a cut link intact', () => {
+    const link = '[PR 7171](https://github.com/anthropics/claude-code/pull/7171)'
+    expect(linkLabel(`Read ${link}`)).toBe('Read PR 7171')
+    expect(inlineLinks(link)).toEqual([
+      { label: 'PR 7171', url: 'https://github.com/anthropics/claude-code/pull/7171' },
+    ])
+    expect(cutInline(link, 7)).toBe(link)
+    expect(cutInline(link, 5)).toBe('PR 71')
+  })
+
+  test('reserves the terminal link fallback within the row line budget', () => {
+    const lines = terminalTextLines('xxxxxxx [a](https://y.io) zz', 10, 3)
+    expect(lines.length).toBeLessThanOrEqual(3)
+    expect(lines.flat().some(span => span.link)).toBe(false)
+    expect(
+      lines
+        .flat()
+        .map(span => span.text)
+        .join(''),
+    ).toContain('a')
   })
 })

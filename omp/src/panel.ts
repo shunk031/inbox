@@ -50,6 +50,7 @@ export type Style = {
   tone(name: Tone, s: string): string
   /** A banner's border, or its fill behind `s`. */
   banner(tone: BannerTone, part: 'line' | 'fill', s: string): string
+  link?: (url: string, text: string) => string
 }
 
 export type PanelUi = {

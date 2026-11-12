@@ -39,6 +39,7 @@ import { drawnTab, tabWaits, shownSettled, open, keepPressedOpen } from './tab-s
 import { applyView, replies, holds } from './tab-read'
 import { isNotSent, copy, startTyping, discardReply } from './tab-press'
 import { resultHandle, inlineHtml } from './tab-parts'
+import { inlineLinks, linkLabel } from '../../hooks/inline'
 
 function isListed(v: View, id: string): boolean {
   return (
@@ -158,7 +159,8 @@ function itemRow(v: View, r: RowView): Row {
     view: r,
     ...resultHandle(r),
     ...(isHandedOff ? { fold: {} } : {}),
-    title: r.title,
+    title: inlineHtml(r.title),
+    ...(inlineLinks(r.title).length > 0 ? { titleLabel: linkLabel(r.title) } : {}),
     // A next build draws the Status, so only it names the subject an ask holds up.
     ...(v.isNextBuild === true && r.holdsUpLine ? { holdsUp: r.holdsUpLine } : {}),
     age: r.at === null ? undefined : shortAgo(v.at - r.at),
@@ -195,11 +197,11 @@ function findingRow(v: View, r: RowView, f: Finding): Row {
     ...resultHandle(r),
     kind: f.kind,
     ...(isHandedOff ? { fold: {} } : {}),
-    title: r.title,
+    title: inlineHtml(linkLabel(r.title)),
     age: r.at === null ? undefined : shortAgo(v.at - r.at),
     body: (
       <div>
-        <p style={{ whiteSpace: 'pre-line' }}>{inlineHtml(r.detail ?? '')}</p>
+        <p style={{ whiteSpace: 'pre-line' }}>{inlineHtml(linkLabel(r.detail ?? ''))}</p>
         {f.path ? (
           <p>
             <span class="muted">{ROW_COPY.relevantFile}</span>

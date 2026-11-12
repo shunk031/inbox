@@ -18,7 +18,8 @@ import { reducedMotion, drawIn } from './tab-motion'
 import { drawnTab, shownSettled, selectedIndex, open, select, isOpenGuarded, rowActions } from './tab-selection'
 import { discardReply } from './tab-press'
 import { act, listsOf } from './tab-rows'
-import { feedbackLabel, noteOf, isFeedbackShown, pulseInStep, ResultMarkView, UndoPlace } from './tab-parts'
+import { feedbackLabel, noteOf, isFeedbackShown, inlineHtml, pulseInStep, ResultMarkView, UndoPlace } from './tab-parts'
+import { linkLabel } from '../../hooks/inline'
 
 const LIST_OF = { question: 'questions', task: 'tasks', finding: 'findings' } as const
 
@@ -121,6 +122,29 @@ export function ListRow({
   const last = isInSide || statusUnder ? null : label
   const side = isSending ? SENDING : ageAt !== null ? shortAgo(now - ageAt) : last ? null : row.age
   const afterTone = !isPressing && isFailure(row.feedback) ? 'error' : undefined
+  const line = (
+    <>
+      <span class="text">
+        {row.lead ? (
+          <>
+            <span class="lead">{row.lead}</span>{' '}
+          </>
+        ) : null}
+        {row.title}
+      </span>
+      {row.meta ? <span class="meta">{row.meta}</span> : null}
+      {last ? (
+        <span class={`after ${afterTone ? `tone-${afterTone}` : ''}`}>
+          {isSelected || isClosing ? `${DOT}${last}` : last}
+        </span>
+      ) : null}
+      {row.holdsUp ? (
+        <span class="holds-up">
+          <span class="tone-needsYou">{HELD_MARK.mark}</span> {row.holdsUp}
+        </span>
+      ) : null}
+    </>
+  )
 
   return (
     <div
@@ -129,31 +153,33 @@ export function ListRow({
     >
       {handle}
       <div class="content">
-        <button
-          type="button"
-          class="line"
-          {...(isSelected ? { tabIndex: -1, 'aria-disabled': true } : { 'aria-expanded': false })}
-        >
-          <span class="text">
-            {row.lead ? (
-              <>
-                <span class="lead">{row.lead}</span>{' '}
-              </>
-            ) : null}
-            {row.title}
-          </span>
-          {row.meta ? <span class="meta">{row.meta}</span> : null}
-          {last ? (
-            <span class={`after ${afterTone ? `tone-${afterTone}` : ''}`}>
-              {isSelected || isClosing ? `${DOT}${last}` : last}
-            </span>
-          ) : null}
-          {row.holdsUp ? (
-            <span class="holds-up">
-              <span class="tone-needsYou">{HELD_MARK.mark}</span> {row.holdsUp}
-            </span>
-          ) : null}
-        </button>
+        {row.titleLabel === undefined ? (
+          <button
+            type="button"
+            class="line"
+            {...(isSelected ? { tabIndex: -1, 'aria-disabled': true } : { 'aria-expanded': false })}
+          >
+            {line}
+          </button>
+        ) : (
+          <div
+            class="line"
+            role="group"
+            aria-label={`Show details for ${row.titleLabel}`}
+            aria-expanded={isSelected}
+            aria-disabled={isSelected}
+            aria-keyshortcuts="Enter Space"
+            tabIndex={isSelected ? -1 : 0}
+            onKeyDown={event => {
+              if (event.target === event.currentTarget && !isSelected && (event.key === 'Enter' || event.key === ' ')) {
+                event.preventDefault()
+                onSelect()
+              }
+            }}
+          >
+            {line}
+          </div>
+        )}
       </div>
       <span class="side" data-room={SENDING}>
         {isInSide ? <span class="side-label">{label}</span> : null}
@@ -240,7 +266,7 @@ function SettledView({ settled: r, panel }: { settled: RowView; panel: Row | und
       <div class="content">
         <div class="settled-head">
           <div class="settled-line">
-            <span class="what">{r.title}</span>
+            <span class="what">{inlineHtml(r.finding ? linkLabel(r.title) : r.title)}</span>
             <span class="outcome-label">
               {DOT}
               {settledLabel(state.label, state.delivery)}

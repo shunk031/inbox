@@ -4,7 +4,7 @@ Part of [the look map](../looks.md#files).
 
 | File | Role |
 | --- | --- |
-| `omp/src/host.ts` | omp host. The only file that imports omp's packages. It binds the calls that need omp's types into a `HostContext`, and wires omp's events to the handlers in the `host-*.ts` files. It also registers the `record` and `close` tools and the `/inbox` command, and shows the band and the panel. |
+| `omp/src/host.ts` | omp host. The only file that imports omp's packages. It binds the calls that need omp's types into a `HostContext`, and wires omp's events to the handlers in the `host-*.ts` files. It also registers the `record` and `close` tools and the `/inbox` command, and shows the band and the panel, with optional hyperlink support. |
 | `omp/src/host-context.ts` | omp host. `HostContext`, what `createInbox` holds for the handler files, and `OmpContext`, the part of omp's context they read. |
 | `omp/src/host-sessions.ts` | omp host. The session calls the handler files share: saving a change, omp's `SessionHost` and update host, catching up over the branch, and the PR and Herdr checks when due. |
 | `omp/src/host-turns.ts` | omp host. The handlers for omp's session and turn events: a session's start and shutdown, a prompt's arrival, the reply, and the turn's end. |
@@ -20,7 +20,7 @@ Part of [the look map](../looks.md#files).
 | `omp/src/panel-lines.ts` | omp adapter. The `Line` and `Entry` types, and the lines for rows, buttons and Closed groups. |
 | `omp/src/panel-entries.ts` | omp adapter. Each tab's entries: the Asks and Finds groups, the stop line, the PRs tab, the Status page and Help. |
 | `omp/src/panel-keys.ts` | omp adapter. Selection, button focus and `handleKey`, which maps each key to a ui change or a press. |
-| `omp/src/panel-text.ts` | omp adapter. Measures, cuts and wraps text that holds ANSI styles. |
+| `omp/src/panel-text.ts` | omp adapter. Measures, cuts and wraps text that holds ANSI and OSC 8 styles. |
 | `omp/src/panel-draw.ts` | omp adapter. Draws a line with its marks and buttons, and a banner in its box. |
 | `omp/src/panel-page.ts` | omp adapter. Draws the Status page's rows: the tree, stall words, rules and buttons. |
 | `omp/src/panel-goal.ts` | omp adapter. Draws the Status page's goal: a proposal, the goal and its milestones, Set a goal, the goal's text field and the Now line. |

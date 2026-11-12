@@ -2,6 +2,7 @@ import { recommendedOption } from './ask-match'
 import { closeByAgent } from './ledger-close'
 import { addAgentItem, addFinding } from './ledger-update'
 import { stepHelp } from './reply-parse'
+import { cutInline } from './inline'
 import type { Host } from './model-text'
 import { linkedPrs, MAX_ORDERED_PRS } from './pr-fetch'
 import type { Closed, Help, Ledger } from '../types'
@@ -181,7 +182,7 @@ export function recordItem(host: Host, ledger: Ledger, input: Record<string, unk
   if (input.kind === 'finding') return recordFinding(host, ledger, input, now)
   if (input.kind !== 'question' && input.kind !== 'task')
     return unchanged(ledger, 'Not recorded: kind must be question, task or finding.')
-  const ask = cut(input.ask, MAX_ASK)
+  const ask = cutInline(typeof input.ask === 'string' ? input.ask.trim() : '', MAX_ASK)
   if (ask === '') return unchanged(ledger, `Not recorded: a ${input.kind} needs an ask.`)
   const options = input.kind === 'question' ? list(input.options, MAX_OPTIONS, MAX_OPTION) : []
   if (input.kind === 'question' && options.length === 0)

@@ -20,7 +20,7 @@ import { unfolded, sending, closingFolds, drawnRows } from './tab-state'
 import type { Row, Entry, Lists } from './tab-state'
 import { toggleFold } from './tab-motion'
 import { act } from './tab-rows'
-import { ResultMarkView, GroupTitle } from './tab-parts'
+import { ResultMarkView, GroupTitle, inlineHtml } from './tab-parts'
 import { Entries } from './tab-list'
 
 function itemsClosed(v: View, kind: 'question' | 'task', entries: Entry[]): ClosedLine[] {
@@ -129,7 +129,7 @@ function GroupEnd({
               <div class="row">
                 <ResultMarkView mark={d.mark} />
                 <div class="content tight">
-                  <div class="muted">{d.ask}</div>
+                  <div class="muted">{inlineHtml(d.ask)}</div>
                   <div class="outcome">{settledLabel(d.outcomeLabel, d.delivery)}</div>
                   {canUndoRefused(d.delivery) ? (
                     <button

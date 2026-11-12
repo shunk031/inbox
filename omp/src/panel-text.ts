@@ -1,19 +1,28 @@
-import { cellWidth, cutForEllipsis, cutToCells } from '../../hooks/text'
+import { cellWidth, closeOpenLink, cutForEllipsis, cutToCells, OSC8 } from '../../hooks/text'
+import { parseInline } from '../../hooks/inline'
 
-const ANSI = /\x1b\[[0-9;]*m/g
+const ANSI = new RegExp(`\\x1b\\[[0-9;]*m|${OSC8.source}`, 'g')
+const ANSI_SPLIT = new RegExp(`(\\x1b\\[[0-9;]*m|${OSC8.source})`, 'g')
+const ANSI_PART = new RegExp(`^(?:\\x1b\\[[0-9;]*m|${OSC8.source})$`)
 export const visibleLength = (s: string): number => cellWidth(s.replace(ANSI, ''))
+
+export function linkedText(text: string, link?: (url: string, text: string) => string): string {
+  return parseInline(text)
+    .map(s => (s.link ? (link ? `\x1b[4m${link(s.link, s.text)}\x1b[24m` : s.text) : s.text))
+    .join('')
+}
 
 export function fit(s: string, width: number): string {
   if (visibleLength(s) <= width) return s
   let out = ''
   let n = 0
-  for (const part of s.split(/(\x1b\[[0-9;]*m)/)) {
-    if (part.startsWith('\x1b[')) {
+  for (const part of s.split(ANSI_SPLIT)) {
+    if (ANSI_PART.test(part)) {
       out += part
       continue
     }
     const cells = cellWidth(part)
-    if (n + cells > width - 1) return `${out}${cutToCells(part, width - 1 - n)}…\x1b[0m`
+    if (n + cells > width - 1) return `${closeOpenLink(out + cutToCells(part, width - 1 - n))}…\x1b[0m`
     out += part
     n += cells
   }
@@ -28,7 +37,21 @@ const MARKED_TITLE_CELLS = 12
 export function cutTitle(title: string, room: number): string {
   const cells = Math.max(MARKED_TITLE_CELLS, room)
 
-  return cellWidth(title) <= cells ? title : `${cutToCells(title, cells - 1)}…`
+  if (visibleLength(title) <= cells) return title
+  let out = ''
+  let used = 0
+  for (const part of title.split(ANSI_SPLIT)) {
+    if (ANSI_PART.test(part)) {
+      out += part
+      continue
+    }
+    const shown = cutToCells(part, cells - 1 - used)
+    out += shown
+    used += cellWidth(shown)
+    if (shown !== part) break
+  }
+
+  return `${closeOpenLink(out)}…`
 }
 
 export function spread(left: string, right: string, width: number): string {

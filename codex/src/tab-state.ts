@@ -1,4 +1,4 @@
-import type { JSX } from 'preact'
+import type { ComponentChildren, JSX } from 'preact'
 import type { IconName } from './row-actions'
 import type { ActionEmphasis, RowView } from '../../hooks/rows'
 import type { DrawnEntry, DrawnLists } from '../../hooks/action-plan'
@@ -35,7 +35,8 @@ export type Row = {
   isMarkDone?: boolean
   kind?: Finding['kind']
   lead?: string
-  title: string
+  title: ComponentChildren
+  titleLabel?: string
   meta?: string
   /** The open subject an ask holds up, as "Holds up Offline sync". */
   holdsUp?: string

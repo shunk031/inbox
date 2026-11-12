@@ -4,6 +4,8 @@ Status: current. Read this before you change the UI or a business rule.
 
 The inbox has four looks: `terminal`, `desktop`, `codex` and `omp`. A look is one way the inbox is drawn, and `GLOSSARY.md` defines it with host, shared module, adapter and difference on purpose. The rule is that shared modules decide and adapters draw. If a rule decides what a row says, which action leads, when a tab counts as empty or what text appears, it lives in a shared module. An adapter decides only how its look draws that. The plan for finishing this split is `docs/plans/three-looks.md`.
 
+Question and task links use `hooks/inline.ts` for parsing and href validation. Each look draws a native link where its host supports one, and otherwise keeps readable label text; the OMP terminal capability is recorded under "Differences on purpose".
+
 ## Files
 
 Shared modules are in `hooks/`. Every host consumes them, directly or through a build. They import only shared modules and shared types. `scripts/check-structure.mjs` checks those boundaries, including type imports. Codex and omp type checking need no generated Claude engine types.

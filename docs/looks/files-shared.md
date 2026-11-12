@@ -63,7 +63,7 @@ Part of [the look map](../looks.md#files).
 | `hooks/host-prs.ts` | Shared module. `fetchPrs`, which fetches a session's PRs through the host's gh, and `isPrFetchDue` and `prFetchTracker`, which say when to fetch again. |
 | `hooks/gh.ts` | Shared module. `ghFinder` finds a gh that starts, and `ghIn` runs it, over a host's command runner. `branchIn` reads a folder's git branch over the same runner. |
 | `hooks/herdr.ts` | Shared module. What a host reports to the Herdr pane it runs in: the `inbox` status line, the stop, and each row tab's count, as pane tokens in one `herdr pane report-metadata` command. Also `delegatesInHerdr`, which asks `herdr agent list` which delegates still run, only while one runs. |
-| `hooks/text.ts` | Shared module. Clipping, code-block formatting, relative ages and a turn's reply. |
+| `hooks/text.ts` | Shared module. Clipping, OSC 8 token handling, code-block formatting, relative ages and a turn's reply. |
 | `hooks/prs.ts` | Shared module. PR parsing, readiness and prompts. |
 | `hooks/pr-tab.ts` | Shared module. What each PR press does, in `applyPrPress`, and the PR button plans: `threadActions`, `checkActions`, `prBlockActions`, and `prTabActions` for the tab's own buttons. |
 | `hooks/pr-fetch.ts` | Shared module. Which linked PRs the tab tracks, the line that names the older ones it leaves out, the Open PR help step for any linked PR, and fetching each tracked PR through a host's gh runner. |
@@ -77,4 +77,4 @@ Part of [the look map](../looks.md#files).
 | `hooks/layout.ts` | Shared module. Sizes the desktop look and the Codex tab share. |
 | `hooks/marks.ts` | Shared module. Shapes and glyphs for marks a font draws poorly: desktop draws its toned Svg marks from `markShape`, desktop and Codex draw ✗ and ◌ from `mutedMarkShape`, and the terminal and omp draw ✗ as ⊘ from `textMark`. |
 | `hooks/tones.ts` | Shared module. Status colors for native marks and terminal palettes. The Codex build writes them into CSS, and omp draws them as true color. Also the banner tints the terminal and omp draw. |
-| `hooks/inline.ts` | Shared module. Inline markdown in the agent's text, as spans each look draws. |
+| `hooks/inline.ts` | Shared module. Inline markdown parsing and safe HTTPS link normalization, plus visible labels and cuts that keep a link whole. |
