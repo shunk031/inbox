@@ -11,7 +11,6 @@ declare module 'claude-code' {
       ask?: string
       options?: string[]
       rec?: string
-      why?: string
       steps?: string[]
       design_choice?: boolean
       finding_kind?: 'issue' | 'opportunity'
