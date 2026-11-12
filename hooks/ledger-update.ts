@@ -208,7 +208,7 @@ export function addFinding(
 }
 
 type AgentItemResult =
-  | { ledger: Ledger; is: 'added'; id: string; expired: Item | null }
+  | { ledger: Ledger; is: 'added'; id: string }
   /** `newRec` is the recommendation the record changed the item to, or null when it kept the item's own. */
   | {
       ledger: Ledger
@@ -275,5 +275,5 @@ export function addAgentItem(
     base,
   )
 
-  return { ledger: next, is: 'added', id, expired: null }
+  return { ledger: next, is: 'added', id }
 }

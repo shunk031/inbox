@@ -229,10 +229,7 @@ export function recordItem(host: Host, ledger: Ledger, input: Record<string, unk
 
   return {
     ledger: r.ledger,
-    result:
-      `Recorded. The user sees it in ${host.surface}.` +
-      leftOut +
-      (r.expired ? ` The list was full, so the oldest item closed: ${r.expired.ask}.` : ''),
+    result: `Recorded. The user sees it in ${host.surface}.` + leftOut,
     personLine: `${input.kind === 'question' ? 'Question' : 'Task'}: ${ask}`,
   }
 }

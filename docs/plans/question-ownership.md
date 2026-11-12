@@ -38,7 +38,7 @@ Add one case per row of the table above to `evals/cases/`, and to `evals/agent-c
 
 ## Decisions for the owner
 
-- **Stale questions (decided).** An item open for more than 12 turns expires (`STALE_AFTER` in `hooks/ledger-update.ts`), and a long session can keep a real decision open longer than that. Agent-recorded items (`from: 'record'`) are exempt from `STALE_AFTER`. Items from `NEW:` lines still expire after 12 turns. The `MAX_OPEN` cap of 20 still applies to every item.
+- **Stale questions (removed).** Questions and tasks no longer expire by age or get dropped when more than 20 are open. Each stays open until answered or explicitly closed.
 - **Missed closes (decided).** With change 1, a question the work has made moot stays open until the agent or the person closes it. An occasional extra open row is accepted as the cost of never losing an unanswered decision.
 
 ## Checks

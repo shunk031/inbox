@@ -3973,7 +3973,7 @@ function addAgentItem(ledger, entry, now) {
   const restated = ledger.findings.filter((f) => asksAbout(asked, f));
   const base = { ...ledger, items, nextId: ledger.nextId + 1, batchTurn: ledger.turn };
   const next = restated.reduce((l, f) => closeFinding(l, f.id, { outcome: `asked as ${id}`, how: "update" }, now, id), base);
-  return { ledger: next, is: "added", id, expired: null };
+  return { ledger: next, is: "added", id };
 }
 
 // ../hooks/tools.ts
@@ -4135,7 +4135,7 @@ function recordItem(host, ledger, input, now) {
     return unchanged(ledger, `Not recorded: ${closedHow(r.record)}. Ask it again only if they bring it up.`);
   return {
     ledger: r.ledger,
-    result: `Recorded. The user sees it in ${host.surface}.` + leftOut + (r.expired ? ` The list was full, so the oldest item closed: ${r.expired.ask}.` : ""),
+    result: `Recorded. The user sees it in ${host.surface}.` + leftOut,
     personLine: `${input.kind === "question" ? "Question" : "Task"}: ${ask}`
   };
 }
