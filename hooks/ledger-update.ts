@@ -12,8 +12,6 @@ import { asksAbout, closedRecord, closeFinding, OVERTAKEN_OUTCOMES, reopenAskedF
 import { todoAsk, withHelp } from './reply-parse'
 import type { Update } from './reply-parse'
 
-const MAX_OPEN = 20
-const STALE_AFTER = 12
 /**
  * A "no longer applies" close whose reason says nothing made the item moot, as "not related to this exchange". The
  * rule asks for what made it moot, and Sonnet at low effort writes these for unrelated items it should leave open.
@@ -138,17 +136,14 @@ export function applyUpdate(ledger: Ledger, u: Update, now: number, turn: number
     added += 1
   }
 
-  const kept = items.filter(i => i.from === 'record' || turn - i.turn <= STALE_AFTER).slice(-MAX_OPEN)
-  for (const i of items) if (!kept.includes(i)) closed.push(closedRecord(i, { outcome: EXPIRED, how: 'expired' }, now))
-
   const askedBy = new Map<string, string>()
   for (const a of u.asked) {
     const id = typeof a.item === 'number' ? addedIds[a.item] : a.item
-    const asker = kept.find(i => i.id === id)
+    const asker = items.find(i => i.id === id)
     const finding = ledger.findings.find(f => f.id === a.id)
     if (asker && finding && asksAbout(asker, finding, true)) askedBy.set(a.id, asker.id)
   }
-  for (const i of kept.filter(i => created.has(i.id)))
+  for (const i of items.filter(i => created.has(i.id)))
     for (const f of ledger.findings) if (!askedBy.has(f.id) && asksAbout(i, f)) askedBy.set(f.id, i.id)
   const { findings, closedFindings } = ledger.findings.reduce((l, f) => {
     const asker = askedBy.get(f.id)
@@ -161,7 +156,7 @@ export function applyUpdate(ledger: Ledger, u: Update, now: number, turn: number
   return reopenAskedFindings(
     {
       ...ledger,
-      items: kept,
+      items,
       closed,
       findings,
       closedFindings,
@@ -230,7 +225,7 @@ type AgentItemResult =
  * Adds a question or task the agent recorded. One that an open item restates adds its steps and its design-choice mark
  * to that item, gives it the recommendation when that names one of the item's options, and stamps its `reportedAt`.
  * One that repeats a closed item is skipped, unless that item expired or the agent closed it.
- * The list keeps its newest MAX_OPEN items. A finding the new ask restates closes, so one thing shows in one list.
+ * A finding the new ask restates closes, so one thing shows in one list.
  */
 export function addAgentItem(
   ledger: Ledger,
@@ -272,16 +267,13 @@ export function addAgentItem(
 
   const id = `i${ledger.nextId}`
   const items = [...ledger.items, { ...entry, label: null, id, turn: ledger.turn, at: now, from: 'record' as const }]
-  const kept = items.slice(-MAX_OPEN)
-  const dropped = items.filter(i => !kept.includes(i))
-  const closed = [...ledger.closed, ...dropped.map(i => closedRecord(i, { outcome: EXPIRED, how: 'expired' }, now))]
   const asked = { ...entry, label: null }
   const restated = ledger.findings.filter(f => asksAbout(asked, f))
-  const base: Ledger = { ...ledger, items: kept, closed, nextId: ledger.nextId + 1, batchTurn: ledger.turn }
-  const next = reopenAskedFindings(
-    restated.reduce((l, f) => closeFinding(l, f.id, { outcome: `asked as ${id}`, how: 'update' }, now, id), base),
-    closed.slice(ledger.closed.length),
+  const base: Ledger = { ...ledger, items, nextId: ledger.nextId + 1, batchTurn: ledger.turn }
+  const next = restated.reduce(
+    (l, f) => closeFinding(l, f.id, { outcome: `asked as ${id}`, how: 'update' }, now, id),
+    base,
   )
 
-  return { ledger: next, is: 'added', id, expired: dropped[0] ?? null }
+  return { ledger: next, is: 'added', id, expired: null }
 }

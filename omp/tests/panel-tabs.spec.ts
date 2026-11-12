@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 
-import { CLOSED_SHOWN, earlierLabel, foldLabel } from '../../hooks/rows'
+import { CLOSED_SHOWN, earlierLabel, foldLabel, settledLabel, shortAgo } from '../../hooks/rows'
 import { SETTLED_MS, NO_HOLDS } from '../../hooks/timing'
 import { shownTabs } from '../../hooks/tabs'
 import { sessionView } from '../../hooks/session-view'
@@ -28,7 +28,16 @@ test('an empty Asks tab explains itself', () => {
 })
 
 test('Enter on a Closed line shows the newest closed rows and how many are earlier, and Enter again folds them', () => {
-  const screen = screenOf()
+  const sample = demoState(NOW)
+  const ledger = {
+    ...sample.ledger,
+    closed: sample.ledger.closed.map(d =>
+      d.id === 'd7' ? { ...d, outcome: 'closed by Claude: explained in chat' } : d,
+    ),
+  }
+  const screen = screenOf({
+    view: sessionView({ ...sample, ledger }, NOW, SETTLED_MS, true, NO_HOLDS),
+  })
   const settled = new Set(screen.view.needsYou.questions.filter(r => r.state.is === 'settled').map(r => r.id))
   const closed = screen.view.needsYou.closed.questions.filter(d => !settled.has(d.id))
   expect(closed.length).toBeGreaterThan(CLOSED_SHOWN)
@@ -36,6 +45,11 @@ test('Enter on a Closed line shows the newest closed rows and how many are earli
   const shown = text(screen, unfolded)
   expect(shown).toContain(`▾  ${foldLabel(closed.length)}`)
   for (const d of closed.slice(0, CLOSED_SHOWN)) expect(shown).toContain(d.ask)
+  for (const d of closed.slice(0, CLOSED_SHOWN)) {
+    expect(shown).toContain(settledLabel(d.outcomeLabel, d.delivery))
+    expect(shown).toContain(shortAgo(NOW - d.at))
+  }
+  expect(shown).toContain('Closed by Claude: explained in chat')
   expect(shown).not.toContain(closed[CLOSED_SHOWN]!.ask)
   expect(shown).toContain(earlierLabel(closed.length, CLOSED_SHOWN)!)
   const firstTask = screen.view.needsYou.tasks.find(r => r.state.is !== 'settled')!

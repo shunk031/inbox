@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { CLAUDE_CODE } from '../hooks/model-text'
-import { EMPTY } from '../hooks/ledger'
+import { EMPTY, upgradeLedger } from '../hooks/ledger'
 import { closeByAgent, closeItem } from '../hooks/ledger-close'
 import { addAgentItem, applyUpdate } from '../hooks/ledger-update'
 import { parseReply, stepHelp } from '../hooks/reply-parse'
@@ -41,10 +41,56 @@ describe('items the agent recorded', () => {
     expect(answered.closed.map(c => [c.id, c.outcome, c.how])).toEqual([['i1', 'Redis', 'update']])
   })
 
-  test("one stays open after 12 prompts, when the update's items expire", () => {
+  test('unanswered questions and tasks stay open past 12 prompts', () => {
     const both = applyUpdate(recorded(), parseReply('NEW: do | - | Sign in to npm | - | -')!, 1500, 1)
     const later = applyUpdate({ ...both, turn: 14 }, parseReply('NONE')!, 2000, 14)
-    expect([later.items.map(i => i.id), later.closed.map(c => [c.id, c.how])]).toEqual([['i1'], [['i2', 'expired']]])
+    expect(later.items.map(i => i.id)).toEqual(['i1', 'i2'])
+    expect(later.closed).toEqual([])
+  })
+
+  test('recorded questions and tasks stay open when asks exceed 20', () => {
+    const items = Array.from({ length: 20 }, (_, n) => ({
+      ...ask,
+      id: 'i' + (n + 1),
+      kind: n === 1 ? ('task' as const) : ('question' as const),
+      ask: 'Existing ask ' + (n + 1),
+      label: null,
+      turn: 1,
+      at: 1000,
+      from: 'record' as const,
+    }))
+    const full = { ...EMPTY, turn: 1, nextId: 21, items }
+    const question = addAgentItem(full, { ...ask, ask: 'Which format?' }, 2000)
+    const task = addAgentItem(question.ledger, { ...ask, kind: 'task', ask: 'Sign in to npm', options: [] }, 3000)
+
+    expect(task.ledger.items.map(i => i.id)).toEqual([...items.map(i => i.id), 'i21', 'i22'])
+    expect([question.is, task.is]).toEqual(['added', 'added'])
+  })
+
+  test('an older saved ledger loads unanswered items and keeps them open', () => {
+    const loaded = upgradeLedger({
+      ...EMPTY,
+      turn: 14,
+      nextId: 3,
+      items: [
+        {
+          id: 'i1',
+          kind: 'question',
+          label: null,
+          ask: 'Which cache?',
+          options: ['Redis'],
+          rec: null,
+          helps: [],
+          turn: 1,
+        },
+        { id: 'i2', kind: 'task', label: null, ask: 'Sign in to npm', options: [], rec: null, helps: [], turn: 1 },
+      ],
+    } as never)
+    const later = applyUpdate(loaded, parseReply('NONE')!, 2000, 14)
+
+    expect(loaded.items.map(i => i.from)).toEqual(['update', 'update'])
+    expect(later.items.map(i => i.id)).toEqual(['i1', 'i2'])
+    expect(later.closed).toEqual([])
   })
 
   test('a NEW line of its kind in the turn it was recorded adds nothing, and one that restates it adds its steps and recommendation', () => {

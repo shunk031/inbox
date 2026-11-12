@@ -126,8 +126,7 @@ function idNumber(id: string): number {
 }
 
 /**
- * Order matters: answerNote reads the batch by position, and expiry
- * keeps the last MAX_OPEN items.
+ * Order matters: answerNote reads the batch by position.
  */
 function inIdOrder<T extends { id: string }>(open: T[], entry: T): T[] {
   const at = open.findIndex(x => idNumber(x.id) > idNumber(entry.id))

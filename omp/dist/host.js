@@ -3796,8 +3796,6 @@ function stepHelp(step) {
 }
 
 // ../hooks/ledger-update.ts
-var MAX_OPEN = 20;
-var STALE_AFTER = 12;
 var UNFOUNDED_MOOT = /^no longer applies:.*(\b(not|never) (related|relevant|addressed|mentioned|discussed|answered|raised|part of)\b|\bunrelated\b|\b(still|stays) open\b|\boutside (the|this)\b|\bnothing\b.*\b(touch|address|mention|relate))/i;
 var EXPIRED = "expired, unanswered";
 var MAX_FINDINGS = 30;
@@ -3881,19 +3879,15 @@ function applyUpdate(ledger, u, now, turn, promptAt = now) {
     nextId += 1;
     added += 1;
   }
-  const kept = items.filter((i) => i.from === "record" || turn - i.turn <= STALE_AFTER).slice(-MAX_OPEN);
-  for (const i of items)
-    if (!kept.includes(i))
-      closed.push(closedRecord(i, { outcome: EXPIRED, how: "expired" }, now));
   const askedBy = new Map;
   for (const a of u.asked) {
     const id = typeof a.item === "number" ? addedIds[a.item] : a.item;
-    const asker = kept.find((i) => i.id === id);
+    const asker = items.find((i) => i.id === id);
     const finding = ledger.findings.find((f) => f.id === a.id);
     if (asker && finding && asksAbout(asker, finding, true))
       askedBy.set(a.id, asker.id);
   }
-  for (const i of kept.filter((i) => created.has(i.id)))
+  for (const i of items.filter((i) => created.has(i.id)))
     for (const f of ledger.findings)
       if (!askedBy.has(f.id) && asksAbout(i, f))
         askedBy.set(f.id, i.id);
@@ -3906,7 +3900,7 @@ function applyUpdate(ledger, u, now, turn, promptAt = now) {
   }, ledger);
   return reopenAskedFindings({
     ...ledger,
-    items: kept,
+    items,
     closed,
     findings,
     closedFindings,
@@ -3975,14 +3969,11 @@ function addAgentItem(ledger, entry, now) {
     return { ledger, is: "closed", record: repeated };
   const id = `i${ledger.nextId}`;
   const items = [...ledger.items, { ...entry, label: null, id, turn: ledger.turn, at: now, from: "record" }];
-  const kept = items.slice(-MAX_OPEN);
-  const dropped = items.filter((i) => !kept.includes(i));
-  const closed = [...ledger.closed, ...dropped.map((i) => closedRecord(i, { outcome: EXPIRED, how: "expired" }, now))];
   const asked = { ...entry, label: null };
   const restated = ledger.findings.filter((f) => asksAbout(asked, f));
-  const base = { ...ledger, items: kept, closed, nextId: ledger.nextId + 1, batchTurn: ledger.turn };
-  const next = reopenAskedFindings(restated.reduce((l, f) => closeFinding(l, f.id, { outcome: `asked as ${id}`, how: "update" }, now, id), base), closed.slice(ledger.closed.length));
-  return { ledger: next, is: "added", id, expired: dropped[0] ?? null };
+  const base = { ...ledger, items, nextId: ledger.nextId + 1, batchTurn: ledger.turn };
+  const next = restated.reduce((l, f) => closeFinding(l, f.id, { outcome: `asked as ${id}`, how: "update" }, now, id), base);
+  return { ledger: next, is: "added", id, expired: null };
 }
 
 // ../hooks/tools.ts
