@@ -3395,54 +3395,6 @@ function herdrOnWrite(env, run2, dir, now) {
   };
 }
 
-// src/run.ts
-import { execFile } from "node:child_process";
-var run = (args, { cwd, timeoutMs, env, input }) => new Promise((resolve3) => {
-  const [file = "", ...rest] = args;
-  try {
-    const child = execFile(
-      file,
-      rest,
-      { cwd, env: { ...process.env, ...env }, timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024, encoding: "utf8" },
-      (err, stdout, stderr) => {
-        resolve3({ code: exitCodeOf(err), stdout: String(stdout), stderr: String(stderr) });
-      }
-    );
-    child.stdin?.on("error", () => {
-    });
-    child.stdin?.end(input);
-  } catch (err) {
-    resolve3({ code: UNSTARTABLE_CODE, stdout: "", stderr: err instanceof Error ? err.message : String(err) });
-  }
-});
-function exitCodeOf(err) {
-  if (!err) return 0;
-  if (err.killed) return TIMED_OUT_CODE;
-  return typeof err.code === "number" ? err.code : UNSTARTABLE_CODE;
-}
-
-// ../hooks/banners.ts
-var NEXT_BUILD_MARK = ".next-build";
-
-// src/update.ts
-import { createHash as createHash2, randomUUID as randomUUID2 } from "node:crypto";
-import {
-  access,
-  copyFile,
-  lstat as lstat2,
-  mkdir as mkdir2,
-  readdir as readdir3,
-  readFile as readFile2,
-  readlink as readlink2,
-  rename as rename2,
-  rm,
-  rmdir as rmdir2,
-  stat as stat2,
-  symlink as symlink2,
-  writeFile as writeFile2
-} from "node:fs/promises";
-import { dirname as dirname3, join as join4 } from "node:path";
-
 // ../hooks/status.ts
 var LINE = /^\s*[-*]?\s*(NO CHANGE|NOCHANGE|UNCHANGED|NEW|SET|DONE|DROP|WAS|HEAD|LINK|GOAL|MILESTONE|SERVES)\s*(?::\s*(.*))?$/i;
 function fields(value) {
@@ -3846,6 +3798,54 @@ async function runUpdates(host) {
   }
 }
 
+// src/run.ts
+import { execFile } from "node:child_process";
+var run = (args, { cwd, timeoutMs, env, input }) => new Promise((resolve3) => {
+  const [file = "", ...rest] = args;
+  try {
+    const child = execFile(
+      file,
+      rest,
+      { cwd, env: { ...process.env, ...env }, timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024, encoding: "utf8" },
+      (err, stdout, stderr) => {
+        resolve3({ code: exitCodeOf(err), stdout: String(stdout), stderr: String(stderr) });
+      }
+    );
+    child.stdin?.on("error", () => {
+    });
+    child.stdin?.end(input);
+  } catch (err) {
+    resolve3({ code: UNSTARTABLE_CODE, stdout: "", stderr: err instanceof Error ? err.message : String(err) });
+  }
+});
+function exitCodeOf(err) {
+  if (!err) return 0;
+  if (err.killed) return TIMED_OUT_CODE;
+  return typeof err.code === "number" ? err.code : UNSTARTABLE_CODE;
+}
+
+// ../hooks/banners.ts
+var NEXT_BUILD_MARK = ".next-build";
+
+// src/update.ts
+import { createHash as createHash2, randomUUID as randomUUID2 } from "node:crypto";
+import {
+  access,
+  copyFile,
+  lstat as lstat2,
+  mkdir as mkdir2,
+  readdir as readdir3,
+  readFile as readFile2,
+  readlink as readlink2,
+  rename as rename2,
+  rm,
+  rmdir as rmdir2,
+  stat as stat2,
+  symlink as symlink2,
+  writeFile as writeFile2
+} from "node:fs/promises";
+import { dirname as dirname3, join as join4 } from "node:path";
+
 // src/transcript.ts
 import { open as open2, readdir as readdir2 } from "node:fs/promises";
 import { dirname as dirname2, join as join3 } from "node:path";
@@ -4247,13 +4247,17 @@ var refreshStatus2 = (dir, sessionId, ask, now, onWrite, records) => refreshStat
   inOrder: inOrderFor(dir, sessionId),
   records
 });
-var runUpdates2 = (dir, sessionId, ask, now, onWrite, records) => runUpdates({
+var runUpdates2 = (dir, sessionId, ask, now, {
+  onWrite,
+  records,
+  recordedItemsOnly = false
+} = {}) => runUpdates({
   ...codexStore(dir, sessionId, now, onWrite),
   ask,
   names: CODEX,
   inOrder: inOrderFor(dir, sessionId),
   records,
-  recordedItemsOnly: isRecordedItemsOnly(process.env[RECORDED_ITEMS_ONLY]),
+  recordedItemsOnly,
   catchUp: async (s) => askOverConversation(
     ask,
     CODEX,
@@ -4279,6 +4283,11 @@ async function main() {
   const onWrite = herdrOnWrite(process.env, run, dir, Date.now);
   const records = existsSync(join5(pluginRoot, NEXT_BUILD_MARK)) ? statusRecords(dir, sessionId) : void 0;
   if (isStatusRefresh) await refreshStatus2(dir, sessionId, ask, Date.now, onWrite, records);
-  else await runUpdates2(dir, sessionId, ask, Date.now, onWrite, records);
+  else
+    await runUpdates2(dir, sessionId, ask, Date.now, {
+      onWrite,
+      records,
+      recordedItemsOnly: isRecordedItemsOnly(process.env[RECORDED_ITEMS_ONLY])
+    });
 }
 main().catch(() => process.exit(0));

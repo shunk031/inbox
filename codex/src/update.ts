@@ -22,8 +22,6 @@ import {
   orderedKeys,
   reconcileUpdateStatus as reconcileStatus,
   runUpdates as runSessionUpdates,
-  isRecordedItemsOnly,
-  RECORDED_ITEMS_ONLY,
 } from '../../hooks/session-host'
 import type { Ask } from '../../hooks/session-host'
 import { refreshStatus as refreshSessionStatus } from '../../hooks/status-records'
@@ -238,8 +236,11 @@ export const runUpdates = (
   sessionId: string,
   ask: Ask,
   now: () => number,
-  onWrite?: OnWrite,
-  records?: StatusRecords,
+  {
+    onWrite,
+    records,
+    recordedItemsOnly = false,
+  }: { onWrite?: OnWrite; records?: StatusRecords; recordedItemsOnly?: boolean } = {},
 ): Promise<void> =>
   runSessionUpdates({
     ...codexStore(dir, sessionId, now, onWrite),
@@ -247,7 +248,7 @@ export const runUpdates = (
     names: CODEX,
     inOrder: inOrderFor(dir, sessionId),
     records,
-    recordedItemsOnly: isRecordedItemsOnly(process.env[RECORDED_ITEMS_ONLY]),
+    recordedItemsOnly,
     catchUp: async s =>
       askOverConversation(
         ask,
