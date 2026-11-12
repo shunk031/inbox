@@ -55,7 +55,28 @@ test('checks the bytes read, reports missing files, and makes a short plain-text
   expect(new TextDecoder().decode(documentBytes(btoa('report'), DOCUMENT_LIMIT))).toBe('report')
 })
 
+test('normalizes line endings and removes ANSI sequences and control characters from the excerpt and body', async () => {
+  const result = await readDocument('/reports/report.md', {
+    stat: async path => ({ path, isFile: true, size: 1 }),
+    read: async () => new TextEncoder().encode('Before\r\n\u001b[31mred\u001b[0m\0\ttext\u0001'),
+  })
+
+  expect(result).toEqual({ text: 'Before\nred\ttext' })
+  expect('text' in result && documentExcerpt(result.text)).toBe('Before red text')
+})
+
 test('generates the preview from the validated file and drops a path that cannot be read', async () => {
+  let stats = 0
+  const relative = await withDocumentPreview(
+    { document: 'reports/report.md' },
+    {
+      stat: async path => {
+        stats++
+        return { path, isFile: true, size: 1 }
+      },
+      read: async () => new Uint8Array(),
+    },
+  )
   const valid = await withDocumentPreview(
     { document: '/outside/report.md', document_preview: 'untrusted preview' },
     {
@@ -71,6 +92,8 @@ test('generates the preview from the validated file and drops a path that cannot
     },
   )
 
+  expect(relative).toMatchObject({ document: undefined, document_error: 'The document path must be absolute.' })
+  expect(stats).toBe(0)
   expect(valid).toMatchObject({ document: '/outside/report.md', document_preview: '# A report' })
   expect(invalid).toMatchObject({
     document: undefined,

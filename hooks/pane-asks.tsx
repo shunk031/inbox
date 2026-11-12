@@ -25,6 +25,11 @@ import {
 import { type TerminalSpan, terminalTextLines } from './terminal-text'
 import { ago } from './text'
 
+export function clippedDocumentPreview(preview: string | null, width: number, lines: number) {
+  const spans = preview ? terminalTextLines(preview, width, lines) : []
+  return { spans, bodyLines: Math.max(0, lines - spans.length) }
+}
+
 export function paneAskRows(
   {
     now,
@@ -81,16 +86,16 @@ export function paneAskRows(
         ) : null,
       clippedBody: (lines, width) => {
         if (lines < 1 || (!r.detail && !preview)) return null
-        const detailLines = Math.max(0, lines - (preview ? 1 : 0))
+        const { spans: previewLines, bodyLines: detailLines } = clippedDocumentPreview(preview, width, lines)
 
         return (
           <Box flexDirection="column" rowGap={blankLine}>
             {r.detail && detailLines > 0 ? (
               <Text wrap="wrap">{terminalText(terminalTextLines(r.detail, width, detailLines))}</Text>
             ) : null}
-            {preview ? (
+            {previewLines.length > 0 ? (
               <Text wrap="wrap" color={pal.muted}>
-                {preview}
+                {terminalText(previewLines)}
               </Text>
             ) : null}
           </Box>
@@ -101,7 +106,12 @@ export function paneAskRows(
       typeHint: replyHint(r, 'Claude'),
     }
   }
-  const findingBody = (detail: string, path: string | null, preview: string | null, fitted?: TerminalSpan[][]) => (
+  const findingBody = (
+    detail: string,
+    path: string | null,
+    preview: string | TerminalSpan[][] | null,
+    fitted?: TerminalSpan[][],
+  ) => (
     <Box flexDirection="column" rowGap={blankLine}>
       <Text wrap="wrap">{fitted ? terminalText(fitted) : inlineText(detail)}</Text>
       {path ? (
@@ -112,7 +122,7 @@ export function paneAskRows(
       ) : null}
       {preview ? (
         <Text wrap="wrap" color={pal.muted}>
-          {preview}
+          {Array.isArray(preview) ? terminalText(preview) : preview}
         </Text>
       ) : null}
     </Box>
@@ -128,15 +138,22 @@ export function paneAskRows(
     titleAfter: `${DOT}${ago(now - (r.at ?? now))}`,
     line: { text: linkLabel(r.title) },
     body: findingBody(r.detail ?? '', r.fileName, documentPreviewLine(r)),
-    clippedBody: (lines, width) =>
-      lines < 1
-        ? null
-        : findingBody(
-            r.detail ?? '',
-            lines > 1 ? r.fileName : null,
-            lines > 2 ? documentPreviewLine(r) : null,
-            terminalTextLines(r.detail ?? '', width, Math.max(1, lines - (r.fileName && lines > 1 ? 1 : 0))),
-          ),
+    clippedBody: (lines, width) => {
+      if (lines < 1) return null
+      const path = r.fileName && lines > 1 ? r.fileName : null
+      const { spans: previewLines, bodyLines: detailLines } = clippedDocumentPreview(
+        lines > 2 ? documentPreviewLine(r) : null,
+        width,
+        lines - (path ? 1 : 0),
+      )
+
+      return findingBody(
+        r.detail ?? '',
+        path,
+        previewLines.length > 0 ? previewLines : null,
+        terminalTextLines(r.detail ?? '', width, detailLines),
+      )
+    },
     typeHint: replyHint(r, 'Claude'),
     keys: () => rowKeyActions(r, true).keys,
     moreKeys: () => rowKeyActions(r, true).more,

@@ -5084,6 +5084,8 @@ function withFetchedPrs(s, fetched, branchRef, isGhSignedOut) {
 
 // ../hooks/document.ts
 var DOCUMENT_LIMIT = 64 * 1024;
+var ANSI = /(?:\u001B\[[0-?]*[ -/]*[@-~]|\u001B\][^\u0007\u009C]*(?:\u0007|\u001B\\|\u009C)|\u001B[PX^_][\s\S]*?(?:\u001B\\|\u009C)|\u001B[@-_]|\u009B[0-?]*[ -/]*[@-~]|\u009D[^\u0007\u009C]*(?:\u0007|\u001B\\|\u009C)|[\u0090\u0098\u009E\u009F][\s\S]*?\u009C)/g;
+var CONTROLS = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F]/g;
 async function readDocument(path, file) {
   try {
     const target = await file.stat(path);
@@ -5094,7 +5096,9 @@ async function readDocument(path, file) {
     const bytes = await file.read(target.path, DOCUMENT_LIMIT);
     if (bytes.byteLength > DOCUMENT_LIMIT)
       return { error: "The document is larger than the 64 KiB limit." };
-    return { text: new TextDecoder().decode(bytes) };
+    const text = new TextDecoder().decode(bytes).replace(ANSI, "").replace(/\r\n/g, `
+`).replace(CONTROLS, "");
+    return { text };
   } catch (error) {
     return {
       error: error.code === "ENOENT" ? "The document file is missing." : "The document could not be read."
@@ -5112,6 +5116,8 @@ async function withDocumentPreview(input, file) {
     return input;
   if (path.length > 4096)
     return { ...input, document: undefined, document_error: "The document path is too long." };
+  if (!/^(?:\/|[a-z]:[\\/]|\\\\)/i.test(path))
+    return { ...input, document: undefined, document_error: "The document path must be absolute." };
   const result = await readDocument(path, file);
   return "text" in result ? { ...input, document: path, document_preview: documentExcerpt(result.text) } : { ...input, document: undefined, document_error: result.error };
 }
@@ -5261,10 +5267,10 @@ function emptyText(tab, agent) {
 }
 
 // src/panel-text.ts
-var ANSI = new RegExp(`\\x1b\\[[0-9;]*m|${OSC8.source}`, "g");
+var ANSI2 = new RegExp(`\\x1b\\[[0-9;]*m|${OSC8.source}`, "g");
 var ANSI_SPLIT = new RegExp(`(\\x1b\\[[0-9;]*m|${OSC8.source})`, "g");
 var ANSI_PART = new RegExp(`^(?:\\x1b\\[[0-9;]*m|${OSC8.source})$`);
-var visibleLength = (s) => cellWidth(s.replace(ANSI, ""));
+var visibleLength = (s) => cellWidth(s.replace(ANSI2, ""));
 function linkedText(text, link) {
   return parseInline(text).map((s) => s.link ? link ? `\x1B[4m${link(s.link, s.text)}\x1B[24m` : s.text : s.text).join("");
 }
