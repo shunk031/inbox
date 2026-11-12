@@ -11,7 +11,6 @@ import type { ResultMark } from '../../hooks/rows'
 import { focusOf } from './panel-keys'
 import { AGENT, INDENT, UNLED_INDENT, isShut } from './panel-lines'
 import type { ButtonFace, Lead, Line } from './panel-lines'
-import { linkLabel } from '../../hooks/inline'
 import { cutTitle, fit, indented, indentedLinks, linkedText, spread, visibleLength, wrapText } from './panel-text'
 import type { PanelScreen, PanelUi, Style, Tone } from './panel'
 
@@ -144,7 +143,7 @@ export function drawLine(line: Line, isSelected: boolean, d: Draw): string[] {
   // omp marks a selected item with ❯, its `nav.cursor` symbol, and keeps ▸ and ▾ for expand and collapse.
   const cursor = isSelected ? s.tone('accent', '❯') : ' '
   const head = ` ${' '.repeat(pad)}${cursor} ${line.rank ? s.dim(line.rank) : ''}${leadText(line.lead, s)}`
-  const titleText = line.row?.type === 'finding' ? linkLabel(line.title) : linkedText(line.title, s.link)
+  const titleText = linkedText(line.title, s.link)
   const shownTitle = line.mark
     ? cutTitle(titleText, width - visibleLength(head) - visibleLength(status) - visibleLength(after))
     : titleText
@@ -159,7 +158,7 @@ export function drawLine(line: Line, isSelected: boolean, d: Draw): string[] {
   if (line.detail && (isSelected || line.isDetailShown))
     out.push(
       ...indentedLinks(
-        line.row?.type === 'finding' ? linkLabel(line.detail) : line.detail,
+        line.detail,
         indent,
         width,
         isSelected && line.row?.type !== 'finding' ? Infinity : 4,

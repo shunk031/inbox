@@ -99,3 +99,31 @@ test('Codex shows a question explanation with paragraph breaks and linked labels
   assert.equal(root.querySelector('p')?.textContent, 'This choice blocks the release.\n\nRead release notes.')
   assert.equal(root.querySelector('a')?.getAttribute('href'), 'https://example.com/release')
 })
+
+test('Codex renders finding titles and details as links', async () => {
+  const browser = new Window()
+  Object.assign(globalThis, { window: browser, document: browser.document, parent: browser.parent })
+  const { demoState } = await import('../src/demo')
+  const { viewOf } = await import('../src/core')
+  const { listsOf } = await import('../src/tab-rows')
+  const state = demoState(1000)
+  const finding = state.ledger.findings[0]!
+  state.ledger.findings = state.ledger.findings.map(row =>
+    row.id === finding.id
+      ? {
+          ...row,
+          title: 'Read [PR 7171](https://github.com/anthropics/claude-code/pull/7171)',
+          detail: 'See [release notes](https://example.com/release).',
+        }
+      : row,
+  )
+  const view = { ...viewOf(state, 1000), thread: 'test', devPage: '', isFetchingPrs: false, isGhMissing: false }
+  const row = listsOf(view, new Set()).byTab.findings.find(candidate => candidate.id === finding.id)!
+  const root = document.createElement('div')
+  render(h('div', null, row.title, row.body), root)
+
+  assert.deepEqual(
+    Array.from(root.querySelectorAll('a')).map(anchor => anchor.getAttribute('href')),
+    ['https://github.com/anthropics/claude-code/pull/7171', 'https://example.com/release'],
+  )
+})

@@ -47,7 +47,7 @@ test('selected item explanations preserve paragraphs, links, and scroll at width
     }
     const ui = { ...INITIAL_UI, selectedId: row.id }
     const drawn = drawPanel(screen, ui, 42, NOW, { ...style, link: urlHyperlink }, 14)
-    const lines = drawn.lines.map(line => strip(line).replace(/\x1b\]8;[^\x07\x1b]*(?:\x07|\x1b\\)/g, ''))
+    const lines = drawn.lines.map(strip)
     expect(drawn.lines.join('\n')).toContain('\x1b]8;id=')
     expect(lines.every(line => visibleLength(line) <= 42)).toBe(true)
     expect(lines.join('\n')).toContain('↑↓ scroll')
@@ -63,6 +63,47 @@ test('selected item explanations preserve paragraphs, links, and scroll at width
       14,
     )
     expect(bottom.lines.map(strip).join(' ').replace(/\s+/g, ' ')).toContain('The final consequence remains visible.')
+  } finally {
+    applyHyperlinkSetting('auto')
+  }
+})
+
+test('finding titles and details draw real OSC 8 links', async () => {
+  const { applyHyperlinkSetting, urlHyperlink } = await hyperlinkTools()
+  applyHyperlinkSetting('always')
+  try {
+    const source = screenOf()
+    const row = source.view.findings.rows[0]!
+    const screen = {
+      ...source,
+      view: {
+        ...source.view,
+        findings: {
+          ...source.view.findings,
+          rows: source.view.findings.rows.map(item =>
+            item.id === row.id
+              ? {
+                  ...item,
+                  title: 'Read [PR 7171](https://github.com/anthropics/claude-code/pull/7171)',
+                  detail: 'See [release notes](https://example.com/release).',
+                }
+              : item,
+          ),
+        },
+      },
+    }
+    const drawn = drawPanel(screen, { ...INITIAL_UI, tab: 'findings', selectedId: row.id }, 42, NOW, {
+      ...style,
+      link: urlHyperlink,
+    })
+    const output = drawn.lines.join('\n')
+    const plain = drawn.lines.map(strip).join('\n')
+
+    expect(output).toContain('\x1b]8;id=')
+    expect(output).toContain('https://github.com/anthropics/claude-code/pull/7171')
+    expect(output).toContain('https://example.com/release')
+    expect(plain).toContain('Read PR 7171')
+    expect(plain).toContain('See release notes')
   } finally {
     applyHyperlinkSetting('auto')
   }

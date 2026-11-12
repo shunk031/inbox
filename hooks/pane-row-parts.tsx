@@ -7,7 +7,6 @@ import { ROW_PAD_PT } from './layout'
 import type { Tone } from './palettes'
 import type { Entry, PaneBase, PaneClient, PaneHandlers } from './pane-context'
 import { followUpPresses } from './pane-keys'
-import { linkLabel } from './inline'
 import type { PaneRowFrame } from './pane-row-frame'
 import { childPos, type PaneRowLines } from './pane-row-lines'
 import { type ClosedLine, settledScrollKey } from './pane-selection'
@@ -407,14 +406,14 @@ export function paneRowParts(
         isSideCentered: true,
         children: [
           <Text wrap="wrap">
-            {inlineText(r.finding ? linkLabel(r.title) : r.title)}
+            {inlineText(r.title)}
             <Text color={pal.muted}>{`${DOT}${settledLabel(state.label, state.delivery)}`}</Text>
           </Text>,
         ],
       })
     return (
       <Box key={`settled-${r.id}`} flexDirection="column" paddingY={space.settledPad}>
-        {treeRow(pos, null, settledContent(r.finding ? linkLabel(title) : title, state, undo, mark))}
+        {treeRow(pos, null, settledContent(title, state, undo, mark))}
       </Box>
     )
   }
