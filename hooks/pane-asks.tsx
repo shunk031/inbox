@@ -57,7 +57,11 @@ export function paneAskRows(
           }
         : {}),
       hasSecondLine: r.replyKind === 'answer',
-      body: null,
+      body: r.detail ? <Text wrap="wrap">{inlineText(r.detail)}</Text> : null,
+      clippedBody: (lines, width) =>
+        lines < 1 || !r.detail ? null : (
+          <Text wrap="wrap">{terminalText(terminalTextLines(r.detail, width, lines))}</Text>
+        ),
       keys: () => rowKeyActions(r, optionsShown.includes(r.id)).keys,
       moreKeys: () => rowKeyActions(r, optionsShown.includes(r.id)).more,
       typeHint: replyHint(r, 'Claude'),

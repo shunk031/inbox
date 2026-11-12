@@ -215,7 +215,15 @@ export function addFinding(
 type AgentItemResult =
   | { ledger: Ledger; is: 'added'; id: string; expired: Item | null }
   /** `newRec` is the recommendation the record changed the item to, or null when it kept the item's own. */
-  | { ledger: Ledger; is: 'open'; id: string; addedSteps: number; isNewlyMarked: boolean; newRec: string | null }
+  | {
+      ledger: Ledger
+      is: 'open'
+      id: string
+      addedSteps: number
+      isNewlyMarked: boolean
+      newRec: string | null
+      hasNewDetail: boolean
+    }
   | { ledger: Ledger; is: 'closed'; record: Closed }
 
 /**
@@ -226,7 +234,7 @@ type AgentItemResult =
  */
 export function addAgentItem(
   ledger: Ledger,
-  entry: Pick<Item, 'kind' | 'ask' | 'options' | 'rec' | 'helps' | 'isDesignChoice'>,
+  entry: Pick<Item, 'kind' | 'ask' | 'options' | 'rec' | 'helps' | 'isDesignChoice' | 'detail'>,
   now: number,
 ): AgentItemResult {
   const candidate = { ...entry, label: null }
@@ -237,7 +245,15 @@ export function addAgentItem(
     const helps = entry.helps.reduce(withHelp, openItem.helps)
     const isDesignChoice = openItem.isDesignChoice === true || entry.isDesignChoice === true
     const rec = restatedRec(openItem.options, openItem.rec, entry.rec)
-    const reported = { ...openItem, helps, isDesignChoice, rec, reportedAt: now }
+    const hasNewDetail = entry.detail !== undefined && entry.detail !== openItem.detail
+    const reported = {
+      ...openItem,
+      helps,
+      isDesignChoice,
+      rec,
+      reportedAt: now,
+      ...(hasNewDetail ? { detail: entry.detail } : {}),
+    }
     const items = ledger.items.map(i => (i === openItem ? reported : i))
 
     return {
@@ -247,6 +263,7 @@ export function addAgentItem(
       addedSteps: helps.length - openItem.helps.length,
       isNewlyMarked: isDesignChoice && openItem.isDesignChoice !== true,
       newRec: rec !== openItem.rec ? rec : null,
+      hasNewDetail,
     }
   }
   const isAskable = (c: Closed) => c.how === 'expired' || c.how === 'claude'

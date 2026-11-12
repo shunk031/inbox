@@ -76,6 +76,10 @@ export type PanelUi = {
   opened: string | null
   /** How many lines of the Status page are scrolled above the panel. Drawing clamps it to the page's end. */
   pageTop: number
+  /** The selected row's scroll offset when its detail is taller than the panel. */
+  detailTop: number
+  /** Set by drawing; Up and Down scroll the selected detail while this is positive. */
+  detailScrollMax: number
   /** The Status row the next draw scrolls into view, after j or k selects it. `true` is the selected row, as when the page shows. */
   pageReveal: string | true | null
   /**
@@ -102,6 +106,8 @@ export const INITIAL_UI: PanelUi = {
   resuming: null,
   opened: null,
   pageTop: 0,
+  detailTop: 0,
+  detailScrollMax: 0,
   pageReveal: null,
   openedAt: 0,
   shownSince: 0,
@@ -165,7 +171,7 @@ export function drawPanel(
   style: Style,
   height?: number,
   minHeight = 0,
-): { lines: string[]; pageTop: number; isRevealed: boolean } {
+): { lines: string[]; pageTop: number; detailScrollMax: number; isRevealed: boolean } {
   const d: Draw = { screen, ui, width, now, style }
   const entries = entriesOf(screen, ui, ui.tab, now)
   const selected = resolveSelected(linesOf(entries), ui.selectedId)
@@ -186,7 +192,7 @@ export function drawPanel(
     ...banners.flatMap(b => bannerLines(b, width, style)),
   ]
   const body: string[] = []
-  let selectedAt = [0, 0]
+  let selectedAt: [number, number] = [0, 0]
   const pageSelected =
     isRowTab(ui.tab) || ui.typing !== null ? null : statusSelected(screen.view.statusPage, ui.selectedId)
   let pageSelectedAt: number[] | null = null
@@ -249,8 +255,16 @@ export function drawPanel(
     height === undefined ? Infinity : Math.max(6, height - head.length - foot.length)
   const isPage = ui.isHelpShown || !isRowTab(ui.tab)
   const isPageTaller = isPage && body.length > roomBeside(footer(d, false))
-  const foot = footer(d, isPageTaller)
+  const selectedLines = selectedAt[1] - selectedAt[0] + 1
+  const isDetailScrolling =
+    !isPage &&
+    selected?.detail !== null &&
+    selected?.detail !== undefined &&
+    selectedLines > roomBeside(footer(d, false)) - 2
+  const foot = footer(d, isPageTaller, isDetailScrolling)
   const room = roomBeside(foot)
+  const detailScrollMax =
+    !isPage && selected?.detail !== null && selected?.detail !== undefined ? Math.max(0, selectedLines - room + 2) : 0
   const blanks = (shown: string[]) =>
     Array<string>(Math.max(0, minHeight - head.length - shown.length - foot.length)).fill('')
   const isOverflowing = body.length > room
@@ -266,9 +280,14 @@ export function drawPanel(
     ? body
     : isPage
       ? pageWindow(body, pageTop, room, style)
-      : scrolled(body, selectedAt, room, style)
+      : scrolled(body, selectedAt, room, style, Math.min(ui.detailTop, detailScrollMax), detailScrollMax > 0)
 
-  return { lines: [...head, ...shown, ...blanks(shown), ...foot].map(l => fit(l, width)), pageTop, isRevealed }
+  return {
+    lines: [...head, ...shown, ...blanks(shown), ...foot].map(l => fit(l, width)),
+    pageTop,
+    detailScrollMax,
+    isRevealed,
+  }
 }
 
 /** The most lines a shown tab draws, each tab as switching to it would show it. */

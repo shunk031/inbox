@@ -35,7 +35,15 @@ export const focusOf = (line: Line, ui: PanelUi): number =>
 type KeyResult = { ui: PanelUi; press?: PanelPress; close?: true }
 
 function withSelection(ui: PanelUi, id: string | null): PanelUi {
-  return { ...ui, selectedId: id, focus: null, opened: ui.opened === id ? ui.opened : null, openedAt: 0 }
+  return {
+    ...ui,
+    selectedId: id,
+    focus: null,
+    detailTop: 0,
+    detailScrollMax: 0,
+    opened: ui.opened === id ? ui.opened : null,
+    openedAt: 0,
+  }
 }
 
 /** Shows `tab`. Its showing starts at `now` unless it already shows, so its settled rows stay. */
@@ -133,6 +141,13 @@ export function handleKey(screen: PanelScreen, ui: PanelUi, key: string, now: nu
   if (base.isHelpShown && !isTabKey && !isUp && key !== 'down' && key !== 'j') return { ui: base }
   if ((base.isHelpShown || isPage) && (isUp || key === 'down' || key === 'j'))
     return { ui: { ...base, pageTop: Math.max(0, base.pageTop + (isUp ? -1 : 1)) } }
+  if (!isPage && selected?.detail && base.detailScrollMax > 0 && (key === 'up' || key === 'down'))
+    return {
+      ui: {
+        ...base,
+        detailTop: Math.max(0, Math.min(base.detailScrollMax, base.detailTop + (key === 'up' ? -1 : 1))),
+      },
+    }
   const selectable = lines.filter(isSelectable)
   const at = selectable.findIndex(l => l.id === selected?.id)
   if ((key === 'up' || key === 'k' || key === 'down' || key === 'j') && selectable.length > 0) {

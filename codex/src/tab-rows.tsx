@@ -164,10 +164,11 @@ function itemRow(v: View, r: RowView): Row {
     // A next build draws the Status, so only it names the subject an ask holds up.
     ...(v.isNextBuild === true && r.holdsUpLine ? { holdsUp: r.holdsUpLine } : {}),
     age: r.at === null ? undefined : shortAgo(v.at - r.at),
-    ...(described.length > 0
+    ...(r.detail || described.length > 0
       ? {
           body: (
             <div>
+              {r.detail ? <p style={{ whiteSpace: 'pre-line' }}>{inlineHtml(r.detail)}</p> : null}
               {described.map(o => (
                 <p class="option-description" title={`${o.label}: ${o.description}`}>
                   {o.label}

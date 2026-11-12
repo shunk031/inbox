@@ -1,6 +1,9 @@
 import { expect, test } from 'bun:test'
 import { hyperlinkTools, panelLink } from '../src/host'
 import { cutTitle, fit, linkedText, spread, visibleLength } from '../src/panel-text'
+import { INITIAL_UI, drawPanel } from '../src/panel'
+import { handleKey } from '../src/panel-keys'
+import { NOW, screenOf, style, strip } from './panel-harness'
 
 test('fits real omp OSC 8 links at narrow and wide panel widths', async () => {
   const { applyHyperlinkSetting, urlHyperlink } = await hyperlinkTools()
@@ -22,4 +25,45 @@ test('fits real omp OSC 8 links at narrow and wide panel widths', async () => {
 
 test('opening the panel survives an omp build without the hyperlink subpath', async () => {
   expect(await panelLink(async () => Promise.reject(new Error('missing render subpath')))).toBeUndefined()
+})
+
+test('selected item explanations preserve paragraphs, links, and scroll at width 42', async () => {
+  const { applyHyperlinkSetting, urlHyperlink } = await hyperlinkTools()
+  applyHyperlinkSetting('always')
+  try {
+    const source = screenOf()
+    const row = source.view.needsYou.questions.find(item => item.state.is === 'open')!
+    const detail =
+      'This blocks launch until we confirm the change.\n\nSee [release notes](https://x.io/release).\n\nThe final consequence remains visible.'
+    const screen = {
+      ...source,
+      view: {
+        ...source.view,
+        needsYou: {
+          ...source.view.needsYou,
+          questions: source.view.needsYou.questions.map(item => (item.id === row.id ? { ...item, detail } : item)),
+        },
+      },
+    }
+    const ui = { ...INITIAL_UI, selectedId: row.id }
+    const drawn = drawPanel(screen, ui, 42, NOW, { ...style, link: urlHyperlink }, 14)
+    const lines = drawn.lines.map(line => strip(line).replace(/\x1b\]8;[^\x07\x1b]*(?:\x07|\x1b\\)/g, ''))
+    expect(drawn.lines.join('\n')).toContain('\x1b]8;id=')
+    expect(lines.every(line => visibleLength(line) <= 42)).toBe(true)
+    expect(lines.join('\n')).toContain('↑↓ scroll')
+    const nextParagraph = lines.findIndex(line => line.includes('See release notes'))
+    expect(lines[nextParagraph - 1]?.trim()).toBe('')
+    expect(handleKey(screen, { ...ui, detailScrollMax: drawn.detailScrollMax }, 'down', NOW).ui.detailTop).toBe(1)
+    const bottom = drawPanel(
+      screen,
+      { ...ui, detailTop: drawn.detailScrollMax, detailScrollMax: drawn.detailScrollMax },
+      42,
+      NOW,
+      { ...style, link: urlHyperlink },
+      14,
+    )
+    expect(bottom.lines.map(strip).join(' ').replace(/\s+/g, ' ')).toContain('The final consequence remains visible.')
+  } finally {
+    applyHyperlinkSetting('auto')
+  }
 })

@@ -6,6 +6,8 @@ The inbox has four looks: `terminal`, `desktop`, `codex` and `omp`. A look is on
 
 Question and task links use `hooks/inline.ts` for parsing and href validation. Each look draws a native link where its host supports one, and otherwise keeps readable label text; the OMP terminal capability is recorded under "Differences on purpose".
 
+Question and task explanations live in `Item.detail`, are carried to each renderer as `RowView.detail`, and survive inbox-model updates. Only the agent's `record` call sets or replaces this field.
+
 ## Files
 
 Shared modules are in `hooks/`. Every host consumes them, directly or through a build. They import only shared modules and shared types. `scripts/check-structure.mjs` checks those boundaries, including type imports. Codex and omp type checking need no generated Claude engine types.

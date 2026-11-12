@@ -12,7 +12,7 @@ import { focusOf } from './panel-keys'
 import { AGENT, INDENT, UNLED_INDENT, isShut } from './panel-lines'
 import type { ButtonFace, Lead, Line } from './panel-lines'
 import { linkLabel } from '../../hooks/inline'
-import { cutTitle, fit, indented, linkedText, spread, visibleLength, wrapText } from './panel-text'
+import { cutTitle, fit, indented, indentedLinks, linkedText, spread, visibleLength, wrapText } from './panel-text'
 import type { PanelScreen, PanelUi, Style, Tone } from './panel'
 
 export type Draw = { screen: PanelScreen; ui: PanelUi; width: number; now: number; style: Style }
@@ -157,7 +157,16 @@ export function drawLine(line: Line, isSelected: boolean, d: Draw): string[] {
   const holdsUp = d.screen.isNextBuild === true ? line.row?.holdsUpLine : null
   if (holdsUp) out.push(fit(`${' '.repeat(indent)}${s.tone(HELD_MARK.tone, HELD_MARK.mark)} ${s.dim(holdsUp)}`, width))
   if (line.detail && (isSelected || line.isDetailShown))
-    out.push(...indented(linkLabel(line.detail), indent, width, 4, s.dim))
+    out.push(
+      ...indentedLinks(
+        line.row?.type === 'finding' ? linkLabel(line.detail) : line.detail,
+        indent,
+        width,
+        isSelected && line.row?.type !== 'finding' ? Infinity : 4,
+        s.dim,
+        s.link,
+      ),
+    )
   if (!isSelected) return out
   if (line.file) out.push(' '.repeat(indent) + s.tone('accent', line.file))
   for (const o of line.row?.optionDescriptions ?? [])
