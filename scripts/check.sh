@@ -6,7 +6,8 @@
 # scripts/check-structure.mjs, that the three plugin manifests give one version,
 # with scripts/check-versions.mjs, that the comparison page matches its parts, with
 # scripts/build-compare-page.mjs, that types/index.d.ts matches its parts, with
-# scripts/build-types.mjs, its types with tsc, and its tests with
+# scripts/build-types.mjs, that the inbox tools' input types match their
+# schemas, with scripts/build-tool-inputs.mjs, its types with tsc, and its tests with
 # `claude plugin test`. Then the Codex plugin in codex/ and the omp extension in
 # omp/. Exits 1 on any failure, and when a check cannot run.
 #
@@ -50,9 +51,10 @@ check "structure" node "$DIR/scripts/check-structure.mjs"
 check "versions" node "$DIR/scripts/check-versions.mjs"
 check "compare page" node "$DIR/scripts/build-compare-page.mjs" --check
 check "types parts" node "$DIR/scripts/build-types.mjs" --check
-# Claude Code writes these types when it loads the mod from this folder, and
-# claude -p does not. A worktree's copy does not load while another copy of the
-# mod loads first. The types name no paths, so a worktree uses the main checkout's.
+# Claude Code writes these types into this folder when a session loads the mod
+# from it, through --plugin-dir or CLAUDE_CODE_PLUGIN_DIRS, with or without -p.
+# A session that only starts here writes none. The types name no paths, so a
+# worktree that has none uses the main checkout's.
 types="$DIR/.claude-plugin/types"
 main=$(git -C "$DIR" worktree list --porcelain 2>/dev/null | sed -n '1s/^worktree //p')
 if [ ! -e "$types" ] && [ -n "$main" ] && [ -f "$main/.claude-plugin/types/tsconfig.json" ]; then
@@ -60,6 +62,9 @@ if [ ! -e "$types" ] && [ -n "$main" ] && [ -f "$main/.claude-plugin/types/tscon
     echo "  - types: copied from $main"
 fi
 if [ -f "$types/tsconfig.json" ]; then
+    # The inbox tools' inputs come from their schemas, not from the MCP tools of
+    # the session that last wrote the types, which tsconfig.json leaves out.
+    check "tool inputs" node "$DIR/scripts/build-tool-inputs.mjs" --check
     # The TypeScript that codex/ pins, which the structure check also loads. An
     # unpinned tsc changes with each TypeScript release.
     check "types" "$DIR/codex/node_modules/.bin/tsc" --noEmit -p "$DIR"
