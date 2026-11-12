@@ -194,7 +194,7 @@ export function paneRowParts(
               {inlineText(d.ask)}
             </Text>,
             <Text wrap="wrap" color={pal.age}>
-              {settledLabel(d.outcomeLabel, d.delivery)}
+              {inlineText(settledLabel(d.outcomeLabel, d.delivery))}
             </Text>,
             refusedUndo(d),
           ],
@@ -212,7 +212,7 @@ export function paneRowParts(
                 `closed-${d.id}`,
                 pal.muted,
                 <Text wrap="wrap" color={pal.age}>
-                  {settledLabel(d.outcomeLabel, d.delivery)}
+                  {inlineText(settledLabel(d.outcomeLabel, d.delivery))}
                 </Text>,
               )}
               {refusedUndo(d)}
@@ -385,7 +385,7 @@ export function paneRowParts(
           `settled-${what}`,
           pal.muted,
           <Text wrap="wrap" color={settledTone({ delivery, closedAs }) === 'done' ? pal.tone.done : pal.muted}>
-            {settledLabel(label, delivery)}
+            {inlineText(settledLabel(label, delivery))}
           </Text>,
         )}
         {undo ? undoButton(undo, at) : null}
@@ -407,7 +407,10 @@ export function paneRowParts(
         children: [
           <Text wrap="wrap">
             {inlineText(r.title)}
-            <Text color={pal.muted}>{`${DOT}${settledLabel(state.label, state.delivery)}`}</Text>
+            <Text color={pal.muted}>
+              {DOT}
+              {inlineText(settledLabel(state.label, state.delivery))}
+            </Text>
           </Text>,
         ],
       })

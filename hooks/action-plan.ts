@@ -1,5 +1,6 @@
 import type { Item, PressKind, Finding, LastAction } from '../types'
 import { clipLabel } from './text'
+import { linkLabel } from './inline'
 import { actionId, ISSUE_LABEL } from './press-labels'
 import { stepIconKind } from './help-steps'
 import type { HelpStep } from './help-steps'
@@ -116,7 +117,7 @@ export function actionsOf(
 
   return [
     ...options.map((option, n) =>
-      action({ action: 'answer', id, option }, clipLabel(option, OPTION_LABEL_CHARS), 'mark', {
+      action({ action: 'answer', id, option }, clipLabel(linkLabel(option), OPTION_LABEL_CHARS), 'mark', {
         isPrimary: option === item.rec,
         isFolded: isFolding && n >= OPTIONS_FOLD_AT - 1,
       }),

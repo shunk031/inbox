@@ -405,6 +405,52 @@ function childrenCutOff(o, at) {
   return childrenEnded(o, (c) => c.kind !== "delegate", at);
 }
 
+// ../hooks/inline.ts
+var INLINE = /`([^`\n]+)`|\*\*(?=\S)(.+?)(?<=\S)\*\*(?!\*)|~~(?=\S)(.+?)(?<=\S)~~|(?<![\w*])\*(?=\S)([^*\n]+?)(?<=\S)\*(?![\w*])|(?<!\w)_(?=\S)([^_\n]+?)(?<=\S)_(?!\w)|\[([^\]\n]+)\]\((https:\/\/[^\s)]+)\)/gi;
+function httpsHref(url) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:" || !parsed.hostname || parsed.username || parsed.password)
+      return null;
+    const href = parsed.origin + [parsed.pathname, parsed.search, parsed.hash].join("").replace(/@/g, "%40");
+    return href.length <= 2048 ? href : null;
+  } catch {
+    return null;
+  }
+}
+function parseInline(text, outer = {}) {
+  const spans = [];
+  let at = 0;
+  for (const m of text.matchAll(INLINE)) {
+    if (m.index > at)
+      spans.push({ ...outer, text: text.slice(at, m.index) });
+    const [, code, bold, strike, star, under, label, url] = m;
+    if (code !== undefined)
+      spans.push({ ...outer, text: code, code: true });
+    else if (bold !== undefined)
+      spans.push(...parseInline(bold, { ...outer, bold: true }));
+    else if (strike !== undefined)
+      spans.push(...parseInline(strike, { ...outer, strike: true }));
+    else if (star !== undefined || under !== undefined)
+      spans.push({ ...outer, text: star ?? under ?? "", italic: true });
+    else {
+      const href = httpsHref(url ?? "");
+      spans.push(href ? { ...outer, text: label ?? "", link: href } : { ...outer, text: `${label ?? ""} (${url ?? ""})` });
+    }
+    at = m.index + m[0].length;
+  }
+  if (at < text.length)
+    spans.push({ ...outer, text: text.slice(at) });
+  return spans;
+}
+function linkLabel(text) {
+  return parseInline(text).map((span) => span.text).join("");
+}
+function cutInline(text, max) {
+  const visible = linkLabel(text);
+  return visible.length > max ? visible.slice(0, max) : text.trim();
+}
+
 // ../hooks/ask-match.ts
 function words2(text) {
   return text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
@@ -412,10 +458,10 @@ function words2(text) {
 function recommendedOption(options, rec) {
   if (!rec)
     return null;
-  const named = new Set(words2(rec));
+  const named = new Set(words2(linkLabel(rec)));
   let best = null;
   for (const option of options) {
-    const w = words2(option);
+    const w = words2(linkLabel(option));
     if (w.length > words2(best ?? "").length && w.every((x) => named.has(x)))
       best = option;
   }
@@ -2118,7 +2164,7 @@ function optionDescriptionsOf(item, actions) {
     if (a.press.action !== "answer" || !Object.hasOwn(descriptions, a.press.option))
       return [];
     const description = descriptions[a.press.option];
-    return [{ label: clipLabel(a.press.option, OPTION_LABEL_CHARS), description, isFolded: a.isFolded }];
+    return [{ label: clipLabel(linkLabel(a.press.option), OPTION_LABEL_CHARS), description, isFolded: a.isFolded }];
   });
 }
 function rowHandle(row) {
@@ -3541,52 +3587,6 @@ function applyPrPress(ledger, prState, lastActions, p, ctx) {
   }
 }
 
-// ../hooks/inline.ts
-var INLINE = /`([^`\n]+)`|\*\*(?=\S)(.+?)(?<=\S)\*\*(?!\*)|~~(?=\S)(.+?)(?<=\S)~~|(?<![\w*])\*(?=\S)([^*\n]+?)(?<=\S)\*(?![\w*])|(?<!\w)_(?=\S)([^_\n]+?)(?<=\S)_(?!\w)|\[([^\]\n]+)\]\((https:\/\/[^\s)]+)\)/gi;
-function httpsHref(url) {
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== "https:" || !parsed.hostname || parsed.username || parsed.password)
-      return null;
-    const href = parsed.origin + [parsed.pathname, parsed.search, parsed.hash].join("").replace(/@/g, "%40");
-    return href.length <= 2048 ? href : null;
-  } catch {
-    return null;
-  }
-}
-function parseInline(text, outer = {}) {
-  const spans = [];
-  let at = 0;
-  for (const m of text.matchAll(INLINE)) {
-    if (m.index > at)
-      spans.push({ ...outer, text: text.slice(at, m.index) });
-    const [, code, bold, strike, star, under, label, url] = m;
-    if (code !== undefined)
-      spans.push({ ...outer, text: code, code: true });
-    else if (bold !== undefined)
-      spans.push(...parseInline(bold, { ...outer, bold: true }));
-    else if (strike !== undefined)
-      spans.push(...parseInline(strike, { ...outer, strike: true }));
-    else if (star !== undefined || under !== undefined)
-      spans.push({ ...outer, text: star ?? under ?? "", italic: true });
-    else {
-      const href = httpsHref(url ?? "");
-      spans.push(href ? { ...outer, text: label ?? "", link: href } : { ...outer, text: `${label ?? ""} (${url ?? ""})` });
-    }
-    at = m.index + m[0].length;
-  }
-  if (at < text.length)
-    spans.push({ ...outer, text: text.slice(at) });
-  return spans;
-}
-function linkLabel(text) {
-  return parseInline(text).map((span) => span.text).join("");
-}
-function cutInline(text, max) {
-  const visible = linkLabel(text);
-  return visible.length > max ? visible.slice(0, max) : text.trim();
-}
-
 // ../hooks/reply-parse.ts
 var NL5 = `
 `;
@@ -4102,8 +4102,8 @@ var MAX_ASK = 200;
 var MAX_OPTION = 60;
 var MAX_OPTIONS = 8;
 var MAX_STEPS = 3;
-function list(value, max, each) {
-  return Array.isArray(value) ? value.map((v) => cut(v, each)).filter(Boolean).slice(0, max) : [];
+function list(value, max, each, inline = false) {
+  return Array.isArray(value) ? value.map((v) => inline ? cutInline(typeof v === "string" ? v : "", each) : cut(v, each)).filter(Boolean).slice(0, max) : [];
 }
 function unchanged(ledger, result) {
   return { ledger, result, personLine: null };
@@ -4116,10 +4116,10 @@ function recordItem(host, ledger, input, now) {
   const ask = cutInline(typeof input.ask === "string" ? input.ask.trim() : "", MAX_ASK);
   if (ask === "")
     return unchanged(ledger, `Not recorded: a ${input.kind} needs an ask.`);
-  const options = input.kind === "question" ? list(input.options, MAX_OPTIONS, MAX_OPTION) : [];
+  const options = input.kind === "question" ? list(input.options, MAX_OPTIONS, MAX_OPTION, true) : [];
   if (input.kind === "question" && options.length === 0)
     return unchanged(ledger, "Not recorded: a question needs at least one option.");
-  const recInput = input.kind === "question" ? cut(input.rec, MAX_OPTION) : "";
+  const recInput = input.kind === "question" ? cutInline(typeof input.rec === "string" ? input.rec : "", MAX_OPTION) : "";
   const rec = recInput === "" ? null : recommendedOption(options, recInput);
   if (recInput !== "" && rec === null)
     return unchanged(ledger, "Not recorded: rec must be one of the options.");
@@ -4516,7 +4516,7 @@ function actionsOf(row, last, state, feedback) {
   const isFolding = item.options.length > OPTIONS_FOLD_AT;
   const options = item.rec && item.options.includes(item.rec) ? [item.rec, ...item.options.filter((o) => o !== item.rec)] : item.options;
   return [
-    ...options.map((option, n) => action({ action: "answer", id, option }, clipLabel(option, OPTION_LABEL_CHARS), "mark", {
+    ...options.map((option, n) => action({ action: "answer", id, option }, clipLabel(linkLabel(option), OPTION_LABEL_CHARS), "mark", {
       isPrimary: option === item.rec,
       isFolded: isFolding && n >= OPTIONS_FOLD_AT - 1
     })),
@@ -6131,7 +6131,7 @@ function drawLine(line, isSelected, d) {
   const status = line.status ? `  ${line.status.tone ? s.tone(line.status.tone, line.status.text) : s.dim(line.status.text)}${s.dim(line.status.rest)}` : "";
   const statusUnder = line.feedback && line.settled === null && !isShut(line, ui) && isStatusUnderActions(line.feedback.source, isSelected) ? line.feedback : null;
   const mark = markText(line.mark, now, s);
-  const after = line.settled ? `  ${mark}${line.settled.tone === "done" ? s.tone("done", line.settled.label) : s.dim(line.settled.label)}${line.settled.undo ? `  ${s.dim("u Undo")}` : ""}` : line.feedback && !statusUnder ? `  ${mark}${feedbackPaint(line.feedback.tone, s)(line.feedback.text)}` : "";
+  const after = line.settled ? `  ${mark}${line.settled.tone === "done" ? s.tone("done", linkedText(line.settled.label, s.link)) : s.dim(linkedText(line.settled.label, s.link))}${line.settled.undo ? `  ${s.dim("u Undo")}` : ""}` : line.feedback && !statusUnder ? `  ${mark}${feedbackPaint(line.feedback.tone, s)(linkedText(line.feedback.text, s.link))}` : "";
   const cursor = isSelected ? s.tone("accent", "\u276F") : " ";
   const head = ` ${" ".repeat(pad)}${cursor} ${line.rank ? s.dim(line.rank) : ""}${leadText(line.lead, s)}`;
   const titleText = linkedText(line.title, s.link);
@@ -6164,7 +6164,7 @@ function drawLine(line, isSelected, d) {
   }
   if (statusUnder) {
     const markCells = mark ? 2 : 0;
-    const [first, ...rest] = indented(statusUnder.text, indent + markCells, width, 4, feedbackPaint(statusUnder.tone, s));
+    const [first, ...rest] = indentedLinks(statusUnder.text, indent + markCells, width, 4, feedbackPaint(statusUnder.tone, s), s.link);
     if (first !== undefined)
       out.push(" ".repeat(indent) + mark + first.slice(indent + markCells), ...rest);
   }

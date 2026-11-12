@@ -127,3 +127,81 @@ test('Codex renders finding titles and details as links', async () => {
     ['https://github.com/anthropics/claude-code/pull/7171', 'https://example.com/release'],
   )
 })
+
+test('Codex shows option feedback with a label and links its settled outcome', async () => {
+  const browser = new Window()
+  Object.assign(globalThis, { window: browser, document: browser.document, parent: browser.parent })
+  const { ListRow } = await import('../src/tab-list')
+  const { NeedsYou } = await import('../src/tab-groups')
+  const { demoState } = await import('../src/demo')
+  const { viewOf } = await import('../src/core')
+  const { sending, unfolded } = await import('../src/tab-state')
+  const { closeItem } = await import('../../hooks/ledger-close')
+  const option = '[PR 7171](https://github.com/anthropics/claude-code/pull/7171)'
+  const root = document.createElement('div')
+  sending.delete('i1')
+  const row = {
+    id: 'i1',
+    handle: '',
+    title: 'Merge this PR?',
+    keys: [],
+    more: [],
+    feedback: { is: 'queued', label: `✓ ${option}`, at: 1000 },
+  }
+  render(
+    h(ListRow, {
+      row: row as never,
+      track: { state: 'open', since: 0, hasPanel: false },
+      onSelect: () => {},
+      now: 1000,
+    }),
+    root,
+  )
+  assert.match(root.querySelector('.line')?.textContent ?? '', /PR 7171/)
+  assert.doesNotMatch(root.querySelector('.line')?.textContent ?? '', /\[PR 7171\]/)
+  assert.equal(root.querySelector('.line a'), null)
+  render(null, root)
+  render(
+    h(ListRow, {
+      row: row as never,
+      track: { state: 'open', since: 0, hasPanel: true },
+      onSelect: () => {},
+      now: 1000,
+    }),
+    root,
+  )
+  assert.equal(root.querySelector('.panel .muted a')?.textContent, 'PR 7171')
+  assert.equal(root.querySelector('.panel .muted a')?.getAttribute('href'), 'https://github.com/anthropics/claude-code/pull/7171')
+
+  const state = demoState(1000)
+  const item = state.ledger.items[0]!
+  state.ledger = closeItem(state.ledger, item.id, { how: 'answered', outcome: option }, 2000)
+  const view = {
+    ...viewOf(state, 2000),
+    thread: 'test',
+    devPage: '',
+    isFetchingPrs: false,
+    isGhMissing: false,
+  }
+  unfolded.clear()
+  unfolded.add('question')
+  render(null, root)
+  render(
+    h(
+      NeedsYou,
+      {
+        v: view,
+        lists: { questions: [], tasks: [], findings: [], findingGroups: [], byTab: { needsYou: [], findings: [] } } as never,
+        now: 2000,
+      },
+      null,
+    ),
+    root,
+  )
+  assert.equal(root.querySelector('.closed-list .outcome a')?.textContent, 'PR 7171')
+  assert.equal(
+    root.querySelector('.closed-list .outcome a')?.getAttribute('href'),
+    'https://github.com/anthropics/claude-code/pull/7171',
+  )
+  assert.doesNotMatch(root.querySelector('.closed-list .outcome')?.textContent ?? '', /\[PR 7171\]/)
+})

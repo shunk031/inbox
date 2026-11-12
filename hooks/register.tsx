@@ -3263,6 +3263,7 @@ export const register: Register = on => {
       isAgeInSide,
       listColumns,
       Button,
+      inlineText,
     })
     const { desktopFrame } = paneRowFrame({ space, Box })
     const { listRow } = paneRows(
