@@ -75,6 +75,8 @@ class ModState {
   isNextBuild = false
   /** Where a next build keeps its Status call records, or null on a release build. */
   statusRecordsFolder: string | null = null
+  /** Whether only Claude's `record` calls add asks, from `INBOX_RECORDED_ITEMS_ONLY` when the inbox turns on. */
+  recordedItemsOnly = false
   fetchingPrs: Promise<void> = Promise.resolve()
   nextFetchFindsBranchPr: boolean | null = null
   prFetchEndedAt: number | undefined

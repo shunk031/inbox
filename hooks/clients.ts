@@ -13,6 +13,7 @@ export type FeatureId =
   | 'catch-up'
   | 'failed-update-recovery'
   | 'ledger-behind-state'
+  | 'recorded-items-only'
   | 'dialog-outcome'
   | 'dialog-answer'
   | 'dialog-descriptions'
@@ -67,6 +68,7 @@ export const CLIENTS: Record<ClientId, Client> = {
       'catch-up': { kind: 'full' },
       'failed-update-recovery': { kind: 'full' },
       'ledger-behind-state': { kind: 'full' },
+      'recorded-items-only': { kind: 'full' },
       'dialog-outcome': { kind: 'full' },
       'dialog-answer': {
         kind: 'different',
@@ -140,6 +142,7 @@ export const CLIENTS: Record<ClientId, Client> = {
         reason:
           'Codex runs no hook when a chat is opened. A resumed chat is marked behind when its Inbox tab opens, and at the hook its next message runs if the tab stays closed.',
       },
+      'recorded-items-only': { kind: 'full' },
       'dialog-outcome': {
         kind: 'different',
         reason:
@@ -259,6 +262,7 @@ export const CLIENTS: Record<ClientId, Client> = {
       'catch-up': { kind: 'full' },
       'failed-update-recovery': { kind: 'full' },
       'ledger-behind-state': { kind: 'full' },
+      'recorded-items-only': { kind: 'full' },
       'dialog-outcome': { kind: 'full' },
       'dialog-answer': {
         kind: 'different',
