@@ -38,7 +38,7 @@ import { rolloutMeta } from './rollout-rows'
 import { turnOf } from './rollout-turns'
 import { rolloutReads, rolloutTail } from './transcript'
 import { applyFeedFiles } from '../../hooks/feed'
-import { readFeedFiles } from './feed'
+import { readFeedFiles } from '../../feed-reader'
 
 export type HookInput = {
   hook_event_name: string

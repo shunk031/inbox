@@ -16,7 +16,6 @@ import type { SeenRows } from './panel-tabs'
 
 const ANIMATION_MS = 200
 const PRS_CHECK_MS = 120_000
-const FEED_CHECK_MS = 30_000
 
 /** What the panel needs from a session, so the live inbox and the demo can both supply it. */
 export type PanelSource = {
@@ -28,7 +27,6 @@ export type PanelSource = {
   /** Sends the message that resumes a stopped turn. Returns why it could not, or null. */
   resume(): Promise<string | null>
   fetchPrsWhenDue(): void
-  feedWhenDue(): Promise<void>
   /** Asks Herdr about the running delegates, when a check is due. */
   checkDelegatesWhenDue(): void
   /**
@@ -184,13 +182,10 @@ export function createPanel(deps: PanelDeps): Panel {
       stops.push(source.onChange(() => void refresh()))
       const prs = timers.every(() => source.fetchPrsWhenDue(), PRS_CHECK_MS)
       stops.push(() => timers.stop(prs))
-      const feed = timers.every(() => void source.feedWhenDue(), FEED_CHECK_MS)
-      stops.push(() => timers.stop(feed))
       const delegates = timers.every(() => {
         if (ui.tab === 'overview') source.checkDelegatesWhenDue()
       }, HERDR_CHECK_MS)
       stops.push(() => timers.stop(delegates))
-      await source.feedWhenDue()
       await refresh()
     },
     dispose() {

@@ -122,7 +122,10 @@ test('an Inbox view merges feed files, scopes disappearance, and closes a done s
   await view()
   assert.deepEqual(
     (await readState(dir, 's1')).ledger.closedFindings.map(f => [f.feedKey, f.outcome]),
-    [['subagent/s1/a1', 'done: Update state.']],
+    [
+      [undefined, 'done: no longer reported'],
+      ['subagent/s1/a1', 'done: Update state.'],
+    ],
   )
 })
 

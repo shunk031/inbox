@@ -20,7 +20,7 @@ import { pruneSessions, readState, updateState } from './state'
 import type { SessionState } from './state'
 import { CODEX, inboxToolText } from './texts'
 import { applyFeedFiles } from '../../hooks/feed'
-import { readFeedFiles } from './feed'
+import { readFeedFiles } from '../../feed-reader'
 
 export type ServerDeps = {
   dir: string

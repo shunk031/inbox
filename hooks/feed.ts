@@ -13,6 +13,8 @@ export type Feed = { version: 1; source: string; writtenAt: number; entries: Fee
 export type FeedFile = { path: string; feed: Feed | null | undefined }
 
 export const FEED_TTL_MS = 6 * 60 * 60 * 1000
+export const FEED_POLL_MS = 30_000
+export const MAX_FEED_FILE_BYTES = 256 * 1024
 
 export function parseFeed(text: string): Feed | null {
   try {
@@ -56,53 +58,44 @@ export function applyFeed(ledger: Ledger, feed: Feed, now: number, source = ''):
   const owns = (f: Finding) => f.feedKey !== undefined && f.feedSource === source
   const staleClosed = ledger.closedFindings.some(f => owns(f) && !keys.has(f.feedKey!))
   let next = staleClosed
-    ? { ...ledger, closedFindings: ledger.closedFindings.filter(f => !owns(f) || keys.has(f.feedKey!)) }
+    ? {
+        ...ledger,
+        closedFindings: ledger.closedFindings.map(f =>
+          owns(f) && !keys.has(f.feedKey!) ? { ...f, feedKey: undefined, feedSource: undefined } : f,
+        ),
+      }
     : ledger
 
   for (const entry of feed.entries) {
     let finding = next.findings.find(f => owns(f) && f.feedKey === entry.key)
     const isClosed = next.closedFindings.some(f => owns(f) && f.feedKey === entry.key)
-    if (!finding && !isClosed)
+    if (!finding && (entry.state === 'done' || isClosed || now - entry.at >= FEED_TTL_MS)) continue
+    if (!finding)
       finding = next.findings.find(f => !f.feedKey && (sameAsk(f.title, entry.title) || restates(f.title, entry.title)))
-    if (!finding) {
-      if (entry.state === 'done' || isClosed) continue
-      finding = {
-        id: `f${next.nextId}`,
-        kind: 'progress',
-        title: entry.title,
-        detail: detailOf(entry),
-        path: null,
-        at: entry.at,
-        feedKey: entry.key,
-        feedSource: source,
-      }
-      next = { ...next, findings: [...next.findings, finding], nextId: next.nextId + 1 }
-    } else {
-      const updated: Finding = {
-        ...finding,
-        kind: 'progress',
-        title: entry.title,
-        detail: detailOf(entry),
-        path: null,
-        at: entry.at,
-        feedKey: entry.key,
-        feedSource: source,
-      }
-      if (
-        finding.kind !== updated.kind ||
-        finding.title !== updated.title ||
-        finding.detail !== updated.detail ||
-        finding.path !== updated.path ||
-        finding.at !== updated.at ||
-        finding.feedKey !== updated.feedKey ||
-        finding.feedSource !== updated.feedSource
-      ) {
-        next = { ...next, findings: next.findings.map(f => (f.id === finding!.id ? updated : f)) }
-        finding = updated
-      }
+    const updated: Finding = {
+      ...finding,
+      id: finding?.id ?? `f${next.nextId}`,
+      kind: 'progress',
+      title: entry.title,
+      detail: detailOf(entry),
+      path: null,
+      at: entry.at,
+      feedKey: entry.key,
+      feedSource: source,
     }
+    if (!finding) next = { ...next, findings: [...next.findings, updated], nextId: next.nextId + 1 }
+    else if (
+      finding.kind !== updated.kind ||
+      finding.title !== updated.title ||
+      finding.detail !== updated.detail ||
+      finding.path !== updated.path ||
+      finding.at !== updated.at ||
+      finding.feedKey !== updated.feedKey ||
+      finding.feedSource !== updated.feedSource
+    )
+      next = { ...next, findings: next.findings.map(f => (f.id === finding!.id ? updated : f)) }
     if (entry.state === 'done')
-      next = closeFinding(next, finding.id, { how: 'update', outcome: `done: ${entry.detail}` }, now)
+      next = closeFinding(next, updated.id, { how: 'update', outcome: `done: ${entry.detail}` }, now)
   }
 
   for (const finding of next.findings)

@@ -3549,6 +3549,7 @@ function rolloutReads(path, tail) {
 
 // ../hooks/feed.ts
 var FEED_TTL_MS = 6 * 60 * 60 * 1e3;
+var MAX_FEED_FILE_BYTES = 256 * 1024;
 function parseFeed(text2) {
   try {
     const feed = JSON.parse(text2);
@@ -3577,43 +3578,34 @@ function applyFeed(ledger, feed, now, source = "") {
   const keys = new Set(feed.entries.map((e) => e.key));
   const owns = (f) => f.feedKey !== void 0 && f.feedSource === source;
   const staleClosed = ledger.closedFindings.some((f) => owns(f) && !keys.has(f.feedKey));
-  let next = staleClosed ? { ...ledger, closedFindings: ledger.closedFindings.filter((f) => !owns(f) || keys.has(f.feedKey)) } : ledger;
+  let next = staleClosed ? {
+    ...ledger,
+    closedFindings: ledger.closedFindings.map(
+      (f) => owns(f) && !keys.has(f.feedKey) ? { ...f, feedKey: void 0, feedSource: void 0 } : f
+    )
+  } : ledger;
   for (const entry of feed.entries) {
     let finding = next.findings.find((f) => owns(f) && f.feedKey === entry.key);
     const isClosed = next.closedFindings.some((f) => owns(f) && f.feedKey === entry.key);
-    if (!finding && !isClosed)
+    if (!finding && (entry.state === "done" || isClosed || now - entry.at >= FEED_TTL_MS)) continue;
+    if (!finding)
       finding = next.findings.find((f) => !f.feedKey && (sameAsk(f.title, entry.title) || restates(f.title, entry.title)));
-    if (!finding) {
-      if (entry.state === "done" || isClosed) continue;
-      finding = {
-        id: `f${next.nextId}`,
-        kind: "progress",
-        title: entry.title,
-        detail: detailOf(entry),
-        path: null,
-        at: entry.at,
-        feedKey: entry.key,
-        feedSource: source
-      };
-      next = { ...next, findings: [...next.findings, finding], nextId: next.nextId + 1 };
-    } else {
-      const updated = {
-        ...finding,
-        kind: "progress",
-        title: entry.title,
-        detail: detailOf(entry),
-        path: null,
-        at: entry.at,
-        feedKey: entry.key,
-        feedSource: source
-      };
-      if (finding.kind !== updated.kind || finding.title !== updated.title || finding.detail !== updated.detail || finding.path !== updated.path || finding.at !== updated.at || finding.feedKey !== updated.feedKey || finding.feedSource !== updated.feedSource) {
-        next = { ...next, findings: next.findings.map((f) => f.id === finding.id ? updated : f) };
-        finding = updated;
-      }
-    }
+    const updated = {
+      ...finding,
+      id: finding?.id ?? `f${next.nextId}`,
+      kind: "progress",
+      title: entry.title,
+      detail: detailOf(entry),
+      path: null,
+      at: entry.at,
+      feedKey: entry.key,
+      feedSource: source
+    };
+    if (!finding) next = { ...next, findings: [...next.findings, updated], nextId: next.nextId + 1 };
+    else if (finding.kind !== updated.kind || finding.title !== updated.title || finding.detail !== updated.detail || finding.path !== updated.path || finding.at !== updated.at || finding.feedKey !== updated.feedKey || finding.feedSource !== updated.feedSource)
+      next = { ...next, findings: next.findings.map((f) => f.id === finding.id ? updated : f) };
     if (entry.state === "done")
-      next = closeFinding(next, finding.id, { how: "update", outcome: `done: ${entry.detail}` }, now);
+      next = closeFinding(next, updated.id, { how: "update", outcome: `done: ${entry.detail}` }, now);
   }
   for (const finding of next.findings)
     if (owns(finding) && !keys.has(finding.feedKey))
@@ -3639,29 +3631,38 @@ var sourceUnder = (source, root) => {
 };
 var detailOf = (entry) => entry.state === "blocked" ? `Blocked: ${entry.detail}` : entry.detail;
 
-// src/feed.ts
+// ../feed-reader.ts
 import { readdir as readdir3, readFile as readFile2, stat as stat2 } from "node:fs/promises";
 import { join as join3, resolve as resolve3 } from "node:path";
-async function readFeedFiles(path) {
+var feedIo = {
+  resolve: resolve3,
+  join: join3,
+  stat: stat2,
+  list: (root) => readdir3(root, { withFileTypes: true }),
+  read: (path) => readFile2(path, "utf8")
+};
+async function readFeedFiles(path, io = feedIo) {
   if (!path) return null;
-  const root = resolve3(path);
+  const root = io.resolve(path);
+  const read = async (path2, size) => ({
+    path: path2,
+    feed: size > MAX_FEED_FILE_BYTES ? null : parseFeed(await io.read(path2))
+  });
   try {
-    const info = await stat2(root);
-    if (info.isDirectory()) {
-      const files = [];
-      for (const entry of await readdir3(root, { withFileTypes: true })) {
-        if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
-        const file = join3(root, entry.name);
-        try {
-          files.push({ path: file, feed: parseFeed(await readFile2(file, "utf8")) });
-        } catch (error) {
-          if (!missing(error)) files.push({ path: file, feed: null });
-        }
+    const info = await io.stat(root);
+    if (info.isFile()) return { root, files: [await read(root, info.size)] };
+    if (!info.isDirectory()) return null;
+    const files = [];
+    for (const entry of await io.list(root)) {
+      if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+      const file = io.join(root, entry.name);
+      try {
+        files.push(await read(file, (await io.stat(file)).size));
+      } catch (error) {
+        if (!missing(error)) files.push({ path: file, feed: null });
       }
-      return { root, files };
     }
-    if (!info.isFile()) return null;
-    return { root, files: [{ path: root, feed: parseFeed(await readFile2(root, "utf8")) }] };
+    return { root, files };
   } catch (error) {
     return missing(error) ? { root, files: [] } : null;
   }

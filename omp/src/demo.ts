@@ -61,7 +61,6 @@ export function demoSource(deps: {
     },
     resume: async () => null,
     fetchPrsWhenDue: () => {},
-    feedWhenDue: async () => {},
     checkDelegatesWhenDue: () => {},
     shown: () => {},
     onChange: listener => {

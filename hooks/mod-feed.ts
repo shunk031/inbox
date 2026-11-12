@@ -1,37 +1,51 @@
-import { applyFeedFiles, parseFeed, type FeedFile } from './feed'
+import { applyFeedFiles, FEED_POLL_MS, MAX_FEED_FILE_BYTES, parseFeed, type FeedFile } from './feed'
 import type { Ledger } from '../types'
+import type { FsStat } from 'claude-code'
 
-export function modFeedPoller(
+export { FEED_POLL_MS }
+
+type FeedFs = [
+  (path: string) => Promise<FsStat>,
+  (path: string) => Promise<{ name: string; isLink?: boolean }[]>,
+  (path: string) => Promise<boolean>,
+  (path: string) => Promise<string>,
+]
+
+export function feedPoll(
   path: string,
-  stat: (path: string) => Promise<{ kind?: string; mtimeMs: number; isLink?: boolean }>,
-  list: (path: string) => Promise<{ name: string; isLink?: boolean }[]>,
-  exists: (path: string) => Promise<boolean>,
-  read: (path: string) => Promise<string>,
+  [stat, list, exists, readFile]: FeedFs,
   now: () => Promise<number>,
   commit: (change: (ledger: Ledger) => Ledger) => Promise<unknown>,
-): () => Promise<void> {
+): (sessionId: string) => Promise<void> {
   let mtimes = new Map<string, number>()
+  let session: string | undefined
   let isRunning = false
   const save = async (files: FeedFile[]) => now().then(at => commit(ledger => applyFeedFiles(ledger, path, files, at)))
+  const read = async (file: string, stat: FsStat) =>
+    stat.size > MAX_FEED_FILE_BYTES
+      ? null
+      : stat.mtimeMs === mtimes.get(file)
+        ? undefined
+        : parseFeed(await readFile(file))
 
-  return async () => {
+  return async sessionId => {
     if (isRunning) return
+    if (session !== sessionId) mtimes = new Map()
+    session = sessionId
     isRunning = true
     try {
-      const root = await stat(path)
-      if (root.kind !== 'directory') {
-        const file: FeedFile = { path, feed: undefined }
-        if (root.mtimeMs !== mtimes.get(path)) {
-          try {
-            file.feed = parseFeed(await read(path))
-            mtimes = new Map([[path, root.mtimeMs]])
-          } catch {
-            return
-          }
+      const root: FsStat = await stat(path)
+      if (root.kind === 'file') {
+        try {
+          const feed = await read(path, root)
+          mtimes.set(path, root.mtimeMs)
+          await save([{ path, feed }])
+        } catch {
+          return
         }
-        await save([file])
         return
       }
+      if (root.kind !== 'dir') return
 
       const nextMtimes = new Map<string, number>()
       const files: FeedFile[] = []
@@ -39,12 +53,9 @@ export function modFeedPoller(
         if (!entry.name.endsWith('.json') || entry.isLink) continue
         const file = `${path.replace(/[\\/]+$/, '')}/${entry.name}`
         try {
-          const current = await stat(file)
-          if (current.isLink || (current.kind && current.kind !== 'file')) continue
-          files.push({
-            path: file,
-            feed: current.mtimeMs === mtimes.get(file) ? undefined : parseFeed(await read(file)),
-          })
+          const current: FsStat = await stat(file)
+          if (current.isLink || current.kind !== 'file') continue
+          files.push({ path: file, feed: await read(file, current) })
           nextMtimes.set(file, current.mtimeMs)
         } catch {
           files.push({ path: file, feed: undefined })

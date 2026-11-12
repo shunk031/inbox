@@ -79,6 +79,29 @@ test('feed directories merge writers and retain done subagents in closed history
   ).toEqual(['herdr/local/worker: done: no longer reported', 'subagent/s1/a1: done: Update state.'])
 })
 
+test('the session polls the feed while its panel is closed', async () => {
+  const path = join(w.dir, 'feed.json')
+  const write = (state: string) =>
+    writeFileSync(
+      path,
+      JSON.stringify({
+        version: 1,
+        source: 'claude-subagent-hook',
+        writtenAt: 10,
+        entries: [{ key: 'subagent/s1/a1', state, title: 'Subagent work', detail: 'Update state.', at: 10 }],
+      }),
+    )
+  write('working')
+  createInbox(pi(), { ...deps(), feedPath: path })
+  await call('session_start', { type: 'session_start' }, makeCtx())
+  expect(state().ledger.findings).toMatchObject([{ feedKey: 'subagent/s1/a1' }])
+  const timer = w.timers.find(t => t.ms === 30_000)!
+  write('done')
+  timer.fn()
+  await settle()
+  expect(state().ledger.closedFindings).toMatchObject([{ feedKey: 'subagent/s1/a1', outcome: 'done: Update state.' }])
+})
+
 test('opening the panel finds gh missing when no gh starts', async () => {
   const inbox = createInbox(pi(), deps())
   for (const gh of ['gh', '/opt/homebrew/bin/gh', '/usr/local/bin/gh']) w.execResults.set(gh, new Error('spawn failed'))

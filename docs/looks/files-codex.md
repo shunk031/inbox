@@ -42,7 +42,7 @@ Part of [the look map](../looks.md#files).
 | `codex/src/update.ts` | Codex host. Binds `hooks/session-host.ts` update flows to `codex exec`. Saves a failed call as the session's `lastModelFailure`. |
 | `codex/src/update-main.ts` | Codex host. Entry point for the update process. |
 | `codex/src/hook.ts` | Codex host. The hook logic that changes session state. |
-| `codex/src/feed.ts` | Codex host. Reads the optional external feed file or directory for hooks and Inbox view requests. |
+| `feed-reader.ts` | Node feed reader shared by Codex and omp. Reads the optional external feed file or directory with the shared size cap. |
 | `codex/src/hook-main.ts` | Codex host. Entry point for the hooks. |
 | `codex/src/demo.ts` | Codex host. Turns the shared demo data into a session. |
 | `codex/src/transcript.ts` | Codex host. Reads the Codex session transcript, which Codex calls the rollout. Finds a chat's rollout and reads its tail and history. |

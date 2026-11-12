@@ -77,7 +77,7 @@ import { prMarkId, threadSentIn } from './pr-rows'
 import { failingChecks, prRefs, prNeedsYou, waitingThreads } from './prs'
 import { EMPTY, KEPT_SESSIONS, isBlankLedger } from './ledger'
 import { closeItem } from './ledger-close'
-import { modFeedPoller } from './mod-feed'
+import { FEED_POLL_MS, feedPoll } from './mod-feed'
 import { tasksRunBy } from './reply-parse'
 import { CLAUDE_CODE, guidedCloseDescription } from './model-text'
 import { statusCarryText, screenText, type ScreenTab } from './inbox-text'
@@ -236,7 +236,7 @@ import {
   updating,
   withoutRowActions,
 } from './mod-sessions'
-import { cancelUndoScroll, mod, paneState, resetTurn, sessionState, suspendUndoReveal } from './mod-state'
+import { cancelUndoScroll, mod, paneState, sessionState, suspendUndoReveal } from './mod-state'
 import { paneAskRows, paneAskTabs } from './pane-asks'
 import { paneRowKeys } from './pane-row-keys'
 import { paneRowLines } from './pane-row-lines'
@@ -292,6 +292,12 @@ const ORDER_TOOL = 'mcp__inbox__order_prs'
 const PERSON_LINES = atom({ plugin: 'inbox', key: 'personLines' } as const, {} as Record<string, string>)
 
 const PANE = 'inbox'
+
+function resetTurn() {
+  sessionState.stepTexts = []
+  sessionState.turnBox = null
+  sessionState.isDialogDismissed = false
+}
 
 /** Adds the person's words to the turn, as a shell command row does. */
 function notePerson($: EngineInterface, line: string) {
@@ -455,10 +461,7 @@ const OLD_UNTRACKED_SENT = atom(
   [] as { sessionId: string; text: string }[],
 )
 
-/**
- * The session as an older build left it in its separate fields, for a hot reload into this build. A sent message
- * whose record those fields lost is kept as an uncertain record, so its arrival cannot be credited to a newer press.
- */
+/** Merges legacy fields; uncertain sends cannot credit later presses. */
 async function fromOldFields($: EngineInterface): Promise<Session> {
   const [id, ledger, presence, prViews, stop, lastActions, sent, untracked] = await Promise.all([
     $.session.id(),
@@ -878,7 +881,10 @@ function commitLedger(
   change: (l: Ledger) => Ledger,
   owner: Owner = currentOwner(),
 ): Promise<Session> {
-  return commit($, owner, s => ({ ...s, ledger: change(s.ledger) }))
+  return commit($, owner, s => {
+    const ledger = change(s.ledger)
+    return ledger === s.ledger ? s : { ...s, ledger }
+  })
 }
 
 /**
@@ -2135,25 +2141,25 @@ async function readVersion($: EngineInterface) {
   mod.statusRecordsFolder = mod.isNextBuild ? await recordsFolder($).catch(() => null) : null
 }
 
+async function startFeed($: EngineInterface) {
+  const path = await $.env.get('INBOX_FEED')
+  if (!path) return null
+  const poll = feedPoll(
+    path,
+    [p => $.fs.stat(p), p => $.fs.list(p), p => $.fs.exists(p), p => $.fs.read(p)],
+    () => $.clock.now(),
+    update => commitLedger($, update, currentOwner()),
+  )
+  return () => $.session.id().then(poll)
+}
+
 async function initializeInbox($: EngineInterface) {
-  // A hot reload keeps old state; draws read its current shape and next-build tabs.
   await Promise.all([
     upgradeState($),
     readVersion($),
     $.env.get('INBOX_RECORDED_ITEMS_ONLY').then(v => void (mod.recordedItemsOnly = isRecordedItemsOnly(v))),
   ])
-  const path = await $.env.get('INBOX_FEED')
-  const run = path
-    ? modFeedPoller(
-        path,
-        p => $.fs.stat(p),
-        p => $.fs.list(p),
-        p => $.fs.exists(p),
-        p => $.fs.read(p),
-        () => $.clock.now(),
-        update => commitLedger($, update),
-      )
-    : null
+  const feed = await startFeed($)
   mod.isOn = true
   mod.toolsRefused = false
   paneState.compareRedrawAt = null
@@ -2173,10 +2179,10 @@ async function initializeInbox($: EngineInterface) {
     $.clock.every(PR_POLL_MS, () => {
       void pollPrs($)
     }),
-    ...(run ? [$.clock.every(30_000, run)] : []),
+    ...(feed ? [$.clock.every(FEED_POLL_MS, () => void feed())] : []),
   ]
   await loadConversation($, await $.session.id())
-  void run?.()
+  void feed?.()
   await redrawAfterReload($)
 }
 

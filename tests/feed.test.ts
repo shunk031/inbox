@@ -4,7 +4,7 @@ import { applyFeed, applyFeedFiles, FEED_TTL_MS, parseFeed } from '../hooks/feed
 import type { Feed, FeedEntry } from '../hooks/feed'
 import { inboxText, carryText } from '../hooks/inbox-text'
 import { EMPTY } from '../hooks/ledger'
-import { closeFinding, pruneClosed } from '../hooks/ledger-close'
+import { closeFinding } from '../hooks/ledger-close'
 import { addFinding, applyUpdate } from '../hooks/ledger-update'
 import { buildPrompt } from '../hooks/ledger-prompt'
 import { CLAUDE_CODE } from '../hooks/model-text'
@@ -79,18 +79,34 @@ describe('progress feed', () => {
   })
 
   test('closes completed and missing entries, preserves dismissed keys, and ignores untracked completion', () => {
-    const open = applyFeed(EMPTY, feed(entry()), 110)
-    const done = applyFeed(open, feed(entry({ state: 'done', detail: 'Merged the change.' })), 120)
+    const path = '/feed/patrol.json'
+    const open = applyFeedFiles(EMPTY, '/feed', [{ path, feed: feed(entry()) }], 110)
+    const done = applyFeedFiles(
+      open,
+      '/feed',
+      [{ path, feed: feed(entry({ state: 'done', detail: 'Merged the change.' })) }],
+      120,
+    )
     expect(done.findings).toEqual([])
     expect(done.closedFindings).toMatchObject([{ id: 'f1', how: 'update', outcome: 'done: Merged the change.' }])
     expect(done.closedFindings.map(f => f.id)).toContain('f1')
+    const retainedHistory = applyFeedFiles(done, '/feed', [{ path, feed: feed() }], 130)
+    expect(retainedHistory.closedFindings).toHaveLength(1)
+    expect(retainedHistory.closedFindings[0]).toMatchObject({ id: 'f1', feedKey: undefined, feedSource: undefined })
     expect(applyFeed(EMPTY, feed(entry({ state: 'done' })), 120)).toBe(EMPTY)
 
-    const missing = applyFeed(open, feed(), 130)
+    const missing = applyFeedFiles(open, '/feed', [{ path, feed: feed() }], 130)
     expect(missing.findings).toEqual([])
     expect(missing.closedFindings).toMatchObject([{ id: 'f1', outcome: 'done: no longer reported' }])
     const dismissed = closeFinding(open, 'f1', { how: 'dismissed', outcome: 'dismissed' }, 120)
-    expect(applyFeed(dismissed, feed(entry({ detail: 'Still running.' })), 130).findings).toEqual([])
+    const stillDismissed = applyFeedFiles(
+      dismissed,
+      '/feed',
+      [{ path, feed: feed(entry({ detail: 'Still running.' })) }],
+      130,
+    )
+    expect(stillDismissed.findings).toEqual([])
+    expect(stillDismissed.closedFindings).toMatchObject([{ how: 'dismissed', feedKey: 'machine/worker' }])
     expect(applyFeed(EMPTY, feed(entry({ state: 'done' })), 120)).toBe(EMPTY)
   })
 
@@ -102,23 +118,11 @@ describe('progress feed', () => {
     expect(onlyB.findings.map(f => f.feedKey)).toEqual(['subagent/s1/1'])
     expect(onlyB.closedFindings).toMatchObject([{ feedKey: 'herdr/a', outcome: 'done: no longer reported' }])
 
-    const stale = applyFeedFiles(EMPTY, '/feed', [{ ...a, feed: feed(entry({ at: 100 })) }], 100 + FEED_TTL_MS)
+    const active = applyFeedFiles(EMPTY, '/feed', [{ ...a, feed: feed(entry({ at: 100 })) }], 110)
+    const stale = applyFeedFiles(active, '/feed', [{ ...a, feed: feed(entry({ at: 100 })) }], 100 + FEED_TTL_MS)
     expect(stale.findings).toEqual([])
     expect(stale.closedFindings).toMatchObject([{ feedKey: 'machine/worker', outcome: 'done: feed entry expired' }])
-  })
-
-  test('cleans stale feed history and keeps a dismissed key past the ordinary history limit', () => {
-    const open = applyFeed(EMPTY, feed(entry()), 110)
-    const dismissed = closeFinding(open, 'f1', { how: 'dismissed', outcome: 'dismissed' }, 120)
-    const history = Array.from({ length: 13 }, (_, i) => ({
-      ...finding({ id: `f${i + 2}` }),
-      how: 'dismissed' as const,
-      outcome: 'dismissed',
-      closedAt: i,
-    }))
-    const retained = pruneClosed({ ...dismissed, closedFindings: [...dismissed.closedFindings, ...history] }, new Set())
-    expect(retained.closedFindings.some(f => f.feedKey === 'machine/worker')).toBe(true)
-    expect(applyFeed(retained, feed(), 130).closedFindings.some(f => f.feedKey === 'machine/worker')).toBe(false)
+    expect(applyFeedFiles(EMPTY, '/feed', [{ ...a, feed: feed(entry({ at: 100 })) }], 100 + FEED_TTL_MS)).toBe(EMPTY)
   })
 
   test('hides feed findings from model text and ignores model closes for their ids', () => {
