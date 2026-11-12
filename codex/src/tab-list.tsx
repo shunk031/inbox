@@ -182,7 +182,7 @@ export function ListRow({
         )}
       </div>
       <span class="side" data-room={SENDING}>
-        {isInSide ? <span class="side-label">{inlineHtml(label)}</span> : null}
+        {isInSide ? <span class="side-label">{inlineHtml(label ?? '')}</span> : null}
         {side}
       </span>
       {isSelected || isClosing ? <Panel row={row} isClosing={isClosing} status={statusUnder} /> : null}

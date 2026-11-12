@@ -171,7 +171,10 @@ test('Codex shows option feedback with a label and links its settled outcome', a
     root,
   )
   assert.equal(root.querySelector('.panel .muted a')?.textContent, 'PR 7171')
-  assert.equal(root.querySelector('.panel .muted a')?.getAttribute('href'), 'https://github.com/anthropics/claude-code/pull/7171')
+  assert.equal(
+    root.querySelector('.panel .muted a')?.getAttribute('href'),
+    'https://github.com/anthropics/claude-code/pull/7171',
+  )
 
   const state = demoState(1000)
   const item = state.ledger.items[0]!
@@ -191,7 +194,13 @@ test('Codex shows option feedback with a label and links its settled outcome', a
       NeedsYou,
       {
         v: view,
-        lists: { questions: [], tasks: [], findings: [], findingGroups: [], byTab: { needsYou: [], findings: [] } } as never,
+        lists: {
+          questions: [],
+          tasks: [],
+          findings: [],
+          findingGroups: [],
+          byTab: { needsYou: [], findings: [] },
+        } as never,
         now: 2000,
       },
       null,

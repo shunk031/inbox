@@ -93,6 +93,7 @@ describe('items the agent recorded', () => {
       { action: 'answer', id: item.id, option },
       { now: 1100, turnsStarted: 1, extraSteps: [], comparePage: '' },
     )
+    if ('stale' in answer) throw new Error('Expected the recorded answer to be current.')
 
     expect(option.length).toBeGreaterThan(60)
     expect(item.options).toEqual([option, 'No'])

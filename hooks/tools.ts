@@ -189,7 +189,8 @@ export function recordItem(host: Host, ledger: Ledger, input: Record<string, unk
   const options = input.kind === 'question' ? list(input.options, MAX_OPTIONS, MAX_OPTION, true) : []
   if (input.kind === 'question' && options.length === 0)
     return unchanged(ledger, 'Not recorded: a question needs at least one option.')
-  const recInput = input.kind === 'question' ? cutInline(typeof input.rec === 'string' ? input.rec : '', MAX_OPTION) : ''
+  const recInput =
+    input.kind === 'question' ? cutInline(typeof input.rec === 'string' ? input.rec : '', MAX_OPTION) : ''
   const rec = recInput === '' ? null : recommendedOption(options, recInput)
   if (recInput !== '' && rec === null) return unchanged(ledger, 'Not recorded: rec must be one of the options.')
   const steps = list(input.steps, MAX_STEPS + 3, 4000)

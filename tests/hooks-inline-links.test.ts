@@ -52,7 +52,12 @@ async function answersLinkedOption($: Engine, on: On, surface: 'terminal' | 'des
   await $.session.start({ cwd: '/tmp/project', surface, isInteractive: true })
   await $.command.run({ command: 'inbox', args: '' } as never)
   const pane = await $.ui.mount({ ...PANE, surface })
-  await $.tool.call({ tool: 'mcp__inbox__record', kind: 'question', ask: 'Merge this PR?', options: [option, 'No'] } as never)
+  await $.tool.call({
+    tool: 'mcp__inbox__record',
+    kind: 'question',
+    ask: 'Merge this PR?',
+    options: [option, 'No'],
+  } as never)
   await clock.settle()
   await selectRow(pane, 'i1')
   expect((await pane.find({ key: 'answer-i1-0' }))?.props.label).toContain('PR 7171')
