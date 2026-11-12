@@ -1,7 +1,7 @@
 // Built by codex/build.mjs from codex/src and hooks/. Do not edit.
 
 // src/hook-main.ts
-import { dirname as dirname3, join as join4 } from "node:path";
+import { dirname as dirname3, join as join5 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/detached-update.ts
@@ -128,6 +128,18 @@ function sameAsk(a, b) {
 }
 
 // ../hooks/ledger-close.ts
+function closedFindingRecord(finding, closing, now, askedAs) {
+  return { ...finding, ...askedAs ? { askedAs } : {}, ...closing, closedAt: now };
+}
+function closeFinding(ledger, id, closing, now, askedAs) {
+  const finding = ledger.findings.find((f) => f.id === id);
+  if (!finding) return ledger;
+  return {
+    ...ledger,
+    findings: ledger.findings.filter((f) => f.id !== id),
+    closedFindings: [...ledger.closedFindings, closedFindingRecord(finding, closing, now, askedAs)]
+  };
+}
 function idNumber(id) {
   return Number(id.match(/\d+/)?.[0] ?? Number.NaN);
 }
@@ -620,7 +632,7 @@ function statusSummaryLines(ledger) {
   ];
 }
 function carryText(ledger, title) {
-  const findings = ledger.findings;
+  const findings = ledger.findings.filter((f) => !f.feedKey);
   const lines = statusSummaryLines(ledger);
   if (lines.length === 0 && ledger.items.length === 0 && findings.length === 0) return null;
   const out = [title, ...lines];
@@ -640,6 +652,7 @@ function carryText(ledger, title) {
 }
 var CLOSE_ID_RULE = "A close id is only for the close tool. Never write one in a reply.";
 function inboxText(host, ledger, isOpen2) {
+  const findings = ledger.findings.filter((f) => !f.feedKey);
   const out = [
     `inbox: what waits on the user, as of your last reply. Anything not listed here is closed. ${CLOSE_ID_RULE}`
   ];
@@ -649,9 +662,9 @@ function inboxText(host, ledger, isOpen2) {
   } else {
     out.push("Nothing is waiting on the user.");
   }
-  if (ledger.findings.length > 0) {
+  if (findings.length > 0) {
     out.push("Findings you recorded, still open:");
-    for (const f of ledger.findings) out.push(findingLine(f));
+    for (const f of findings) out.push(findingLine(f));
   }
   out.push(isOpen2 ? `The user has ${host.surface} open beside the conversation.` : `${surfaceAtStart(host)} is closed.`);
   return out.join(NL2);
@@ -1242,7 +1255,8 @@ var LISTED_TABS = TAB_NAMES.filter((t) => isListedTab(t.id));
 // ../hooks/help.ts
 var FINDING_GROUPS = {
   issue: { title: "Issues", mark: "\u25B2", tone: "issue" },
-  opportunity: { title: "Opportunities", mark: "\u2726", tone: "done" }
+  opportunity: { title: "Opportunities", mark: "\u2726", tone: "done" },
+  progress: { title: "Progress", mark: "\u21BB", tone: "findings" }
 };
 var SUBJECT_MARKS = {
   working: { mark: "\u25CF", tone: null },
@@ -1295,6 +1309,12 @@ var MARK_LEGEND = [
     tone: FINDING_GROUPS.opportunity.tone,
     isRunning: false,
     words: "Opportunity: something that could be better"
+  },
+  {
+    mark: FINDING_GROUPS.progress.mark,
+    tone: FINDING_GROUPS.progress.tone,
+    isRunning: false,
+    words: "Progress reported by the feed"
   }
 ];
 var STATUS_ONLY_MARKS = /* @__PURE__ */ new Set([IDLE_MARK.mark, SUBJECT_MARKS.queued.mark, SUBJECT_MARKS["waits-on-other"].mark]);
@@ -2412,7 +2432,7 @@ async function readState(dir, sessionId) {
 }
 var LOCK_WAIT_MS = 1e4;
 var LOCK_CHILD = "held";
-var sleep = (ms) => new Promise((resolve4) => setTimeout(resolve4, ms));
+var sleep = (ms) => new Promise((resolve5) => setTimeout(resolve5, ms));
 var LockBusyError = class extends Error {
 };
 var bootSession = null;
@@ -3036,7 +3056,7 @@ function herdrOnWrite(env, run2, dir, now) {
 }
 
 // src/hook.ts
-import { resolve as resolve3 } from "node:path";
+import { resolve as resolve4 } from "node:path";
 
 // src/cli.ts
 function namedCli(env) {
@@ -3527,6 +3547,127 @@ function rolloutReads(path, tail) {
   };
 }
 
+// ../hooks/feed.ts
+var FEED_TTL_MS = 6 * 60 * 60 * 1e3;
+function parseFeed(text2) {
+  try {
+    const feed = JSON.parse(text2);
+    if (!feed || typeof feed !== "object") return null;
+    const f = feed;
+    if (f.version !== 1 || !validSource(f.source) || !validTime(f.writtenAt) || !Array.isArray(f.entries)) return null;
+    if (f.entries.length > 40) return null;
+    const keys = /* @__PURE__ */ new Set();
+    const entries = [];
+    for (const value of f.entries) {
+      if (!value || typeof value !== "object") return null;
+      const e = value;
+      if (typeof e.key !== "string" || e.key.length === 0 || e.key.length > 100 || keys.has(e.key) || !["working", "blocked", "done"].includes(e.state) || typeof e.title !== "string" || e.title.length === 0 || typeof e.detail !== "string" || !validTime(e.at))
+        return null;
+      keys.add(e.key);
+      entries.push({ ...e, title: e.title.slice(0, 120), detail: e.detail.slice(0, 600) });
+    }
+    return { version: 1, source: f.source, writtenAt: f.writtenAt, entries };
+  } catch {
+    return null;
+  }
+}
+var validTime = (n) => typeof n === "number" && Number.isFinite(n) && n >= 0;
+var validSource = (s) => typeof s === "string" && s.length > 0;
+function applyFeed(ledger, feed, now, source = "") {
+  const keys = new Set(feed.entries.map((e) => e.key));
+  const owns = (f) => f.feedKey !== void 0 && f.feedSource === source;
+  const staleClosed = ledger.closedFindings.some((f) => owns(f) && !keys.has(f.feedKey));
+  let next = staleClosed ? { ...ledger, closedFindings: ledger.closedFindings.filter((f) => !owns(f) || keys.has(f.feedKey)) } : ledger;
+  for (const entry of feed.entries) {
+    let finding = next.findings.find((f) => owns(f) && f.feedKey === entry.key);
+    const isClosed = next.closedFindings.some((f) => owns(f) && f.feedKey === entry.key);
+    if (!finding && !isClosed)
+      finding = next.findings.find((f) => !f.feedKey && (sameAsk(f.title, entry.title) || restates(f.title, entry.title)));
+    if (!finding) {
+      if (entry.state === "done" || isClosed) continue;
+      finding = {
+        id: `f${next.nextId}`,
+        kind: "progress",
+        title: entry.title,
+        detail: detailOf(entry),
+        path: null,
+        at: entry.at,
+        feedKey: entry.key,
+        feedSource: source
+      };
+      next = { ...next, findings: [...next.findings, finding], nextId: next.nextId + 1 };
+    } else {
+      const updated = {
+        ...finding,
+        kind: "progress",
+        title: entry.title,
+        detail: detailOf(entry),
+        path: null,
+        at: entry.at,
+        feedKey: entry.key,
+        feedSource: source
+      };
+      if (finding.kind !== updated.kind || finding.title !== updated.title || finding.detail !== updated.detail || finding.path !== updated.path || finding.at !== updated.at || finding.feedKey !== updated.feedKey || finding.feedSource !== updated.feedSource) {
+        next = { ...next, findings: next.findings.map((f) => f.id === finding.id ? updated : f) };
+        finding = updated;
+      }
+    }
+    if (entry.state === "done")
+      next = closeFinding(next, finding.id, { how: "update", outcome: `done: ${entry.detail}` }, now);
+  }
+  for (const finding of next.findings)
+    if (owns(finding) && !keys.has(finding.feedKey))
+      next = closeFinding(next, finding.id, { how: "update", outcome: "done: no longer reported" }, now);
+  return next;
+}
+function applyFeedFiles(ledger, root, files, now) {
+  const present = new Set(files.map((f) => f.path));
+  const sources = new Set([...ledger.findings, ...ledger.closedFindings].map((f) => f.feedSource).filter(Boolean));
+  let next = ledger;
+  for (const source of sources)
+    if (sourceUnder(source, root) && !present.has(source)) next = applyFeed(next, emptyFeed, now, source);
+  for (const file of files) if (file.feed) next = applyFeed(next, file.feed, now, file.path);
+  for (const finding of next.findings)
+    if (finding.feedKey && finding.feedSource && now - finding.at >= FEED_TTL_MS)
+      next = closeFinding(next, finding.id, { how: "update", outcome: "done: feed entry expired" }, now);
+  return next;
+}
+var emptyFeed = { version: 1, source: "", writtenAt: 0, entries: [] };
+var sourceUnder = (source, root) => {
+  const base = root.replace(/[\\/]+$/, "");
+  return source === base || source.startsWith(`${base}/`) || source.startsWith(`${base}\\`);
+};
+var detailOf = (entry) => entry.state === "blocked" ? `Blocked: ${entry.detail}` : entry.detail;
+
+// src/feed.ts
+import { readdir as readdir3, readFile as readFile2, stat as stat2 } from "node:fs/promises";
+import { join as join3, resolve as resolve3 } from "node:path";
+async function readFeedFiles(path) {
+  if (!path) return null;
+  const root = resolve3(path);
+  try {
+    const info = await stat2(root);
+    if (info.isDirectory()) {
+      const files = [];
+      for (const entry of await readdir3(root, { withFileTypes: true })) {
+        if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+        const file = join3(root, entry.name);
+        try {
+          files.push({ path: file, feed: parseFeed(await readFile2(file, "utf8")) });
+        } catch (error) {
+          if (!missing(error)) files.push({ path: file, feed: null });
+        }
+      }
+      return { root, files };
+    }
+    if (!info.isFile()) return null;
+    return { root, files: [{ path: root, feed: parseFeed(await readFile2(root, "utf8")) }] };
+  } catch (error) {
+    return missing(error) ? { root, files: [] } : null;
+  }
+}
+var missing = (error) => !!error && typeof error === "object" && "code" in error && error.code === "ENOENT";
+
 // src/hook.ts
 async function handleHook(input, deps) {
   const id = input.session_id;
@@ -3534,12 +3675,19 @@ async function handleHook(input, deps) {
   if (!id) return null;
   const meta = await rolloutMeta(input.transcript_path);
   if (!env.INBOX_IN_EXEC && meta.isNonInteractive) return null;
-  const { update: write, read } = codexStore(dir, id, now, deps.onWrite);
+  const { update: updateState2, read } = codexStore(dir, id, now, deps.onWrite);
+  const feed = await readFeedFiles(env.INBOX_FEED);
   const cliPath = namedCli(env);
   const withCli = (s) => cliPath && s.cliPath !== cliPath ? { ...s, cliPath } : s;
   const rolloutPath = input.agent_id ? null : input.transcript_path;
   const withRollout = (s) => rolloutPath !== null && s.transcriptPath !== rolloutPath ? { ...s, transcriptPath: rolloutPath } : s;
   const withHost = (s) => withRollout(withCli(s));
+  const withFeed = (s) => {
+    if (!feed) return s;
+    const ledger = applyFeedFiles(s.ledger, feed.root, feed.files, now());
+    return ledger === s.ledger ? s : { ...s, ledger };
+  };
+  const write = (change) => updateState2(async (s) => withFeed(await change(s)));
   let isMarkedBehind = false;
   const readHistoryAhead = async (readBefore, tail) => {
     if (rolloutPath === null) return async (s) => s;
@@ -3603,7 +3751,7 @@ async function handleHook(input, deps) {
       const toolInput = input.tool_input ?? {};
       const command = typeof toolInput.command === "string" ? toolInput.command : "";
       if (tool === "apply_patch") {
-        const files = patchFiles(command).map((f) => resolve3(input.cwd || "/", f));
+        const files = patchFiles(command).map((f) => resolve4(input.cwd || "/", f));
         await write((s) => files.reduce((x, f) => noteActivity(x, `edited ${f}`), withRollout(s)));
         return null;
       }
@@ -3675,18 +3823,18 @@ async function handleHook(input, deps) {
 
 // src/data-dir.ts
 import { homedir as homedir2 } from "node:os";
-import { join as join3 } from "node:path";
+import { join as join4 } from "node:path";
 function dataDir(env, pluginRoot) {
   const fromEnv = env.INBOX_DATA || env.PLUGIN_DATA;
   if (fromEnv) return fromEnv;
   const m = pluginRoot.match(/^(.*)\/plugins\/cache\/([^/]+)\/([^/]+)\/[^/]+$/);
   if (m) return `${m[1]}/plugins/data/${m[3]}-${m[2]}`;
-  return join3(homedir2(), ".codex", "inbox-dev");
+  return join4(homedir2(), ".codex", "inbox-dev");
 }
 
 // src/run.ts
 import { execFile } from "node:child_process";
-var run = (args, { cwd, timeoutMs, env, input }) => new Promise((resolve4) => {
+var run = (args, { cwd, timeoutMs, env, input }) => new Promise((resolve5) => {
   const [file = "", ...rest] = args;
   try {
     const child = execFile(
@@ -3694,14 +3842,14 @@ var run = (args, { cwd, timeoutMs, env, input }) => new Promise((resolve4) => {
       rest,
       { cwd, env: { ...process.env, ...env }, timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024, encoding: "utf8" },
       (err, stdout, stderr) => {
-        resolve4({ code: exitCodeOf(err), stdout: String(stdout), stderr: String(stderr) });
+        resolve5({ code: exitCodeOf(err), stdout: String(stdout), stderr: String(stderr) });
       }
     );
     child.stdin?.on("error", () => {
     });
     child.stdin?.end(input);
   } catch (err) {
-    resolve4({ code: UNSTARTABLE_CODE, stdout: "", stderr: err instanceof Error ? err.message : String(err) });
+    resolve5({ code: UNSTARTABLE_CODE, stdout: "", stderr: err instanceof Error ? err.message : String(err) });
   }
 });
 function exitCodeOf(err) {
@@ -3716,7 +3864,7 @@ async function main() {
   for await (const chunk of process.stdin) raw += chunk;
   const dist = dirname3(fileURLToPath(import.meta.url));
   const dir = dataDir(process.env, dirname3(dist));
-  const startUpdate = detachedUpdate(dir, process.env, join4(dist, "update.mjs"));
+  const startUpdate = detachedUpdate(dir, process.env, join5(dist, "update.mjs"));
   const out = await handleHook(JSON.parse(raw), {
     dir,
     env: process.env,

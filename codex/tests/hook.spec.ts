@@ -50,6 +50,35 @@ test('a session starts with the guidance, records the prompt, and ends the turn 
   assert.deepEqual(deps.updates, ['s1'])
 })
 
+test('a Codex hook applies the configured progress feed to the session ledger', async () => {
+  const dir = tempDir()
+  const path = join(tempDir(), 'feed.json')
+  writeFileSync(
+    path,
+    JSON.stringify({
+      version: 1,
+      source: 'herdr-meta-patrol',
+      writtenAt: 10,
+      entries: [
+        {
+          key: 'machine/worker',
+          state: 'working',
+          title: 'Implement the progress feed',
+          detail: 'Update state.',
+          at: 10,
+        },
+      ],
+    }),
+  )
+  const base = hookDeps(dir)
+  const deps = { ...base, env: { ...base.env, INBOX_FEED: path } }
+  await handleHook(input('SessionStart', { cwd: '/repo', source: 'startup' }), deps)
+  assert.deepEqual(
+    (await readState(dir, 's1')).ledger.findings.map(f => [f.kind, f.feedKey]),
+    [['progress', 'machine/worker']],
+  )
+})
+
 test('a hook without CODEX_CLI_PATH saves the CLI the app names in CODEX_APP_RUNTIME_CLI_PATH, and CODEX_CLI_PATH wins when both are set', async () => {
   const dir = tempDir()
   const transcript = join(tempDir(), 'rollout.jsonl')

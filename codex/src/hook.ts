@@ -37,6 +37,8 @@ import { CODEX } from './texts'
 import { rolloutMeta } from './rollout-rows'
 import { turnOf } from './rollout-turns'
 import { rolloutReads, rolloutTail } from './transcript'
+import { applyFeedFiles } from '../../hooks/feed'
+import { readFeedFiles } from './feed'
 
 export type HookInput = {
   hook_event_name: string
@@ -72,7 +74,8 @@ export async function handleHook(input: HookInput, deps: HookDeps): Promise<Reco
   const meta = await rolloutMeta(input.transcript_path)
   // INBOX_IN_EXEC lets a test drive a whole session through `codex exec`.
   if (!env.INBOX_IN_EXEC && meta.isNonInteractive) return null
-  const { update: write, read } = codexStore(dir, id, now, deps.onWrite)
+  const { update: updateState, read } = codexStore(dir, id, now, deps.onWrite)
+  const feed = await readFeedFiles(env.INBOX_FEED)
   const cliPath = namedCli(env)
   const withCli = (s: SessionState): SessionState => (cliPath && s.cliPath !== cliPath ? { ...s, cliPath } : s)
   // A subagent's hook names its own rollout, not the session's.
@@ -80,6 +83,14 @@ export async function handleHook(input: HookInput, deps: HookDeps): Promise<Reco
   const withRollout = (s: SessionState): SessionState =>
     rolloutPath !== null && s.transcriptPath !== rolloutPath ? { ...s, transcriptPath: rolloutPath } : s
   const withHost = (s: SessionState): SessionState => withRollout(withCli(s))
+  const withFeed = (s: SessionState): SessionState => {
+    if (!feed) return s
+    const ledger = applyFeedFiles(s.ledger, feed.root, feed.files, now())
+
+    return ledger === s.ledger ? s : { ...s, ledger }
+  }
+  const write = (change: (s: SessionState) => SessionState | Promise<SessionState>) =>
+    updateState(async s => withFeed(await change(s)))
   let isMarkedBehind = false
   /**
    * Makes the reads of the rollout that the history check needs before the state lock, by checking the state

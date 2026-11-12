@@ -5,7 +5,7 @@
 import { randomUUID } from "crypto";
 import { existsSync } from "fs";
 import { homedir } from "os";
-import { dirname as dirname2, join as join3 } from "path";
+import { dirname as dirname2, join as join4 } from "path";
 import { fileURLToPath } from "url";
 // package.json
 var version = "0.3.0";
@@ -1650,7 +1650,8 @@ var LISTED_TABS = TAB_NAMES.filter((t) => isListedTab(t.id));
 // ../hooks/help.ts
 var FINDING_GROUPS = {
   issue: { title: "Issues", mark: "\u25B2", tone: "issue" },
-  opportunity: { title: "Opportunities", mark: "\u2726", tone: "done" }
+  opportunity: { title: "Opportunities", mark: "\u2726", tone: "done" },
+  progress: { title: "Progress", mark: "\u21BB", tone: "findings" }
 };
 var SUBJECT_MARKS = {
   working: { mark: "\u25CF", tone: null },
@@ -1703,6 +1704,12 @@ var MARK_LEGEND = [
     tone: FINDING_GROUPS.opportunity.tone,
     isRunning: false,
     words: "Opportunity: something that could be better"
+  },
+  {
+    mark: FINDING_GROUPS.progress.mark,
+    tone: FINDING_GROUPS.progress.tone,
+    isRunning: false,
+    words: "Progress reported by the feed"
   }
 ];
 var STATUS_ONLY_MARKS = new Set([IDLE_MARK.mark, SUBJECT_MARKS.queued.mark, SUBJECT_MARKS["waits-on-other"].mark]);
@@ -2416,7 +2423,7 @@ Write plainly. No jargon, no filler, no markdown.`;
 }
 function ledgerBlocks(ledger) {
   const open = ledger.items.map((i) => `${i.id} | ${MODEL_KIND[i.kind]} | ${i.label ?? "-"} | ${i.ask} | ${i.options.join(" / ") || "-"} | ${i.rec ?? "-"} | ${i.isDesignChoice ? "design" : "-"}`).join(NL4);
-  const findings = ledger.findings.map((f) => `${f.id} | ${f.kind}: ${f.title}`).join(NL4);
+  const findings = ledger.findings.filter((f) => !f.feedKey).map((f) => `${f.id} | ${f.kind}: ${f.title}`).join(NL4);
   const closed = ledger.closed.slice(-CLOSED_CONTEXT_LIMIT).filter((d) => d.how !== "expired" && !isAskedForChoices(d)).map((d) => `${d.ask} \u2192 ${outcomeText(d)}`).join(NL4);
   return [
     `<open>${NL4}${open}${NL4}</open>`,
@@ -3816,8 +3823,9 @@ function isPersonsAnswer(outcome) {
   return outcome.trim() !== "" && !NOT_AN_ANSWER.test(outcome);
 }
 function applyUpdate(ledger, u, now, turn, promptAt = now) {
+  const feedIds = new Set(ledger.findings.filter((f) => f.feedKey).map((f) => f.id));
   const stillAsked = new Set(u.updated.filter((c) => c.options || c.rec).map((c) => c.id));
-  const closing = new Map(u.closed.filter((c) => !stillAsked.has(c.id) && !UNFOUNDED_MOOT.test(c.outcome)).map((c) => [c.id, c.outcome]));
+  const closing = new Map(u.closed.filter((c) => !feedIds.has(c.id) && !stillAsked.has(c.id) && !UNFOUNDED_MOOT.test(c.outcome)).map((c) => [c.id, c.outcome]));
   const closed = [...ledger.closed];
   const items = [];
   for (const item of ledger.items) {
@@ -3869,7 +3877,7 @@ function applyUpdate(ledger, u, now, turn, promptAt = now) {
       options: ["Proceed", "Not yet"],
       rec: null
     };
-    const isKnown = items.some((i) => restates(i.ask, work)) || ledger.findings.some((f) => restates(f.title, work)) || repeatsClosed(ledger.closed, { ...todo, helps: [] }, promptAt);
+    const isKnown = items.some((i) => restates(i.ask, work)) || ledger.findings.some((f) => !f.feedKey && restates(f.title, work)) || repeatsClosed(ledger.closed, { ...todo, helps: [] }, promptAt);
     if (isKnown)
       continue;
     items.push({ ...todo, helps: [], id: `i${nextId}`, turn, at: now, from: "update" });
@@ -3886,7 +3894,7 @@ function applyUpdate(ledger, u, now, turn, promptAt = now) {
   }
   for (const i of items.filter((i) => created.has(i.id)))
     for (const f of ledger.findings)
-      if (!askedBy.has(f.id) && asksAbout(i, f))
+      if (!f.feedKey && !askedBy.has(f.id) && asksAbout(i, f))
         askedBy.set(f.id, i.id);
   const { findings, closedFindings } = ledger.findings.reduce((l, f) => {
     const asker = askedBy.get(f.id);
@@ -3921,7 +3929,8 @@ function addFinding(ledger, finding) {
   if (dismissed)
     return { ledger, id: dismissed.id, isAdded: false, expired: null, dismissed };
   const id = `f${ledger.nextId}`;
-  const expired = ledger.findings.length >= MAX_FINDINGS ? ledger.findings[0] : null;
+  const ordinary = ledger.findings.filter((f) => !f.feedKey);
+  const expired = ordinary.length >= MAX_FINDINGS ? ordinary[0] : null;
   const room = expired ? closeFinding(ledger, expired.id, { how: "expired", outcome: "list full" }, finding.at) : ledger;
   return {
     ledger: { ...room, findings: [...room.findings, { ...finding, id }], nextId: ledger.nextId + 1 },
@@ -4387,6 +4396,7 @@ function findingLine(finding) {
 }
 var CLOSE_ID_RULE = "A close id is only for the close tool. Never write one in a reply.";
 function inboxText(host, ledger, isOpen) {
+  const findings = ledger.findings.filter((f) => !f.feedKey);
   const out = [
     `inbox: what waits on the user, as of your last reply. Anything not listed here is closed. ${CLOSE_ID_RULE}`
   ];
@@ -4397,9 +4407,9 @@ function inboxText(host, ledger, isOpen) {
   } else {
     out.push("Nothing is waiting on the user.");
   }
-  if (ledger.findings.length > 0) {
+  if (findings.length > 0) {
     out.push("Findings you recorded, still open:");
-    for (const f of ledger.findings)
+    for (const f of findings)
       out.push(findingLine(f));
   }
   out.push(isOpen ? `The user has ${host.surface} open beside the conversation.` : `${surfaceAtStart(host)} is closed.`);
@@ -6409,6 +6419,7 @@ function bandLines(screen, width, now, style) {
 // src/controller.ts
 var ANIMATION_MS = 200;
 var PRS_CHECK_MS = 120000;
+var FEED_CHECK_MS = 30000;
 function createPanel(deps) {
   const { source, style, timers } = deps;
   let ui = { ...INITIAL_UI, shownSince: deps.openedAt };
@@ -6523,11 +6534,14 @@ function createPanel(deps) {
       stops.push(source.onChange(() => void refresh()));
       const prs = timers.every(() => source.fetchPrsWhenDue(), PRS_CHECK_MS);
       stops.push(() => timers.stop(prs));
+      const feed = timers.every(() => void source.feedWhenDue(), FEED_CHECK_MS);
+      stops.push(() => timers.stop(feed));
       const delegates = timers.every(() => {
         if (ui.tab === "overview")
           source.checkDelegatesWhenDue();
       }, HERDR_CHECK_MS);
       stops.push(() => timers.stop(delegates));
+      await source.feedWhenDue();
       await refresh();
     },
     dispose() {
@@ -8650,6 +8664,7 @@ function demoSource(deps) {
     },
     resume: async () => null,
     fetchPrsWhenDue: () => {},
+    feedWhenDue: async () => {},
     checkDelegatesWhenDue: () => {},
     shown: () => {},
     onChange: (listener) => {
@@ -8929,6 +8944,10 @@ function activityHandlers(context, sessions) {
   return { onSubagentLifecycle, onSubagentProgress, onToolExecutionStart, onToolExecutionEnd, onToolResult };
 }
 
+// src/host-panel.ts
+import { readdir as readdir2, readFile as readFile2, stat as stat2 } from "fs/promises";
+import { join as join2, resolve } from "path";
+
 // ../hooks/host-press.ts
 async function wakeForDone(host, current) {
   const check = async (s) => doneWake(s.ledger, {
@@ -9156,7 +9175,132 @@ async function press(host, p, isStale, holds) {
   return (await startPress(host, p, isStale, holds)).finish();
 }
 
+// ../hooks/feed.ts
+var FEED_TTL_MS = 6 * 60 * 60 * 1000;
+function parseFeed(text) {
+  try {
+    const feed = JSON.parse(text);
+    if (!feed || typeof feed !== "object")
+      return null;
+    const f = feed;
+    if (f.version !== 1 || !validSource(f.source) || !validTime(f.writtenAt) || !Array.isArray(f.entries))
+      return null;
+    if (f.entries.length > 40)
+      return null;
+    const keys = new Set;
+    const entries = [];
+    for (const value of f.entries) {
+      if (!value || typeof value !== "object")
+        return null;
+      const e = value;
+      if (typeof e.key !== "string" || e.key.length === 0 || e.key.length > 100 || keys.has(e.key) || !["working", "blocked", "done"].includes(e.state) || typeof e.title !== "string" || e.title.length === 0 || typeof e.detail !== "string" || !validTime(e.at))
+        return null;
+      keys.add(e.key);
+      entries.push({ ...e, title: e.title.slice(0, 120), detail: e.detail.slice(0, 600) });
+    }
+    return { version: 1, source: f.source, writtenAt: f.writtenAt, entries };
+  } catch {
+    return null;
+  }
+}
+var validTime = (n) => typeof n === "number" && Number.isFinite(n) && n >= 0;
+var validSource = (s) => typeof s === "string" && s.length > 0;
+function applyFeed(ledger, feed, now, source = "") {
+  const keys = new Set(feed.entries.map((e) => e.key));
+  const owns = (f) => f.feedKey !== undefined && f.feedSource === source;
+  const staleClosed = ledger.closedFindings.some((f) => owns(f) && !keys.has(f.feedKey));
+  let next = staleClosed ? { ...ledger, closedFindings: ledger.closedFindings.filter((f) => !owns(f) || keys.has(f.feedKey)) } : ledger;
+  for (const entry of feed.entries) {
+    let finding = next.findings.find((f) => owns(f) && f.feedKey === entry.key);
+    const isClosed = next.closedFindings.some((f) => owns(f) && f.feedKey === entry.key);
+    if (!finding && !isClosed)
+      finding = next.findings.find((f) => !f.feedKey && (sameAsk(f.title, entry.title) || restates(f.title, entry.title)));
+    if (!finding) {
+      if (entry.state === "done" || isClosed)
+        continue;
+      finding = {
+        id: `f${next.nextId}`,
+        kind: "progress",
+        title: entry.title,
+        detail: detailOf(entry),
+        path: null,
+        at: entry.at,
+        feedKey: entry.key,
+        feedSource: source
+      };
+      next = { ...next, findings: [...next.findings, finding], nextId: next.nextId + 1 };
+    } else {
+      const updated = {
+        ...finding,
+        kind: "progress",
+        title: entry.title,
+        detail: detailOf(entry),
+        path: null,
+        at: entry.at,
+        feedKey: entry.key,
+        feedSource: source
+      };
+      if (finding.kind !== updated.kind || finding.title !== updated.title || finding.detail !== updated.detail || finding.path !== updated.path || finding.at !== updated.at || finding.feedKey !== updated.feedKey || finding.feedSource !== updated.feedSource) {
+        next = { ...next, findings: next.findings.map((f) => f.id === finding.id ? updated : f) };
+        finding = updated;
+      }
+    }
+    if (entry.state === "done")
+      next = closeFinding(next, finding.id, { how: "update", outcome: `done: ${entry.detail}` }, now);
+  }
+  for (const finding of next.findings)
+    if (owns(finding) && !keys.has(finding.feedKey))
+      next = closeFinding(next, finding.id, { how: "update", outcome: "done: no longer reported" }, now);
+  return next;
+}
+function applyFeedFiles(ledger, root, files, now) {
+  const present = new Set(files.map((f) => f.path));
+  const sources = new Set([...ledger.findings, ...ledger.closedFindings].map((f) => f.feedSource).filter(Boolean));
+  let next = ledger;
+  for (const source of sources)
+    if (sourceUnder(source, root) && !present.has(source))
+      next = applyFeed(next, emptyFeed, now, source);
+  for (const file of files)
+    if (file.feed)
+      next = applyFeed(next, file.feed, now, file.path);
+  for (const finding of next.findings)
+    if (finding.feedKey && finding.feedSource && now - finding.at >= FEED_TTL_MS)
+      next = closeFinding(next, finding.id, { how: "update", outcome: "done: feed entry expired" }, now);
+  return next;
+}
+var emptyFeed = { version: 1, source: "", writtenAt: 0, entries: [] };
+var sourceUnder = (source, root) => {
+  const base = root.replace(/[\\/]+$/, "");
+  return source === base || source.startsWith(`${base}/`) || source.startsWith(`${base}\\`);
+};
+var detailOf = (entry) => entry.state === "blocked" ? `Blocked: ${entry.detail}` : entry.detail;
+
 // src/host-panel.ts
+async function readFeedFiles(path) {
+  const root = resolve(path);
+  try {
+    const info = await stat2(root);
+    if (info.isDirectory()) {
+      const files = [];
+      for (const entry of await readdir2(root, { withFileTypes: true })) {
+        if (!entry.isFile() || !entry.name.endsWith(".json"))
+          continue;
+        const file = join2(root, entry.name);
+        try {
+          files.push({ path: file, feed: parseFeed(await readFile2(file, "utf8")) });
+        } catch (error) {
+          if (!missing(error))
+            files.push({ path: file, feed: null });
+        }
+      }
+      return { root, files };
+    }
+    return info.isFile() ? { root, files: [{ path: root, feed: parseFeed(await readFile2(root, "utf8")) }] } : null;
+  } catch (error) {
+    return missing(error) ? { root, files: [] } : null;
+  }
+}
+var missing = (error) => !!error && typeof error === "object" && ("code" in error) && error.code === "ENOENT";
 function panelCalls(context, sessions) {
   const { deps, dir, openPanels, prFetches, listeners, memory, sendToAgent, modelNameOf } = context;
   const { change, hostFor, fetchPrsWhenDue, checkDelegatesWhenDue, wakeLater } = sessions;
@@ -9182,6 +9326,22 @@ function panelCalls(context, sessions) {
         return;
       });
       fetchPrsWhenDue(ctx);
+    },
+    feedWhenDue: async (ctx) => {
+      if (!deps.feedPath)
+        return;
+      try {
+        const feed = await readFeedFiles(deps.feedPath);
+        if (!feed)
+          return;
+        const id = sessionIdOf(ctx);
+        await change(id, (s) => {
+          const ledger = applyFeedFiles(s.ledger, feed.root, feed.files, deps.now());
+          return ledger === s.ledger ? s : { ...s, ledger };
+        });
+      } catch {
+        return;
+      }
     },
     showTab: (ctx, tab, holds) => {
       const id = sessionIdOf(ctx);
@@ -9225,6 +9385,7 @@ function panelCalls(context, sessions) {
     },
     resume: async () => inbox.resume(ctx),
     fetchPrsWhenDue: () => inbox.fetchPrsWhenDue(ctx),
+    feedWhenDue: () => inbox.feedWhenDue(ctx),
     checkDelegatesWhenDue: () => inbox.checkDelegatesWhenDue(ctx),
     shown: (tab, holds) => inbox.showTab(ctx, tab, holds),
     onChange: (listener) => inbox.onChange(ctx, listener)
@@ -9233,8 +9394,8 @@ function panelCalls(context, sessions) {
 }
 
 // src/host-sessions.ts
-import { mkdir as mkdir2, readdir as readdir2, rm, rmdir, writeFile as writeFile2 } from "fs/promises";
-import { dirname, join as join2 } from "path";
+import { mkdir as mkdir2, readdir as readdir3, rm, rmdir, writeFile as writeFile2 } from "fs/promises";
+import { dirname, join as join3 } from "path";
 
 // ../hooks/conversation.ts
 var NL7 = `
@@ -9271,10 +9432,10 @@ function flattenConversation(turns) {
 
 // src/commands.ts
 import { constants } from "fs";
-import { access, stat as stat2 } from "fs/promises";
+import { access, stat as stat3 } from "fs/promises";
 function openTarget2(run, target, root, home) {
   return openTarget(run, {
-    stat: (path) => stat2(path).catch(() => null),
+    stat: (path) => stat3(path).catch(() => null),
     isExecutable: (path) => access(path, constants.X_OK).then(() => true, () => false)
   }, target, root, home);
 }
@@ -9289,13 +9450,13 @@ var recordFiles = {
     await mkdir2(dirname(path), { recursive: true });
     await writeFile2(path, text);
   },
-  list: (folder) => readdir2(folder).catch(() => []),
+  list: (folder) => readdir3(folder).catch(() => []),
   removeFiles: async (paths) => void await Promise.all(paths.map((p) => rm(p, { force: true }))),
   removeFolder: (path) => rmdir(path)
 };
 var statusRecords = (dir, sessionId) => ({
   host: "omp",
-  folder: join2(dir, "overview-calls"),
+  folder: join3(dir, "overview-calls"),
   session: sessionId,
   files: recordFiles
 });
@@ -9692,13 +9853,13 @@ async function copyToClipboard(text) {
   return `no clipboard command started (${candidates.map((c) => c[0]).join(", ")})`;
 }
 var defaultDeps = {
-  stateDir: (pi) => join3(pi.pi.getAgentDir(), "inbox"),
+  stateDir: (pi) => join4(pi.pi.getAgentDir(), "inbox"),
   now: Date.now,
   newId: randomUUID,
   settleWindowMs: SETTLED_MS,
   home: homedir(),
-  isNextBuild: existsSync(join3(dirname2(dirname2(fileURLToPath(import.meta.url))), NEXT_BUILD_MARK)),
-  comparePage: join3(dirname2(fileURLToPath(import.meta.url)), COMPARE_PAGE_FILE),
+  isNextBuild: existsSync(join4(dirname2(dirname2(fileURLToPath(import.meta.url))), NEXT_BUILD_MARK)),
+  comparePage: join4(dirname2(fileURLToPath(import.meta.url)), COMPARE_PAGE_FILE),
   complete: defaultComplete,
   copy: copyToClipboard,
   background: (work) => void work.catch(() => {
@@ -9706,7 +9867,8 @@ var defaultDeps = {
   }),
   isUsageLimit: isUsageLimitOutcome,
   herdrPane: process.env.HERDR_PANE_ID || null,
-  recordedItemsOnly: process.env.INBOX_RECORDED_ITEMS_ONLY
+  recordedItemsOnly: process.env.INBOX_RECORDED_ITEMS_ONLY,
+  feedPath: process.env.INBOX_FEED
 };
 var messageOf = (err) => err instanceof Error ? err.message : String(err);
 function byNewestRevision(a, b) {

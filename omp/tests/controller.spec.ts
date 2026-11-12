@@ -20,7 +20,7 @@ function open(overrides: Partial<PanelSource> = {}) {
   let now = 1_700_000_000_000
   const timers: { fn: () => void; ms: number; stopped: boolean }[] = []
   const pressed: PanelPress[] = []
-  const calls = { renders: 0, closes: 0, fetches: 0 }
+  const calls = { renders: 0, closes: 0, fetches: 0, feeds: 0 }
   const replies: (() => void)[] = []
   const demo = demoSource({
     modelName: 'Claude Sonnet 5.5',
@@ -38,6 +38,7 @@ function open(overrides: Partial<PanelSource> = {}) {
       return demo.press(p, holds)
     },
     fetchPrsWhenDue: () => void calls.fetches++,
+    feedWhenDue: async () => void calls.feeds++,
     ...overrides,
   }
   const panel = createPanel({
@@ -65,6 +66,18 @@ test('the panel shows a loading line until the first screen arrives', async () =
   expect(panel.render(80).join('\n')).toContain('Reading the inbox…')
   await panel.start()
   expect(panel.render(80).join('\n')).toContain('Asks')
+})
+
+test('the panel applies the feed at open and polls it while open', async () => {
+  const { panel, timers, calls } = open()
+  await panel.start()
+  expect(calls.feeds).toBe(1)
+  const timer = timers.find(t => t.ms === 30_000 && !t.stopped)!
+  timer.fn()
+  await flush()
+  expect(calls.feeds).toBe(2)
+  panel.dispose()
+  expect(timer.stopped).toBe(true)
 })
 
 async function replyThenReopen(panel: ReturnType<typeof open>['panel'], reply: string): Promise<string> {

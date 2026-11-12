@@ -77,6 +77,7 @@ import { prMarkId, threadSentIn } from './pr-rows'
 import { failingChecks, prRefs, prNeedsYou, waitingThreads } from './prs'
 import { EMPTY, KEPT_SESSIONS, isBlankLedger } from './ledger'
 import { closeItem } from './ledger-close'
+import { modFeedPoller } from './mod-feed'
 import { tasksRunBy } from './reply-parse'
 import { CLAUDE_CODE, guidedCloseDescription } from './model-text'
 import { statusCarryText, screenText, type ScreenTab } from './inbox-text'
@@ -235,7 +236,7 @@ import {
   updating,
   withoutRowActions,
 } from './mod-sessions'
-import { cancelUndoScroll, mod, paneState, sessionState, suspendUndoReveal } from './mod-state'
+import { cancelUndoScroll, mod, paneState, resetTurn, sessionState, suspendUndoReveal } from './mod-state'
 import { paneAskRows, paneAskTabs } from './pane-asks'
 import { paneRowKeys } from './pane-row-keys'
 import { paneRowLines } from './pane-row-lines'
@@ -291,12 +292,6 @@ const ORDER_TOOL = 'mcp__inbox__order_prs'
 const PERSON_LINES = atom({ plugin: 'inbox', key: 'personLines' } as const, {} as Record<string, string>)
 
 const PANE = 'inbox'
-
-function resetTurn() {
-  sessionState.stepTexts = []
-  sessionState.turnBox = null
-  sessionState.isDialogDismissed = false
-}
 
 /** Adds the person's words to the turn, as a shell command row does. */
 function notePerson($: EngineInterface, line: string) {
@@ -2141,13 +2136,24 @@ async function readVersion($: EngineInterface) {
 }
 
 async function initializeInbox($: EngineInterface) {
-  // A hot reload keeps state an older build wrote. Draws start once isOn is set, and they read the current shape and
-  // the tabs that the next-build mark decides.
+  // A hot reload keeps old state; draws read its current shape and next-build tabs.
   await Promise.all([
     upgradeState($),
     readVersion($),
     $.env.get('INBOX_RECORDED_ITEMS_ONLY').then(v => void (mod.recordedItemsOnly = isRecordedItemsOnly(v))),
   ])
+  const path = await $.env.get('INBOX_FEED')
+  const run = path
+    ? modFeedPoller(
+        path,
+        p => $.fs.stat(p),
+        p => $.fs.list(p),
+        p => $.fs.exists(p),
+        p => $.fs.read(p),
+        () => $.clock.now(),
+        update => commitLedger($, update),
+      )
+    : null
   mod.isOn = true
   mod.toolsRefused = false
   paneState.compareRedrawAt = null
@@ -2158,7 +2164,6 @@ async function initializeInbox($: EngineInterface) {
     registerInboxCommand($),
     ...agentTools(CLAUDE_CODE).map(tool => $.tool.register(tool).catch(refused)),
   ])
-  // A pane kept across a hot reload is already drawn.
   if (mod.toolsRefused) await redrawPane($)
   for (const interval of mod.intervals) interval.cancel()
   mod.intervals = [
@@ -2168,9 +2173,10 @@ async function initializeInbox($: EngineInterface) {
     $.clock.every(PR_POLL_MS, () => {
       void pollPrs($)
     }),
+    ...(run ? [$.clock.every(30_000, run)] : []),
   ]
   await loadConversation($, await $.session.id())
-  // After loadConversation, which brings saved state up to date.
+  void run?.()
   await redrawAfterReload($)
 }
 

@@ -19,6 +19,8 @@ import { makeHooksTrustNow } from './server-trust'
 import { pruneSessions, readState, updateState } from './state'
 import type { SessionState } from './state'
 import { CODEX, inboxToolText } from './texts'
+import { applyFeedFiles } from '../../hooks/feed'
+import { readFeedFiles } from './feed'
 
 export type ServerDeps = {
   dir: string
@@ -39,6 +41,8 @@ export type ServerDeps = {
   loadError?: () => string | null
   isPluginFolderGone?: () => boolean
   isNextBuild?: boolean
+  /** The optional external progress snapshot. */
+  feedPath?: string
   /** The page template for a comparison, beside the handler's bundle. */
   comparePage: string
   /**
@@ -126,10 +130,14 @@ export function makeServer(deps: ServerDeps): (m: Message) => Promise<Record<str
         await wakeForDone(id).catch(() => undefined)
         await catchUpOnOpen(id).catch(() => undefined)
         const sentTab = shownTabOf(args.tab)
+        const feed = await readFeedFiles(deps.feedPath)
         const s = await updateState(dir, id, s => {
           const shownTab = drawnTabOf(sentTab ?? s.shownTab, deps.isNextBuild === true)
+          const ledger = feed ? applyFeedFiles(s.ledger, feed.root, feed.files, now()) : s.ledger
 
-          return { ...withHolds(lookOnView(s, shownTab, now()), holds), tabSeenAt: now(), shownTab }
+          const updated = ledger === s.ledger ? s : { ...s, ledger }
+
+          return { ...withHolds(lookOnView(updated, shownTab, now()), holds), tabSeenAt: now(), shownTab }
         })
         fetchPrsWhenDue(id, s)
         checkDelegatesWhenDue(id, s)

@@ -1,4 +1,6 @@
 import { version } from '../package.json'
+import { readdir, readFile, stat } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
 
 import type { PrPress } from '../../hooks/pr-press'
 import type { RowPress } from '../../hooks/presses'
@@ -9,6 +11,8 @@ import { press, wakeForDone } from '../../hooks/host-press'
 import type { PressOutcome } from '../../hooks/host-press'
 import { NO_HOLDS } from '../../hooks/timing'
 import { RESUME_TEXT } from '../../hooks/banners'
+import { applyFeedFiles, parseFeed } from '../../hooks/feed'
+import type { FeedFile } from '../../hooks/feed'
 import type { Holds } from '../../hooks/timing'
 import type { ShownTab } from '../../hooks/tabs'
 import type { PanelSource } from './controller'
@@ -17,6 +21,31 @@ import { readState } from './state'
 import { sessionIdOf } from './host-context'
 import type { HostContext, OmpContext } from './host-context'
 import type { SessionCalls } from './host-sessions'
+
+async function readFeedFiles(path: string): Promise<{ root: string; files: FeedFile[] } | null> {
+  const root = resolve(path)
+  try {
+    const info = await stat(root)
+    if (info.isDirectory()) {
+      const files: FeedFile[] = []
+      for (const entry of await readdir(root, { withFileTypes: true })) {
+        if (!entry.isFile() || !entry.name.endsWith('.json')) continue
+        const file = join(root, entry.name)
+        try {
+          files.push({ path: file, feed: parseFeed(await readFile(file, 'utf8')) })
+        } catch (error) {
+          if (!missing(error)) files.push({ path: file, feed: null })
+        }
+      }
+      return { root, files }
+    }
+    return info.isFile() ? { root, files: [{ path: root, feed: parseFeed(await readFile(root, 'utf8')) }] } : null
+  } catch (error) {
+    return missing(error) ? { root, files: [] } : null
+  }
+}
+
+const missing = (error: unknown) => !!error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT'
 
 /** What a panel needs from the host. */
 export type Inbox = {
@@ -30,6 +59,7 @@ export type Inbox = {
   showTab(ctx: OmpContext, tab: ShownTab, holds: Holds): void
   closePanel(ctx: OmpContext): void
   fetchPrsWhenDue(ctx: OmpContext): void
+  feedWhenDue(ctx: OmpContext): Promise<void>
   /**
    * Asks Herdr about the running delegates at most each `HERDR_CHECK_MS`, so a delegate's row follows Herdr while the
    * session waits. The panel asks while it shows the Status.
@@ -68,6 +98,21 @@ export function panelCalls(context: HostContext, sessions: SessionCalls) {
       deps.background(change(id, s => ({ ...s, shownSince: openedAt })))
       await wakeForDone(hostFor(ctx)).catch(() => undefined)
       fetchPrsWhenDue(ctx)
+    },
+    feedWhenDue: async ctx => {
+      if (!deps.feedPath) return
+      try {
+        const feed = await readFeedFiles(deps.feedPath)
+        if (!feed) return
+        const id = sessionIdOf(ctx)
+        await change(id, s => {
+          const ledger = applyFeedFiles(s.ledger, feed.root, feed.files, deps.now())
+
+          return ledger === s.ledger ? s : { ...s, ledger }
+        })
+      } catch {
+        return
+      }
     },
     showTab: (ctx, tab, holds) => {
       const id = sessionIdOf(ctx)
@@ -111,6 +156,7 @@ export function panelCalls(context: HostContext, sessions: SessionCalls) {
     },
     resume: async () => inbox.resume(ctx),
     fetchPrsWhenDue: () => inbox.fetchPrsWhenDue(ctx),
+    feedWhenDue: () => inbox.feedWhenDue(ctx),
     checkDelegatesWhenDue: () => inbox.checkDelegatesWhenDue(ctx),
     shown: (tab, holds) => inbox.showTab(ctx, tab, holds),
     onChange: listener => inbox.onChange(ctx, listener),

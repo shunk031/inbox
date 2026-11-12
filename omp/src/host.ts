@@ -83,6 +83,7 @@ export type HostDeps = {
   herdrPane: string | null
   /** The value of `INBOX_RECORDED_ITEMS_ONLY`, which `isRecordedItemsOnly` reads. */
   recordedItemsOnly: string | undefined
+  feedPath?: string
 }
 
 async function defaultComplete(
@@ -134,6 +135,7 @@ const defaultDeps: HostDeps = {
   isUsageLimit: isUsageLimitOutcome,
   herdrPane: process.env.HERDR_PANE_ID || null,
   recordedItemsOnly: process.env.INBOX_RECORDED_ITEMS_ONLY,
+  feedPath: process.env.INBOX_FEED,
 }
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err))

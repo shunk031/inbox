@@ -45,6 +45,29 @@ test('a selected row draws its buttons in the shared key plan order', () => {
   }
 })
 
+test('a feed finding draws in the Progress group', () => {
+  const state = demoState(NOW)
+  state.ledger = {
+    ...state.ledger,
+    findings: [
+      ...state.ledger.findings,
+      {
+        id: 'f99',
+        kind: 'progress',
+        title: 'Implement the progress feed',
+        detail: 'Wire the shared ledger.',
+        path: null,
+        at: NOW,
+        feedKey: 'machine/worker',
+      },
+    ],
+  }
+  const screen = screenOf({ view: sessionView(state, NOW, SETTLED_MS, true) })
+  const lines = text(screen, { ...INITIAL_UI, tab: 'findings' })
+  expect(lines).toContain('Progress')
+  expect(lines).toContain('Implement the progress feed')
+})
+
 test('a row’s follow-ups share its buttons’ last line only when all of them fit there, and otherwise start a line of their own together', () => {
   const screen = screenOf()
   const row = screen.view.findings.rows.find(r => r.state.is === 'open')!
