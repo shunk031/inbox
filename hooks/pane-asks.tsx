@@ -247,7 +247,7 @@ export function paneAskTabs(
         ) : document.text === null ? (
           <Text dimColor>Opening report…</Text>
         ) : document.text ? (
-          <Markdown key="document-report" text={safeDocumentMarkdown(document.text)} onLinkPress={() => undefined} />
+          <Markdown key="document-report" text={safeDocumentMarkdown(document.text, true)} />
         ) : null}
       </Box>
     ) : null

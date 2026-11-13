@@ -2,6 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { UiScrollInput } from 'claude-code'
 import type { On } from 'claude-code'
+import { httpsHref } from '../hooks/inline'
 // The test uses Marked's ESM entry because its package directory is not a Node relative import.
 // @ts-expect-error The package's declaration file is not adjacent to its ESM entry.
 import { marked } from '../codex/node_modules/marked/lib/marked.esm.js'
@@ -33,6 +34,10 @@ const LINK_PROBES = [
   'before ~~~ [x](file:///tmp/x.command) ~~~ after',
   'https://example.com/x.command',
   '<http://example.com/x.command>',
+  'https://user:pass@example.com/private',
+  '[x](https://good.com&commat;evil.example/x.command)',
+  'https\\://example.com/escaped',
+  '[safe](https://EXAMPLE.com/safe)',
   'http://example.com/x.command',
   'mailto:reader@example.com',
   'www.example.com/x.command',
@@ -58,7 +63,8 @@ async function readsReport(
   $: Engine,
   on: On,
   surface: 'terminal' | 'desktop',
-  text = '# Weekly report\n\n| Choice | Result |\n| --- | --- |\n| One region | Ship safely |\n\n<hr>\n\n```ts\nship()\n```',
+  text = '# Weekly report\n\nRead [release notes](https://example.com/release) and [local file](file:///tmp/report).\n\n' +
+    '| Choice | Result |\n| --- | --- |\n| One region | Ship safely |\n\n<hr>\n\n```ts\nship()\n```',
 ) {
   const clock = mock.clock(on, { now: 1_000_000 })
   world($, on, [])
@@ -100,8 +106,9 @@ async function readsReport(
   const markdown = await pane.findAll({ type: 'Markdown' })
   expect(markdown).toHaveLength(1)
   const renderedText = markdown[0]?.props.text as string
-  expect(renderedText).toBe(safeDocumentMarkdown(text))
-  expect(parsedLinks(renderedText)).toEqual([])
+  expect(renderedText).toBe(safeDocumentMarkdown(w.documentFile.text, true))
+  const links = parsedLinks(renderedText)
+  expect(links.every(link => link.type === 'link' && httpsHref(link.href ?? '') !== null)).toBe(true)
   expect(renderedText).toContain('<hr>')
   expect(await pane.find({ key: 'document-back' })).toBeTruthy()
   if (surface === 'terminal') {
@@ -150,6 +157,23 @@ test('reader back and scroll actions use b, k, and j, and scroll offsets stay in
   expect(moved.offset).toBe(13)
 })
 
+test('report Markdown parses only validated inline HTTPS links and leaves HTML tags as text', () => {
+  const text =
+    '[safe](https://EXAMPLE.com/a) [file](file:///tmp/a) [http](http://example.com) [bad](javascript:alert(1))\n' +
+    '[entity](https://good.com&commat;evil.example/x) ![image](https://example.com/image)\n' +
+    '[![i](https://e.example/a.png)\nx [![t](https://track.example/p.gif) y\n' +
+    '[ref][r]\n[r]: https://example.com/ref "title"\n\n`[code](file:///tmp/code)`\n\n<hr>'
+  const inert = safeDocumentMarkdown(text)
+  const safe = safeDocumentMarkdown(text, true)
+
+  expect(parsedLinks(inert)).toEqual([])
+  expect(parsedLinks(safe).map(link => link.href)).toEqual(['https://example.com/a'])
+  expect(parsedLinks(safe).filter(link => link.type === 'image')).toEqual([])
+  expect(parsedLinks(safe).every(link => link.type === 'link' && httpsHref(link.href ?? '') !== null)).toBe(true)
+  expect(safe).toContain('<hr>')
+  expect(safe).not.toContain('&lt;hr>')
+})
+
 test('the terminal reads a report through the native Markdown element and returns to the list', async ($, on) => {
   await readsReport($, on, 'terminal')
 })
@@ -175,10 +199,10 @@ test('report Markdown has no link or image tokens after parsing the security pro
   expect(parsedLinks(safe)).toEqual([])
 })
 
-test('the terminal makes every report link probe inert and keeps HTML tags as text', async ($, on) => {
+test('the terminal draws only validated HTTPS report links and keeps HTML tags as text', async ($, on) => {
   await readsReport($, on, 'terminal', LINK_PROBES)
 })
 
-test('the desktop pane makes every report link probe inert and keeps HTML tags as text', async ($, on) => {
+test('the desktop pane draws only validated HTTPS report links and keeps HTML tags as text', async ($, on) => {
   await readsReport($, on, 'desktop', LINK_PROBES)
 })
