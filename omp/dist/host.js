@@ -4116,6 +4116,7 @@ function addAgentItem(ledger, entry, now) {
 // ../hooks/tools.ts
 var NAME_BY_CONTENT = "Name it by what it says, never by its id.";
 var MAX_ITEM_DETAIL = 1200;
+var LINK_DESCRIPTION = "Write links as [label](https://\u2026); the inbox shows the label, and links are clickable where the look allows. Only https links open.";
 var RECORD_SCHEMA = {
   type: "object",
   properties: {
@@ -4126,12 +4127,12 @@ var RECORD_SCHEMA = {
     },
     ask: {
       type: "string",
-      description: "For a question or task: what you need from the user, in at most 12 plain words, readable without your reply."
+      description: `For a question or task: what you need from the user, in at most 12 plain words, readable without your reply. ${LINK_DESCRIPTION}`
     },
     options: {
       type: "array",
       items: { type: "string" },
-      description: "For a question: the answers the user can pick, at most 5 words each. Give at least one."
+      description: `For a question: the answers the user can pick, at most 5 words each. Give at least one. ${LINK_DESCRIPTION}`
     },
     rec: {
       type: "string",
@@ -4140,7 +4141,7 @@ var RECORD_SCHEMA = {
     steps: {
       type: "array",
       items: { type: "string" },
-      description: "For a task: up to 3 things the user can do in one press, each written bare as a command, a file path or an https link. For a question: up to 3 files or https links that help the user decide, such as a page comparing the options, each file as an absolute path."
+      description: `For a task: up to 3 things the user can do in one press, each written as a command, a file path or a [label](https://\u2026) link. For a question: up to 3 files or links that help the user decide, such as a page comparing the options, each file as an absolute path. ${LINK_DESCRIPTION}`
     },
     design_choice: {
       type: "boolean",
@@ -4151,10 +4152,10 @@ var RECORD_SCHEMA = {
       enum: ["issue", "opportunity"],
       description: "For a finding. issue: something wrong or risky. opportunity: something that could be better."
     },
-    title: { type: "string", description: "For a finding: what it is, in at most 12 plain words." },
+    title: { type: "string", description: `For a finding: what it is, in at most 12 plain words. ${LINK_DESCRIPTION}` },
     detail: {
       type: "string",
-      description: "For a question or task: why you ask and what it holds up; for a question, what each option leads to. For a finding: why it matters and what you would do. Use short paragraphs and links where useful."
+      description: `For a question or task: why you ask and what it holds up; for a question, what each option leads to. For a finding: why it matters and what you would do. Use short paragraphs and links where useful. ${LINK_DESCRIPTION}`
     },
     path: { type: "string", description: "For a finding: the file it is about, if one." },
     document: {
@@ -4203,7 +4204,7 @@ function orderDescription(host) {
   return `Set the order of the user's PRs in ${host.prsIn}, when the user asks for an order there. Those PRs show first, in this order. Each call replaces the order, and an empty numbers list clears it.`;
 }
 function recordDescription(host) {
-  return `Record something the user must see in ${host.surface}, and still say it in your reply. Use it in the turn you raise it, once for each thing.
+  return `Record something the user must see in ${host.surface}, and still say it in your reply. Use it in the turn you raise it, once for each thing. ${LINK_DESCRIPTION}
 - question: a decision, approval or piece of information only the user has, which you need before you go on. Give options, and rec when you recommend one. Fill detail with why you ask and what each option leads to. This includes an act you hold until they say so, such as "say when you want those committed".
 - task: a step only the user can do, such as signing in or running a command with their password. Put the commands, files and links in steps, and fill detail with what holds the task up and what the step leads to. A step your own tools can take is not a task: take it, or ask for their OK as a question when it changes something other people see.
 - finding: something outside the current task that deserves their attention. It waits in ${host.findingsIn} until it is closed, and the user can ask you to address it or discuss it. Record what a careful senior engineer would flag to a teammate, once you have checked it. Leave out style nits, anything the user already decided, todos or ideas the user mentioned, problems in your own change, progress, and anything only the user can do or decide: handle those in your reply, or record them as a question or task.

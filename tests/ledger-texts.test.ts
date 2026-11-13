@@ -106,6 +106,24 @@ describe('guidedCloseDescription', () => {
   })
 })
 
+describe('record link descriptions', () => {
+  test('tells the agent how inbox links render in the record fields and tool description', () => {
+    const record = agentTools(CLAUDE_CODE).find(t => t.name === 'record')!
+    const properties = record.inputSchema.properties as Record<string, { description: string }>
+
+    for (const key of ['ask', 'options', 'detail', 'title', 'steps']) {
+      const description = properties[key]!.description
+      expect(description).toContain('[label](https://…)')
+      expect(description).toContain('shows the label')
+      expect(description).toContain('clickable where the look allows')
+      expect(description).toContain('Only https links open')
+    }
+
+    expect(record.description).toContain('[label](https://…)')
+    expect(record.description).toContain('Only https links open')
+  })
+})
+
 describe('carryText', () => {
   test('is empty for an empty ledger and lists open items otherwise', () => {
     expect(carryText(EMPTY, 'T')).toBe(null)

@@ -1981,6 +1981,55 @@ function prTabActions(drawn, branchRef) {
 }
 
 // ../hooks/tools.ts
+var LINK_DESCRIPTION = "Write links as [label](https://\u2026); the inbox shows the label, and links are clickable where the look allows. Only https links open.";
+var RECORD_SCHEMA = {
+  type: "object",
+  properties: {
+    kind: {
+      type: "string",
+      enum: ["question", "task", "finding"],
+      description: "question: a decision only the user can make. task: a step only the user can do. finding: something outside the current task that deserves their attention."
+    },
+    ask: {
+      type: "string",
+      description: `For a question or task: what you need from the user, in at most 12 plain words, readable without your reply. ${LINK_DESCRIPTION}`
+    },
+    options: {
+      type: "array",
+      items: { type: "string" },
+      description: `For a question: the answers the user can pick, at most 5 words each. Give at least one. ${LINK_DESCRIPTION}`
+    },
+    rec: {
+      type: "string",
+      description: "For a question: the option you recommend, copied from options. Leave it out when you recommend none."
+    },
+    steps: {
+      type: "array",
+      items: { type: "string" },
+      description: `For a task: up to 3 things the user can do in one press, each written as a command, a file path or a [label](https://\u2026) link. For a question: up to 3 files or links that help the user decide, such as a page comparing the options, each file as an absolute path. ${LINK_DESCRIPTION}`
+    },
+    design_choice: {
+      type: "boolean",
+      description: "For a question: true when its options are designs or approaches you could try and show side by side, such as two layouts or two ways to build a feature. The user can then ask you to compare them. Leave it out for a fact, an approval or a preference."
+    },
+    finding_kind: {
+      type: "string",
+      enum: ["issue", "opportunity"],
+      description: "For a finding. issue: something wrong or risky. opportunity: something that could be better."
+    },
+    title: { type: "string", description: `For a finding: what it is, in at most 12 plain words. ${LINK_DESCRIPTION}` },
+    detail: {
+      type: "string",
+      description: `For a question or task: why you ask and what it holds up; for a question, what each option leads to. For a finding: why it matters and what you would do. Use short paragraphs and links where useful. ${LINK_DESCRIPTION}`
+    },
+    path: { type: "string", description: "For a finding: the file it is about, if one." },
+    document: {
+      type: "string",
+      description: "For a Markdown report the user should read in the inbox: its absolute local file path."
+    }
+  },
+  required: ["kind"]
+};
 var ORDER_SCHEMA = {
   type: "object",
   properties: {

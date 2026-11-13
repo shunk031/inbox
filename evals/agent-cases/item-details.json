@@ -28,5 +28,28 @@
         "noIds": true
       }
     ]
+  },
+  {
+    "name": "record-detail-as-labeled-link",
+    "about": "A useful URL in a recorded question detail uses a labeled link.",
+    "prompt": "Task: update the onboarding flow to link to the public API guide. Before continuing, I need to approve that guide. It is at https://docs.example.com/api-setup. Ask me to approve it and include the guide in the question detail.",
+    "checks": [
+      {
+        "calls": "record",
+        "kind": "question",
+        "count": 1,
+        "match": {
+          "detail": "\\[[^\\]]+\\]\\(https://docs\\.example\\.com/api-setup\\)"
+        }
+      },
+      {
+        "calls": "record",
+        "kind": "finding",
+        "count": 0
+      },
+      {
+        "reply": "API|guide"
+      }
+    ]
   }
 ]
