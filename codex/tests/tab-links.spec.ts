@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { h, render } from 'preact'
+import { JSDOM } from 'jsdom'
 import { Window } from 'happy-dom'
 
 test('Codex Markdown links render as anchors with labels, open through the host, and fall back to the URL on denial', async () => {
@@ -232,4 +233,34 @@ test('Codex shows the recorded Markdown excerpt under its item', async () => {
   render(h('div', null, row.body), root)
 
   assert.equal(root.querySelector('.document-preview')?.textContent, 'Report preview: # One region first.')
+})
+
+test('Codex renders document Markdown without raw HTML, remote images, or live links', async () => {
+  const browser = new JSDOM('').window
+  const globals = globalThis as typeof globalThis & { parent?: Window }
+  const previous = { window: globalThis.window, document: globalThis.document, parent: globals.parent }
+  Object.assign(globalThis, { window: browser, document: browser.document, parent: browser.parent })
+  try {
+    const { documentHtml } = await import('../src/document-markdown')
+    const root = document.createElement('div')
+    root.innerHTML = documentHtml(
+      '# Weekly report\n\n' +
+        '<script>window.wasExecuted = true</script><div onclick="run()">raw HTML</div>\n\n' +
+        '![tracking pixel](https://example.com/pixel.png)\n\n' +
+        '[release notes](https://example.com/release) and [bad](javascript:alert(1))\n\n' +
+        '| Choice | Result |\n| --- | --- |\n| One | Ship |\n\n```ts\nship()\n```',
+    )
+
+    assert.equal(root.querySelector('h1')?.textContent, 'Weekly report')
+    assert.equal(root.querySelector('table td')?.textContent, 'One')
+    assert.equal(root.querySelector('pre code')?.textContent, 'ship()\n')
+    assert.equal(root.querySelector('script, div, img'), null)
+    assert.equal(root.querySelector('a'), null)
+    assert.match(root.textContent ?? '', /release notes and bad/)
+    assert.match(root.textContent ?? '', /<script>window\.wasExecuted = true<\/script>/)
+    assert.equal((globalThis as typeof globalThis & { wasExecuted?: boolean }).wasExecuted, undefined)
+  } finally {
+    Object.assign(globalThis, previous)
+    browser.close()
+  }
 })

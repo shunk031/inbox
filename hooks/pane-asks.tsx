@@ -3,6 +3,7 @@ import { bannerOf, emptyText, isResumable, READING_TEXT, stopBanner } from './ba
 import { DESKTOP_CHARS_PER_CELL } from './desktop-metrics'
 import { FINDING_GROUPS, HELD_MARK } from './help'
 import { linkLabel } from './inline'
+import { safeDocumentMarkdown } from './pane-document'
 import { READ_FAILED_TEXT } from './mod-sessions'
 import { sessionState } from './mod-state'
 import type { PaneBase, PaneHandlers, Row } from './pane-context'
@@ -170,6 +171,8 @@ export function paneAskTabs(
     look,
     isInline,
     Box,
+    Button,
+    Markdown,
     Text,
     blankLine,
     pal,
@@ -177,7 +180,6 @@ export function paneAskTabs(
     view,
     isUnread,
     unfolded,
-    Button,
     stop,
     glued,
     now,
@@ -199,6 +201,7 @@ export function paneAskTabs(
     | 'look'
     | 'isInline'
     | 'Box'
+    | 'Markdown'
     | 'Text'
     | 'blankLine'
     | 'pal'
@@ -220,8 +223,34 @@ export function paneAskTabs(
       'settledRow' | 'closedFold' | 'section' | 'groupTitle' | 'titleGap' | 'groupEmpty' | 'sections'
     > &
     Pick<PaneFrame, 'banner'>,
-  { readAgain, resume }: Pick<PaneHandlers, 'readAgain' | 'resume'>,
+  {
+    readAgain,
+    resume,
+    closeDocument,
+    document,
+  }: Pick<PaneHandlers, 'readAgain' | 'resume'> & {
+    closeDocument: () => void
+    document: { title: string; text: string | null; error: string | null } | null
+  },
 ) {
+  const documentView = () =>
+    document ? (
+      <Box flexDirection="column" flexGrow={1} rowGap={blankLine}>
+        <Box flexDirection="row" justifyContent="space-between" alignItems="center">
+          <Text bold>{document.title}</Text>
+          <Button key="document-back" label="Back to inbox" onPress={closeDocument} />
+        </Box>
+        {document.error ? (
+          <Text color={pal.tone.error ?? pal.mark.error} wrap="wrap">
+            {document.error}
+          </Text>
+        ) : document.text === null ? (
+          <Text dimColor>Opening report…</Text>
+        ) : document.text ? (
+          <Markdown key="document-report" text={safeDocumentMarkdown(document.text)} onLinkPress={() => undefined} />
+        ) : null}
+      </Box>
+    ) : null
   /** A tab's empty text, centred in the pane, with `below` under it. */
   const emptyState = ({ title, hint: text = '' }: { title: string; hint?: string }, below: JSX.Element[] = []) => {
     const wrap = (width: number) => {
@@ -360,7 +389,7 @@ export function paneAskTabs(
     return sections(groups)
   }
 
-  return { emptyState, needsYouView, findingsView }
+  return { emptyState, needsYouView, findingsView, documentView }
 }
 
 export type PaneAskTabs = ReturnType<typeof paneAskTabs>

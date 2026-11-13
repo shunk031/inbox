@@ -136,9 +136,26 @@ function sendReply(id: string, text: string) {
   })
 }
 
+async function showDocument(row: RowView) {
+  const document = { title: row.title, text: null, error: null }
+  const generation = tabState.viewGeneration
+  tabState.document = document
+  tabState.draw()
+  try {
+    const result = await callTool<{ text: string } | { error: string }>('inbox_view', { document: row.id }, 10_000)
+    if (tabState.document !== document || generation !== tabState.viewGeneration) return
+    tabState.document = { ...document, ...result }
+  } catch {
+    if (tabState.document !== document || generation !== tabState.viewGeneration) return
+    tabState.document = { ...document, error: 'The report could not be read.' }
+  }
+  tabState.draw()
+}
+
 function rowKeys(r: RowView): { keys: Key[]; more: Key[] } {
   const actions = ledgerActions(r, optionsShown.has(r.id), sending.get(r.id)?.action ?? null, {
     press: p => {
+      if (p.action === 'read-document') return void showDocument(r)
       const step = p.action === 'step' ? r.steps[p.step] : undefined
       const action = r.actions.find(a => a.press.action === 'step' && p.action === 'step' && a.press.step === p.step)
       const pending: Feedback | null =

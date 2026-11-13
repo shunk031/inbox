@@ -19,7 +19,11 @@ test('reads only the resolved regular Markdown target and falls back to replacem
 test('rejects a target that is not a regular .md file or exceeds the size cap before reading it', async () => {
   let reads = 0
   const file = {
-    stat: async (path: string) => ({ path, isFile: !path.endsWith('.txt'), size: DOCUMENT_LIMIT + 1 }),
+    stat: async (path: string) => ({
+      path,
+      isFile: path.endsWith('.md') && !path.includes('directory'),
+      size: DOCUMENT_LIMIT + 1,
+    }),
     read: async () => {
       reads++
       return new Uint8Array()
@@ -27,6 +31,9 @@ test('rejects a target that is not a regular .md file or exceeds the size cap be
   }
 
   expect(await readDocument('/reports/report.txt', file)).toEqual({
+    error: 'The document must resolve to a regular .md file.',
+  })
+  expect(await readDocument('/reports/directory.md', file)).toEqual({
     error: 'The document must resolve to a regular .md file.',
   })
   expect(await readDocument('/reports/large.md', file)).toEqual({

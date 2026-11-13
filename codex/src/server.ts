@@ -1,4 +1,5 @@
 import { open, realpath, stat } from 'node:fs/promises'
+import { constants } from 'node:fs'
 
 import { delegatesSettled } from '../../hooks/children'
 import type { Run } from '../../hooks/gh'
@@ -23,7 +24,7 @@ import type { SessionState } from './state'
 import { CODEX, inboxToolText } from './texts'
 import { applyFeedFiles } from '../../hooks/feed'
 import { readFeedFiles } from '../../feed-reader'
-import { withDocumentPreview } from '../../hooks/document'
+import { readDocument, withDocumentPreview } from '../../hooks/document'
 
 const documentFile = {
   stat: async (path: string) => {
@@ -32,7 +33,7 @@ const documentFile = {
     return { path: target, isFile: info.isFile(), size: info.size }
   },
   read: async (path: string, limit: number) => {
-    const file = await open(path, 'r')
+    const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW)
     try {
       if (!(await file.stat()).isFile()) return new Uint8Array(limit + 1)
       const bytes = new Uint8Array(limit + 1)
@@ -147,6 +148,20 @@ export function makeServer(deps: ServerDeps): (m: Message) => Promise<Record<str
         return text(inboxToolText(viewOf(s, now())))
       }
       case 'inbox_view': {
+        if (typeof args.document === 'string') {
+          const s = await readState(dir, id)
+          const row = [
+            ...s.ledger.items,
+            ...s.ledger.closed.flatMap(closed => (closed.item ? [closed.item] : [])),
+            ...s.ledger.findings,
+            ...s.ledger.closedFindings,
+          ].find(item => item.id === args.document)
+          const result = row?.document
+            ? await readDocument(row.document, documentFile)
+            : { error: 'The report is no longer attached.' }
+
+          return { ...text('Inbox document'), structuredContent: result }
+        }
         const holds = holdsOf(args)
         if (args.demo === true)
           return { ...text('Inbox demo'), structuredContent: await served(demoOf(id), id, true, holds) }

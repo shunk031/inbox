@@ -4,6 +4,7 @@ Part of [the look map](../looks.md#omp).
 
 | Topic | omp | Why | Where |
 | --- | --- | --- | --- |
+| Document reader keys (`item-document`) | `v` opens the selected report; `b` or Escape returns; `j`, `k` and arrows scroll. | The panel keeps its keys while the report is open; unlike the mod's pane, Escape returns to the inbox. | `omp/src/panel-keys.ts`, `omp/src/controller.ts` |
 | Options fold | Every option shows, and there is no "All options" button. | The panel moves focus between buttons with the arrow keys, so a row with many options stays reachable. | `omp/src/panel-lines.ts:rowButtons`, `hooks/action-plan.ts:rowKeyPlan` |
 | Recommended answer | The answer is underlined and ends "(recommended)". Where the button, focused, would not fit a line of its own, it reads the answer alone, still underlined. The terminal never drops the word and underlines nothing. | The panel wraps a button to the next line but never shortens one, and omp cuts each panel line at its width, so a label wider than a line would lose its end. The panel draws plain text with no button fill, so the underline marks the answer whether or not the word shows. | `omp/src/panel-draw.ts:labelMark`, `omp/src/panel-draw.ts:buttonCell`, `hooks/rows.ts:actionLabel` |
 | Reply key | `r` opens the reply field. The shared plan gives Reply `t`. | The product chose `r`, which reads as Reply. | `omp/src/panel-lines.ts:REPLY_KEY` |

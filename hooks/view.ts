@@ -199,14 +199,20 @@ export function inboxView({
     const state = stateOf(row.id)
     const last = lastActions[row.id]
     const feedback = feedbackIn(row.id, state, last, notes[row.id], turns, now, row.item?.reportedAt)
+    const document = row.item?.document ?? row.finding?.document ?? null
     // A button must keep its width while its press is out, or the buttons after it can move to another line.
-    const actions = actionsOf(row, last, state, pressFeedbackIn(row.id, state, last, turns, now, row.item?.reportedAt))
+    const actions = actionsOf(
+      { ...row, document },
+      last,
+      state,
+      pressFeedbackIn(row.id, state, last, turns, now, row.item?.reportedAt),
+    )
 
     const heldSubject = state.is === 'open' ? heldSubjectOf(ledger.overview, row.id) : null
 
     return {
       ...row,
-      document: row.item?.document ?? row.finding?.document ?? null,
+      document,
       documentPreview: row.item?.documentPreview ?? row.finding?.documentPreview ?? null,
       state,
       feedback,

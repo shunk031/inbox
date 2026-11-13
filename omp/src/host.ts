@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { existsSync } from 'node:fs'
+import { constants, existsSync } from 'node:fs'
 import { open, realpath, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -16,7 +16,7 @@ import { herdrReporter } from '../../hooks/herdr'
 import type { Run } from '../../hooks/gh'
 import { COMPARE_PAGE_FILE } from '../../hooks/press-messages'
 import { recorded } from '../../hooks/session-presses'
-import { withDocumentPreview } from '../../hooks/document'
+import { readDocument, withDocumentPreview } from '../../hooks/document'
 import { prFetchTracker } from '../../hooks/host-prs'
 import type { SessionHost } from '../../hooks/session-host'
 import { agentTools } from '../../hooks/tools'
@@ -49,7 +49,7 @@ const documentFile = {
     return { path: target, isFile: info.isFile(), size: info.size }
   },
   read: async (path: string, limit: number) => {
-    const file = await open(path, 'r')
+    const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW)
     try {
       if (!(await file.stat()).isFile()) return new Uint8Array(limit + 1)
       const bytes = new Uint8Array(limit + 1)
@@ -66,6 +66,27 @@ const INBOX_MODEL_TIMEOUT_MS = 120_000
 const BAND_KEY = 'inbox-band'
 
 export const hyperlinkTools = () => import('@oh-my-pi/pi-tui/render')
+
+export async function documentMarkdown() {
+  const { Markdown, getMarkdownTheme } = await import('@oh-my-pi/pi-tui')
+  const { TERMINAL } = await import('@oh-my-pi/pi-tui/terminal-capabilities')
+  return (text: string, width: number) => {
+    const hyperlinks = TERMINAL.hyperlinks
+    // pi-tui reads this process-wide flag when it renders OSC 8 links.
+    TERMINAL.hyperlinks = false
+    try {
+      const theme = {
+        ...getMarkdownTheme(),
+        link: (text: string) => text,
+        linkUrl: () => '',
+        underline: (text: string) => text,
+      }
+      return [...new Markdown(text, 0, 0, theme).render(width)]
+    } finally {
+      TERMINAL.hyperlinks = hyperlinks
+    }
+  }
+}
 
 export async function panelLink(load = hyperlinkTools): Promise<((url: string, text: string) => string) | undefined> {
   try {
@@ -402,6 +423,7 @@ export function createInbox(pi: ExtensionAPI, deps: HostDeps = defaultDeps): Inb
   async function openPanelUi(ctx: ExtensionContext, isDemo: boolean): Promise<void> {
     const openedAt = deps.now()
     const { parseKey, extractPrintableText, truncateToWidth } = await import('@oh-my-pi/pi-tui')
+    const markdown = await documentMarkdown()
     const link = await panelLink()
     const source = isDemo
       ? demoSource({
@@ -421,6 +443,8 @@ export function createInbox(pi: ExtensionAPI, deps: HostDeps = defaultDeps): Inb
         const panel = createPanel({
           source,
           style: styleOf(theme, link),
+          readDocument: path => readDocument(path, documentFile),
+          markdown,
           now: deps.now,
           openedAt,
           requestRender: () => tui.requestRender(),

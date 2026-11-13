@@ -50,6 +50,7 @@ function withSelection(ui: PanelUi, id: string | null): PanelUi {
 export const withTab = (ui: PanelUi, tab: ShownTab, now: number): PanelUi => ({
   ...withSelection(ui, null),
   tab,
+  document: null,
   pageTop: 0,
   pageReveal: isRowTab(tab) ? null : true,
   shownSince: tab === ui.tab ? ui.shownSince : now,
@@ -128,6 +129,13 @@ export function handleKey(screen: PanelScreen, ui: PanelUi, key: string, now: nu
   // The Status lists no lines, and its selection is a Status row's id.
   const base: PanelUi = isPage ? ui : { ...ui, selectedId: selected?.id ?? null }
   if (base.typing !== null) return typingKey(base, base.typing, key, now, text)
+  const isUp = key === 'up' || key === 'k'
+  if (base.document) {
+    if (key === 'b' || key === 'escape') return { ui: { ...base, document: null, pageTop: 0 } }
+    if (isUp || key === 'down' || key === 'j')
+      return { ui: { ...base, pageTop: Math.max(0, base.pageTop + (isUp ? -1 : 1)) } }
+    return { ui: base }
+  }
   const shown = shownTabs(screen.isNextBuild === true)
   const isTabKey = key === 'tab' || key === 'shift+tab' || shown.some(t => t.hotkey === key)
   if (key === '?' || (base.isHelpShown && key === 'escape'))
@@ -137,7 +145,6 @@ export function handleKey(screen: PanelScreen, ui: PanelUi, key: string, now: nu
     const page = pageKey(screen, base, key, now)
     if (page) return page
   }
-  const isUp = key === 'up' || key === 'k'
   if (base.isHelpShown && !isTabKey && !isUp && key !== 'down' && key !== 'j') return { ui: base }
   if ((base.isHelpShown || isPage) && (isUp || key === 'down' || key === 'j'))
     return { ui: { ...base, pageTop: Math.max(0, base.pageTop + (isUp ? -1 : 1)) } }

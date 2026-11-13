@@ -38,6 +38,7 @@ const ACTION_KEYS: Partial<Record<RowPress['action'], string>> = {
   issue: 'i',
   type: 't',
   explain: 'e',
+  'read-document': 'v',
   compare: 'p',
   discuss: 'd',
   dismiss: 'x',
@@ -45,7 +46,7 @@ const ACTION_KEYS: Partial<Record<RowPress['action'], string>> = {
 }
 
 export function actionsOf(
-  row: { id: string; item: Item | null; finding: Finding | null; steps: HelpStep[] },
+  row: { id: string; item: Item | null; finding: Finding | null; steps: HelpStep[]; document?: string | null },
   last: LastAction | undefined,
   state: RowState,
   feedback: Feedback | null,
@@ -87,9 +88,12 @@ export function actionsOf(
       isOut: out === pressAction,
     }
   }
-  if (state.is === 'settled') return state.canUndo ? [action({ action: 'undo', id }, 'Undo', 'view')] : []
+  const documentAction = row.document ? [action({ action: 'read-document', id }, 'Read report', 'view')] : []
+  if (state.is === 'settled')
+    return [...(state.canUndo ? [action({ action: 'undo', id }, 'Undo', 'view')] : []), ...documentAction]
   if (state.is === 'held')
     return [
+      ...documentAction,
       action({ action: 'type', id, text: '' }, 'Reply', 'handoff'),
       action({ action: 'discard', id }, ROW_COPY.discard, 'view'),
     ]
@@ -98,6 +102,7 @@ export function actionsOf(
     return [
       action({ action: 'address', id }, row.finding ? fixLabel(row.finding) : 'Fix', 'handoff'),
       action({ action: 'issue', id }, ISSUE_LABEL, 'handoff'),
+      ...documentAction,
       action({ action: 'type', id, text: '' }, 'Reply', 'handoff'),
       action({ action: 'explain', id }, 'Explain', 'talk'),
       action({ action: 'discuss', id }, 'Discuss', 'talk'),
@@ -106,6 +111,7 @@ export function actionsOf(
   if (item.kind === 'task')
     return [
       ...stepActions,
+      ...documentAction,
       action({ action: 'done', id }, 'Done', 'mark'),
       action({ action: 'type', id, text: '' }, 'Reply', 'handoff'),
       action({ action: 'explain', id }, 'Explain', 'talk'),
@@ -123,6 +129,7 @@ export function actionsOf(
       }),
     ),
     ...stepActions,
+    ...documentAction,
     action({ action: 'type', id, text: '' }, 'Reply', 'mark'),
     action({ action: 'explain', id }, 'Explain', 'talk'),
     ...(showsCompare(item) ? [action({ action: 'compare', id }, 'Compare', 'talk')] : []),
