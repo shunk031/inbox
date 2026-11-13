@@ -4,7 +4,9 @@ Part of [the look map](../looks.md#files).
 
 | File | Role |
 | --- | --- |
-| `codex/src/tab.tsx` | Codex adapter. The tab's entry: `App`, `draw`, the key and pointer listeners, and the start that connects to Codex. |
+| `codex/src/tab.tsx` | Codex adapter. The tab's entry: `App`, `draw`, the key and pointer listeners, the start that connects to Codex, and the report view state. |
+| `codex/src/tab-document.tsx` | Codex adapter. The scrollable report reader, its back action, and links opened through Codex. |
+| `codex/src/document-markdown.ts` | Codex adapter. Turns Markdown into HTML with Marked, escapes raw HTML and images, then sanitizes the output with DOMPurify. |
 | `codex/src/tab-state.ts` | Codex adapter. The page's state. `tabState` holds each value that more than one tab file sets, and the file also holds the shared maps and sets and the row types. |
 | `codex/src/tab-host.ts` | Codex adapter. The bridge to Codex: timers, `request` and `callTool`, the message listener, the host's theme, and `dispose`. |
 | `codex/src/tab-motion.ts` | Codex adapter. Row motion: measured heights, the animation each row state starts, folds, and the draws that end a move. |
@@ -31,7 +33,7 @@ Part of [the look map](../looks.md#files).
 | `codex/src/data-dir.ts` | Codex host. The data folder and the dev build, which the loader reads. It imports no shared module, so a shared-module change leaves the loader's bundle unchanged. |
 | `codex/src/state.ts` | Codex host. One JSON state file per session, under a lock. `SessionState` extends the shared `Session` from `types/index.d.ts`. |
 | `codex/src/host.ts` | Codex host. `codexStore`, the Codex store that `hooks/session-host.ts` runs on. |
-| `codex/src/server.ts` | Codex host. The MCP server: `makeServer`, which takes `ServerDeps`, reads recorded reports for previews, and answers each JSON-RPC call. |
+| `codex/src/server.ts` | Codex host. The MCP server: `makeServer`, which takes `ServerDeps`, reads recorded reports for previews and the in-pane reader, and answers each JSON-RPC call. |
 | `codex/src/server-tools.ts` | Codex host. The tools and tab page the server lists, and the readers of a call's session, turn and arguments. |
 | `codex/src/server-host.ts` | Codex host. The bindings `hooks/session-host.ts` runs on for presses, opening, `codex queue` and the session's background PR fetch. Also the tab view each answer carries. |
 | `codex/src/server-trust.ts` | Codex host. Whether Codex runs the inbox's hooks in a chat's folder. The server asks Codex in the background and caches the answer. |

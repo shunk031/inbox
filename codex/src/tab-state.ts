@@ -11,6 +11,7 @@ import type { RowTrack } from './rows'
 import type { HostContext } from './tab-host'
 
 export type Tone = 'needsYou' | 'issue' | 'findings' | 'done' | 'error'
+export type DocumentView = { title: string; text: string | null; error: string | null }
 
 type Emphasis = ActionEmphasis
 
@@ -129,6 +130,7 @@ export const pending = new Map<
 export type Lists = DrawnLists<Row>
 class TabState {
   view: View | null = null
+  document: DocumentView | null = null
   isDemo = false
   readError: string | null = null
   serverNote: { text: string; kind: 'server-gone' | 'server-load-failed' | 'server-builds-differ' } | null = null

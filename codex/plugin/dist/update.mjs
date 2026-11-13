@@ -2486,6 +2486,7 @@ var ACTION_KEYS = {
   issue: "i",
   type: "t",
   explain: "e",
+  "read-document": "v",
   compare: "p",
   discuss: "d",
   dismiss: "x",
@@ -2510,9 +2511,12 @@ function actionsOf(row, last, state, feedback) {
       isOut: out === pressAction
     };
   };
-  if (state.is === "settled") return state.canUndo ? [action({ action: "undo", id }, "Undo", "view")] : [];
+  const documentAction = row.document ? [action({ action: "read-document", id }, "Read report", "view")] : [];
+  if (state.is === "settled")
+    return [...state.canUndo ? [action({ action: "undo", id }, "Undo", "view")] : [], ...documentAction];
   if (state.is === "held")
     return [
+      ...documentAction,
       action({ action: "type", id, text: "" }, "Reply", "handoff"),
       action({ action: "discard", id }, ROW_COPY.discard, "view")
     ];
@@ -2521,6 +2525,7 @@ function actionsOf(row, last, state, feedback) {
     return [
       action({ action: "address", id }, row.finding ? fixLabel(row.finding) : "Fix", "handoff"),
       action({ action: "issue", id }, ISSUE_LABEL, "handoff"),
+      ...documentAction,
       action({ action: "type", id, text: "" }, "Reply", "handoff"),
       action({ action: "explain", id }, "Explain", "talk"),
       action({ action: "discuss", id }, "Discuss", "talk"),
@@ -2529,6 +2534,7 @@ function actionsOf(row, last, state, feedback) {
   if (item.kind === "task")
     return [
       ...stepActions,
+      ...documentAction,
       action({ action: "done", id }, "Done", "mark"),
       action({ action: "type", id, text: "" }, "Reply", "handoff"),
       action({ action: "explain", id }, "Explain", "talk"),
@@ -2544,6 +2550,7 @@ function actionsOf(row, last, state, feedback) {
       })
     ),
     ...stepActions,
+    ...documentAction,
     action({ action: "type", id, text: "" }, "Reply", "mark"),
     action({ action: "explain", id }, "Explain", "talk"),
     ...showsCompare(item) ? [action({ action: "compare", id }, "Compare", "talk")] : [],
@@ -2650,11 +2657,17 @@ function inboxView({
     const state = stateOf(row.id);
     const last = lastActions[row.id];
     const feedback = feedbackIn(row.id, state, last, notes[row.id], turns, now, row.item?.reportedAt);
-    const actions = actionsOf(row, last, state, pressFeedbackIn(row.id, state, last, turns, now, row.item?.reportedAt));
+    const document = row.item?.document ?? row.finding?.document ?? null;
+    const actions = actionsOf(
+      { ...row, document },
+      last,
+      state,
+      pressFeedbackIn(row.id, state, last, turns, now, row.item?.reportedAt)
+    );
     const heldSubject = state.is === "open" ? heldSubjectOf(ledger.overview, row.id) : null;
     return {
       ...row,
-      document: row.item?.document ?? row.finding?.document ?? null,
+      document,
       documentPreview: row.item?.documentPreview ?? row.finding?.documentPreview ?? null,
       state,
       feedback,

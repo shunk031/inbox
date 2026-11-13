@@ -251,6 +251,7 @@ import { panePrBlocks, panePrRows } from './pane-prs'
 import { paneStatusLines } from './pane-status-lines'
 import { paneStatus } from './pane-status'
 import { paneHelp } from './pane-help'
+import { adjustScroll, clearDocument, documentActions, scrollBy } from './pane-document'
 import { foldOf, upgradedUnfolded, withFold } from './fold-keys'
 
 function documentFile($: EngineInterface): DocumentFile {
@@ -373,10 +374,8 @@ async function setStopFromLastReply($: EngineInterface) {
 }
 
 /**
- * Shows the permission row of the call `id` if its verdict is an ask and the call is still waiting
- * PERMISSION_FALLBACK_DELAY_MS later. The auto-mode classifier can settle an ask well within the delay, and the
- * verdict does not say whether a dialog or the classifier answers it. A query asks no PreToolUse hook, so an ask
- * that only a PreToolUse hook makes shows no row.
+ * Shows an unresolved permission ask after the delay, giving auto mode time to settle it first. Queries skip PreToolUse
+ * hooks, so asks raised only there have no row.
  */
 async function waitForPermission($: EngineInterface, id: string, tool: string, rawInput: unknown) {
   const input = (rawInput ?? {}) as Record<string, unknown>
@@ -1371,6 +1370,7 @@ async function readRowTab($: EngineInterface): Promise<Tab | null> {
 
 async function showTab($: EngineInterface, tab: ShownTab) {
   cancelUndoScroll()
+  clearDocument()
   await update($, IS_HELP_SHOWN, () => false)
   if (!isRowTab(tab)) {
     await update($, PAGE, () => tab)
@@ -1948,7 +1948,12 @@ async function runDemoPress(
     later($, SETTLED_MS, () => update($, DEMO, d => d && { ...d, ...(reply ? demoReplied(d, reply) : {}) }))
 }
 
-function rowKeyActions($: EngineInterface, r: RowView, isAllShown: boolean): { keys: KeyAction[]; more: KeyAction[] } {
+function rowKeyActions(
+  $: EngineInterface,
+  r: RowView,
+  isAllShown: boolean,
+  reader: Pick<ReturnType<typeof documentActions>, 'open'>,
+): { keys: KeyAction[]; more: KeyAction[] } {
   const { id, item, finding } = r
   const keyAction = (k: PlannedKey): KeyAction => {
     switch (k.slot) {
@@ -2011,6 +2016,7 @@ function rowKeyActions($: EngineInterface, r: RowView, isAllShown: boolean): { k
             ...presentation,
             onPress: () => void discardReply($, id),
           }
+        if (p.action === 'read-document') return reader.open(r, a, hotkey)
         return {
           label: a.label,
           kind: a.kind,
@@ -2823,7 +2829,7 @@ export const register: Register = on => {
 
   on('ui.scroll', { requestId: PANE }, async (_$, e, next) => {
     if (e.origin.kind === 'person') cancelUndoScroll()
-    return next(e)
+    return next(adjustScroll(e))
   })
 
   on('ui.message', async ($, e, next) => {
@@ -2862,6 +2868,7 @@ export const register: Register = on => {
 
   on('ui.close', { id: PANE }, async ($, e, next) => {
     cancelUndoScroll()
+    clearDocument()
     const r = await next(e)
     void syncShown($, { isOpen: false }).then(() => syncLook($, false))
     paneHasKeys.clear()
@@ -3062,6 +3069,11 @@ export const register: Register = on => {
     const tab: Tab = isShownTab(savedTab) && isRowTab(savedTab) ? savedTab : 'needsYou'
     const isStatusShown = savedPage === 'overview'
     const shownTab: ShownTab = isStatusShown ? 'overview' : tab
+    const { document, ...reader } = documentActions(
+      documentFile($),
+      () => redrawPane($),
+      by => scrollBy(by, () => $.ui.scroll({ in: PANE, to: 'end' })).catch(() => undefined),
+    )
     const tabList = shownTabs(mod.isNextBuild)
     if (look === 'terminal')
       animateRunningMarks(
@@ -3146,7 +3158,7 @@ export const register: Register = on => {
 
     const client: PaneClient = hasClient ? { hasClient: true, elements } : { hasClient: false, elements }
     const handlers: PaneHandlers = {
-      rowKeyActions: (r, isAllShown) => rowKeyActions($, r, isAllShown),
+      rowKeyActions: (r, isAllShown) => rowKeyActions($, r, isAllShown, reader),
       unlessGuarded: (rowId, press, onPress) => unlessGuarded($, rowId, press, onPress),
       sendDraft: (id, surface) => sendDraft($, id, surface),
       discardReply: id => discardReply($, id),
@@ -3404,12 +3416,13 @@ export const register: Register = on => {
       },
       handlers,
     )
-    const { emptyState, needsYouView, findingsView } = paneAskTabs(
+    const { emptyState, needsYouView, findingsView, documentView } = paneAskTabs(
       {
         listColumns,
         look,
         isInline,
         Box,
+        Markdown,
         Text,
         blankLine,
         pal,
@@ -3434,7 +3447,13 @@ export const register: Register = on => {
         sections,
         banner,
       },
-      handlers,
+      {
+        ...handlers,
+        document,
+        closeDocument: () => {
+          void reader.close()
+        },
+      },
     )
 
     const { prsView } = panePrBlocks({
@@ -3545,12 +3564,13 @@ export const register: Register = on => {
     }
     const moveBy = (by: number) =>
       isHelpShown ? undefined : isStatusShown ? moveStatus(by) : canMove ? move(by) : undefined
-    // Claude Code sends a key no Button binds to the prompt and gives it the keyboard, so the keys
-    // stay bound when there is nothing to move to or close.
-    const moveKeys: KeyAction[] = [
-      { key: 'next', label: 'Next', hotkey: 'j', kind: 'view', onPress: () => moveBy(1) },
-      { key: 'previous', label: 'Previous', hotkey: 'k', kind: 'view', onPress: () => moveBy(-1) },
-    ]
+    // Unbound keys reach the prompt, so hidden Buttons must bind navigation keys.
+    const moveKeys: KeyAction[] = document
+      ? [reader.scroll(-1), reader.scroll(1)]
+      : [
+          { key: 'next', label: 'Next', hotkey: 'j', kind: 'view', onPress: () => moveBy(1) },
+          { key: 'previous', label: 'Previous', hotkey: 'k', kind: 'view', onPress: () => moveBy(-1) },
+        ]
     const tabKeys: KeyAction[] = tabList.map(({ id, label, hotkey }) => ({
       key: `tab-key-${id}`,
       label,
@@ -3559,7 +3579,7 @@ export const register: Register = on => {
       onPress: () => void showTab($, id),
     }))
 
-    const selectedRow = isStatusShown || isHelpShown ? undefined : rows[tab][at]
+    const selectedRow = isStatusShown || isHelpShown || document ? undefined : rows[tab][at]
     const selectedActions = selectedRow ? rowActions(selectedRow) : null
     const statusRowKeys = statusKeyRow && !isHelpShown ? statusKeys(statusKeyRow) : []
     const closeKeysWithoutRow: KeyAction[] = ['d', 'x'].flatMap(hotkey =>
@@ -3577,22 +3597,26 @@ export const register: Register = on => {
     )
     const rowKeys = [
       ...statusRowKeys,
-      ...(selectedActions ? [...selectedActions.keys, ...selectedActions.more] : closeKeysWithoutRow),
-      ...(tab === 'prs' && !isHelpShown ? [...prOrderKeys, ...prTabKeys] : []),
+      ...(document
+        ? [reader.back()]
+        : selectedActions
+          ? [...selectedActions.keys, ...selectedActions.more]
+          : closeKeysWithoutRow),
+      ...(tab === 'prs' && !isHelpShown && !document ? [...prOrderKeys, ...prTabKeys] : []),
     ]
 
-    // A pane takes a key
-    // only as a Button's hotkey, so the tab keys, j, k and the selected row's keys
-    // are Buttons in a hidden Box.
-    const tabView = isHelpShown
-      ? helpView()
-      : isStatusShown
-        ? statusView()
-        : tab === 'findings'
-          ? findingsView()
-          : tab === 'prs'
-            ? prsView()
-            : needsYouView()
+    // Only Button hotkeys reach this pane; a hidden Button binds each key.
+    const tabView = document
+      ? documentView()
+      : isHelpShown
+        ? helpView()
+        : isStatusShown
+          ? statusView()
+          : tab === 'findings'
+            ? findingsView()
+            : tab === 'prs'
+              ? prsView()
+              : needsYouView()
     const drawn = (
       <Box flexDirection="column" minHeight={e.props.scroll.bodyRows} backgroundColor={pal.body}>
         {showsDemoNotices ? (

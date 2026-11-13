@@ -91,6 +91,8 @@ export type PanelUi = {
   shownSince: number
   /** Whether Help shows in place of the tab's lines. It scrolls with `pageTop`, and switching tabs closes it. */
   isHelpShown: boolean
+  /** A report opened from a row; kept only while this panel is open. */
+  document: { title: string; text: string | null; error: string | null } | null
 }
 
 export const INITIAL_UI: PanelUi = {
@@ -112,6 +114,7 @@ export const INITIAL_UI: PanelUi = {
   openedAt: 0,
   shownSince: 0,
   isHelpShown: false,
+  document: null,
 }
 
 export function holdsOf(ui: Pick<PanelUi, 'typing' | 'drafts' | 'discarded' | 'shownSince'>): Holds {
@@ -123,6 +126,7 @@ export function holdsOf(ui: Pick<PanelUi, 'typing' | 'drafts' | 'discarded' | 's
  * showing, a send waiting to read as queued, or a notice. Changes the host saves arrive as events instead.
  */
 export function isAnimating(screen: PanelScreen, ui: PanelUi, now: number): boolean {
+  if (ui.document) return false
   const { view } = screen
   const rows = [...view.needsYou.questions, ...view.needsYou.tasks, ...view.findings.rows]
   const isPressMoving = Object.values(view.lastActions).some(

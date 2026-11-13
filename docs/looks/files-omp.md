@@ -4,7 +4,7 @@ Part of [the look map](../looks.md#files).
 
 | File | Role |
 | --- | --- |
-| `omp/src/host.ts` | omp host. The only file that imports omp's packages. It binds the calls that need omp's types into a `HostContext`, wires omp's events to the `host-*.ts` handlers, polls `INBOX_FEED` for each active session, registers the tools and `/inbox` command, reads a recorded report for its preview, and shows the band and panel. |
+| `omp/src/host.ts` | omp host. The only file that imports omp's packages. It binds the calls that need omp's types into a `HostContext`, wires omp's events to the `host-*.ts` handlers, polls `INBOX_FEED` for each active session, registers the tools and `/inbox` command, reads recorded reports, supplies pi-tui's native Markdown renderer, and shows the band and panel. |
 | `omp/src/host-context.ts` | omp host. `HostContext`, what `createInbox` holds for the handler files, and `OmpContext`, the part of omp's context they read. |
 | `omp/src/host-sessions.ts` | omp host. The session calls the handler files share: saving a change, omp's `SessionHost` and update host, catching up over the branch, and the PR and Herdr checks when due. |
 | `omp/src/host-turns.ts` | omp host. The handlers for omp's session and turn events: a session's start and shutdown, a prompt's arrival, the reply, and the turn's end. |
@@ -25,7 +25,7 @@ Part of [the look map](../looks.md#files).
 | `omp/src/panel-page.ts` | omp adapter. Draws the Status page's rows: the tree, stall words, rules and buttons. |
 | `omp/src/panel-goal.ts` | omp adapter. Draws the Status page's goal: a proposal, the goal and its milestones, Set a goal, the goal's text field and the Now line. |
 | `omp/src/panel-tabs.ts` | omp adapter. The tab bar, the footer, scrolling, and the tab the panel moves to as rows arrive. |
-| `omp/src/controller.ts` | omp adapter. The open panel: the cached screen, the person's ui state, the work a key starts, redraw and PR timers, and selected-detail scroll clamped to the drawn panel. |
+| `omp/src/controller.ts` | omp adapter. The open panel: the cached screen, the person's ui state, the work a key starts, redraw and PR timers, and selected-detail scroll clamped to the drawn panel; it also draws and scrolls open reports with pi-tui's Markdown output. |
 | `omp/src/demo.ts` | omp host. Turns the shared demo data into a panel source for `/inbox demo`. |
 | `omp/build.ts` | omp host. Bundles `omp/src/host.ts` and the shared modules into `omp/dist/host.js`. `--check` fails when the bundle is stale. |
 | `omp/dist/host.js` | omp host. The committed bundle, which `omp/package.json` lists under `omp.extensions`. |

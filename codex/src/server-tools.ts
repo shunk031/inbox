@@ -41,6 +41,7 @@ export const TOOLS = [
         replies: { type: 'object' },
         discarded: { type: 'object' },
         shownSince: { type: 'number' },
+        document: { type: 'string' },
       },
     },
     _meta: {

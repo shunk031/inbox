@@ -3,7 +3,7 @@
 
 // src/host.ts
 import { randomUUID } from "crypto";
-import { existsSync } from "fs";
+import { constants as constants2, existsSync } from "fs";
 import { open, realpath, stat as stat4 } from "fs/promises";
 import { homedir } from "os";
 import { dirname as dirname2, join as join4 } from "path";
@@ -4598,6 +4598,7 @@ var ACTION_KEYS = {
   issue: "i",
   type: "t",
   explain: "e",
+  "read-document": "v",
   compare: "p",
   discuss: "d",
   dismiss: "x",
@@ -4622,10 +4623,12 @@ function actionsOf(row, last, state, feedback) {
       isOut: out === pressAction
     };
   };
+  const documentAction = row.document ? [action({ action: "read-document", id }, "Read report", "view")] : [];
   if (state.is === "settled")
-    return state.canUndo ? [action({ action: "undo", id }, "Undo", "view")] : [];
+    return [...state.canUndo ? [action({ action: "undo", id }, "Undo", "view")] : [], ...documentAction];
   if (state.is === "held")
     return [
+      ...documentAction,
       action({ action: "type", id, text: "" }, "Reply", "handoff"),
       action({ action: "discard", id }, ROW_COPY.discard, "view")
     ];
@@ -4634,6 +4637,7 @@ function actionsOf(row, last, state, feedback) {
     return [
       action({ action: "address", id }, row.finding ? fixLabel(row.finding) : "Fix", "handoff"),
       action({ action: "issue", id }, ISSUE_LABEL, "handoff"),
+      ...documentAction,
       action({ action: "type", id, text: "" }, "Reply", "handoff"),
       action({ action: "explain", id }, "Explain", "talk"),
       action({ action: "discuss", id }, "Discuss", "talk"),
@@ -4642,6 +4646,7 @@ function actionsOf(row, last, state, feedback) {
   if (item.kind === "task")
     return [
       ...stepActions,
+      ...documentAction,
       action({ action: "done", id }, "Done", "mark"),
       action({ action: "type", id, text: "" }, "Reply", "handoff"),
       action({ action: "explain", id }, "Explain", "talk"),
@@ -4655,6 +4660,7 @@ function actionsOf(row, last, state, feedback) {
       isFolded: isFolding && n >= OPTIONS_FOLD_AT - 1
     })),
     ...stepActions,
+    ...documentAction,
     action({ action: "type", id, text: "" }, "Reply", "mark"),
     action({ action: "explain", id }, "Explain", "talk"),
     ...showsCompare(item) ? [action({ action: "compare", id }, "Compare", "talk")] : [],
@@ -4822,11 +4828,12 @@ function inboxView({
     const state = stateOf(row.id);
     const last = lastActions[row.id];
     const feedback = feedbackIn(row.id, state, last, notes[row.id], turns, now, row.item?.reportedAt);
-    const actions = actionsOf(row, last, state, pressFeedbackIn(row.id, state, last, turns, now, row.item?.reportedAt));
+    const document = row.item?.document ?? row.finding?.document ?? null;
+    const actions = actionsOf({ ...row, document }, last, state, pressFeedbackIn(row.id, state, last, turns, now, row.item?.reportedAt));
     const heldSubject = state.is === "open" ? heldSubjectOf(ledger.overview, row.id) : null;
     return {
       ...row,
-      document: row.item?.document ?? row.finding?.document ?? null,
+      document,
       documentPreview: row.item?.documentPreview ?? row.finding?.documentPreview ?? null,
       state,
       feedback,
@@ -6048,6 +6055,7 @@ function withSelection(ui, id) {
 var withTab = (ui, tab, now) => ({
   ...withSelection(ui, null),
   tab,
+  document: null,
   pageTop: 0,
   pageReveal: isRowTab(tab) ? null : true,
   shownSince: tab === ui.tab ? ui.shownSince : now,
@@ -6113,6 +6121,14 @@ function handleKey(screen, ui, key, now, text) {
   const base = isPage ? ui : { ...ui, selectedId: selected?.id ?? null };
   if (base.typing !== null)
     return typingKey(base, base.typing, key, now, text);
+  const isUp = key === "up" || key === "k";
+  if (base.document) {
+    if (key === "b" || key === "escape")
+      return { ui: { ...base, document: null, pageTop: 0 } };
+    if (isUp || key === "down" || key === "j")
+      return { ui: { ...base, pageTop: Math.max(0, base.pageTop + (isUp ? -1 : 1)) } };
+    return { ui: base };
+  }
   const shown = shownTabs(screen.isNextBuild === true);
   const isTabKey = key === "tab" || key === "shift+tab" || shown.some((t) => t.hotkey === key);
   if (key === "?" || base.isHelpShown && key === "escape")
@@ -6124,7 +6140,6 @@ function handleKey(screen, ui, key, now, text) {
     if (page)
       return page;
   }
-  const isUp = key === "up" || key === "k";
   if (base.isHelpShown && !isTabKey && !isUp && key !== "down" && key !== "j")
     return { ui: base };
   if ((base.isHelpShown || isPage) && (isUp || key === "down" || key === "j"))
@@ -6486,12 +6501,15 @@ var INITIAL_UI = {
   pageReveal: null,
   openedAt: 0,
   shownSince: 0,
-  isHelpShown: false
+  isHelpShown: false,
+  document: null
 };
 function holdsOf(ui) {
   return { replies: heldReplies(ui.typing, ui.drafts), discarded: ui.discarded, shownSince: ui.shownSince };
 }
 function isAnimating(screen, ui, now) {
+  if (ui.document)
+    return false;
   const { view } = screen;
   const rows = [...view.needsYou.questions, ...view.needsYou.tasks, ...view.findings.rows];
   const isPressMoving = Object.values(view.lastActions).some((l) => l.result !== undefined && (l.result.state === "pending" || now - l.result.at < SETTLED_MS) || l.delivery?.state === "queued" && now - l.at < QUEUED_AFTER_MS);
@@ -6655,9 +6673,26 @@ function createPanel(deps) {
       ui = { ...ui, resuming: { stopAt: ui.resuming.stopAt, is: "refused", why } };
     await refresh();
   }
+  async function showDocument(id) {
+    if (!screen)
+      return;
+    const row = allRows(screen.view).find((candidate) => candidate.id === id);
+    if (!row?.document)
+      return;
+    const document = { title: row.title, text: null, error: null };
+    ui = { ...ui, document, pageTop: 0 };
+    deps.requestRender();
+    const result = await deps.readDocument(row.document).catch(() => ({ error: "The report could not be read." }));
+    if (ui.document !== document)
+      return;
+    ui = { ...ui, document: { ...document, ...result } };
+    deps.requestRender();
+  }
   async function press(p) {
     if (p.action === "resume")
       return resume();
+    if (!isPrPress(p) && p.action === "read-document")
+      return showDocument(p.id);
     const rowId = pressRowId(p);
     const wasWaiting = screen !== null && isLineWaiting(screen, ui, rowId, deps.now());
     const sentDraft = !isPrPress(p) && p.action === "type" ? ui.drafts[p.id] : undefined;
@@ -6681,6 +6716,18 @@ function createPanel(deps) {
     render(width) {
       if (screen === null)
         return [` ${READING_TEXT}`];
+      if (ui.document) {
+        const body = [
+          ` ${style.bold(ui.document.title)}`,
+          style.dim("b / esc back \xB7 \u2191\u2193 j k scroll"),
+          "",
+          ...ui.document.error ? [style.tone("error", ui.document.error)] : ui.document.text === null ? [style.dim("Opening report\u2026")] : ui.document.text ? deps.markdown(ui.document.text, width) : []
+        ];
+        const room = Math.max(1, (deps.height() ?? body.length) - 1);
+        const top = Math.min(ui.pageTop, Math.max(0, body.length - room + 1));
+        ui = { ...ui, pageTop: top };
+        return pageWindow(body, top, room, style);
+      }
       const now = deps.now();
       const maxHeight = deps.height();
       heldHeight ??= tallestTabHeight(screen, ui, width, now, style, maxHeight);
@@ -9915,7 +9962,7 @@ var documentFile = {
     return { path: target, isFile: info.isFile(), size: info.size };
   },
   read: async (path, limit) => {
-    const file = await open(path, "r");
+    const file = await open(path, constants2.O_RDONLY | constants2.O_NOFOLLOW);
     try {
       if (!(await file.stat()).isFile())
         return new Uint8Array(limit + 1);
@@ -9930,6 +9977,25 @@ var documentFile = {
 var INBOX_MODEL_TIMEOUT_MS = 120000;
 var BAND_KEY = "inbox-band";
 var hyperlinkTools = () => import("@oh-my-pi/pi-tui/render");
+async function documentMarkdown() {
+  const { Markdown, getMarkdownTheme } = await import("@oh-my-pi/pi-tui");
+  const { TERMINAL } = await import("@oh-my-pi/pi-tui/terminal-capabilities");
+  return (text, width) => {
+    const hyperlinks = TERMINAL.hyperlinks;
+    TERMINAL.hyperlinks = false;
+    try {
+      const theme = {
+        ...getMarkdownTheme(),
+        link: (text) => text,
+        linkUrl: () => "",
+        underline: (text) => text
+      };
+      return [...new Markdown(text, 0, 0, theme).render(width)];
+    } finally {
+      TERMINAL.hyperlinks = hyperlinks;
+    }
+  };
+}
 async function panelLink(load = hyperlinkTools) {
   try {
     const { isHyperlinkEnabled, urlHyperlink } = await load();
@@ -10166,6 +10232,7 @@ function createInbox(pi, deps = defaultDeps) {
   async function openPanelUi(ctx, isDemo) {
     const openedAt = deps.now();
     const { parseKey, extractPrintableText, truncateToWidth } = await import("@oh-my-pi/pi-tui");
+    const markdown = await documentMarkdown();
     const link = await panelLink();
     const source = isDemo ? demoSource({
       now: deps.now,
@@ -10184,6 +10251,8 @@ function createInbox(pi, deps = defaultDeps) {
         const panel = createPanel({
           source,
           style: styleOf(theme, link),
+          readDocument: (path) => readDocument(path, documentFile),
+          markdown,
           now: deps.now,
           openedAt,
           requestRender: () => tui.requestRender(),
@@ -10234,6 +10303,7 @@ function host_default(pi) {
 export {
   createInbox,
   host_default as default,
+  documentMarkdown,
   hyperlinkTools,
   panelLink
 };

@@ -63,6 +63,7 @@ export type FeatureId =
   | 'item-explanations'
   | 'finding-links'
   | 'option-links'
+  | 'item-document'
   | 'document-preview'
 
 type Support = { kind: 'full' } | { kind: 'different' | 'unsupported'; reason: string }
@@ -140,6 +141,7 @@ export const CLIENTS: Record<ClientId, Client> = {
       'item-explanations': { kind: 'full' },
       'finding-links': { kind: 'full' },
       'option-links': { kind: 'full' },
+      'item-document': { kind: 'full' },
       'document-preview': { kind: 'full' },
     },
   },
@@ -278,6 +280,7 @@ export const CLIENTS: Record<ClientId, Client> = {
       'item-explanations': { kind: 'full' },
       'finding-links': { kind: 'full' },
       'option-links': { kind: 'full' },
+      'item-document': { kind: 'full' },
       'document-preview': { kind: 'full' },
     },
   },
@@ -377,6 +380,7 @@ export const CLIENTS: Record<ClientId, Client> = {
         kind: 'different',
         reason: 'The panel uses OSC 8 links only when omp enables them for its terminal; otherwise it shows the label.',
       },
+      'item-document': { kind: 'full' },
       'document-preview': { kind: 'full' },
     },
   },

@@ -156,6 +156,25 @@ test('a button letter presses that button', () => {
   expect(handleKey(screen, onRow(row), 'x', NOW).press).toEqual({ action: 'dismiss', id: row.id })
 })
 
+test('the report reader scrolls with arrows and j/k, and b or Escape returns to the list', () => {
+  const screen = screenOf()
+  const row = firstQuestion(screen)
+  const ui: PanelUi = {
+    ...onRow(row),
+    document: { title: row.title, text: 'Report', error: null },
+    pageTop: 2,
+  }
+
+  expect(handleKey(screen, ui, 'up', NOW).ui.pageTop).toBe(1)
+  expect(handleKey(screen, ui, 'k', NOW).ui.pageTop).toBe(1)
+  expect(handleKey(screen, ui, 'down', NOW).ui.pageTop).toBe(3)
+  expect(handleKey(screen, ui, 'j', NOW).ui.pageTop).toBe(3)
+  expect(handleKey(screen, ui, 'b', NOW).ui).toMatchObject({ document: null, pageTop: 0 })
+  const escaped = handleKey(screen, ui, 'escape', NOW)
+  expect(escaped).toMatchObject({ ui: { document: null, pageTop: 0 } })
+  expect(escaped.close).toBeUndefined()
+})
+
 for (const isNextBuild of [false, true])
   test(`on a ${isNextBuild ? 'next' : 'release'} build, Tab and Shift+Tab cycle through the build's tabs in order, and each digit picks its tab`, () => {
     const screen = screenOf({ isNextBuild })

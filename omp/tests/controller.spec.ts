@@ -1,9 +1,11 @@
 import { expect, test } from 'bun:test'
 
+import { sessionView } from '../../hooks/session-view'
 import { COMPARE_LIMIT_MS, NO_HOLDS, RUNNING_FRAME_MS, SETTLED_MS } from '../../hooks/timing'
 import { createPanel } from '../src/controller'
 import type { PanelSource } from '../src/controller'
-import { demoSource } from '../src/demo'
+import { demoSource, demoState } from '../src/demo'
+import { documentMarkdown } from '../src/host'
 import type { PanelPress, Style } from '../src/panel'
 
 const style: Style = {
@@ -16,7 +18,10 @@ const style: Style = {
 }
 const flush = () => new Promise(resolve => setTimeout(resolve, 0))
 
-function open(overrides: Partial<PanelSource> = {}) {
+function open(
+  overrides: Partial<PanelSource> = {},
+  document: Partial<Pick<Parameters<typeof createPanel>[0], 'height' | 'readDocument' | 'markdown'>> = {},
+) {
   let now = 1_700_000_000_000
   const timers: { fn: () => void; ms: number; stopped: boolean }[] = []
   const pressed: PanelPress[] = []
@@ -51,7 +56,9 @@ function open(overrides: Partial<PanelSource> = {}) {
       every: (fn, ms) => timers.push({ fn, ms, stopped: false }) - 1,
       stop: handle => void (timers[handle as number]!.stopped = true),
     },
-    height: () => undefined,
+    height: document.height ?? (() => undefined),
+    readDocument: document.readDocument ?? (async path => ({ text: path })),
+    markdown: document.markdown ?? (text => text.split('\n')),
   })
 
   return { panel, timers, pressed, calls, replies, source, advance: (ms: number) => void (now += ms) }
@@ -65,6 +72,54 @@ test('the panel shows a loading line until the first screen arrives', async () =
   expect(panel.render(80).join('\n')).toContain('Reading the inbox…')
   await panel.start()
   expect(panel.render(80).join('\n')).toContain('Asks')
+})
+
+test('Read report opens pi-tui Markdown, scrolls, and returns without recording a row press', async () => {
+  const now = 1_700_000_000_000
+  const markdown = await documentMarkdown()
+  const state = demoState(now)
+  state.ledger.items = state.ledger.items.map(row =>
+    row.id === 'd11' ? { ...row, document: '/reports/week.md' } : row,
+  )
+  const base = demoSource({
+    modelName: 'Claude Sonnet 5.5',
+    now: () => now,
+    after: () => {},
+    settleWindowMs: SETTLED_MS,
+    version: '1.2.3',
+    comparePage: '/omp/dist/compare-page.html',
+  })
+  const report = `# Weekly report\n\nSee [release notes](https://example.com/release).\n\n${Array.from(
+    { length: 24 },
+    (_, n) => `Paragraph ${n}`,
+  ).join('\n\n')}`
+  const { panel, pressed } = open(
+    {
+      screen: async holds => ({
+        ...(await base.screen(holds)),
+        view: sessionView(state, now, SETTLED_MS, true, holds),
+      }),
+    },
+    {
+      height: () => 8,
+      readDocument: async () => ({ text: report }),
+      markdown,
+    },
+  )
+  await panel.start()
+  panel.handleInput('v')
+  await flush()
+  const firstPage = panel.render(80).join('\n')
+  expect(firstPage).toContain('Weekly report')
+  expect(firstPage).toContain('release notes')
+  expect(firstPage).not.toContain('https://example.com/release')
+  expect(firstPage).toContain('↓')
+  panel.handleInput('down')
+  expect(panel.render(80).join('\n')).not.toBe(firstPage)
+  panel.handleInput('b')
+  await flush()
+  expect(panel.render(80).join('\n')).toContain('Asks')
+  expect(pressed).toHaveLength(0)
 })
 
 async function replyThenReopen(panel: ReturnType<typeof open>['panel'], reply: string): Promise<string> {

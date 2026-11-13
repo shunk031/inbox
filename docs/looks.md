@@ -8,7 +8,7 @@ Inline Markdown links use `hooks/inline.ts` for parsing and href validation in a
 
 Question and task explanations live in `Item.detail`, are carried to each renderer as `RowView.detail`, and survive inbox-model updates. Only the agent's `record` call sets or replaces this field.
 
-An item or finding may carry a local Markdown report path and a short excerpt. `hooks/document.ts` validates and reads the resolved file when the agent records it, then shares the plain-text preview with each look.
+An item or finding may carry a local Markdown report path and a short excerpt. `hooks/document.ts` resolves and validates the file, reads it when the agent records it, and shares the plain-text preview with each look. The row's Read report action opens a scrollable full view on demand: the mod and omp use their native Markdown components, and Codex uses sanitized Markdown HTML. The file content is never executed.
 
 ## Files
 

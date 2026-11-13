@@ -35,7 +35,9 @@ _Avoid_: do, todo
 
 **Document**:
 A local Markdown report attached to a question, task or finding. The inbox
-checks the file read-only, caps it at 64 KiB, and shows a short plain-text excerpt.
+resolves the path to a regular `.md` file, reads it without writing or executing
+it, caps it at 64 KiB, and shows a short plain-text excerpt. Read report opens a
+scrollable Markdown view when needed; the file content is never executed.
 
 **Closed item**:
 A question or task that is no longer open: answered, done, dismissed, expired,

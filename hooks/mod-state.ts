@@ -5,6 +5,7 @@ import type { PendingUndoScroll } from './pane-selection'
 import type { ModLook } from './rows'
 
 class PaneState {
+  document: { sessionId: string; title: string; text: string | null; error: string | null } | null = null
   recordedRows: { isDemo: boolean; ids: RowRecord<Tab> } | null = null
   isInlinePane = false
   isInlineTerminalPane = false
