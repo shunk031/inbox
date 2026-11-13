@@ -107,20 +107,32 @@ describe('guidedCloseDescription', () => {
 })
 
 describe('record link descriptions', () => {
-  test('tells the agent how inbox links render in the record fields and tool description', () => {
+  test('describes labeled links and explains how option links render', () => {
     const record = agentTools(CLAUDE_CODE).find(t => t.name === 'record')!
     const properties = record.inputSchema.properties as Record<string, { description: string }>
 
-    for (const key of ['ask', 'options', 'detail', 'title', 'steps']) {
-      const description = properties[key]!.description
-      expect(description).toContain('[label](https://…)')
-      expect(description).toContain('shows the label')
-      expect(description).toContain('clickable where the look allows')
-      expect(description).toContain('Only https links open')
+    for (const key of ['ask', 'detail', 'title']) {
+      expect(properties[key]!.description).toContain('Links as [label](https://…).')
     }
 
-    expect(record.description).toContain('[label](https://…)')
-    expect(record.description).toContain('Only https links open')
+    expect(properties.ask!.description).toContain('at most 12 words; a link counts as its label')
+    expect(properties.title!.description).toContain('at most 12 words; a link counts as its label')
+    expect(properties.options!.description).toContain(
+      'A link here shows only its label; put the page behind an option in detail or steps.',
+    )
+    expect(properties.options!.description).not.toContain('[label](https://…)')
+    expect(properties.steps!.description).toContain('a [label](https://…) link')
+
+    for (const key of ['ask', 'detail', 'title', 'steps']) {
+      const description = properties[key]!.description
+      expect(description).toContain('[label](https://…)')
+      expect(description).not.toContain('clickable where the look allows')
+      expect(description).not.toContain('Only https links open')
+    }
+
+    expect(record.description).toContain(
+      'Write links as [label](https://…); the inbox shows the label, and links are clickable where the look allows. Only https links open.',
+    )
   })
 })
 

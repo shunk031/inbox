@@ -4127,12 +4127,12 @@ var RECORD_SCHEMA = {
     },
     ask: {
       type: "string",
-      description: `For a question or task: what you need from the user, in at most 12 plain words, readable without your reply. ${LINK_DESCRIPTION}`
+      description: "For a question or task: what you need from the user, in at most 12 words; a link counts as its label, readable without your reply. Links as [label](https://\u2026)."
     },
     options: {
       type: "array",
       items: { type: "string" },
-      description: `For a question: the answers the user can pick, at most 5 words each. Give at least one. ${LINK_DESCRIPTION}`
+      description: "For a question: the answers the user can pick, at most 5 words each. Give at least one. A link here shows only its label; put the page behind an option in detail or steps."
     },
     rec: {
       type: "string",
@@ -4141,7 +4141,7 @@ var RECORD_SCHEMA = {
     steps: {
       type: "array",
       items: { type: "string" },
-      description: `For a task: up to 3 things the user can do in one press, each written as a command, a file path or a [label](https://\u2026) link. For a question: up to 3 files or links that help the user decide, such as a page comparing the options, each file as an absolute path. ${LINK_DESCRIPTION}`
+      description: "For a task: up to 3 things the user can do in one press, each written as a command, a file path or a [label](https://\u2026) link. For a question: up to 3 files or links that help the user decide, such as a page comparing the options, each file as an absolute path."
     },
     design_choice: {
       type: "boolean",
@@ -4152,10 +4152,13 @@ var RECORD_SCHEMA = {
       enum: ["issue", "opportunity"],
       description: "For a finding. issue: something wrong or risky. opportunity: something that could be better."
     },
-    title: { type: "string", description: `For a finding: what it is, in at most 12 plain words. ${LINK_DESCRIPTION}` },
+    title: {
+      type: "string",
+      description: "For a finding: what it is, in at most 12 words; a link counts as its label. Links as [label](https://\u2026)."
+    },
     detail: {
       type: "string",
-      description: `For a question or task: why you ask and what it holds up; for a question, what each option leads to. For a finding: why it matters and what you would do. Use short paragraphs and links where useful. ${LINK_DESCRIPTION}`
+      description: "For a question or task: why you ask and what it holds up; for a question, what each option leads to. For a finding: why it matters and what you would do. Use short paragraphs and links where useful. Links as [label](https://\u2026)."
     },
     path: { type: "string", description: "For a finding: the file it is about, if one." },
     document: {
