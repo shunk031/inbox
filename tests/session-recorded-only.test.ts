@@ -1,9 +1,10 @@
 import { expect, test } from 'claude-code/testing'
 
 import { CLAUDE_CODE } from '../hooks/model-text'
+import { upgradeLedger } from '../hooks/ledger'
 import { isRecordedItemsOnly, runUpdates } from '../hooks/session-host'
 import { recordItem } from '../hooks/tools'
-import type { Session } from '../types'
+import type { Item, Session } from '../types'
 import { fakeHost } from './session-fake-host'
 import { finishTurn } from './session-helpers'
 
@@ -34,6 +35,24 @@ const recordedThenReplied = (s: Session): Session => {
   return finishTurn({ ...s, ledger }, REPLY)
 }
 
+/** A legacy ledger item with no `from`, upgraded as an update-originated ask. */
+const legacyThenReplied = (s: Session): Session => {
+  const legacy = {
+    id: 'i1',
+    kind: 'question',
+    ask: THRESHOLDS.ask,
+    label: null,
+    options: THRESHOLDS.options,
+    rec: THRESHOLDS.rec,
+    helps: [],
+    turn: 0,
+    at: null,
+  } as unknown as Item
+  const ledger = upgradeLedger({ ...s.ledger, items: [legacy], nextId: 2 })
+
+  return finishTurn({ ...s, ledger }, REPLY)
+}
+
 const asRecorded = {
   options: THRESHOLDS.options,
   rec: THRESHOLDS.rec,
@@ -42,15 +61,16 @@ const asRecorded = {
   documentPreview: THRESHOLDS.document_preview,
 }
 
-test('with recordedItemsOnly, an update adds no ask and keeps a recorded ask as recorded, but still adds its steps and closes it on the answer', async () => {
+test('with recordedItemsOnly, an update drops NEW asks, keeps TODOs and recorded asks, adds steps, and closes an ask on the answer', async () => {
   let answer = ANSWER
   const { host } = fakeHost(async () => answer)
   await host.update(recordedThenReplied)
   await runUpdates({ ...host, recordedItemsOnly: true })
 
   const after = (await host.read()).ledger
-  expect(after.items.map(i => i.ask)).toEqual([THRESHOLDS.ask])
+  expect(after.items.map(i => i.ask)).toEqual([THRESHOLDS.ask, 'Ready to start on add a dark theme?'])
   expect(after.items[0]).toMatchObject(asRecorded)
+  expect(after.items[1]).toMatchObject({ id: 'i2', from: 'update' })
   expect(after.items[0]!.helps).toEqual([
     { kind: 'link', url: 'https://example.com/thresholds', name: 'threshold notes' },
   ])
@@ -59,8 +79,39 @@ test('with recordedItemsOnly, an update adds no ask and keeps a recorded ask as 
   await host.update(s => finishTurn(s, 'Keeping the 5 and 15 USD thresholds.'))
   await runUpdates({ ...host, recordedItemsOnly: true })
   const closed = (await host.read()).ledger
-  expect(closed.items).toEqual([])
+  expect(closed.items.map(i => i.id)).toEqual(['i2'])
   expect(closed.closed.map(c => [c.id, c.outcome])).toEqual([['i1', 'Keep 5 and 15 USD']])
+})
+
+test('with recordedItemsOnly, a legacy ask survives an unanswered close, TODOs remain, NEW asks drop, and an answer closes the ask', async () => {
+  let answer = [
+    'CLOSED: i1 | No longer applies: scope changed in this reply',
+    'NEW: decide | - | Should we add another theme? | Light / dark | dark',
+    'TODO: add a dark theme',
+  ].join('\n')
+  const { host } = fakeHost(async () => answer)
+  await host.update(legacyThenReplied)
+  expect((await host.read()).ledger.items[0]).toMatchObject({ id: 'i1', from: 'update' })
+
+  await runUpdates({ ...host, recordedItemsOnly: true })
+
+  const afterUnansweredClose = (await host.read()).ledger
+  expect(afterUnansweredClose.items.map(i => i.ask)).toEqual([THRESHOLDS.ask, 'Ready to start on add a dark theme?'])
+  expect(afterUnansweredClose.items[1]).toMatchObject({
+    id: 'i2',
+    kind: 'question',
+    options: ['Proceed', 'Not yet'],
+    from: 'update',
+  })
+  expect(afterUnansweredClose.closed).toEqual([])
+
+  answer = 'CLOSED: i1 | Keep only the two 10-minute thresholds'
+  await host.update(s => finishTurn(s, 'Keep only the two 10-minute thresholds.'))
+  await runUpdates({ ...host, recordedItemsOnly: true })
+
+  const afterAnswer = (await host.read()).ledger
+  expect(afterAnswer.items.map(i => i.id)).toEqual(['i2'])
+  expect(afterAnswer.closed.map(c => [c.id, c.outcome])).toEqual([['i1', 'Keep only the two 10-minute thresholds']])
 })
 
 test('with recordedItemsOnly, a question the answer closes and asks again stays open, as it does without the option', async () => {
@@ -90,7 +141,7 @@ test('with recordedItemsOnly, a catch-up adds no ask and keeps a recorded ask as
   })
 
   const after = (await host.read()).ledger
-  expect(after.items.map(i => i.ask)).toEqual([THRESHOLDS.ask])
+  expect(after.items.map(i => i.ask)).toEqual([THRESHOLDS.ask, 'Ready to start on add a dark theme?'])
   expect(after.items[0]).toMatchObject(asRecorded)
 })
 

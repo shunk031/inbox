@@ -41,14 +41,20 @@ export type Update = {
 
 /**
  * The part of an update that keeps every ask as the agent recorded it, for a host where `INBOX_RECORDED_ITEMS_ONLY`
- * is on. It adds no question or task and changes no options or recommendation: it drops NEW, UPDATE and TODO lines.
- * It still closes items and findings and adds steps to open items. A CLOSED line for a question that an UPDATE line
- * asks again stays dropped, as `applyUpdate` drops it, so the question stays open.
+ * is on. It drops NEW and UPDATE lines, and keeps a CLOSED line for an ask only when its outcome is the person's
+ * answer. Findings still close as before. It keeps TODO lines because they come from work the person set aside, and
+ * still adds steps to open items. A CLOSED line for a question that an UPDATE line asks again stays dropped, as
+ * `applyUpdate` drops it, so the question stays open.
  */
-export function recordedAsksOnly(u: Update): Update {
+export function recordedAsksOnly(u: Update, isPersonsAnswer: (outcome: string) => boolean): Update {
   const stillAsked = new Set(u.updated.filter(c => c.options || c.rec).map(c => c.id))
 
-  return { ...u, closed: u.closed.filter(c => !stillAsked.has(c.id)), added: [], updated: [], todos: [] }
+  return {
+    ...u,
+    closed: u.closed.filter(c => (!/^i\d+$/.test(c.id) || isPersonsAnswer(c.outcome)) && !stillAsked.has(c.id)),
+    added: [],
+    updated: [],
+  }
 }
 
 function readHelp(

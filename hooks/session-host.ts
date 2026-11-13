@@ -1,5 +1,6 @@
 import { parseReply, recordedAsksOnly } from './reply-parse'
 import type { Update } from './reply-parse'
+import { isPersonsAnswer } from './ledger-update'
 import { systemText, buildPrompt } from './ledger-prompt'
 import { transcriptCatchUpPrompt } from './catch-up-text'
 import type { Host } from './model-text'
@@ -215,7 +216,7 @@ export async function reconcileUpdateStatus<S extends Session>(
  */
 export async function runUpdates<S extends Session>(host: UpdateHost<S>): Promise<void> {
   let canCatchUp = host.catchUp !== undefined
-  const kept = (u: Update | null) => (u && host.recordedItemsOnly ? recordedAsksOnly(u) : u)
+  const kept = (u: Update | null) => (u && host.recordedItemsOnly ? recordedAsksOnly(u, isPersonsAnswer) : u)
   const wantsCatchUp = (s: S) => canCatchUp && needsCatchUp(s)
   const hasWork = (s: S) => s.pending.length > 0 || wantsCatchUp(s)
   const writing: Promise<void>[] = []

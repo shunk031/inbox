@@ -58,7 +58,7 @@ export function applyExchangeUpdate(
 /** The CLOSED outcome forms that are not the person's answer: systemText's "done:" and "no longer applies:", and the words closedState reads as overtaken. */
 const NOT_AN_ANSWER = new RegExp(`^\\s*(?:done\\s*:|(?:${OVERTAKEN_OUTCOMES}|no longer relevant|dealt with)\\b)`, 'i')
 
-function isPersonsAnswer(outcome: string): boolean {
+export function isPersonsAnswer(outcome: string): boolean {
   return outcome.trim() !== '' && !NOT_AN_ANSWER.test(outcome)
 }
 
