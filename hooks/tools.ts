@@ -5,6 +5,7 @@ import { stepHelp } from './reply-parse'
 import { cutInline } from './inline'
 import type { Host } from './model-text'
 import { linkedPrs, MAX_ORDERED_PRS } from './pr-fetch'
+import { unlinkedRefs, unlinkedRefsAnswer } from './record-links'
 import type { Closed, Help, Ledger } from '../types'
 
 const NAME_BY_CONTENT = 'Name it by what it says, never by its id.'
@@ -220,6 +221,9 @@ export function recordItem(host: Host, ledger: Ledger, input: Record<string, unk
 
   const isDesignChoice = input.kind === 'question' && input.design_choice === true
   const detail = cutInline(typeof input.detail === 'string' ? input.detail.trim() : '', MAX_ITEM_DETAIL)
+  const linkSteps = helps.flatMap(h => (h.kind === 'link' ? [h.url] : []))
+  const unlinked = unlinkedRefs({ ask: [ask], detail: [detail], options }, linkSteps)
+  if (unlinked.length > 0) return unchanged(ledger, unlinkedRefsAnswer(unlinked))
   const document = cut(input.document, 4096) || undefined
   const documentPreview = document ? cut(input.document_preview, 180) || undefined : undefined
   const documentError = cut(input.document_error, 160)
@@ -264,6 +268,8 @@ function recordFinding(host: Host, ledger: Ledger, input: Record<string, unknown
   const title = cutInline(typeof input.title === 'string' ? input.title : '', 120)
   const detail = cutInline(typeof input.detail === 'string' ? input.detail : '', 600)
   if (title === '' || detail === '') return unchanged(ledger, 'Not recorded: a finding needs a title and a detail.')
+  const unlinked = unlinkedRefs({ title: [title], detail: [detail] })
+  if (unlinked.length > 0) return unchanged(ledger, unlinkedRefsAnswer(unlinked))
   const path = cut(input.path, 300)
   const document = cut(input.document, 4096) || undefined
   const documentPreview = document ? cut(input.document_preview, 180) || undefined : undefined

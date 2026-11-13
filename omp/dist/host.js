@@ -4118,6 +4118,40 @@ function addAgentItem(ledger, entry, now) {
   return { ledger: next, is: "added", id };
 }
 
+// ../hooks/record-links.ts
+var FENCE2 = /```[\s\S]*?```/g;
+var URL_TEXT = /<?https?:\/\/[^\s>]+>?/g;
+var LINKED_PATH = /\/(?:pulls?|issues|merge_requests)\/(\d+)/g;
+var MAX_NAMED = 3;
+var REF = /(?<![\w/#&])(?:(?<!-)(?:PRs?|[Pp]ull\s+[Rr]equests?|[Ii]ssues?|\u30D7\u30EB\u30EA\u30AF(?:\u30A8\u30B9\u30C8)?|\u30A4\u30B7\u30E5\u30FC)\s*#?|(?:[\w.-]+\/)?[\w.-]+#|#)([1-9]\d*)(?!\w)(?!\s*(?:\u4EF6|\u672C|\u500B|\u3064|\u70B9|\u56DE|\u679A))/g;
+function refs(text) {
+  return [...text.matchAll(REF)].map((m) => ({ text: m[0].trim(), n: m[1] ?? "" }));
+}
+function plain(value, keepLabels) {
+  return parseInline(value.replace(FENCE2, " ")).map((span) => span.code || span.link && !keepLabels ? " " : span.text).join("").replace(URL_TEXT, " ");
+}
+function linkedIn(value) {
+  return parseInline(value.replace(FENCE2, " ")).flatMap((span) => span.link ? [...refs(span.text).map((r) => r.n), ...pathNumbers(span.link)] : []);
+}
+function pathNumbers(url) {
+  return [...url.matchAll(LINKED_PATH)].map((m) => m[1] ?? "");
+}
+function unlinkedRefs(fields, stepUrls = []) {
+  const order = ["title", "ask", "detail", "options"];
+  const linked = new Set([
+    ...order.filter((f) => f !== "options").flatMap((f) => (fields[f] ?? []).flatMap((v) => linkedIn(v))),
+    ...stepUrls.flatMap(pathNumbers)
+  ]);
+  return order.flatMap((field) => (fields[field] ?? []).flatMap((value) => refs(plain(value, field === "options")).filter((r) => !linked.has(r.n)).map((r) => ({ field, text: r.text }))));
+}
+function unlinkedRefsAnswer(found) {
+  const named = found.slice(0, MAX_NAMED);
+  const fields = [...new Set(named.map((r) => r.field))].map((field) => `${field} names ${named.filter((r) => r.field === field).map((r) => `"${r.text}"`).join(" and ")}`);
+  const more = found.length > MAX_NAMED ? `, and ${found.length - MAX_NAMED} more` : "";
+  const option = found.some((r) => r.field === "options") ? " An option shows only a link's label, so link what an option names in detail or steps." : "";
+  return `Not recorded: ${fields.join(", ")}${more}, without a link. ` + "Write each PR or issue as a Markdown link at its first mention, such as [owner/repo#123](https://github.com/owner/repo/pull/123); later mentions in the same record need none. Only https links count." + option + ' If it is not a PR or issue, write it without "#", or put code in backticks.';
+}
+
 // ../hooks/tools.ts
 var NAME_BY_CONTENT = "Name it by what it says, never by its id.";
 var MAX_ITEM_DETAIL = 1200;
@@ -4271,6 +4305,10 @@ function recordItem(host, ledger, input, now) {
   const leftOut = helps.length < steps.length ? input.kind === "task" ? " Some steps were not a command, a file path or a link, so they are left out." : " Some steps were not an absolute file path or a link, so they are left out." : "";
   const isDesignChoice = input.kind === "question" && input.design_choice === true;
   const detail = cutInline(typeof input.detail === "string" ? input.detail.trim() : "", MAX_ITEM_DETAIL);
+  const linkSteps = helps.flatMap((h) => h.kind === "link" ? [h.url] : []);
+  const unlinked = unlinkedRefs({ ask: [ask], detail: [detail], options }, linkSteps);
+  if (unlinked.length > 0)
+    return unchanged(ledger, unlinkedRefsAnswer(unlinked));
   const document = cut(input.document, 4096) || undefined;
   const documentPreview = document ? cut(input.document_preview, 180) || undefined : undefined;
   const documentError = cut(input.document_error, 160);
@@ -4309,6 +4347,9 @@ function recordFinding(host, ledger, input, now) {
   const detail = cutInline(typeof input.detail === "string" ? input.detail : "", 600);
   if (title === "" || detail === "")
     return unchanged(ledger, "Not recorded: a finding needs a title and a detail.");
+  const unlinked = unlinkedRefs({ title: [title], detail: [detail] });
+  if (unlinked.length > 0)
+    return unchanged(ledger, unlinkedRefsAnswer(unlinked));
   const path = cut(input.path, 300);
   const document = cut(input.document, 4096) || undefined;
   const documentPreview = document ? cut(input.document_preview, 180) || undefined : undefined;

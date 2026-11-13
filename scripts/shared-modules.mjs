@@ -12,6 +12,7 @@ export const SHARED = [
   'help',
   'herdr',
   'inline',
+  'record-links',
   'layout',
   'marks',
   'ledger',

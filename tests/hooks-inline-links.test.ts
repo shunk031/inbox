@@ -56,6 +56,7 @@ async function answersLinkedOption($: Engine, on: On, surface: 'terminal' | 'des
     tool: 'mcp__inbox__record',
     kind: 'question',
     ask: 'Merge this PR?',
+    detail: 'It is [PR 7171](https://github.com/anthropics/claude-code/pull/7171).',
     options: [option, 'No'],
   } as never)
   await clock.settle()
