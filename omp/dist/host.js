@@ -4130,18 +4130,20 @@ var anyCase = (word) => [...word].map((c) => `[${c.toUpperCase()}${c}]`).join(""
 var REF = new RegExp(String.raw`(?<![\w/#&])(?:(?<!-)(?:PRs?|${anyCase("pull")}\s+${anyCase("request")}[sS]?|${anyCase("issue")}[sS]?|\u30D7\u30EB\u30EA\u30AF(?:\u30A8\u30B9\u30C8)?|\u30A4\u30B7\u30E5\u30FC)\s*#?|(?:[\w.-]+\/)?[\w.-]+#|#)([1-9]\d*)(?!\w)(?!\s*(?:\u4EF6|\u672C|\u500B|\u3064|\u70B9|\u56DE|\u679A))`, "g");
 function refs(text) {
   let normal = "";
-  const at = [];
+  const from = [];
+  const to = [];
   let i = 0;
   for (const ch of text) {
     const n = ch.normalize("NFKC");
-    for (let k = 0;k < n.length; k++)
-      at.push(i);
+    for (let k = 0;k < n.length; k++) {
+      from.push(i);
+      to.push(i + ch.length);
+    }
     normal += n;
     i += ch.length;
   }
-  at.push(i);
   return [...normal.matchAll(REF)].map((m) => ({
-    text: text.slice(at[m.index] ?? 0, at[m.index + m[0].length] ?? i).trim(),
+    text: text.slice(from[m.index] ?? 0, to[m.index + m[0].length - 1] ?? i).trim(),
     n: m[1] ?? ""
   }));
 }
@@ -4345,7 +4347,7 @@ function recordItem(host, ledger, input, now) {
   const linkProblem = recordLinksAnswer([
     { field: "ask", text: raw(input.ask), max: MAX_ASK },
     { field: "detail", text: raw(input.detail), max: MAX_ITEM_DETAIL },
-    ...rawList(input.kind === "question" ? input.options : []).map((text) => ({
+    ...rawList(input.kind === "question" ? input.options : []).slice(0, MAX_OPTIONS).map((text) => ({
       field: "options",
       text,
       max: MAX_OPTION

@@ -45,6 +45,10 @@ describe('unlinkedRefs finds', () => {
     expect(flagged('Merged #3-#5 and #9.')).toEqual(['#3', '#5', '#9'])
   })
 
+  test('a reference that ends inside one character’s NFKC form, quoted with that whole character', () => {
+    expect(flagged('#⒈ x')).toEqual(['#⒈'])
+  })
+
   test('a Markdown link to a non-https URL, which does not open', () => {
     expect(flagged('See [PR 12](http://example.com/acme/app/pull/12).')).toEqual(['PR 12'])
   })
@@ -172,6 +176,13 @@ describe('record', () => {
   test('reads each field before its cut', () => {
     expect(recordLinksAnswer([{ field: 'detail', text: link, max: 7 }])).toBeNull()
     expect(recordLinksAnswer([{ field: 'detail', text: `${link} x`, max: 6 }])).toBe(overLimit('detail', 6))
+  })
+
+  test('ignores an option past the eighth, which the record drops anyway', () => {
+    const options = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'Wait for #12']
+    const r = recordItem(CLAUDE_CODE, EMPTY, { kind: 'question', ask: 'Pick one?', options }, 1000)
+    expect(r.result).toBe('Recorded. The user sees it in the /inbox pane.')
+    expect(r.ledger.items[0]?.options).toHaveLength(8)
   })
 
   test("every host's call path refuses it", () => {

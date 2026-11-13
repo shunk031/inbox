@@ -26,21 +26,27 @@ const REF = new RegExp(
   'g',
 )
 
-/** The references in `text`, matched in its NFKC form so that full-width "＃１２" counts, each quoted as written. */
+/**
+ * The references in `text`, matched in its NFKC form so that full-width "＃１２" counts, each quoted as written. A match
+ * that ends inside one character's NFKC form quotes that whole character.
+ */
 function refs(text: string): { text: string; n: string }[] {
   let normal = ''
-  const at: number[] = []
+  const from: number[] = []
+  const to: number[] = []
   let i = 0
   for (const ch of text) {
     const n = ch.normalize('NFKC')
-    for (let k = 0; k < n.length; k++) at.push(i)
+    for (let k = 0; k < n.length; k++) {
+      from.push(i)
+      to.push(i + ch.length)
+    }
     normal += n
     i += ch.length
   }
-  at.push(i)
 
   return [...normal.matchAll(REF)].map(m => ({
-    text: text.slice(at[m.index] ?? 0, at[m.index + m[0].length] ?? i).trim(),
+    text: text.slice(from[m.index] ?? 0, to[m.index + m[0].length - 1] ?? i).trim(),
     n: m[1] ?? '',
   }))
 }

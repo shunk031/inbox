@@ -237,11 +237,13 @@ export function recordItem(host: Host, ledger: Ledger, input: Record<string, unk
     [
       { field: 'ask', text: raw(input.ask), max: MAX_ASK },
       { field: 'detail', text: raw(input.detail), max: MAX_ITEM_DETAIL },
-      ...rawList(input.kind === 'question' ? input.options : []).map(text => ({
-        field: 'options' as const,
-        text,
-        max: MAX_OPTION,
-      })),
+      ...rawList(input.kind === 'question' ? input.options : [])
+        .slice(0, MAX_OPTIONS)
+        .map(text => ({
+          field: 'options' as const,
+          text,
+          max: MAX_OPTION,
+        })),
     ],
     linkSteps,
   )
