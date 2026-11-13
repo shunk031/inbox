@@ -344,9 +344,14 @@ function readKind(kind) {
 }
 var NEEDS_PERSON = /(?:^|[\s;&|])(?:login|logout|signin|sign-in|sudo|passwd|ssh-add|ssh-keygen)(?=[\s:]|$)|\binit --interactive\b/i;
 var PERSON_ONLY_REASON = /credential|password|passphrase|secret|\btoken|\b2fa\b|\bmfa\b|\bdevice\b|phone|android|tablet|account|sign(?:ed)?[- ]?in|log(?:ged)?[- ]?in|only you|you hold|your (?:mac|machine|laptop|computer|keychain)|\bsudo\b/i;
-function recordedAsksOnly(u) {
+function recordedAsksOnly(u, isPersonsAnswer2) {
   const stillAsked = new Set(u.updated.filter((c) => c.options || c.rec).map((c) => c.id));
-  return { ...u, closed: u.closed.filter((c) => !stillAsked.has(c.id)), added: [], updated: [], todos: [] };
+  return {
+    ...u,
+    closed: u.closed.filter((c) => (!/^i\d+$/.test(c.id) || isPersonsAnswer2(c.outcome)) && !stillAsked.has(c.id)),
+    added: [],
+    updated: []
+  };
 }
 function readHelp(kind, value, name, blocks, source) {
   const isQuoted = (text2) => source === null || source.includes(text2);
@@ -3790,7 +3795,7 @@ async function askOverConversation(ask, names, s, screen, conversation) {
 }
 async function runUpdates(host) {
   let canCatchUp = host.catchUp !== void 0;
-  const kept = (u) => u && host.recordedItemsOnly ? recordedAsksOnly(u) : u;
+  const kept = (u) => u && host.recordedItemsOnly ? recordedAsksOnly(u, isPersonsAnswer) : u;
   const wantsCatchUp = (s) => canCatchUp && needsCatchUp(s);
   const hasWork = (s) => s.pending.length > 0 || wantsCatchUp(s);
   const writing = [];

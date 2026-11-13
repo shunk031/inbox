@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import { EMPTY } from '../hooks/ledger'
-import { applyUpdate } from '../hooks/ledger-update'
+import { applyUpdate, isPersonsAnswer } from '../hooks/ledger-update'
 import { parseReply, recordedAsksOnly } from '../hooks/reply-parse'
 import { CLAUDE_CODE } from '../hooks/model-text'
 import { recordItem } from '../hooks/tools'
@@ -23,7 +23,12 @@ test('question and task explanations are recorded, replaced, and kept by both up
 
   const update = parseReply('UPDATE: i1 | Redis / Memory | Memory')!
   for (const recordedOnly of [false, true]) {
-    const applied = applyUpdate(second.ledger, recordedOnly ? recordedAsksOnly(update) : update, 1200, 1)
+    const applied = applyUpdate(
+      second.ledger,
+      recordedOnly ? recordedAsksOnly(update, isPersonsAnswer) : update,
+      1200,
+      1,
+    )
     expect(applied.items[0]?.detail).toBe(replacement)
   }
 
