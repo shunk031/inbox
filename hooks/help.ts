@@ -109,6 +109,10 @@ const PR_TAB_HELP_KEYS: HelpKey[] = [
   { keys: 'g', does: 'Rank the PRs again, once a ranked PR changed' },
   { keys: 'm', does: 'Dismiss the merged PRs' },
 ]
+const DOCUMENT_KEYS: HelpKey[] = [
+  { keys: 'v', does: 'Read the selected report, if available' },
+  { keys: 'b', does: 'Return to the inbox from a report' },
+]
 
 /**
  * The keys a look's Help lists, for the tab Help opened over. `hasStatusButtons` says the Status has a row with a
@@ -120,6 +124,7 @@ export function helpKeys(look: Look, isNextBuild: boolean, tab: ShownTab, hasSta
     .map(t => t.hotkey)
     .join(' ')
   const hasRows = isRowTab(tab)
+  const hasDocumentRows = tab === 'needsYou' || tab === 'findings'
   const selectsStatusRows = tab === 'overview' && hasStatusButtons
   const switchTabs = { keys: tabKeys, does: 'Switch tabs' }
   const prTabKeys = tab === 'prs' ? PR_TAB_HELP_KEYS : []
@@ -129,24 +134,41 @@ export function helpKeys(look: Look, isNextBuild: boolean, tab: ShownTab, hasSta
     case 'terminal':
       return [
         switchTabs,
-        ...(hasRows || selectsStatusRows ? [{ keys: 'j k', does: 'Select the next or previous row' }] : []),
+        ...(hasRows || selectsStatusRows
+          ? [
+              {
+                keys: hasDocumentRows ? 'j k ↑ ↓' : 'j k',
+                does: hasDocumentRows ? 'Select a row or scroll a report' : 'Select the next or previous row',
+              },
+            ]
+          : []),
+        ...(hasDocumentRows ? DOCUMENT_KEYS : []),
         ...prTabKeys,
         { keys: 'ctrl+x tab', does: 'Move focus to the line above the prompt, then the pane, then the prompt' },
       ]
     case 'codex':
       return [
         switchTabs,
-        ...(hasRows ? [{ keys: 'j k ↑ ↓', does: 'Select the next or previous row' }] : []),
+        ...(hasRows
+          ? [
+              {
+                keys: 'j k ↑ ↓',
+                does: hasDocumentRows ? 'Select a row or scroll a report' : 'Select the next or previous row',
+              },
+              ...(hasDocumentRows ? DOCUMENT_KEYS : []),
+            ]
+          : []),
         ...prTabKeys,
         { keys: '?', does: 'Open or close help' },
-        { keys: 'esc', does: 'Close help, or leave a reply field' },
+        { keys: 'esc', does: 'Close help, leave a reply field, or return from a report' },
       ]
     case 'omp':
       return [
         { keys: `tab ${tabKeys}`, does: 'Switch tabs' },
         ...(hasRows
           ? [
-              { keys: '↑ ↓ j k', does: 'Move between rows' },
+              { keys: '↑ ↓ j k', does: hasDocumentRows ? 'Move between rows or scroll a report' : 'Move between rows' },
+              ...(hasDocumentRows ? DOCUMENT_KEYS : []),
               { keys: '← →', does: 'Pick a button' },
               { keys: '↵', does: 'Press the picked button' },
               { keys: 'r', does: 'Reply to the selected row' },
@@ -164,7 +186,7 @@ export function helpKeys(look: Look, isNextBuild: boolean, tab: ShownTab, hasSta
               { keys: '↑ ↓', does: 'Scroll the page' },
             ]),
         { keys: '?', does: 'Open or close help' },
-        { keys: 'esc', does: 'Close help, then the panel' },
+        { keys: 'esc', does: 'Close help, return from a report, then the panel' },
       ]
   }
 }
