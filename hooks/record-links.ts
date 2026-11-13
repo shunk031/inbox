@@ -1,26 +1,48 @@
-import { parseInline } from './inline'
+import { inlineLinks, linkLabel, parseInline } from './inline'
 
 /** A field of a `record` call, by the name the agent gave it. */
 export type RecordField = 'title' | 'ask' | 'detail' | 'options'
 
 export type UnlinkedRef = { field: RecordField; text: string }
 
+/** A field's text as the agent sent it, before it is cut, and the most visible characters the inbox keeps of it. */
+export type FieldText = { field: RecordField; text: string; max: number }
+
 const FENCE = /```[\s\S]*?```/g
 const URL_TEXT = /<?https?:\/\/[^\s>]+>?/g
 const LINKED_PATH = /\/(?:pulls?|issues|merge_requests)\/(\d+)/g
 const MAX_NAMED = 3
 
+const anyCase = (word: string) => [...word].map(c => `[${c.toUpperCase()}${c}]`).join('')
+
 /**
  * A PR or issue reference: "PR 12", "PR #12", "PRs 1", "pull request 12", "issue #12", their Japanese names,
- * "repo#12", "owner/repo#12" or "#12". The number is group 1. "PR" is upper case and never follows a hyphen, so a
- * name such as "build-pr21" is not one. A number followed by a counter word ("PR 2 件") is a
- * count, and one followed by a letter ("#12ab") is not a number.
+ * "repo#12", "owner/repo#12" or "#12". The number is group 1. "issue" and "pull request" may take any letter case.
+ * "PR" is upper case and never follows a hyphen, so a name such as "build-pr21" is not one. A number followed by a
+ * counter word ("PR 2 件") is a count, and one followed by a letter ("#12ab") is not a number.
  */
-const REF =
-  /(?<![\w/#&])(?:(?<!-)(?:PRs?|[Pp]ull\s+[Rr]equests?|[Ii]ssues?|プルリク(?:エスト)?|イシュー)\s*#?|(?:[\w.-]+\/)?[\w.-]+#|#)([1-9]\d*)(?!\w)(?!\s*(?:件|本|個|つ|点|回|枚))/g
+const REF = new RegExp(
+  String.raw`(?<![\w/#&])(?:(?<!-)(?:PRs?|${anyCase('pull')}\s+${anyCase('request')}[sS]?|${anyCase('issue')}[sS]?|プルリク(?:エスト)?|イシュー)\s*#?|(?:[\w.-]+\/)?[\w.-]+#|#)([1-9]\d*)(?!\w)(?!\s*(?:件|本|個|つ|点|回|枚))`,
+  'g',
+)
 
+/** The references in `text`, matched in its NFKC form so that full-width "＃１２" counts, each quoted as written. */
 function refs(text: string): { text: string; n: string }[] {
-  return [...text.matchAll(REF)].map(m => ({ text: m[0].trim(), n: m[1] ?? '' }))
+  let normal = ''
+  const at: number[] = []
+  let i = 0
+  for (const ch of text) {
+    const n = ch.normalize('NFKC')
+    for (let k = 0; k < n.length; k++) at.push(i)
+    normal += n
+    i += ch.length
+  }
+  at.push(i)
+
+  return [...normal.matchAll(REF)].map(m => ({
+    text: text.slice(at[m.index] ?? 0, at[m.index + m[0].length] ?? i).trim(),
+    n: m[1] ?? '',
+  }))
 }
 
 /** The text of `value` a reference could hide in, without code, URLs or valid links, or with only their labels. */
@@ -63,6 +85,21 @@ export function unlinkedRefs(fields: Partial<Record<RecordField, string[]>>, ste
   )
 }
 
+/**
+ * Why a `record` call must be sent again, or null when its links are fine: a field over its limit would lose its
+ * links to the cut, or a field names a PR or issue without a link. It reads each field as the agent sent it.
+ */
+export function recordLinksAnswer(fields: FieldText[], stepUrls: string[] = []): string | null {
+  const long = fields.find(f => inlineLinks(f.text).length > 0 && linkLabel(f.text).length > f.max)
+  if (long)
+    return `Not recorded: ${long.field} is over its limit of ${long.max} characters, so cutting it would drop its links. Shorten it so its links survive; a link counts as its label.`
+  const byField: Partial<Record<RecordField, string[]>> = {}
+  for (const f of fields) (byField[f.field] ??= []).push(f.text)
+  const found = unlinkedRefs(byField, stepUrls)
+
+  return found.length > 0 ? unlinkedRefsAnswer(found) : null
+}
+
 /** The answer to a `record` call that names `found`, which must not be empty. */
 export function unlinkedRefsAnswer(found: UnlinkedRef[]): string {
   const named = found.slice(0, MAX_NAMED)
@@ -80,7 +117,7 @@ export function unlinkedRefsAnswer(found: UnlinkedRef[]): string {
 
   return (
     `Not recorded: ${fields.join(', ')}${more}, without a link. ` +
-    'Write each PR or issue as a Markdown link at its first mention, such as [owner/repo#123](https://github.com/owner/repo/pull/123); later mentions in the same record need none. Only https links count.' +
+    'Write each PR or issue as a Markdown link at its first mention, such as [owner/repo#123](https://github.com/owner/repo/pull/123); later mentions in the same record need none. Only https links count, and a link with a title or inside italics is not read as a link.' +
     option +
     ' If it is not a PR or issue, write it without "#", or put code in backticks.'
   )

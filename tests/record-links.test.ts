@@ -2,7 +2,7 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import { EMPTY } from '../hooks/ledger'
 import { CLAUDE_CODE } from '../hooks/model-text'
-import { unlinkedRefs, unlinkedRefsAnswer } from '../hooks/record-links'
+import { recordLinksAnswer, unlinkedRefs, unlinkedRefsAnswer } from '../hooks/record-links'
 import { emptySession } from '../hooks/session-files'
 import { recorded } from '../hooks/session-presses'
 import { recordItem } from '../hooks/tools'
@@ -28,6 +28,14 @@ describe('unlinkedRefs finds', () => {
     ['#47 の設計を先に決めます。', '#47'],
     ['プルリクエスト 12 を見てください。', 'プルリクエスト 12'],
     ['イシュー 12 に書きました。', 'イシュー 12'],
+    ['Fixed in ＃12.', '＃12'],
+    ['Merge PR １２ first.', 'PR １２'],
+    ['Merge PR ＃12 first.', 'PR ＃12'],
+    ['イシュー＃12 に書きました。', 'イシュー＃12'],
+    ['See ISSUE 12.', 'ISSUE 12'],
+    ['See Issue #12.', 'Issue #12'],
+    ['See PULL REQUEST 12.', 'PULL REQUEST 12'],
+    ['See Pull request #12.', 'Pull request #12'],
   ] as [string, string][])
     test(text, () => {
       expect(flagged(text)).toEqual([ref])
@@ -57,6 +65,8 @@ describe('unlinkedRefs leaves out', () => {
     ['an HTML entity', 'Write &#123; for the brace.'],
     ['a number without a mark', 'Step 2 of 3 is done.'],
     ['a name that holds pr and a number', 'The build-pr21 and test-PR 22 jobs ran.'],
+    ['a lower-case pr', 'The pr 12 and Pr 13 labels stay.'],
+    ['a full-width Japanese count', 'PR ２ 件をまとめて見ます。'],
   ] as [string, string][])
     test(name, () => {
       expect(flagged(text)).toEqual([])
@@ -97,7 +107,7 @@ describe('options', () => {
 test('the answer names each field and text, shows a link and offers a way out', () => {
   const answer = unlinkedRefsAnswer(unlinkedRefs({ title: ['Fix #51'], detail: ['PR 52 and #53 and #54 wait'] }))
   expect(answer).toBe(
-    'Not recorded: title names "#51", detail names "PR 52" and "#53", and 1 more, without a link. Write each PR or issue as a Markdown link at its first mention, such as [owner/repo#123](https://github.com/owner/repo/pull/123); later mentions in the same record need none. Only https links count. If it is not a PR or issue, write it without "#", or put code in backticks.',
+    'Not recorded: title names "#51", detail names "PR 52" and "#53", and 1 more, without a link. Write each PR or issue as a Markdown link at its first mention, such as [owner/repo#123](https://github.com/owner/repo/pull/123); later mentions in the same record need none. Only https links count, and a link with a title or inside italics is not read as a link. If it is not a PR or issue, write it without "#", or put code in backticks.',
   )
   expect(unlinkedRefsAnswer(unlinkedRefs({ options: ['Comment on #34'] }))).toContain(
     "An option shows only a link's label, so link what an option names in detail or steps.",
@@ -135,6 +145,33 @@ describe('record', () => {
       1000,
     )
     expect(r.result).toBe('Recorded. The user sees it in the /inbox pane.')
+  })
+
+  const link = '[PR 12](https://github.com/acme/app/pull/12)'
+  const overLimit = (field: string, max: number) =>
+    `Not recorded: ${field} is over its limit of ${max} characters, so cutting it would drop its links. Shorten it so its links survive; a link counts as its label.`
+
+  test('refuses a field over its limit whose cut would drop its links, instead of calling them unlinked', () => {
+    for (const [input, answer] of [
+      [{ kind: 'task', ask: 'Sign in', detail: `${link} ${'x'.repeat(1250)}` }, overLimit('detail', 1200)],
+      [{ kind: 'finding', title: 'Broken link', detail: `${link} ${'x'.repeat(650)}` }, overLimit('detail', 600)],
+      [{ ...question, ask: `${link} ${'x'.repeat(250)}` }, overLimit('ask', 200)],
+    ] as [Record<string, unknown>, string][]) {
+      const r = recordItem(CLAUDE_CODE, EMPTY, input, 1000)
+      expect(r.result).toBe(answer)
+      expect(r.ledger).toBe(EMPTY)
+    }
+  })
+
+  test('still cuts a field over its limit that holds no link', () => {
+    const r = recordItem(CLAUDE_CODE, EMPTY, { kind: 'task', ask: 'Sign in', detail: 'x'.repeat(1250) }, 1000)
+    expect(r.result).toBe('Recorded. The user sees it in the /inbox pane.')
+    expect(r.ledger.items[0]?.detail).toHaveLength(1200)
+  })
+
+  test('reads each field before its cut', () => {
+    expect(recordLinksAnswer([{ field: 'detail', text: link, max: 7 }])).toBeNull()
+    expect(recordLinksAnswer([{ field: 'detail', text: `${link} x`, max: 6 }])).toBe(overLimit('detail', 6))
   })
 
   test("every host's call path refuses it", () => {

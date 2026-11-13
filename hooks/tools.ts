@@ -5,7 +5,7 @@ import { stepHelp } from './reply-parse'
 import { cutInline } from './inline'
 import type { Host } from './model-text'
 import { linkedPrs, MAX_ORDERED_PRS } from './pr-fetch'
-import { unlinkedRefs, unlinkedRefsAnswer } from './record-links'
+import { recordLinksAnswer } from './record-links'
 import type { Closed, Help, Ledger } from '../types'
 
 const NAME_BY_CONTENT = 'Name it by what it says, never by its id.'
@@ -170,9 +170,20 @@ function cut(value: unknown, max: number): string {
 }
 
 const MAX_ASK = 200
+const MAX_FINDING_TITLE = 120
+const MAX_FINDING_DETAIL = 600
 const MAX_OPTION = 60
 const MAX_OPTIONS = 8
 const MAX_STEPS = 3
+
+/** A text field as the agent sent it, trimmed, before any cut. */
+function raw(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function rawList(value: unknown): string[] {
+  return Array.isArray(value) ? value.map(raw).filter(Boolean) : []
+}
 
 function list(value: unknown, max: number, each: number, inline = false): string[] {
   return Array.isArray(value)
@@ -222,8 +233,19 @@ export function recordItem(host: Host, ledger: Ledger, input: Record<string, unk
   const isDesignChoice = input.kind === 'question' && input.design_choice === true
   const detail = cutInline(typeof input.detail === 'string' ? input.detail.trim() : '', MAX_ITEM_DETAIL)
   const linkSteps = helps.flatMap(h => (h.kind === 'link' ? [h.url] : []))
-  const unlinked = unlinkedRefs({ ask: [ask], detail: [detail], options }, linkSteps)
-  if (unlinked.length > 0) return unchanged(ledger, unlinkedRefsAnswer(unlinked))
+  const linkProblem = recordLinksAnswer(
+    [
+      { field: 'ask', text: raw(input.ask), max: MAX_ASK },
+      { field: 'detail', text: raw(input.detail), max: MAX_ITEM_DETAIL },
+      ...rawList(input.kind === 'question' ? input.options : []).map(text => ({
+        field: 'options' as const,
+        text,
+        max: MAX_OPTION,
+      })),
+    ],
+    linkSteps,
+  )
+  if (linkProblem) return unchanged(ledger, linkProblem)
   const document = cut(input.document, 4096) || undefined
   const documentPreview = document ? cut(input.document_preview, 180) || undefined : undefined
   const documentError = cut(input.document_error, 160)
@@ -265,11 +287,14 @@ export function recordItem(host: Host, ledger: Ledger, input: Record<string, unk
 }
 
 function recordFinding(host: Host, ledger: Ledger, input: Record<string, unknown>, now: number): ToolAnswer {
-  const title = cutInline(typeof input.title === 'string' ? input.title : '', 120)
-  const detail = cutInline(typeof input.detail === 'string' ? input.detail : '', 600)
+  const title = cutInline(raw(input.title), MAX_FINDING_TITLE)
+  const detail = cutInline(raw(input.detail), MAX_FINDING_DETAIL)
   if (title === '' || detail === '') return unchanged(ledger, 'Not recorded: a finding needs a title and a detail.')
-  const unlinked = unlinkedRefs({ title: [title], detail: [detail] })
-  if (unlinked.length > 0) return unchanged(ledger, unlinkedRefsAnswer(unlinked))
+  const linkProblem = recordLinksAnswer([
+    { field: 'title', text: raw(input.title), max: MAX_FINDING_TITLE },
+    { field: 'detail', text: raw(input.detail), max: MAX_FINDING_DETAIL },
+  ])
+  if (linkProblem) return unchanged(ledger, linkProblem)
   const path = cut(input.path, 300)
   const document = cut(input.document, 4096) || undefined
   const documentPreview = document ? cut(input.document_preview, 180) || undefined : undefined

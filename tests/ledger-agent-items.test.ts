@@ -131,7 +131,7 @@ describe('items the agent recorded', () => {
       {
         kind: 'question',
         ask: 'Merge this PR?',
-        detail: 'It is [PR 7171](https://github.com/anthropics/claude-code/pull/7171).',
+        detail: 'Its [changes](https://github.com/anthropics/claude-code/pull/7171/files) are small.',
         options: [option, 'No'],
         rec: option,
       },

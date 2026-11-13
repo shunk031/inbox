@@ -41,10 +41,13 @@ test('question and task explanations are recorded, replaced, and kept by both up
   expect(task.ledger.items[0]?.detail).toBe('Only the user has the required account.')
 })
 
-test('the detail cap counts visible text and leaves no partial Markdown link', () => {
-  const detail = `${'a'.repeat(1190)} [release notes](https://example.com/release)`
-  const result = recordItem(CLAUDE_CODE, EMPTY, { kind: 'task', ask: 'Read the release notes', detail }, 1000)
+test('the detail cap counts visible text, and a detail whose cut would drop a link is refused', () => {
+  const link = '[release notes](https://example.com/release)'
+  const record = (detail: string) =>
+    recordItem(CLAUDE_CODE, EMPTY, { kind: 'task', ask: 'Read the release notes', detail }, 1000)
 
-  expect(result.ledger.items[0]?.detail).toHaveLength(1200)
-  expect(result.ledger.items[0]?.detail).not.toContain('](')
+  expect(record(`${'a'.repeat(1186)} ${link}`).ledger.items[0]?.detail).toContain(link)
+  expect(record(`${'a'.repeat(1190)} ${link}`).result).toStartWith(
+    'Not recorded: detail is over its limit of 1200 characters',
+  )
 })
