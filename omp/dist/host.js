@@ -9976,24 +9976,22 @@ var documentFile = {
 };
 var INBOX_MODEL_TIMEOUT_MS = 120000;
 var BAND_KEY = "inbox-band";
+var BLOCKED_DOCUMENT_LINK = "inbox-blocked-document-link";
 var hyperlinkTools = () => import("@oh-my-pi/pi-tui/render");
+function documentLinkTarget(href) {
+  return httpsHref(href) ?? BLOCKED_DOCUMENT_LINK;
+}
 async function documentMarkdown() {
   const { Markdown, getMarkdownTheme } = await import("@oh-my-pi/pi-tui");
-  const { TERMINAL } = await import("@oh-my-pi/pi-tui/terminal-capabilities");
   return (text, width) => {
-    const hyperlinks = TERMINAL.hyperlinks;
-    TERMINAL.hyperlinks = false;
-    try {
-      const theme = {
-        ...getMarkdownTheme(),
-        link: (text) => text,
-        linkUrl: () => "",
-        underline: (text) => text
-      };
-      return [...new Markdown(text, 0, 0, theme).render(width)];
-    } finally {
-      TERMINAL.hyperlinks = hyperlinks;
-    }
+    const theme = {
+      ...getMarkdownTheme(),
+      link: (text) => text,
+      linkUrl: () => "",
+      underline: (text) => text,
+      resolveLink: documentLinkTarget
+    };
+    return [...new Markdown(text, 0, 0, theme).render(width)].map((line) => line.replaceAll(`\x1B]8;;${BLOCKED_DOCUMENT_LINK}\x07`, ""));
   };
 }
 async function panelLink(load = hyperlinkTools) {
@@ -10303,6 +10301,7 @@ function host_default(pi) {
 export {
   createInbox,
   host_default as default,
+  documentLinkTarget,
   documentMarkdown,
   hyperlinkTools,
   panelLink

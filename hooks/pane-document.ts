@@ -5,12 +5,15 @@ import type { KeyAction } from './pane-keys'
 import type { ActionView, RowView } from './rows'
 import { conversation } from './mod-sessions'
 import { paneState } from './mod-state'
+import { httpsHref } from './inline'
 
 const DOCUMENT_LINKS = /\b([a-z][a-z\d+.-]*)(\\*)(:|&#0*58;|&#x0*3a;|&colon;)|www(?=(?:\.|&#0*46;|&#x0*2e;|&period;))/gi
 const ANGLE_AUTOLINK =
   /<(?=(?:[a-z][a-z\d+.-]*:|www(?:\.|&#0*46;|&#x0*2e;|&period;)|[^\s<>@]+@[^\s<>]+>|&#(?:\d+|x[\da-f]+);))/gi
+const SAFE_INLINE_LINK = /(?<![!\\])\[([^\[\]\n]+)\]\((https:\/\/[^\s()<>\\]+)\)/gi
+const HTML_ENTITY = /&(?:#(?:\d+|x[\da-f]+)|[a-z][a-z\d]*);/i
 
-export function safeDocumentMarkdown(text: string): string {
+function neutralizeDocumentMarkdown(text: string): string {
   return text
     .replace(/\](?=[(:])/g, ']\u200b')
     .replace(
@@ -21,6 +24,22 @@ export function safeDocumentMarkdown(text: string): string {
     .replace(/:\/\//g, ':\u200b//')
     .replace(/@(?=[\w-]+(?:\.[\w-]+)+)/g, '@\u200b')
     .replace(ANGLE_AUTOLINK, '<\u200b')
+}
+
+export function safeDocumentMarkdown(text: string, allowHttps = false): string {
+  if (!allowHttps) return neutralizeDocumentMarkdown(text)
+  let result = ''
+  let cursor = 0
+  for (const match of text.matchAll(SAFE_INLINE_LINK)) {
+    const destination = match[2] ?? ''
+    const href = HTML_ENTITY.test(destination) ? null : httpsHref(destination)
+    if (!href) continue
+    const start = match.index ?? 0
+    result += neutralizeDocumentMarkdown(text.slice(cursor, start))
+    result += `[${neutralizeDocumentMarkdown(match[1] ?? '')}](${href})`
+    cursor = start + match[0].length
+  }
+  return result + neutralizeDocumentMarkdown(text.slice(cursor))
 }
 
 let documentScrollBy: number | null = null

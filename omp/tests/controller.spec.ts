@@ -5,7 +5,7 @@ import { COMPARE_LIMIT_MS, NO_HOLDS, RUNNING_FRAME_MS, SETTLED_MS } from '../../
 import { createPanel } from '../src/controller'
 import type { PanelSource } from '../src/controller'
 import { demoSource, demoState } from '../src/demo'
-import { documentMarkdown } from '../src/host'
+import { documentLinkTarget, documentMarkdown } from '../src/host'
 import type { PanelPress, Style } from '../src/panel'
 
 const style: Style = {
@@ -89,10 +89,12 @@ test('Read report opens pi-tui Markdown, scrolls, and returns without recording 
     version: '1.2.3',
     comparePage: '/omp/dist/compare-page.html',
   })
-  const report = `# Weekly report\n\nSee [release notes](https://example.com/release).\n\n${Array.from(
-    { length: 24 },
-    (_, n) => `Paragraph ${n}`,
-  ).join('\n\n')}`
+  const report =
+    `# Weekly report\n\nSee [release notes](https://example.com/release).\n\n` +
+    `Unsafe [local file](file:///tmp/report), [plain](http://example.com) and [script](javascript:alert(1)).\n\n${Array.from(
+      { length: 24 },
+      (_, n) => `Paragraph ${n}`,
+    ).join('\n\n')}`
   const { panel, pressed } = open(
     {
       screen: async holds => ({
@@ -110,9 +112,11 @@ test('Read report opens pi-tui Markdown, scrolls, and returns without recording 
   panel.handleInput('v')
   await flush()
   const firstPage = panel.render(80).join('\n')
+  const visible = firstPage.replace(/\x1b\]8;;[^\x07]*\x07/g, '')
   expect(firstPage).toContain('Weekly report')
   expect(firstPage).toContain('release notes')
-  expect(firstPage).not.toContain('https://example.com/release')
+  expect(firstPage).not.toContain('inbox-blocked-document-link')
+  expect(visible).not.toMatch(/https?:\/\/example\.com|file:\/\/|javascript:/)
   expect(firstPage).toContain('↓')
   panel.handleInput('down')
   expect(panel.render(80).join('\n')).not.toBe(firstPage)
@@ -120,6 +124,12 @@ test('Read report opens pi-tui Markdown, scrolls, and returns without recording 
   await flush()
   expect(panel.render(80).join('\n')).toContain('Asks')
   expect(pressed).toHaveLength(0)
+})
+
+test('the report renderer normalizes HTTPS targets and blocks other schemes', () => {
+  expect(documentLinkTarget('https://EXAMPLE.com/a')).toBe('https://example.com/a')
+  expect(documentLinkTarget('file:///tmp/report')).toBe('inbox-blocked-document-link')
+  expect(documentLinkTarget('javascript:alert(1)')).toBe('inbox-blocked-document-link')
 })
 
 async function replyThenReopen(panel: ReturnType<typeof open>['panel'], reply: string): Promise<string> {

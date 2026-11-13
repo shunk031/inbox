@@ -235,7 +235,7 @@ test('Codex shows the recorded Markdown excerpt under its item', async () => {
   assert.equal(root.querySelector('.document-preview')?.textContent, 'Report preview: # One region first.')
 })
 
-test('Codex renders document Markdown without raw HTML, remote images, or live links', async () => {
+test('Codex renders document Markdown without raw HTML or remote images, and keeps only HTTPS links', async () => {
   const browser = new JSDOM('').window
   const globals = globalThis as typeof globalThis & { parent?: Window }
   const previous = { window: globalThis.window, document: globalThis.document, parent: globals.parent }
@@ -255,8 +255,10 @@ test('Codex renders document Markdown without raw HTML, remote images, or live l
     assert.equal(root.querySelector('table td')?.textContent, 'One')
     assert.equal(root.querySelector('pre code')?.textContent, 'ship()\n')
     assert.equal(root.querySelector('script, div, img'), null)
-    assert.equal(root.querySelector('a'), null)
+    assert.equal(root.querySelectorAll('a').length, 1)
+    assert.equal(root.querySelector('a')?.getAttribute('href'), 'https://example.com/release')
     assert.match(root.textContent ?? '', /release notes and bad/)
+    assert.doesNotMatch(root.textContent ?? '', /javascript:/)
     assert.match(root.textContent ?? '', /<script>window\.wasExecuted = true<\/script>/)
     assert.equal((globalThis as typeof globalThis & { wasExecuted?: boolean }).wasExecuted, undefined)
   } finally {

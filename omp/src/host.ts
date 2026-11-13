@@ -17,6 +17,7 @@ import type { Run } from '../../hooks/gh'
 import { COMPARE_PAGE_FILE } from '../../hooks/press-messages'
 import { recorded } from '../../hooks/session-presses'
 import { readDocument, withDocumentPreview } from '../../hooks/document'
+import { httpsHref } from '../../hooks/inline'
 import { prFetchTracker } from '../../hooks/host-prs'
 import type { SessionHost } from '../../hooks/session-host'
 import { agentTools } from '../../hooks/tools'
@@ -64,27 +65,27 @@ const documentFile = {
 const INBOX_MODEL_TIMEOUT_MS = 120_000
 
 const BAND_KEY = 'inbox-band'
+const BLOCKED_DOCUMENT_LINK = 'inbox-blocked-document-link'
 
 export const hyperlinkTools = () => import('@oh-my-pi/pi-tui/render')
 
+export function documentLinkTarget(href: string): string {
+  return httpsHref(href) ?? BLOCKED_DOCUMENT_LINK
+}
+
 export async function documentMarkdown() {
   const { Markdown, getMarkdownTheme } = await import('@oh-my-pi/pi-tui')
-  const { TERMINAL } = await import('@oh-my-pi/pi-tui/terminal-capabilities')
   return (text: string, width: number) => {
-    const hyperlinks = TERMINAL.hyperlinks
-    // pi-tui reads this process-wide flag when it renders OSC 8 links.
-    TERMINAL.hyperlinks = false
-    try {
-      const theme = {
-        ...getMarkdownTheme(),
-        link: (text: string) => text,
-        linkUrl: () => '',
-        underline: (text: string) => text,
-      }
-      return [...new Markdown(text, 0, 0, theme).render(width)]
-    } finally {
-      TERMINAL.hyperlinks = hyperlinks
+    const theme = {
+      ...getMarkdownTheme(),
+      link: (text: string) => text,
+      linkUrl: () => '',
+      underline: (text: string) => text,
+      resolveLink: documentLinkTarget,
     }
+    return [...new Markdown(text, 0, 0, theme).render(width)].map(line =>
+      line.replaceAll(`\x1b]8;;${BLOCKED_DOCUMENT_LINK}\x07`, ''),
+    )
   }
 }
 
