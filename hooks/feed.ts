@@ -54,7 +54,9 @@ const validSource = (s: unknown): s is string => typeof s === 'string' && s.leng
 
 export function applyFeed(ledger: Ledger, feed: Feed, now: number, source = ''): Ledger {
   const keys = new Set(feed.entries.map(e => e.key))
-  const owns = (f: Finding) => f.feedKey !== undefined && f.feedSource === source
+  // Older versions could overwrite a hand finding's feedKey/feedSource while
+  // matching by title. Treat those unmarked saved rows as hand findings.
+  const owns = (f: Finding) => f.feedOwned === true && f.feedKey !== undefined && f.feedSource === source
   const staleClosed = ledger.closedFindings.some(f => owns(f) && !keys.has(f.feedKey!))
   let next = staleClosed
     ? {
@@ -79,6 +81,7 @@ export function applyFeed(ledger: Ledger, feed: Feed, now: number, source = ''):
       at: entry.at,
       feedKey: entry.key,
       feedSource: source,
+      feedOwned: true,
     }
     if (!finding) next = { ...next, findings: [...next.findings, updated], nextId: next.nextId + 1 }
     else if (

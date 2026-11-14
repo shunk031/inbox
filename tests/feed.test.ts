@@ -89,6 +89,30 @@ describe('progress feed', () => {
     expect(missing.closedFindings.map(f => f.id)).toEqual(['f2'])
   })
 
+  test('preserves legacy unmarked findings that were previously adopted by title', () => {
+    const legacy = {
+      ...EMPTY,
+      findings: [
+        finding({
+          kind: 'progress',
+          detail: 'Update the shared ledger.',
+          feedKey: 'machine/worker',
+          feedSource: '/feed/herdr-meta-patrol.json',
+        }),
+      ],
+      nextId: 2,
+    }
+    const active = applyFeed(legacy, feed(entry()), 120, '/feed/herdr-meta-patrol.json')
+    expect(active.findings.map(f => f.id)).toEqual(['f1', 'f2'])
+    expect(active.findings[0]).toMatchObject({ id: 'f1', feedKey: 'machine/worker' })
+    expect(active.findings[0]).not.toHaveProperty('feedOwned')
+    const completed = applyFeed(active, feed(entry({ state: 'done' })), 130, '/feed/herdr-meta-patrol.json')
+    expect(completed.findings.map(f => f.id)).toEqual(['f1'])
+    expect(completed.closedFindings).toMatchObject([
+      { id: 'f2', feedOwned: true, outcome: 'done: Update the shared ledger.' },
+    ])
+  })
+
   test('closes completed and missing entries, preserves dismissed keys, and ignores untracked completion', () => {
     const path = '/feed/patrol.json'
     const open = applyFeedFiles(EMPTY, '/feed', [{ path, feed: feed(entry()) }], 110)

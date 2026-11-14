@@ -3598,7 +3598,7 @@ var validTime = (n) => typeof n === "number" && Number.isFinite(n) && n >= 0;
 var validSource = (s) => typeof s === "string" && s.length > 0;
 function applyFeed(ledger, feed, now, source = "") {
   const keys = new Set(feed.entries.map((e) => e.key));
-  const owns = (f) => f.feedKey !== void 0 && f.feedSource === source;
+  const owns = (f) => f.feedOwned === true && f.feedKey !== void 0 && f.feedSource === source;
   const staleClosed = ledger.closedFindings.some((f) => owns(f) && !keys.has(f.feedKey));
   let next = staleClosed ? {
     ...ledger,
@@ -3619,7 +3619,8 @@ function applyFeed(ledger, feed, now, source = "") {
       path: null,
       at: entry.at,
       feedKey: entry.key,
-      feedSource: source
+      feedSource: source,
+      feedOwned: true
     };
     if (!finding) next = { ...next, findings: [...next.findings, updated], nextId: next.nextId + 1 };
     else if (finding.kind !== updated.kind || finding.title !== updated.title || finding.detail !== updated.detail || finding.path !== updated.path || finding.at !== updated.at || finding.feedKey !== updated.feedKey || finding.feedSource !== updated.feedSource)
