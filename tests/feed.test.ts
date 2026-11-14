@@ -61,7 +61,7 @@ describe('progress feed', () => {
     ).toBeNull()
   })
 
-  test('adds and updates in place, adopts a matching hand finding, and ignores unchanged snapshots', () => {
+  test('adds and updates feed-owned findings without adopting hand findings', () => {
     const first = applyFeed(EMPTY, feed(entry({ state: 'blocked' })), 110)
     expect(first.findings).toMatchObject([
       { id: 'f1', kind: 'progress', detail: 'Blocked: Update the shared ledger.', feedKey: 'machine/worker' },
@@ -72,10 +72,21 @@ describe('progress feed', () => {
       changed,
     )
 
-    const manual = { ...EMPTY, findings: [finding()] }
-    const adopted = applyFeed(manual, feed(entry()), 110)
-    expect(adopted.findings).toMatchObject([{ id: 'f1', kind: 'progress', feedKey: 'machine/worker' }])
-    expect(adopted.nextId).toBe(1)
+    const manual = { ...EMPTY, findings: [finding()], nextId: 2 }
+    const independent = applyFeed(manual, feed(entry()), 110, '/feed/herdr-meta-patrol.json')
+    expect(independent.findings).toMatchObject([
+      { id: 'f1', kind: 'issue', detail: 'Manual note.' },
+      { id: 'f2', kind: 'progress', feedKey: 'machine/worker', feedSource: '/feed/herdr-meta-patrol.json' },
+    ])
+    expect(independent.nextId).toBe(3)
+
+    const completed = applyFeed(independent, feed(entry({ state: 'done' })), 120, '/feed/herdr-meta-patrol.json')
+    expect(completed.findings.map(f => f.id)).toEqual(['f1'])
+    expect(completed.closedFindings.map(f => f.id)).toEqual(['f2'])
+
+    const missing = applyFeedFiles(independent, '/feed', [{ path: '/feed/herdr-meta-patrol.json', feed: feed() }], 130)
+    expect(missing.findings.map(f => f.id)).toEqual(['f1'])
+    expect(missing.closedFindings.map(f => f.id)).toEqual(['f2'])
   })
 
   test('closes completed and missing entries, preserves dismissed keys, and ignores untracked completion', () => {

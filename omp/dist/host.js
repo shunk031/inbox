@@ -382,8 +382,6 @@ function applyFeed(ledger, feed, now, source = "") {
     const isClosed = next.closedFindings.some((f) => owns(f) && f.feedKey === entry.key);
     if (!finding && (entry.state === "done" || isClosed || now - entry.at >= FEED_TTL_MS))
       continue;
-    if (!finding)
-      finding = next.findings.find((f) => !f.feedKey && (sameAsk(f.title, entry.title) || restates(f.title, entry.title)));
     const updated = {
       ...finding,
       id: finding?.id ?? `f${next.nextId}`,
