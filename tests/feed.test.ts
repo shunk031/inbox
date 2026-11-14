@@ -106,6 +106,7 @@ describe('progress feed', () => {
     expect(active.findings.map(f => f.id)).toEqual(['f1', 'f2'])
     expect(active.findings[0]).toMatchObject({ id: 'f1', feedKey: 'machine/worker' })
     expect(active.findings[0]).not.toHaveProperty('feedOwned')
+    expect(inboxText(CLAUDE_CODE, active, false)).toContain('Add progress feed')
     const completed = applyFeed(active, feed(entry({ state: 'done' })), 130, '/feed/herdr-meta-patrol.json')
     expect(completed.findings.map(f => f.id)).toEqual(['f1'])
     expect(completed.closedFindings).toMatchObject([
@@ -175,7 +176,7 @@ describe('progress feed', () => {
       ...ordinary,
       findings: [
         ...ordinary.findings,
-        { ...finding(), id: 'f2', kind: 'progress' as const, feedKey: 'machine/worker' },
+        { ...finding(), id: 'f2', kind: 'progress' as const, feedKey: 'machine/worker', feedOwned: true as const },
       ],
     }
     const exchange = { person: '', trigger: null, activity: [], reply: '', turn: 0, press: null, screen: '', tasks: [] }
@@ -191,7 +192,12 @@ describe('progress feed', () => {
     const ledger = {
       ...EMPTY,
       findings: [
-        ...Array.from({ length: 30 }, (_, i) => ({ ...finding(), id: `f${i + 1}`, feedKey: `m/${i}` })),
+        ...Array.from({ length: 30 }, (_, i) => ({
+          ...finding(),
+          id: `f${i + 1}`,
+          feedKey: `m/${i}`,
+          feedOwned: true as const,
+        })),
         ...Array.from({ length: 29 }, (_, i) => ({ ...finding(), id: `f${i + 31}`, title: `Manual ${i}` })),
       ],
       nextId: 60,

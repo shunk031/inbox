@@ -632,7 +632,7 @@ function statusSummaryLines(ledger) {
   ];
 }
 function carryText(ledger, title) {
-  const findings = ledger.findings.filter((f) => !f.feedKey);
+  const findings = ledger.findings.filter((f) => !f.feedOwned);
   const lines = statusSummaryLines(ledger);
   if (lines.length === 0 && ledger.items.length === 0 && findings.length === 0) return null;
   const out = [title, ...lines];
@@ -652,7 +652,7 @@ function carryText(ledger, title) {
 }
 var CLOSE_ID_RULE = "A close id is only for the close tool. Never write one in a reply.";
 function inboxText(host, ledger, isOpen2) {
-  const findings = ledger.findings.filter((f) => !f.feedKey);
+  const findings = ledger.findings.filter((f) => !f.feedOwned);
   const out = [
     `inbox: what waits on the user, as of your last reply. Anything not listed here is closed. ${CLOSE_ID_RULE}`
   ];

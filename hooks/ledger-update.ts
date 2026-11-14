@@ -69,7 +69,7 @@ export function isPersonsAnswer(outcome: string): boolean {
  * closes one of those only with the person's answer.
  */
 export function applyUpdate(ledger: Ledger, u: Update, now: number, turn: number, promptAt = now): Ledger {
-  const feedIds = new Set(ledger.findings.filter(f => f.feedKey).map(f => f.id))
+  const feedIds = new Set(ledger.findings.filter(f => f.feedOwned).map(f => f.id))
   const stillAsked = new Set(u.updated.filter(c => c.options || c.rec).map(c => c.id))
   const closing = new Map(
     u.closed
@@ -132,7 +132,7 @@ export function applyUpdate(ledger: Ledger, u: Update, now: number, turn: number
     }
     const isKnown =
       items.some(i => restates(i.ask, work)) ||
-      ledger.findings.some(f => !f.feedKey && restates(f.title, work)) ||
+      ledger.findings.some(f => !f.feedOwned && restates(f.title, work)) ||
       repeatsClosed(ledger.closed, { ...todo, helps: [] }, promptAt)
     if (isKnown) continue
     items.push({ ...todo, helps: [], id: `i${nextId}`, turn, at: now, from: 'update' })
@@ -148,7 +148,7 @@ export function applyUpdate(ledger: Ledger, u: Update, now: number, turn: number
     if (asker && finding && asksAbout(asker, finding, true)) askedBy.set(a.id, asker.id)
   }
   for (const i of items.filter(i => created.has(i.id)))
-    for (const f of ledger.findings) if (!f.feedKey && !askedBy.has(f.id) && asksAbout(i, f)) askedBy.set(f.id, i.id)
+    for (const f of ledger.findings) if (!f.feedOwned && !askedBy.has(f.id) && asksAbout(i, f)) askedBy.set(f.id, i.id)
   const { findings, closedFindings } = ledger.findings.reduce((l, f) => {
     const asker = askedBy.get(f.id)
     const outcome = closing.get(f.id)
@@ -213,7 +213,7 @@ export function addFinding(
     ledger.closedFindings.findLast(f => f.how === 'dismissed' && repeatsSubject(f.title, finding.title)) ?? null
   if (dismissed) return { ledger, id: dismissed.id, isAdded: false, expired: null, dismissed }
   const id = `f${ledger.nextId}`
-  const ordinary = ledger.findings.filter(f => !f.feedKey)
+  const ordinary = ledger.findings.filter(f => !f.feedOwned)
   const expired = ordinary.length >= MAX_FINDINGS ? ordinary[0]! : null
   const room = expired ? closeFinding(ledger, expired.id, { how: 'expired', outcome: 'list full' }, finding.at) : ledger
 
