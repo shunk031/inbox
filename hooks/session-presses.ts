@@ -161,6 +161,7 @@ export function withFetchedPrs<S extends Session>(
   fetched: PrViews['views'],
   branchRef: string | null,
   isGhSignedOut: boolean | null,
+  accountPrs: Pick<PrViews, 'accountPrs' | 'botPrSummaries'> | null = null,
 ): S {
   const isSignedOut = isGhSignedOut ?? s.prViews.isGhSignedOut === true
   const views = { ...s.prViews.views, ...fetched }
@@ -173,6 +174,10 @@ export function withFetchedPrs<S extends Session>(
       branchRef,
       isFetching: false,
       ...(isSignedOut ? { isGhSignedOut: true } : {}),
+      ...(accountPrs ?? {
+        ...(s.prViews.accountPrs ? { accountPrs: s.prViews.accountPrs } : {}),
+        ...(s.prViews.botPrSummaries ? { botPrSummaries: s.prViews.botPrSummaries } : {}),
+      }),
     },
   }
 }

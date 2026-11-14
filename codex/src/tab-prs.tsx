@@ -8,6 +8,8 @@ import {
   DISMISS_MERGED_ID,
   RANK_AGAIN_ID,
   ghNoticeOf,
+  accountPrText,
+  botPrSummaryText,
   PR_GROUP_TITLES,
   PR_TONES,
   prMarkId,
@@ -218,7 +220,7 @@ export function Prs({ v, now }: { v: View; now: number }) {
   const ghState = { isGhMissing: v.isGhMissing, isGhSignedOut: v.prs.isGhSignedOut }
   const ghNotice = ghNoticeOf(ghState)
   const empty = prsEmptyText({ isFetching: v.isFetchingPrs, ...ghState }, 'chat')
-  if (blocks.length === 0)
+  if (blocks.length === 0 && v.prs.accountPrs.length === 0 && v.prs.botPrSummaries.length === 0)
     return (
       <div class="empty">
         <div class="title">{empty.title}</div>
@@ -252,6 +254,17 @@ export function Prs({ v, now }: { v: View; now: number }) {
               <KeyButton k={k} />
             ))}
           </div>
+        </section>
+      ) : null}
+      {v.prs.accountPrs.length > 0 || v.prs.botPrSummaries.length > 0 ? (
+        <section class="account-prs">
+          {v.prs.accountPrs.length > 0 ? <div class="group-title">PRs opened by you</div> : null}
+          {v.prs.accountPrs.map(pr => (
+            <div class="group-title muted">{accountPrText(pr)}</div>
+          ))}
+          {v.prs.botPrSummaries.map(bot => (
+            <div class="group-title muted">{botPrSummaryText(bot)}</div>
+          ))}
         </section>
       ) : null}
       {v.prs.olderText ? (

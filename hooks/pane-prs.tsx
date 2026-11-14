@@ -14,6 +14,8 @@ import { prRankText } from './pr-order'
 import type { PrAction, PrPress } from './pr-press'
 import {
   checkRowText,
+  accountPrText,
+  botPrSummaryText,
   DISMISS_MERGED_ID,
   ghNoticeOf,
   PR_GROUP_TITLES,
@@ -338,6 +340,26 @@ export function panePrBlocks({
     </Text>
   )
   const olderPrs = () => (view.prs.olderText ? prTabLine('older-prs', mutedLine(view.prs.olderText)) : [])
+  const accountPrLines = () => {
+    const { accountPrs, botPrSummaries } = view.prs
+    if (accountPrs.length === 0 && botPrSummaries.length === 0) return []
+    return prTabLine(
+      'account-prs',
+      <Box flexDirection="column">
+        {accountPrs.length > 0 ? <Text>PRs opened by you</Text> : null}
+        {accountPrs.map(pr => (
+          <Text key={pr.ref} wrap="wrap">
+            {accountPrText(pr)}
+          </Text>
+        ))}
+        {botPrSummaries.map(bot => (
+          <Text key={bot.name} color={pal.muted} wrap="wrap">
+            {botPrSummaryText(bot)}
+          </Text>
+        ))}
+      </Box>,
+    )
+  }
   /** The order's title, the agent's reason under it, and the changed line with Rank again and its press status. */
   const prOrderLines = () => {
     const order = view.prs.order
@@ -369,7 +391,7 @@ export function panePrBlocks({
   const prTabButtons = () =>
     prTabKeys.length === 0 ? [] : prTabLine('pr-tab-actions', keyRow(DISMISS_MERGED_ID, prTabKeys))
   const prsView = () =>
-    prGroups.length === 0 ? (
+    prGroups.length === 0 && view.prs.accountPrs.length === 0 && view.prs.botPrSummaries.length === 0 ? (
       <Box flexDirection="column" flexGrow={1}>
         {emptyState(prsEmptyText({ isFetching: prState.isFetching, ...ghState }, 'session'))}
       </Box>
@@ -380,6 +402,7 @@ export function panePrBlocks({
           ...prOrderLines(),
           ...prGroups.map(prBlock),
           ...prTabButtons(),
+          ...accountPrLines(),
           ...olderPrs(),
         ],
         2,

@@ -2817,6 +2817,8 @@ function prTabOf(s, lastActions, now, shownSince, settleWindowMs) {
   const isSent = threadSentIn(lastActions);
   return {
     drawn,
+    accountPrs: (s.prViews.accountPrs ?? []).filter((pr) => !drawn.some((d) => d.pr.ref === pr.ref)),
+    botPrSummaries: s.prViews.botPrSummaries ?? [],
     branchRef: s.prViews.branchRef,
     count: drawn.filter((d) => d.state.is === "open" && prNeedsYou(d.pr, isSent)).length,
     olderText: olderPrsText(s.prViews, s.ledger),
