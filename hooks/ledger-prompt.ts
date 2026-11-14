@@ -64,7 +64,7 @@ export function ledgerBlocks(ledger: Ledger): string[] {
     )
     .join(NL)
   const findings = ledger.findings
-    .filter(f => !f.feedKey)
+    .filter(f => !f.feedOwned)
     .map(f => `${f.id} | ${f.kind}: ${f.title}`)
     .join(NL)
   const closed = ledger.closed

@@ -632,7 +632,7 @@ function statusSummaryLines(ledger) {
   ];
 }
 function carryText(ledger, title) {
-  const findings = ledger.findings.filter((f) => !f.feedKey);
+  const findings = ledger.findings.filter((f) => !f.feedOwned);
   const lines = statusSummaryLines(ledger);
   if (lines.length === 0 && ledger.items.length === 0 && findings.length === 0) return null;
   const out = [title, ...lines];
@@ -652,7 +652,7 @@ function carryText(ledger, title) {
 }
 var CLOSE_ID_RULE = "A close id is only for the close tool. Never write one in a reply.";
 function inboxText(host, ledger, isOpen2) {
-  const findings = ledger.findings.filter((f) => !f.feedKey);
+  const findings = ledger.findings.filter((f) => !f.feedOwned);
   const out = [
     `inbox: what waits on the user, as of your last reply. Anything not listed here is closed. ${CLOSE_ID_RULE}`
   ];
@@ -3598,7 +3598,7 @@ var validTime = (n) => typeof n === "number" && Number.isFinite(n) && n >= 0;
 var validSource = (s) => typeof s === "string" && s.length > 0;
 function applyFeed(ledger, feed, now, source = "") {
   const keys = new Set(feed.entries.map((e) => e.key));
-  const owns = (f) => f.feedKey !== void 0 && f.feedSource === source;
+  const owns = (f) => f.feedOwned === true && f.feedKey !== void 0 && f.feedSource === source;
   const staleClosed = ledger.closedFindings.some((f) => owns(f) && !keys.has(f.feedKey));
   let next = staleClosed ? {
     ...ledger,
@@ -3610,8 +3610,6 @@ function applyFeed(ledger, feed, now, source = "") {
     let finding = next.findings.find((f) => owns(f) && f.feedKey === entry.key);
     const isClosed = next.closedFindings.some((f) => owns(f) && f.feedKey === entry.key);
     if (!finding && (entry.state === "done" || isClosed || now - entry.at >= FEED_TTL_MS)) continue;
-    if (!finding)
-      finding = next.findings.find((f) => !f.feedKey && (sameAsk(f.title, entry.title) || restates(f.title, entry.title)));
     const updated = {
       ...finding,
       id: finding?.id ?? `f${next.nextId}`,
@@ -3621,7 +3619,8 @@ function applyFeed(ledger, feed, now, source = "") {
       path: null,
       at: entry.at,
       feedKey: entry.key,
-      feedSource: source
+      feedSource: source,
+      feedOwned: true
     };
     if (!finding) next = { ...next, findings: [...next.findings, updated], nextId: next.nextId + 1 };
     else if (finding.kind !== updated.kind || finding.title !== updated.title || finding.detail !== updated.detail || finding.path !== updated.path || finding.at !== updated.at || finding.feedKey !== updated.feedKey || finding.feedSource !== updated.feedSource)
@@ -3642,7 +3641,7 @@ function applyFeedFiles(ledger, root, files, now) {
     if (sourceUnder(source, root) && !present.has(source)) next = applyFeed(next, emptyFeed, now, source);
   for (const file of files) if (file.feed) next = applyFeed(next, file.feed, now, file.path);
   for (const finding of next.findings)
-    if (finding.feedKey && finding.feedSource && now - finding.at >= FEED_TTL_MS)
+    if (finding.feedOwned === true && finding.feedKey && finding.feedSource && now - finding.at >= FEED_TTL_MS)
       next = closeFinding(next, finding.id, { how: "update", outcome: "done: feed entry expired" }, now);
   return next;
 }

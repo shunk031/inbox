@@ -1,5 +1,4 @@
 import type { Finding, Ledger } from '../types'
-import { restates, sameAsk } from './ask-match'
 import { closeFinding } from './ledger-close'
 
 export type FeedEntry = {
@@ -55,7 +54,9 @@ const validSource = (s: unknown): s is string => typeof s === 'string' && s.leng
 
 export function applyFeed(ledger: Ledger, feed: Feed, now: number, source = ''): Ledger {
   const keys = new Set(feed.entries.map(e => e.key))
-  const owns = (f: Finding) => f.feedKey !== undefined && f.feedSource === source
+  // Older versions could overwrite a hand finding's feedKey/feedSource while
+  // matching by title. Treat those unmarked saved rows as hand findings.
+  const owns = (f: Finding) => f.feedOwned === true && f.feedKey !== undefined && f.feedSource === source
   const staleClosed = ledger.closedFindings.some(f => owns(f) && !keys.has(f.feedKey!))
   let next = staleClosed
     ? {
@@ -70,8 +71,6 @@ export function applyFeed(ledger: Ledger, feed: Feed, now: number, source = ''):
     let finding = next.findings.find(f => owns(f) && f.feedKey === entry.key)
     const isClosed = next.closedFindings.some(f => owns(f) && f.feedKey === entry.key)
     if (!finding && (entry.state === 'done' || isClosed || now - entry.at >= FEED_TTL_MS)) continue
-    if (!finding)
-      finding = next.findings.find(f => !f.feedKey && (sameAsk(f.title, entry.title) || restates(f.title, entry.title)))
     const updated: Finding = {
       ...finding,
       id: finding?.id ?? `f${next.nextId}`,
@@ -82,6 +81,7 @@ export function applyFeed(ledger: Ledger, feed: Feed, now: number, source = ''):
       at: entry.at,
       feedKey: entry.key,
       feedSource: source,
+      feedOwned: true,
     }
     if (!finding) next = { ...next, findings: [...next.findings, updated], nextId: next.nextId + 1 }
     else if (
@@ -113,7 +113,7 @@ export function applyFeedFiles(ledger: Ledger, root: string, files: FeedFile[], 
     if (sourceUnder(source!, root) && !present.has(source!)) next = applyFeed(next, emptyFeed, now, source)
   for (const file of files) if (file.feed) next = applyFeed(next, file.feed, now, file.path)
   for (const finding of next.findings)
-    if (finding.feedKey && finding.feedSource && now - finding.at >= FEED_TTL_MS)
+    if (finding.feedOwned === true && finding.feedKey && finding.feedSource && now - finding.at >= FEED_TTL_MS)
       next = closeFinding(next, finding.id, { how: 'update', outcome: 'done: feed entry expired' }, now)
   return next
 }

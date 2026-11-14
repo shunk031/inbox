@@ -306,6 +306,8 @@ export type Finding = {
   feedKey?: string
   /** The snapshot file that owns this finding. */
   feedSource?: string
+  /** Marks findings created by the versioned progress-feed lifecycle. */
+  feedOwned?: true
 }
 
 export type FoldKind = Item['kind'] | Finding['kind']

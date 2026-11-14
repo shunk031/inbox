@@ -135,7 +135,7 @@ export function statusCarryText(ledger: Ledger): string | null {
 }
 
 export function carryText(ledger: Ledger, title: string): string | null {
-  const findings = ledger.findings.filter(f => !f.feedKey)
+  const findings = ledger.findings.filter(f => !f.feedOwned)
   const lines = statusSummaryLines(ledger)
   if (lines.length === 0 && ledger.items.length === 0 && findings.length === 0) return null
   const out = [title, ...lines]
@@ -158,7 +158,7 @@ export function carryText(ledger: Ledger, title: string): string | null {
 export const CLOSE_ID_RULE = 'A close id is only for the close tool. Never write one in a reply.'
 
 export function inboxText(host: Host, ledger: Ledger, isOpen: boolean): string {
-  const findings = ledger.findings.filter(f => !f.feedKey)
+  const findings = ledger.findings.filter(f => !f.feedOwned)
   const out = [
     `inbox: what waits on the user, as of your last reply. Anything not listed here is closed. ${CLOSE_ID_RULE}`,
   ]

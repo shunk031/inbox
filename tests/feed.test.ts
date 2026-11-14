@@ -61,7 +61,7 @@ describe('progress feed', () => {
     ).toBeNull()
   })
 
-  test('adds and updates in place, adopts a matching hand finding, and ignores unchanged snapshots', () => {
+  test('adds and updates feed-owned findings without adopting hand findings', () => {
     const first = applyFeed(EMPTY, feed(entry({ state: 'blocked' })), 110)
     expect(first.findings).toMatchObject([
       { id: 'f1', kind: 'progress', detail: 'Blocked: Update the shared ledger.', feedKey: 'machine/worker' },
@@ -72,10 +72,88 @@ describe('progress feed', () => {
       changed,
     )
 
-    const manual = { ...EMPTY, findings: [finding()] }
-    const adopted = applyFeed(manual, feed(entry()), 110)
-    expect(adopted.findings).toMatchObject([{ id: 'f1', kind: 'progress', feedKey: 'machine/worker' }])
-    expect(adopted.nextId).toBe(1)
+    const manual = { ...EMPTY, findings: [finding()], nextId: 2 }
+    const independent = applyFeed(manual, feed(entry()), 110, '/feed/herdr-meta-patrol.json')
+    expect(independent.findings).toMatchObject([
+      { id: 'f1', kind: 'issue', detail: 'Manual note.' },
+      { id: 'f2', kind: 'progress', feedKey: 'machine/worker', feedSource: '/feed/herdr-meta-patrol.json' },
+    ])
+    expect(independent.nextId).toBe(3)
+
+    const completed = applyFeed(independent, feed(entry({ state: 'done' })), 120, '/feed/herdr-meta-patrol.json')
+    expect(completed.findings.map(f => f.id)).toEqual(['f1'])
+    expect(completed.closedFindings.map(f => f.id)).toEqual(['f2'])
+
+    const missing = applyFeedFiles(independent, '/feed', [{ path: '/feed/herdr-meta-patrol.json', feed: feed() }], 130)
+    expect(missing.findings.map(f => f.id)).toEqual(['f1'])
+    expect(missing.closedFindings.map(f => f.id)).toEqual(['f2'])
+  })
+
+  test('preserves legacy unmarked findings that were previously adopted by title', () => {
+    const legacy = {
+      ...EMPTY,
+      findings: [
+        finding({
+          kind: 'progress',
+          detail: 'Update the shared ledger.',
+          feedKey: 'machine/worker',
+          feedSource: '/feed/herdr-meta-patrol.json',
+        }),
+      ],
+      nextId: 2,
+    }
+    const active = applyFeed(legacy, feed(entry()), 120, '/feed/herdr-meta-patrol.json')
+    expect(active.findings.map(f => f.id)).toEqual(['f1', 'f2'])
+    expect(active.findings[0]).toMatchObject({ id: 'f1', feedKey: 'machine/worker' })
+    expect(active.findings[0]).not.toHaveProperty('feedOwned')
+    expect(inboxText(CLAUDE_CODE, active, false)).toContain('Add progress feed')
+    const completed = applyFeed(active, feed(entry({ state: 'done' })), 130, '/feed/herdr-meta-patrol.json')
+    expect(completed.findings.map(f => f.id)).toEqual(['f1'])
+    expect(completed.closedFindings).toMatchObject([
+      { id: 'f2', feedOwned: true, outcome: 'done: Update the shared ledger.' },
+    ])
+
+    const expired = applyFeedFiles(
+      active,
+      '/feed',
+      [{ path: '/feed/herdr-meta-patrol.json', feed: feed(entry()) }],
+      100 + FEED_TTL_MS,
+    )
+    expect(expired.findings.map(f => f.id)).toEqual(['f1'])
+    expect(expired.closedFindings).toMatchObject([{ id: 'f2', feedOwned: true, outcome: 'done: feed entry expired' }])
+  })
+
+  test('legacy unmarked findings survive a missing feed and stay visible to prompts and ordinary updates', () => {
+    const legacyFinding = finding({
+      kind: 'progress',
+      title: 'skills#188: separate OKR rules',
+      detail: 'The work is still in progress.',
+      feedKey: 'github/pr/188',
+      feedSource: '/feed/github-prs-skills.json',
+    })
+    const legacy = { ...EMPTY, findings: [legacyFinding], nextId: 2 }
+    const disappeared = applyFeedFiles(legacy, '/feed', [], 120)
+
+    expect(disappeared.findings).toEqual([legacyFinding])
+    expect(disappeared.closedFindings).toEqual([])
+    expect(inboxText(CLAUDE_CODE, disappeared, false)).toContain('skills#188: separate OKR rules')
+    expect(carryText(disappeared, 'carry')).toContain('skills#188: separate OKR rules')
+    expect(
+      buildPrompt(disappeared, {
+        person: '',
+        trigger: null,
+        activity: [],
+        reply: '',
+        turn: 1,
+        press: null,
+        screen: '',
+        tasks: [],
+      }),
+    ).toContain('f1 | progress: skills#188: separate OKR rules')
+
+    const normallyClosed = applyUpdate(disappeared, parseReply('FIXED: f1 | reviewed the note')!, 130, 1)
+    expect(normallyClosed.findings).toEqual([])
+    expect(normallyClosed.closedFindings).toMatchObject([{ id: 'f1', outcome: 'reviewed the note', how: 'update' }])
   })
 
   test('closes completed and missing entries, preserves dismissed keys, and ignores untracked completion', () => {
@@ -131,7 +209,7 @@ describe('progress feed', () => {
       ...ordinary,
       findings: [
         ...ordinary.findings,
-        { ...finding(), id: 'f2', kind: 'progress' as const, feedKey: 'machine/worker' },
+        { ...finding(), id: 'f2', kind: 'progress' as const, feedKey: 'machine/worker', feedOwned: true as const },
       ],
     }
     const exchange = { person: '', trigger: null, activity: [], reply: '', turn: 0, press: null, screen: '', tasks: [] }
@@ -147,7 +225,12 @@ describe('progress feed', () => {
     const ledger = {
       ...EMPTY,
       findings: [
-        ...Array.from({ length: 30 }, (_, i) => ({ ...finding(), id: `f${i + 1}`, feedKey: `m/${i}` })),
+        ...Array.from({ length: 30 }, (_, i) => ({
+          ...finding(),
+          id: `f${i + 1}`,
+          feedKey: `m/${i}`,
+          feedOwned: true as const,
+        })),
         ...Array.from({ length: 29 }, (_, i) => ({ ...finding(), id: `f${i + 31}`, title: `Manual ${i}` })),
       ],
       nextId: 60,
