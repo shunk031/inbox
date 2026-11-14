@@ -417,7 +417,7 @@ function applyFeedFiles(ledger, root, files, now) {
     if (file.feed)
       next = applyFeed(next, file.feed, now, file.path);
   for (const finding of next.findings)
-    if (finding.feedKey && finding.feedSource && now - finding.at >= FEED_TTL_MS)
+    if (finding.feedOwned === true && finding.feedKey && finding.feedSource && now - finding.at >= FEED_TTL_MS)
       next = closeFinding(next, finding.id, { how: "update", outcome: "done: feed entry expired" }, now);
   return next;
 }

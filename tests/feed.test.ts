@@ -111,6 +111,15 @@ describe('progress feed', () => {
     expect(completed.closedFindings).toMatchObject([
       { id: 'f2', feedOwned: true, outcome: 'done: Update the shared ledger.' },
     ])
+
+    const expired = applyFeedFiles(
+      active,
+      '/feed',
+      [{ path: '/feed/herdr-meta-patrol.json', feed: feed(entry()) }],
+      100 + FEED_TTL_MS,
+    )
+    expect(expired.findings.map(f => f.id)).toEqual(['f1'])
+    expect(expired.closedFindings).toMatchObject([{ id: 'f2', feedOwned: true, outcome: 'done: feed entry expired' }])
   })
 
   test('closes completed and missing entries, preserves dismissed keys, and ignores untracked completion', () => {
