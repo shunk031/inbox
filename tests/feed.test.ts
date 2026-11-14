@@ -123,6 +123,39 @@ describe('progress feed', () => {
     expect(expired.closedFindings).toMatchObject([{ id: 'f2', feedOwned: true, outcome: 'done: feed entry expired' }])
   })
 
+  test('legacy unmarked findings survive a missing feed and stay visible to prompts and ordinary updates', () => {
+    const legacyFinding = finding({
+      kind: 'progress',
+      title: 'skills#188: separate OKR rules',
+      detail: 'The work is still in progress.',
+      feedKey: 'github/pr/188',
+      feedSource: '/feed/github-prs-skills.json',
+    })
+    const legacy = { ...EMPTY, findings: [legacyFinding], nextId: 2 }
+    const disappeared = applyFeedFiles(legacy, '/feed', [], 120)
+
+    expect(disappeared.findings).toEqual([legacyFinding])
+    expect(disappeared.closedFindings).toEqual([])
+    expect(inboxText(CLAUDE_CODE, disappeared, false)).toContain('skills#188: separate OKR rules')
+    expect(carryText(disappeared, 'carry')).toContain('skills#188: separate OKR rules')
+    expect(
+      buildPrompt(disappeared, {
+        person: '',
+        trigger: null,
+        activity: [],
+        reply: '',
+        turn: 1,
+        press: null,
+        screen: '',
+        tasks: [],
+      }),
+    ).toContain('f1 | progress: skills#188: separate OKR rules')
+
+    const normallyClosed = applyUpdate(disappeared, parseReply('FIXED: f1 | reviewed the note')!, 130, 1)
+    expect(normallyClosed.findings).toEqual([])
+    expect(normallyClosed.closedFindings).toMatchObject([{ id: 'f1', outcome: 'reviewed the note', how: 'update' }])
+  })
+
   test('closes completed and missing entries, preserves dismissed keys, and ignores untracked completion', () => {
     const path = '/feed/patrol.json'
     const open = applyFeedFiles(EMPTY, '/feed', [{ path, feed: feed(entry()) }], 110)
