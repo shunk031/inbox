@@ -91,6 +91,9 @@ function parseInline(text, outer = {}) {
 function linkLabel(text) {
   return parseInline(text).map((span) => span.text).join("");
 }
+function inlineLinks(text) {
+  return parseInline(text).flatMap((span) => span.link ? [{ label: span.text, url: span.link }] : []);
+}
 function cutInline(text, max) {
   const visible = linkLabel(text);
   return visible.length > max ? visible.slice(0, max) : text.trim();
@@ -4118,6 +4121,67 @@ function addAgentItem(ledger, entry, now) {
   return { ledger: next, is: "added", id };
 }
 
+// ../hooks/record-links.ts
+var FENCE2 = /```[\s\S]*?```/g;
+var URL_TEXT = /<?https?:\/\/[^\s>]+>?/g;
+var LINKED_PATH = /\/(?:pulls?|issues|merge_requests)\/(\d+)/g;
+var MAX_NAMED = 3;
+var anyCase = (word) => [...word].map((c) => `[${c.toUpperCase()}${c}]`).join("");
+var REF = new RegExp(String.raw`(?<![\w/#&])(?:(?<!-)(?:PRs?|${anyCase("pull")}\s+${anyCase("request")}[sS]?|${anyCase("issue")}[sS]?|\u30D7\u30EB\u30EA\u30AF(?:\u30A8\u30B9\u30C8)?|\u30A4\u30B7\u30E5\u30FC)\s*#?|(?:[\w.-]+\/)?[\w.-]+#|#)([1-9]\d*)(?!\w)(?!\s*(?:\u4EF6|\u672C|\u500B|\u3064|\u70B9|\u56DE|\u679A))`, "g");
+function refs(text) {
+  let normal = "";
+  const from = [];
+  const to = [];
+  let i = 0;
+  for (const ch of text) {
+    const n = ch.normalize("NFKC");
+    for (let k = 0;k < n.length; k++) {
+      from.push(i);
+      to.push(i + ch.length);
+    }
+    normal += n;
+    i += ch.length;
+  }
+  return [...normal.matchAll(REF)].map((m) => ({
+    text: text.slice(from[m.index] ?? 0, to[m.index + m[0].length - 1] ?? i).trim(),
+    n: m[1] ?? ""
+  }));
+}
+function plain(value, keepLabels) {
+  return parseInline(value.replace(FENCE2, " ")).map((span) => span.code || span.link && !keepLabels ? " " : span.text).join("").replace(URL_TEXT, " ");
+}
+function linkedIn(value) {
+  return parseInline(value.replace(FENCE2, " ")).flatMap((span) => span.link ? [...refs(span.text).map((r) => r.n), ...pathNumbers(span.link)] : []);
+}
+function pathNumbers(url) {
+  return [...url.matchAll(LINKED_PATH)].map((m) => m[1] ?? "");
+}
+function unlinkedRefs(fields, stepUrls = []) {
+  const order = ["title", "ask", "detail", "options"];
+  const linked = new Set([
+    ...order.filter((f) => f !== "options").flatMap((f) => (fields[f] ?? []).flatMap((v) => linkedIn(v))),
+    ...stepUrls.flatMap(pathNumbers)
+  ]);
+  return order.flatMap((field) => (fields[field] ?? []).flatMap((value) => refs(plain(value, field === "options")).filter((r) => !linked.has(r.n)).map((r) => ({ field, text: r.text }))));
+}
+function recordLinksAnswer(fields, stepUrls = []) {
+  const long = fields.find((f) => inlineLinks(f.text).length > 0 && linkLabel(f.text).length > f.max);
+  if (long)
+    return `Not recorded: ${long.field} is over its limit of ${long.max} characters, so cutting it would drop its links. Shorten it so its links survive; a link counts as its label.`;
+  const byField = {};
+  for (const f of fields)
+    (byField[f.field] ??= []).push(f.text);
+  const found = unlinkedRefs(byField, stepUrls);
+  return found.length > 0 ? unlinkedRefsAnswer(found) : null;
+}
+function unlinkedRefsAnswer(found) {
+  const named = found.slice(0, MAX_NAMED);
+  const fields = [...new Set(named.map((r) => r.field))].map((field) => `${field} names ${named.filter((r) => r.field === field).map((r) => `"${r.text}"`).join(" and ")}`);
+  const more = found.length > MAX_NAMED ? `, and ${found.length - MAX_NAMED} more` : "";
+  const option = found.some((r) => r.field === "options") ? " An option shows only a link's label, so link what an option names in detail or steps." : "";
+  return `Not recorded: ${fields.join(", ")}${more}, without a link. ` + "Write each PR or issue as a Markdown link at its first mention, such as [owner/repo#123](https://github.com/owner/repo/pull/123); later mentions in the same record need none. Only https links count, and a link with a title or inside italics is not read as a link." + option + ' If it is not a PR or issue, write it without "#", or put code in backticks.';
+}
+
 // ../hooks/tools.ts
 var NAME_BY_CONTENT = "Name it by what it says, never by its id.";
 var MAX_ITEM_DETAIL = 1200;
@@ -4241,9 +4305,17 @@ function cut(value, max) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
 var MAX_ASK = 200;
+var MAX_FINDING_TITLE = 120;
+var MAX_FINDING_DETAIL = 600;
 var MAX_OPTION = 60;
 var MAX_OPTIONS = 8;
 var MAX_STEPS = 3;
+function raw(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+function rawList(value) {
+  return Array.isArray(value) ? value.map(raw).filter(Boolean) : [];
+}
 function list(value, max, each, inline = false) {
   return Array.isArray(value) ? value.map((v) => inline ? cutInline(typeof v === "string" ? v : "", each) : cut(v, each)).filter(Boolean).slice(0, max) : [];
 }
@@ -4271,6 +4343,18 @@ function recordItem(host, ledger, input, now) {
   const leftOut = helps.length < steps.length ? input.kind === "task" ? " Some steps were not a command, a file path or a link, so they are left out." : " Some steps were not an absolute file path or a link, so they are left out." : "";
   const isDesignChoice = input.kind === "question" && input.design_choice === true;
   const detail = cutInline(typeof input.detail === "string" ? input.detail.trim() : "", MAX_ITEM_DETAIL);
+  const linkSteps = helps.flatMap((h) => h.kind === "link" ? [h.url] : []);
+  const linkProblem = recordLinksAnswer([
+    { field: "ask", text: raw(input.ask), max: MAX_ASK },
+    { field: "detail", text: raw(input.detail), max: MAX_ITEM_DETAIL },
+    ...rawList(input.kind === "question" ? input.options : []).slice(0, MAX_OPTIONS).map((text) => ({
+      field: "options",
+      text,
+      max: MAX_OPTION
+    }))
+  ], linkSteps);
+  if (linkProblem)
+    return unchanged(ledger, linkProblem);
   const document = cut(input.document, 4096) || undefined;
   const documentPreview = document ? cut(input.document_preview, 180) || undefined : undefined;
   const documentError = cut(input.document_error, 160);
@@ -4305,10 +4389,16 @@ function recordItem(host, ledger, input, now) {
   };
 }
 function recordFinding(host, ledger, input, now) {
-  const title = cutInline(typeof input.title === "string" ? input.title : "", 120);
-  const detail = cutInline(typeof input.detail === "string" ? input.detail : "", 600);
+  const title = cutInline(raw(input.title), MAX_FINDING_TITLE);
+  const detail = cutInline(raw(input.detail), MAX_FINDING_DETAIL);
   if (title === "" || detail === "")
     return unchanged(ledger, "Not recorded: a finding needs a title and a detail.");
+  const linkProblem = recordLinksAnswer([
+    { field: "title", text: raw(input.title), max: MAX_FINDING_TITLE },
+    { field: "detail", text: raw(input.detail), max: MAX_FINDING_DETAIL }
+  ]);
+  if (linkProblem)
+    return unchanged(ledger, linkProblem);
   const path = cut(input.path, 300);
   const document = cut(input.document, 4096) || undefined;
   const documentPreview = document ? cut(input.document_preview, 180) || undefined : undefined;

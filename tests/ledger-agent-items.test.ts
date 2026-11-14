@@ -128,7 +128,13 @@ describe('items the agent recorded', () => {
     const result = recordItem(
       CLAUDE_CODE,
       EMPTY,
-      { kind: 'question', ask: 'Merge this PR?', options: [option, 'No'], rec: option },
+      {
+        kind: 'question',
+        ask: 'Merge this PR?',
+        detail: 'Its [changes](https://github.com/anthropics/claude-code/pull/7171/files) are small.',
+        options: [option, 'No'],
+        rec: option,
+      },
       1000,
     )
     const item = result.ledger.items[0]!

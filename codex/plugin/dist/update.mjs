@@ -2444,6 +2444,13 @@ function prTabActions(drawn, branchRef) {
   ] : [];
 }
 
+// ../hooks/record-links.ts
+var anyCase = (word) => [...word].map((c) => `[${c.toUpperCase()}${c}]`).join("");
+var REF = new RegExp(
+  String.raw`(?<![\w/#&])(?:(?<!-)(?:PRs?|${anyCase("pull")}\s+${anyCase("request")}[sS]?|${anyCase("issue")}[sS]?|プルリク(?:エスト)?|イシュー)\s*#?|(?:[\w.-]+\/)?[\w.-]+#|#)([1-9]\d*)(?!\w)(?!\s*(?:件|本|個|つ|点|回|枚))`,
+  "g"
+);
+
 // ../hooks/tools.ts
 var ORDER_SCHEMA = {
   type: "object",

@@ -65,6 +65,7 @@ export type FeatureId =
   | 'option-links'
   | 'item-document'
   | 'document-preview'
+  | 'record-link-guard'
 
 type Support = { kind: 'full' } | { kind: 'different' | 'unsupported'; reason: string }
 
@@ -143,6 +144,7 @@ export const CLIENTS: Record<ClientId, Client> = {
       'option-links': { kind: 'full' },
       'item-document': { kind: 'full' },
       'document-preview': { kind: 'full' },
+      'record-link-guard': { kind: 'full' },
     },
   },
   codex: {
@@ -282,6 +284,7 @@ export const CLIENTS: Record<ClientId, Client> = {
       'option-links': { kind: 'full' },
       'item-document': { kind: 'full' },
       'document-preview': { kind: 'full' },
+      'record-link-guard': { kind: 'full' },
     },
   },
   omp: {
@@ -382,6 +385,7 @@ export const CLIENTS: Record<ClientId, Client> = {
       },
       'item-document': { kind: 'full' },
       'document-preview': { kind: 'full' },
+      'record-link-guard': { kind: 'full' },
     },
   },
 }
