@@ -1,4 +1,4 @@
-import { splitLinked, fetchTracked } from './pr-fetch'
+import { splitLinked, fetchTracked, fetchAccountPrs } from './pr-fetch'
 import { withFetchedPrs } from './session-presses'
 import type { Session } from '../types'
 import type { SessionHost } from './session-host'
@@ -82,6 +82,7 @@ export async function fetchPrs<S extends Session>(
   host.gh.noteMissing(bin === null)
   if (bin === null) return
   let sawUnstartable = false
+  const accountPrsPromise = fetchAccountPrs(host.gh.run(s, bin, () => {}))
   const fetchWith = (path: string) =>
     fetchTracked(
       host.gh.run(s, path, () => {
@@ -100,6 +101,7 @@ export async function fetchPrs<S extends Session>(
     if (refound === null) return
     if (refound !== bin) fetch = await fetchWith(refound)
   }
+  const accountPrs = await accountPrsPromise
   const { views: fetched, branchRef, isGhSignedOut } = fetch
-  await host.update(cur => withFetchedPrs(cur, fetched, branchRef, isGhSignedOut))
+  await host.update(cur => withFetchedPrs(cur, fetched, branchRef, isGhSignedOut, accountPrs))
 }

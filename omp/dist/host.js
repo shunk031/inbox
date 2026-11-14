@@ -2899,7 +2899,13 @@ function ghNoticeOf(gh) {
   return null;
 }
 function prsEmptyHint(place) {
-  return `Your PRs show here when this ${place} opens or links one, or when your branch has one.`;
+  return `Your open PRs show here, along with PRs this ${place} links and the PR for its branch.`;
+}
+function accountPrText(pr) {
+  return `${pr.ref} \xB7 ${pr.title}${pr.isDraft ? " \xB7 draft" : ""}`;
+}
+function botPrSummaryText(bot) {
+  return `${bot.name}: ${bot.count} open ${bot.count === 1 ? "PR" : "PRs"}`;
 }
 function prsEmptyText(prs, place) {
   return {
@@ -2980,6 +2986,80 @@ var PR_TONES = {
 var MAX_PRS = 12;
 var MAX_ORDERED_PRS = 30;
 var GH_RUNS_AT_ONCE = 8;
+var SEARCH_FIELDS = "author,isDraft,number,repository,title";
+async function fetchAccountPrs(run) {
+  const [viewer, orgs, authored] = await Promise.all([
+    run(["api", "user", "--jq", ".login"]),
+    run(["api", "user/orgs", "--paginate", "--jq", ".[].login"]),
+    run(["search", "prs", "--state", "open", "--author", "@me", "--limit", "1000", "--json", `${SEARCH_FIELDS},url`])
+  ]);
+  if (viewer.exitCode !== 0 || orgs.exitCode !== 0 || authored.exitCode !== 0)
+    return null;
+  const login = viewer.stdout.trim();
+  const prs = readSearchPrs(authored.stdout);
+  if (!login || prs === null)
+    return null;
+  const accountPrs = prs.flatMap((pr) => {
+    const author = pr.author?.login?.toLowerCase();
+    const repo = pr.repository?.nameWithOwner;
+    if (author !== login.toLowerCase() || pr.author?.type === "Bot" || pr.author?.is_bot === true)
+      return [];
+    if (!repo || !Number.isSafeInteger(pr.number) || typeof pr.title !== "string")
+      return [];
+    const ref = `${repo}#${pr.number}`;
+    return [{ ref, title: pr.title, url: `https://github.com/${repo}/pull/${pr.number}`, isDraft: pr.isDraft === true }];
+  });
+  const owners = [
+    ...new Set([
+      login,
+      ...orgs.stdout.split(/\s+/).filter(Boolean),
+      ...prs.map((pr) => pr.repository?.nameWithOwner?.split("/")[0]).filter((owner) => !!owner)
+    ])
+  ];
+  const botResults = [];
+  for (let i = 0;i < owners.length; i += GH_RUNS_AT_ONCE) {
+    botResults.push(...await Promise.all(owners.slice(i, i + GH_RUNS_AT_ONCE).map((owner) => run(["search", "prs", "--state", "open", "--owner", owner, "--limit", "1000", "--json", SEARCH_FIELDS]))));
+  }
+  if (botResults.some((result) => result.exitCode !== 0))
+    return null;
+  const bots = new Map;
+  for (const result of botResults) {
+    const ownerPrs = readSearchPrs(result.stdout);
+    if (ownerPrs === null)
+      return null;
+    for (const pr of ownerPrs) {
+      const author = pr.author;
+      const repo = pr.repository?.nameWithOwner;
+      if (!(author?.type === "Bot" || author?.is_bot === true) || !author.login || !repo || !pr.number)
+        continue;
+      const name = botName(author.login);
+      const group = bots.get(name) ?? { name, refs: new Set };
+      group.refs.add(`${repo}#${pr.number}`);
+      bots.set(name, group);
+    }
+  }
+  return {
+    accountPrs: accountPrs.sort((a, b) => a.ref.localeCompare(b.ref)),
+    botPrSummaries: [...bots.values()].map(({ name, refs }) => ({ name, count: refs.size })).sort((a, b) => a.name.localeCompare(b.name))
+  };
+}
+function readSearchPrs(json) {
+  try {
+    const data = JSON.parse(json);
+    return Array.isArray(data) ? data : null;
+  } catch {
+    return null;
+  }
+}
+function botName(login) {
+  if (/(^|-)renovate(?:\[bot\])?$/i.test(login))
+    return "Renovate";
+  if (/^dependabot(?:\[bot\])?$/i.test(login))
+    return "Dependabot";
+  if (/^github-actions(?:\[bot\])?$/i.test(login))
+    return "GitHub Actions";
+  return login.replace(/\[bot\]$/i, "");
+}
 var GH_SIGN_IN_CODE = 4;
 function asksForSignIn(r) {
   return r.exitCode === GH_SIGN_IN_CODE || r.exitCode !== 0 && /\bHTTP 401\b/.test(r.stderr);
@@ -5104,6 +5184,8 @@ function prTabOf(s, lastActions, now, shownSince, settleWindowMs) {
   const isSent = threadSentIn(lastActions);
   return {
     drawn,
+    accountPrs: (s.prViews.accountPrs ?? []).filter((pr) => !drawn.some((d) => d.pr.ref === pr.ref)),
+    botPrSummaries: s.prViews.botPrSummaries ?? [],
     branchRef: s.prViews.branchRef,
     count: drawn.filter((d) => d.state.is === "open" && prNeedsYou(d.pr, isSent)).length,
     olderText: olderPrsText(s.prViews, s.ledger),
@@ -5190,7 +5272,7 @@ function pruned(s) {
     prViews: isViewDropped ? { ...s.prViews, views } : s.prViews
   };
 }
-function withFetchedPrs(s, fetched, branchRef, isGhSignedOut) {
+function withFetchedPrs(s, fetched, branchRef, isGhSignedOut, accountPrs = null) {
   const isSignedOut = isGhSignedOut ?? s.prViews.isGhSignedOut === true;
   const views = { ...s.prViews.views, ...fetched };
   return {
@@ -5200,7 +5282,11 @@ function withFetchedPrs(s, fetched, branchRef, isGhSignedOut) {
       views,
       branchRef,
       isFetching: false,
-      ...isSignedOut ? { isGhSignedOut: true } : {}
+      ...isSignedOut ? { isGhSignedOut: true } : {},
+      ...accountPrs ?? {
+        ...s.prViews.accountPrs ? { accountPrs: s.prViews.accountPrs } : {},
+        ...s.prViews.botPrSummaries ? { botPrSummaries: s.prViews.botPrSummaries } : {}
+      }
     }
   };
 }
@@ -5292,6 +5378,7 @@ async function fetchPrs(host, findsBranchPr) {
   if (bin === null)
     return;
   let sawUnstartable = false;
+  const accountPrsPromise = fetchAccountPrs(host.gh.run(s, bin, () => {}));
   const fetchWith = (path) => fetchTracked(host.gh.run(s, path, () => {
     sawUnstartable = true;
   }), s.prViews, s.ledger, findsBranchPr, () => host.now());
@@ -5305,8 +5392,9 @@ async function fetchPrs(host, findsBranchPr) {
     if (refound !== bin)
       fetch = await fetchWith(refound);
   }
+  const accountPrs = await accountPrsPromise;
   const { views: fetched, branchRef, isGhSignedOut } = fetch;
-  await host.update((cur) => withFetchedPrs(cur, fetched, branchRef, isGhSignedOut));
+  await host.update((cur) => withFetchedPrs(cur, fetched, branchRef, isGhSignedOut, accountPrs));
 }
 
 // ../hooks/banners.ts
@@ -5968,7 +6056,19 @@ function prEntries(screen, ui, now) {
   });
   const out = [];
   const ghState = { isGhMissing: screen.isGhMissing, isGhSignedOut: prs.isGhSignedOut };
+  const accountEntries = [
+    ...prs.accountPrs.length > 0 ? [{ kind: "note", text: "PRs opened by you", isPlain: true }] : [],
+    ...prs.accountPrs.map((pr) => ({ kind: "note", text: accountPrText(pr) })),
+    ...prs.botPrSummaries.map((bot) => ({ kind: "note", text: botPrSummaryText(bot) }))
+  ];
   if (prs.drawn.length === 0) {
+    if (accountEntries.length > 0) {
+      const ghNotice = ghNoticeOf(ghState);
+      return [
+        ...ghNotice ? [{ kind: "banner", banner: bannerOf(ghNotice.kind, ghNotice.text) }] : [],
+        ...accountEntries
+      ];
+    }
     const empty = prsEmptyText({ isFetching: screen.isFetchingPrs, ...ghState }, "session");
     return [
       { kind: "note", text: empty.title, isStrong: true },
@@ -6074,6 +6174,7 @@ function prEntries(screen, ui, now) {
       kind: "row",
       line: { ...blankLine(DISMISS_MERGED_ID), buttons: tabButtons, isWaiting: false, isTabButtons: true }
     });
+  out.push(...accountEntries);
   if (prs.olderText)
     out.push({ kind: "note", text: prs.olderText });
   return out;

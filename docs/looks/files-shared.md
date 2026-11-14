@@ -61,14 +61,14 @@ Part of [the look map](../looks.md#files).
 | `hooks/session-host.ts` | Shared module. The `SessionHost` and `UpdateHost` types a host supplies, and the update flows that run on a host's store: `runUpdates`, `askOverConversation` and `reconcileUpdateStatus`. It also holds `exclusiveKeys` and `orderedKeys`, which keep runs of one key apart in a process. |
 | `hooks/status-records.ts` | Shared module. The Status call: `statusCallPrompt` builds its prompt, `askAndWriteStatus` sends it and writes the answer, and `refreshStatus` runs one during a long turn. It also holds the call records, `StatusRecord` and `writeStatusRecord`. |
 | `hooks/host-press.ts` | Shared module. `press` and `startPress`, which run a press on a host's store, and `wakeForDone`, which tells the agent about rows closed with Done. |
-| `hooks/host-prs.ts` | Shared module. `fetchPrs`, which fetches a session's PRs through the host's gh, and `isPrFetchDue` and `prFetchTracker`, which say when to fetch again. |
+| `hooks/host-prs.ts` | Shared module. `fetchPrs`, which fetches session-linked PR details and the account-wide list through the host's gh, and `isPrFetchDue` and `prFetchTracker`, which say when to fetch again. |
 | `hooks/gh.ts` | Shared module. `ghFinder` finds a gh that starts, and `ghIn` runs it, over a host's command runner. `branchIn` reads a folder's git branch over the same runner. |
 | `hooks/herdr.ts` | Shared module. What a host reports to the Herdr pane it runs in: the `inbox` status line, the stop, and each row tab's count, as pane tokens in one `herdr pane report-metadata` command. Also `delegatesInHerdr`, which asks `herdr agent list` which delegates still run, only while one runs. |
 | `hooks/text.ts` | Shared module. Clipping, OSC 8 token handling, code-block formatting, relative ages and a turn's reply. |
 | `hooks/prs.ts` | Shared module. PR parsing, readiness and prompts. |
 | `hooks/pr-tab.ts` | Shared module. What each PR press does, in `applyPrPress`, and the PR button plans: `threadActions`, `checkActions`, `prBlockActions`, and `prTabActions` for the tab's own buttons. |
-| `hooks/pr-fetch.ts` | Shared module. Which linked PRs the tab tracks, the line that names the older ones it leaves out, the Open PR help step for any linked PR, and fetching each tracked PR through a host's gh runner. |
-| `hooks/pr-rows.ts` | Shared module. PR row ids, each PR row's mark, title and meta line, which PR rows wait on the person, the gh notices, the PRs tab's empty text, and the tone of each PR status. |
+| `hooks/pr-fetch.ts` | Shared module. Which linked PRs the tab tracks, account-wide user PRs and bot summaries, the line that names older linked PRs it leaves out, the Open PR help step, and fetching through a host's gh runner. |
+| `hooks/pr-rows.ts` | Shared module. PR row ids, each PR row's mark, title and meta line, account PR and bot summary text, which PR rows wait on the person, gh notices, empty text and PR status tones. |
 | `hooks/pr-views.ts` | Shared module. The PR blocks a look draws and their order, which PR views a session keeps, and whether the person dismissed a PR. |
 | `hooks/pr-order.ts` | Shared module. The agent's PR order: the rank before a PR's number, the order's lines above the PR blocks, the statuses it records, and its Rank again button. |
 | `hooks/pr-press.ts` | Shared module. The PR press types, the open or refresh each press runs, the row each press records on, and the helpers the PR button plans share, which add "again" to a label, add Try again, and mark the button whose press is out. |

@@ -52,11 +52,19 @@ export type PrViews = {
   views: Record<string, PrView>
   branchRef: string | null
   isFetching: boolean
+  /** Open PRs authored by the signed-in GitHub user, fetched across repository owners. */
+  accountPrs?: AccountPr[]
+  /** Bot-authored open PR counts, grouped by bot. */
+  botPrSummaries?: BotPrSummary[]
   /** The mod sets this when its last fetch found no gh to start. Codex keeps its own flag in the server. */
   isGhMissing?: boolean
   /** Set by the last fetch whose gh runs answered: whether one of them asked for a sign-in. */
   isGhSignedOut?: boolean
 }
+
+export type AccountPr = { ref: string; title: string; url: string; isDraft: boolean }
+
+export type BotPrSummary = { name: string; count: number }
 
 /**
  * The turns started in this session, and how many of them reached the
