@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { fetchAccountPrs } from '../hooks/pr-fetch'
+import { fetchAccountPrs, type GhRun } from '../hooks/pr-fetch'
 import { accountPrText, botPrSummaryText } from '../hooks/pr-rows'
+import { fetchPrs } from '../hooks/host-prs'
+import { panePrBlocks } from '../hooks/pane-prs'
 import { emptySession } from '../hooks/session-files'
-import { withFetchedPrs } from '../hooks/session-presses'
 import { sessionView } from '../hooks/session-view'
-import type { GhRun } from '../hooks/pr-fetch'
 import { BLOCKED_PR } from './session-helpers'
 
 const ownedPrs = [
@@ -51,13 +51,38 @@ function runFor(own: unknown[], byOwner: Record<string, unknown[]>): { run: GhRu
   return { run, calls }
 }
 
+function renderedText(value: unknown): string {
+  if (typeof value === 'string' || typeof value === 'number') return String(value)
+  if (Array.isArray(value)) return value.map(renderedText).join(' ')
+  if (value && typeof value === 'object') return Object.values(value).map(renderedText).join(' ')
+
+  return ''
+}
+
 describe('fetchAccountPrs', () => {
   test('shows the 13 missed PRs as eight individual PRs and one five-PR Renovate summary', async () => {
     const { run, calls } = runFor(ownedPrs, { shunk031: [...ownedPrs, ...renovatePrs] })
+    let session = emptySession()
+    await fetchPrs(
+      {
+        now: () => 1_000_000,
+        read: async () => session,
+        update: async change => {
+          session = await change(session)
+          return session
+        },
+        gh: {
+          find: async () => 'gh',
+          forget: () => {},
+          noteMissing: () => {},
+          run: () => run,
+        },
+      } as Parameters<typeof fetchPrs>[0],
+      false,
+    )
 
-    const result = await fetchAccountPrs(run)
-
-    expect(result?.accountPrs.map(pr => pr.ref).sort()).toEqual(
+    const view = sessionView(session, 1_000_000, 1000, false)
+    expect(view.prs.accountPrs.map(pr => pr.ref).sort()).toEqual(
       [
         'shunk031/skills#188',
         'shunk031/skills#187',
@@ -69,7 +94,7 @@ describe('fetchAccountPrs', () => {
         'shunk031/dotfiles-private#149',
       ].sort(),
     )
-    expect(result?.botPrSummaries).toEqual([{ name: 'Renovate', count: 5 }])
+    expect(view.prs.botPrSummaries).toEqual([{ name: 'Renovate', count: 5 }])
 
     const ownSearch = calls.find(args => args[0] === 'search' && args.includes('--author'))!
     expect(ownSearch).toContain('@me')
@@ -77,14 +102,30 @@ describe('fetchAccountPrs', () => {
     expect(
       calls.some(args => args[0] === 'search' && args.includes('--owner') && args.includes('creative-graphic-design')),
     ).toBe(true)
-    expect(result?.accountPrs).toHaveLength(8)
-    expect(result?.botPrSummaries.reduce((sum, bot) => sum + bot.count, 0)).toBe(5)
-    const session = withFetchedPrs(emptySession(), {}, null, false, result!)
-    const prsTab = sessionView(session, 1_000_000, 1000, false).prs
-    expect(prsTab.accountPrs).toHaveLength(8)
-    expect(prsTab.botPrSummaries).toEqual([{ name: 'Renovate', count: 5 }])
-    expect(prsTab.accountPrs.map(accountPrText)).toContain('shunk031/skills#188 · Open skills #188')
-    expect(prsTab.botPrSummaries.map(botPrSummaryText)).toEqual(['Renovate: 5 open PRs'])
+    expect(view.prs.accountPrs).toHaveLength(8)
+    expect(view.prs.botPrSummaries.reduce((sum, bot) => sum + bot.count, 0)).toBe(5)
+
+    const rendered = panePrBlocks({
+      look: 'terminal',
+      pal: { muted: 'muted' },
+      Text: 'Text',
+      Box: 'Box',
+      blankLine: 0,
+      lastActions: view.lastActions,
+      prState: session.prViews,
+      view,
+      prTabKeys: [],
+      prGroups: [],
+      section: (child: JSX.Element | JSX.Element[]) => child,
+      sections: (children: JSX.Element[]) => children,
+    } as unknown as Parameters<typeof panePrBlocks>[0]).prsView()
+    const drawnTab = renderedText(rendered)
+    expect(drawnTab).toContain('PRs opened by you')
+    expect(drawnTab).toContain(accountPrText(view.prs.accountPrs[0]!))
+    expect(drawnTab).toContain('shunk031/skills#188 · Open skills #188')
+    expect(drawnTab).toContain(botPrSummaryText(view.prs.botPrSummaries[0]!))
+    for (const ref of view.prs.accountPrs.map(pr => pr.ref)) expect(drawnTab).toContain(ref)
+    expect(drawnTab).toContain('Renovate: 5 open PRs')
   })
 
   test('keeps an account PR from another organization and groups bots by bot author', async () => {
