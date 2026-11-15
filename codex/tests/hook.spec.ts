@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 
@@ -12,6 +12,14 @@ import { handleHook } from '../src/hook'
 import { readState, updateState } from '../src/state'
 import { CODEX } from '../src/texts'
 import { hookDeps, input, tempDir } from './helpers'
+
+test('the Codex MCP server receives feed and Herdr identity variables', () => {
+  const config = JSON.parse(readFileSync(new URL('../plugin/.mcp.json', import.meta.url), 'utf8'))
+  const envVars = config.mcpServers.inbox.env_vars as string[]
+  for (const name of ['INBOX_FEED', 'HERDR_PANE_ID', 'HERDR_BIN_PATH']) {
+    assert.ok(envVars.includes(name), `${name} must be forwarded to the Codex MCP server`)
+  }
+})
 
 test('a session starts with the guidance, records the prompt, and ends the turn into the update', async () => {
   const dir = tempDir()
