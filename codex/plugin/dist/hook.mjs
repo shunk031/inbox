@@ -478,7 +478,7 @@ var EMPTY = {
 function isBlankLedger(ledger) {
   const o = ledger.overview;
   const isStatusBlank = !o || o.head === null && o.subjects.length === 0 && o.goal === null;
-  return ledger.updates === 0 && isStatusBlank && ledger.items.length === 0 && ledger.findings.length === 0;
+  return ledger.updates === 0 && isStatusBlank && ledger.items.length === 0 && ledger.findings.length === 0 && (ledger.untrackedWork?.length ?? 0) === 0;
 }
 function upgradeLedger(ledger) {
   const {
