@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 
@@ -77,6 +77,65 @@ test('a Codex hook applies the configured progress feed to the session ledger', 
     (await readState(dir, 's1')).ledger.findings.map(f => [f.kind, f.feedKey]),
     [['progress', 'machine/worker']],
   )
+})
+
+test('a Codex hook reads the default feed for the Herdr meta agent', async () => {
+  const dir = tempDir()
+  const home = tempDir()
+  const feedPath = join(home, '.local', 'state', 'inbox', 'feeds')
+  mkdirSync(feedPath, { recursive: true })
+  writeFileSync(
+    join(feedPath, 'meta.json'),
+    JSON.stringify({
+      version: 1,
+      source: 'herdr-meta-patrol',
+      writtenAt: 10,
+      entries: [{ key: 'agent/meta', state: 'working', title: 'Meta work', detail: 'Continue the work.', at: 10 }],
+    }),
+  )
+  const base = hookDeps(dir)
+  const deps = {
+    ...base,
+    env: { ...base.env, HOME: home, HERDR_PANE_ID: 'w1:p1' },
+    run: async (args: string[]) =>
+      args[0] === 'herdr'
+        ? { code: 0, stdout: JSON.stringify({ result: { agent: { name: 'meta' } } }), stderr: '' }
+        : { code: 1, stdout: '', stderr: '' },
+  }
+
+  await handleHook(input('SessionStart'), deps)
+  assert.deepEqual(
+    (await readState(dir, 's1')).ledger.findings.map(f => [f.kind, f.feedKey]),
+    [['progress', 'agent/meta']],
+  )
+})
+
+test('a Codex hook leaves the default feed unread for another Herdr agent', async () => {
+  const dir = tempDir()
+  const home = tempDir()
+  const feedPath = join(home, '.local', 'state', 'inbox', 'feeds')
+  mkdirSync(feedPath, { recursive: true })
+  writeFileSync(
+    join(feedPath, 'meta.json'),
+    JSON.stringify({
+      version: 1,
+      source: 'herdr-meta-patrol',
+      writtenAt: 10,
+      entries: [{ key: 'agent/meta', state: 'working', title: 'Meta work', detail: 'Continue the work.', at: 10 }],
+    }),
+  )
+  const base = hookDeps(dir)
+  const deps = {
+    ...base,
+    env: { ...base.env, HOME: home, HERDR_PANE_ID: 'w1:p1' },
+    run: async (args: string[]) =>
+      args[0] === 'herdr'
+        ? { code: 0, stdout: JSON.stringify({ result: { agent: { name: 'worker' } } }), stderr: '' }
+        : { code: 1, stdout: '', stderr: '' },
+  }
+
+  await handleHook(input('SessionStart'), deps)
+  assert.deepEqual((await readState(dir, 's1')).ledger.findings, [])
 })
 
 test('a hook without CODEX_CLI_PATH saves the CLI the app names in CODEX_APP_RUNTIME_CLI_PATH, and CODEX_CLI_PATH wins when both are set', async () => {

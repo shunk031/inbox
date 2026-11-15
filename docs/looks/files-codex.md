@@ -43,7 +43,7 @@ Part of [the look map](../looks.md#files).
 | `codex/src/server-handler.ts` | Codex host. The request handler the loader reloads. |
 | `codex/src/update.ts` | Codex host. Binds `hooks/session-host.ts` update flows to `codex exec`. Saves a failed call as the session's `lastModelFailure`. |
 | `codex/src/update-main.ts` | Codex host. Entry point for the update process. |
-| `codex/src/hook.ts` | Codex host. The hook logic that changes session state. |
+| `codex/src/hook.ts` | Codex host. The hook logic that changes session state and applies progress feeds. |
 | `feed-reader.ts` | Node feed reader shared by Codex and omp. Reads the optional external feed file or directory with the shared size cap. |
 | `codex/src/hook-main.ts` | Codex host. Entry point for the hooks. |
 | `codex/src/demo.ts` | Codex host. Turns the shared demo data into a session. |
