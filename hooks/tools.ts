@@ -266,6 +266,11 @@ export function recordItem(host: Host, ledger: Ledger, input: Record<string, unk
     },
     now,
   )
+  if (r.is === 'source-managed')
+    return unchanged(
+      ledger,
+      'Not recorded: a matching task is managed by the active work source and was left unchanged.',
+    )
   if (r.is === 'open') {
     const changes = [
       ...(r.addedSteps > 0 ? ['added its new steps'] : []),

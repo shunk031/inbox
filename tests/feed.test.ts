@@ -5,7 +5,8 @@ import type { Feed, FeedEntry } from '../hooks/feed'
 import { inboxText, carryText } from '../hooks/inbox-text'
 import { EMPTY } from '../hooks/ledger'
 import { closeFinding } from '../hooks/ledger-close'
-import { addFinding, applyUpdate } from '../hooks/ledger-update'
+import { addAgentItem, addFinding, applyUpdate } from '../hooks/ledger-update'
+import { recordItem } from '../hooks/tools'
 import { buildPrompt } from '../hooks/ledger-prompt'
 import { tabBarBanners } from '../hooks/banners'
 import { CLAUDE_CODE } from '../hooks/model-text'
@@ -117,6 +118,47 @@ describe('progress feed', () => {
     ])
     expect(inboxText(CLAUDE_CODE, loaded, false)).not.toContain('Check the milestone')
     expect(applyUpdate(loaded, parseReply('CLOSED: i1 | done: checked')!, 200, 1).items).toEqual(loaded.items)
+    const reply = parseReply(
+      `NEW: do | - | Check the milestone | - | -\nASKED: ${loaded.findings[0]!.id} | ${loaded.items[0]!.id}`,
+    )!
+    const modelUpdate = applyUpdate(loaded, reply, 200, 1)
+    expect(modelUpdate.items).toEqual(loaded.items)
+    expect(modelUpdate.findings).toEqual(loaded.findings)
+    const recorded = recordItem(
+      CLAUDE_CODE,
+      loaded,
+      { kind: 'task', ask: 'Check the milestone', steps: ['Review again'], detail: 'Changed detail' },
+      200,
+    )
+    expect(recorded.result).toContain('managed by the active work source')
+    expect(recorded.ledger.items).toEqual(loaded.items)
+    const relatedTask = addAgentItem(
+      loaded,
+      {
+        kind: 'task',
+        ask: 'Training run',
+        options: [],
+        rec: null,
+        helps: [],
+        isDesignChoice: false,
+        detail: undefined,
+        document: undefined,
+        documentPreview: undefined,
+      },
+      200,
+    )
+    expect(relatedTask.is).toBe('added')
+    expect(relatedTask.ledger.findings).toEqual(loaded.findings)
+    const duplicateFinding = addFinding(loaded, {
+      kind: 'issue',
+      title: 'Training run',
+      detail: 'A different description.',
+      path: null,
+      document: 'new report.md',
+      at: 200,
+    })
+    expect(duplicateFinding.isAdded).toBe(false)
+    expect(duplicateFinding.ledger.findings).toEqual(loaded.findings)
     const missingSource = applyFeedFiles(
       loaded,
       '/feed',

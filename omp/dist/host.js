@@ -4136,12 +4136,16 @@ function applyUpdate(ledger, u, now, turn, promptAt = now) {
     else
       items.push(withUpdate({ ...item, helps }, u.updated));
   }
-  const recordedThisTurn = new Set([...ledger.items, ...ledger.closed.flatMap((c) => c.item ?? [])].filter((i) => i.from === "record" && i.turn === turn).map((i) => i.kind));
+  const recordedThisTurn = new Set([...ledger.items, ...ledger.closed.flatMap((c) => c.item ?? [])].filter((i) => !i.sourceManaged && i.from === "record" && i.turn === turn).map((i) => i.kind));
   let nextId = ledger.nextId;
   let added = 0;
   const addedIds = [];
   const created = new Set;
   for (const a of u.added) {
+    if (items.some((i) => i.sourceManaged && matchOpen([i], a) >= 0)) {
+      addedIds.push(null);
+      continue;
+    }
     if (repeatsClosed(ledger.closed, a, promptAt)) {
       addedIds.push(null);
       continue;
@@ -4188,12 +4192,12 @@ function applyUpdate(ledger, u, now, turn, promptAt = now) {
     const id = typeof a.item === "number" ? addedIds[a.item] : a.item;
     const asker = items.find((i) => i.id === id);
     const finding = ledger.findings.find((f) => f.id === a.id);
-    if (asker && finding && asksAbout(asker, finding, true))
+    if (asker && finding && !finding.sourceManaged && asksAbout(asker, finding, true))
       askedBy.set(a.id, asker.id);
   }
   for (const i of items.filter((i) => created.has(i.id)))
     for (const f of ledger.findings)
-      if (!f.feedOwned && !askedBy.has(f.id) && asksAbout(i, f))
+      if (!f.sourceManaged && !f.feedOwned && !askedBy.has(f.id) && asksAbout(i, f))
         askedBy.set(f.id, i.id);
   const { findings, closedFindings } = ledger.findings.reduce((l, f) => {
     const asker = askedBy.get(f.id);
@@ -4221,6 +4225,9 @@ function withUpdate(item, updated) {
   return { ...item, options, rec: restatedRec(options, item.rec, change.rec) };
 }
 function addFinding(ledger, finding) {
+  const sourceManaged = ledger.findings.find((f) => f.sourceManaged && sameAsk(f.title, finding.title)) ?? ledger.items.find((i) => i.sourceManaged && restates(i.ask, finding.title));
+  if (sourceManaged)
+    return { ledger, id: sourceManaged.id, isAdded: false, expired: null, dismissed: null };
   const sameFinding = ledger.findings.find((f) => sameAsk(f.title, finding.title));
   const same = sameFinding ?? ledger.items.find((i) => restates(i.ask, finding.title));
   if (same) {
@@ -4250,7 +4257,10 @@ function addFinding(ledger, finding) {
 }
 function addAgentItem(ledger, entry, now) {
   const candidate = { ...entry, label: null };
-  const recordedThisTurn = new Set(ledger.items.filter((i) => i.turn === ledger.turn).map((i) => i.id));
+  const managedMatch = ledger.items.find((i) => i.sourceManaged && matchOpen([i], candidate) >= 0);
+  if (managedMatch)
+    return { ledger, is: "source-managed", id: managedMatch.id };
+  const recordedThisTurn = new Set(ledger.items.filter((i) => !i.sourceManaged && i.turn === ledger.turn).map((i) => i.id));
   const open = matchOpen(ledger.items, candidate, recordedThisTurn);
   const openItem = ledger.items[open];
   if (openItem) {
@@ -4290,7 +4300,7 @@ function addAgentItem(ledger, entry, now) {
   const id = `i${ledger.nextId}`;
   const items = [...ledger.items, { ...entry, label: null, id, turn: ledger.turn, at: now, from: "record" }];
   const asked = { ...entry, label: null };
-  const restated = ledger.findings.filter((f) => asksAbout(asked, f));
+  const restated = ledger.findings.filter((f) => !f.sourceManaged && asksAbout(asked, f));
   const base = { ...ledger, items, nextId: ledger.nextId + 1, batchTurn: ledger.turn };
   const next = restated.reduce((l, f) => closeFinding(l, f.id, { outcome: `asked as ${id}`, how: "update" }, now, id), base);
   return { ledger: next, is: "added", id };
@@ -4544,6 +4554,8 @@ function recordItem(host, ledger, input, now) {
     ...detail ? { detail } : {},
     ...document ? { document, documentPreview } : {}
   }, now);
+  if (r.is === "source-managed")
+    return unchanged(ledger, "Not recorded: a matching task is managed by the active work source and was left unchanged.");
   if (r.is === "open") {
     const changes = [
       ...r.addedSteps > 0 ? ["added its new steps"] : [],

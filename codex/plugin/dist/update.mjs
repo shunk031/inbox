@@ -571,13 +571,17 @@ function applyUpdate(ledger, u, now, turn, promptAt = now) {
     else items.push(withUpdate({ ...item, helps }, u.updated));
   }
   const recordedThisTurn = new Set(
-    [...ledger.items, ...ledger.closed.flatMap((c) => c.item ?? [])].filter((i) => i.from === "record" && i.turn === turn).map((i) => i.kind)
+    [...ledger.items, ...ledger.closed.flatMap((c) => c.item ?? [])].filter((i) => !i.sourceManaged && i.from === "record" && i.turn === turn).map((i) => i.kind)
   );
   let nextId = ledger.nextId;
   let added = 0;
   const addedIds = [];
   const created = /* @__PURE__ */ new Set();
   for (const a of u.added) {
+    if (items.some((i) => i.sourceManaged && matchOpen([i], a) >= 0)) {
+      addedIds.push(null);
+      continue;
+    }
     if (repeatsClosed(ledger.closed, a, promptAt)) {
       addedIds.push(null);
       continue;
@@ -623,10 +627,11 @@ function applyUpdate(ledger, u, now, turn, promptAt = now) {
     const id = typeof a.item === "number" ? addedIds[a.item] : a.item;
     const asker = items.find((i) => i.id === id);
     const finding = ledger.findings.find((f) => f.id === a.id);
-    if (asker && finding && asksAbout(asker, finding, true)) askedBy.set(a.id, asker.id);
+    if (asker && finding && !finding.sourceManaged && asksAbout(asker, finding, true)) askedBy.set(a.id, asker.id);
   }
   for (const i of items.filter((i2) => created.has(i2.id)))
-    for (const f of ledger.findings) if (!f.feedOwned && !askedBy.has(f.id) && asksAbout(i, f)) askedBy.set(f.id, i.id);
+    for (const f of ledger.findings)
+      if (!f.sourceManaged && !f.feedOwned && !askedBy.has(f.id) && asksAbout(i, f)) askedBy.set(f.id, i.id);
   const { findings, closedFindings } = ledger.findings.reduce((l, f) => {
     const asker = askedBy.get(f.id);
     const outcome = closing.get(f.id);
