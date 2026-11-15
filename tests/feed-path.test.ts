@@ -35,4 +35,15 @@ describe('inbox feed path', () => {
     await expect(resolveInboxFeedPath('/custom/feed', home, identity, run)).resolves.toBe('/custom/feed')
     expect(queried).toBe(false)
   })
+
+  test('keeps an explicitly empty feed disabled without querying Herdr', async () => {
+    let queried = false
+    const run: Run = async () => {
+      queried = true
+      return { code: 0, stdout: JSON.stringify({ result: { agent: { name: 'meta' } } }), stderr: '' }
+    }
+
+    await expect(resolveInboxFeedPath('', home, identity, run)).resolves.toBe('')
+    expect(queried).toBe(false)
+  })
 })

@@ -539,7 +539,7 @@ function agentNameOf(output) {
   }
 }
 async function resolveInboxFeedPath(explicit, home, identity, run) {
-  if (explicit)
+  if (explicit !== undefined)
     return explicit;
   if (!home || !identity.paneId)
     return;

@@ -33,7 +33,7 @@ export async function resolveInboxFeedPath(
   identity: HerdrFeedIdentity,
   run: Run,
 ): Promise<string | undefined> {
-  if (explicit) return explicit
+  if (explicit !== undefined) return explicit
   if (!home || !identity.paneId) return undefined
 
   try {

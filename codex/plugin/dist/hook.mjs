@@ -3803,7 +3803,7 @@ function agentNameOf(output) {
   }
 }
 async function resolveInboxFeedPath(explicit, home, identity, run2) {
-  if (explicit) return explicit;
+  if (explicit !== void 0) return explicit;
   if (!home || !identity.paneId) return void 0;
   try {
     const result = await run2([identity.binPath || "herdr", "agent", "get", identity.paneId], {
