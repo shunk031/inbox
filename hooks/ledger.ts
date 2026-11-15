@@ -14,6 +14,7 @@ export const EMPTY: Ledger = {
   closed: [],
   findings: [],
   closedFindings: [],
+  untrackedWork: [],
   prs: [],
   prOrder: null,
   nextId: 1,

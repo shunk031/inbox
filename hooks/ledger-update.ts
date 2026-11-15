@@ -70,15 +70,22 @@ export function isPersonsAnswer(outcome: string): boolean {
  */
 export function applyUpdate(ledger: Ledger, u: Update, now: number, turn: number, promptAt = now): Ledger {
   const feedIds = new Set(ledger.findings.filter(f => f.feedOwned).map(f => f.id))
+  const sourceItemIds = new Set(ledger.items.filter(i => i.sourceManaged).map(i => i.id))
   const stillAsked = new Set(u.updated.filter(c => c.options || c.rec).map(c => c.id))
   const closing = new Map(
     u.closed
-      .filter(c => !feedIds.has(c.id) && !stillAsked.has(c.id) && !UNFOUNDED_MOOT.test(c.outcome))
+      .filter(
+        c => !feedIds.has(c.id) && !sourceItemIds.has(c.id) && !stillAsked.has(c.id) && !UNFOUNDED_MOOT.test(c.outcome),
+      )
       .map(c => [c.id, c.outcome]),
   )
   const closed = [...ledger.closed]
   const items: Item[] = []
   for (const item of ledger.items) {
+    if (item.sourceManaged) {
+      items.push(item)
+      continue
+    }
     const outcome = closing.get(item.id)
     const helps = u.helped.filter(h => h.id === item.id).reduce((all, h) => withHelp(all, h.help), item.helps)
     const isClosing = outcome !== undefined && (item.from !== 'record' || isPersonsAnswer(outcome))
