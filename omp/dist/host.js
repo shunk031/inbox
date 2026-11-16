@@ -9440,9 +9440,14 @@ function timelineEntries(screen, ui) {
       line: {
         ...blankLine(row.task.id),
         depth: row.depth,
-        lead: { text: marker, tone: row.status === "stalled" ? "error" : row.status === "done" ? "done" : "needsYou" },
-        title: `${branch}${row.task.title}`,
-        status: { text: `${row.statusLabel} \xB7 ${row.measure}`, tone: null, rest: "" },
+        selectionMark: ">",
+        lead: {
+          text: `${branch}${marker}`,
+          tone: row.status === "stalled" ? "error" : row.status === "done" ? "done" : "needsYou",
+          padMark: false
+        },
+        title: row.task.title,
+        status: { text: `${row.statusLabel} \xB7 ${row.measure}`, tone: null, rest: "", separator: " \xB7 " },
         detail: null,
         body: body || null,
         buttons,
@@ -9450,18 +9455,17 @@ function timelineEntries(screen, ui) {
         isWaiting: false
       }
     });
-    if (row.warnings.length > 0)
-      out.push({
-        kind: "row",
-        line: {
-          ...blankLine(`${row.task.id}:warning`),
-          depth: row.depth + 1,
-          lead: { text: "!", tone: "error" },
-          title: row.warnings.join(" \xB7 "),
-          isStatic: true,
-          isWaiting: false
-        }
-      });
+    row.warnings.forEach((warning, index) => out.push({
+      kind: "row",
+      line: {
+        ...blankLine(`${row.task.id}:warning:${index}`),
+        depth: row.depth,
+        lead: { text: "\u2514\u2500 \u26A0", tone: "error", padMark: false },
+        title: warning,
+        isStatic: true,
+        isWaiting: false
+      }
+    }));
   }
   return out;
 }
@@ -9775,7 +9779,7 @@ function leadPaint(lead, text, s) {
   return lead.tone === "dim" ? s.dim(text) : lead.tone ? s.tone(lead.tone, text) : text;
 }
 function leadText(lead, s) {
-  return lead === null ? "" : `${leadPaint(lead, lead.text.padEnd(2), s)} `;
+  return lead === null ? "" : `${leadPaint(lead, lead.padMark === false ? lead.text : lead.text.padEnd(2), s)} `;
 }
 function markText(mark, now, s) {
   if (mark === null)
@@ -9804,11 +9808,11 @@ function drawLine(line, isSelected, d) {
   }
   const pad = line.depth * 2;
   const out = [];
-  const status = line.status ? `  ${line.status.tone ? s.tone(line.status.tone, line.status.text) : s.dim(line.status.text)}${s.dim(line.status.rest)}` : "";
+  const status = line.status ? `${line.status.separator ?? "  "}${line.status.tone ? s.tone(line.status.tone, line.status.text) : s.dim(line.status.text)}${s.dim(line.status.rest)}` : "";
   const statusUnder = line.feedback && line.settled === null && !isShut(line, ui) && isStatusUnderActions(line.feedback.source, isSelected) ? line.feedback : null;
   const mark = markText(line.mark, now, s);
   const after = line.settled ? `  ${mark}${line.settled.tone === "done" ? s.tone("done", linkedText(line.settled.label, s.link)) : s.dim(linkedText(line.settled.label, s.link))}${line.settled.undo ? `  ${s.dim(`${UNDO_KEY} Undo`)}` : ""}` : line.feedback && !statusUnder ? `  ${mark}${feedbackPaint(line.feedback.tone, s)(linkedText(line.feedback.text, s.link))}` : "";
-  const cursor = isSelected ? s.tone("accent", "\u276F") : " ";
+  const cursor = isSelected ? s.tone("accent", line.selectionMark ?? "\u276F") : " ";
   const head = ` ${" ".repeat(pad)}${cursor} ${line.rank ? s.dim(line.rank) : ""}${leadText(line.lead, s)}`;
   const titleText = linkedText(line.title, s.link);
   const age = line.age !== null && line.settled === null ? s.dim(ago(now - line.age)) : "";

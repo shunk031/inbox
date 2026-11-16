@@ -471,9 +471,14 @@ function timelineEntries(screen: PanelScreen, ui: PanelUi): Entry[] {
       line: {
         ...blankLine(row.task.id),
         depth: row.depth,
-        lead: { text: marker, tone: row.status === 'stalled' ? 'error' : row.status === 'done' ? 'done' : 'needsYou' },
-        title: `${branch}${row.task.title}`,
-        status: { text: `${row.statusLabel} · ${row.measure}`, tone: null, rest: '' },
+        selectionMark: '>',
+        lead: {
+          text: `${branch}${marker}`,
+          tone: row.status === 'stalled' ? 'error' : row.status === 'done' ? 'done' : 'needsYou',
+          padMark: false,
+        },
+        title: row.task.title,
+        status: { text: `${row.statusLabel} · ${row.measure}`, tone: null, rest: '', separator: ' · ' },
         detail: null,
         body: body || null,
         buttons,
@@ -481,18 +486,19 @@ function timelineEntries(screen: PanelScreen, ui: PanelUi): Entry[] {
         isWaiting: false,
       },
     })
-    if (row.warnings.length > 0)
+    row.warnings.forEach((warning, index) =>
       out.push({
         kind: 'row',
         line: {
-          ...blankLine(`${row.task.id}:warning`),
-          depth: row.depth + 1,
-          lead: { text: '!', tone: 'error' },
-          title: row.warnings.join(' · '),
+          ...blankLine(`${row.task.id}:warning:${index}`),
+          depth: row.depth,
+          lead: { text: '└─ ⚠', tone: 'error', padMark: false },
+          title: warning,
           isStatic: true,
           isWaiting: false,
         },
-      })
+      }),
+    )
   }
   return out
 }

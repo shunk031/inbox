@@ -98,7 +98,7 @@ export function leadPaint(lead: Lead, text: string, s: Style): string {
 
 /** A lead and the space after it, or nothing for a line with no lead. */
 function leadText(lead: Lead | null, s: Style): string {
-  return lead === null ? '' : `${leadPaint(lead, lead.text.padEnd(2), s)} `
+  return lead === null ? '' : `${leadPaint(lead, lead.padMark === false ? lead.text : lead.text.padEnd(2), s)} `
 }
 
 /** A result mark and the space after it. */
@@ -136,7 +136,7 @@ export function drawLine(line: Line, isSelected: boolean, d: Draw): string[] {
   const pad = line.depth * 2
   const out: string[] = []
   const status = line.status
-    ? `  ${line.status.tone ? s.tone(line.status.tone, line.status.text) : s.dim(line.status.text)}${s.dim(line.status.rest)}`
+    ? `${line.status.separator ?? '  '}${line.status.tone ? s.tone(line.status.tone, line.status.text) : s.dim(line.status.text)}${s.dim(line.status.rest)}`
     : ''
   const statusUnder =
     line.feedback &&
@@ -151,8 +151,8 @@ export function drawLine(line: Line, isSelected: boolean, d: Draw): string[] {
     : line.feedback && !statusUnder
       ? `  ${mark}${feedbackPaint(line.feedback.tone, s)(linkedText(line.feedback.text, s.link))}`
       : ''
-  // omp marks a selected item with ❯, its `nav.cursor` symbol, and keeps ▸ and ▾ for expand and collapse.
-  const cursor = isSelected ? s.tone('accent', '❯') : ' '
+  // omp marks a selected item with ❯ by default and keeps ▸ and ▾ for expand and collapse.
+  const cursor = isSelected ? s.tone('accent', line.selectionMark ?? '❯') : ' '
   const head = ` ${' '.repeat(pad)}${cursor} ${line.rank ? s.dim(line.rank) : ''}${leadText(line.lead, s)}`
   const titleText = linkedText(line.title, s.link)
   const age = line.age !== null && line.settled === null ? s.dim(ago(now - line.age)) : ''
