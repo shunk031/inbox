@@ -11,7 +11,8 @@ import { startContext } from '../hooks/session-turns'
 import { appliedCatchUp, forkedFrom, hasLedger, isUnseen } from '../hooks/session-status'
 import { pruned } from '../hooks/session-presses'
 import { sessionView } from '../hooks/session-view'
-import type { Item, Session } from '../types'
+import type { Item, Session, TaskNode } from '../types'
+import { taskTreeFromStatus } from '../hooks/task-tree'
 import { allRows } from '../hooks/rows'
 import { NO_HOLDS } from '../hooks/timing'
 import { prMarkId } from '../hooks/pr-rows'
@@ -42,7 +43,10 @@ test('the Status page draws each status with its mark and tone, and ◆ on a sub
     asks,
   )
   const closed = applyStatus(opened, parseStatus('DONE: s1 | built')!, 2000, asks)
-  const held = { ...emptySession(), ledger: { ...EMPTY, items: [ITEM], overview: closed } }
+  const taskTree = taskTreeFromStatus(closed).map(task =>
+    task.id === 's1' ? { ...task, status: 'done' as const } : task,
+  )
+  const held = { ...emptySession(), taskTree, ledger: { ...EMPTY, items: [ITEM], overview: closed } }
   const rows = sessionView(held, 3000, 1000, NO_HOLDS).statusPage.rows.flatMap(r =>
     r.kind === 'subject' ? [[r.name, r.mark, r.tone]] : [],
   )
@@ -58,6 +62,7 @@ test('the Status page draws each status with its mark and tone, and ◆ on a sub
   )
   const heldDone = {
     ...held,
+    taskTree: taskTree.map(task => (task.id === 's4' ? { ...task, status: 'done' as const } : task)),
     ledger: { ...held.ledger, overview: applyStatus(closed, parseStatus('DONE: s4 | built')!, 2500, asks) },
   }
   expect(allRows(sessionView(heldDone, 3000, 1000, NO_HOLDS)).find(r => r.id === ITEM.id)?.holdsUpLine).toBeNull()
@@ -65,23 +70,51 @@ test('the Status page draws each status with its mark and tone, and ◆ on a sub
 
 test('one ask linked to two subjects marks both ◆, and its Asks row names each open one', () => {
   const asks = new Set([ITEM.id])
+  const tree: TaskNode[] = [
+    {
+      id: 's1',
+      parentId: null,
+      status: 'working',
+      weight: 1,
+      title: '2.4 release',
+      detail: '',
+      notes: [],
+      createdAt: 1000,
+      updatedAt: 1000,
+      history: [],
+    },
+    {
+      id: 's2',
+      parentId: null,
+      status: 'working',
+      weight: 1,
+      title: 'Hotfix release',
+      detail: '',
+      notes: [],
+      createdAt: 1000,
+      updatedAt: 1000,
+      history: [],
+    },
+  ]
   const linked = applyStatus(
     null,
-    parseStatus(
-      [
-        'NEW: working | 2.4 release | build signed',
-        'NEW: working | Hotfix release | build signed',
-        `LINK: ${ITEM.id} | 2.4 release`,
-        `LINK: ${ITEM.id} | Hotfix release`,
-      ].join('\n'),
-    )!,
+    parseStatus(`LINK: ${ITEM.id} | s1\nLINK: ${ITEM.id} | s2`)!,
     1000,
     asks,
-  )
-  const sessionOf = (overview: typeof linked) => ({ ...emptySession(), ledger: { ...EMPTY, items: [ITEM], overview } })
+    null,
+    tree,
+  )!
+  const sessionOf = (overview: typeof linked, taskTree = tree) => ({
+    ...emptySession(),
+    taskTree,
+    ledger: { ...EMPTY, items: [ITEM], overview },
+  })
   const view = sessionView(sessionOf(linked), 3000, 1000, NO_HOLDS)
   const oneDone = sessionView(
-    sessionOf(applyStatus(linked, parseStatus('DONE: s1 | shipped')!, 2000, asks)),
+    sessionOf(
+      linked,
+      tree.map(task => (task.id === 's1' ? { ...task, status: 'done' as const } : task)),
+    ),
     3000,
     1000,
     NO_HOLDS,

@@ -291,7 +291,7 @@ test('a replay from a call record sends the prompt the record holds, at the time
       tasks: [],
     },
   }
-  const input = { last, asks: [], tasks: [], now: minutes(30) + 1234 }
+  const input = { last, asks: [], taskTree: [], now: minutes(30) + 1234 }
   const prompts: string[] = []
   const r = replayFromRecord({ input, exchange }, 'recorded', {
     before: { focus: 'sync', focusMatch: 'sync', pieces: [], asks: [], notWork: [], children: [], changed: [] },

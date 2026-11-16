@@ -3,6 +3,7 @@ import type { Op } from '../hooks/status'
 import { applyOps } from '../hooks/status-ops'
 import { emptySession } from '../hooks/session-files'
 import { statusPage } from '../hooks/status-page'
+import { taskTreeFromStatus } from '../hooks/task-tree'
 import type { StatusRow } from '../hooks/status-page'
 import type { Item, SessionStatus, Session } from '../types'
 
@@ -43,7 +44,15 @@ export const page = (
   now: number,
   over: Partial<Session['presence']> = {},
   items: Item[] = [],
-) => statusPage({ ledger: { overview: sessionStatus, items }, presence: presence(over) }, now)
+) =>
+  statusPage(
+    {
+      ledger: { overview: sessionStatus, items },
+      taskTree: taskTreeFromStatus(sessionStatus),
+      presence: presence(over),
+    },
+    now,
+  )
 
 const ARMS = { mid: '├ ', last: '└ ' } as const
 

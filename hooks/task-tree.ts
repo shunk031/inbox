@@ -314,7 +314,7 @@ export function appendTaskHistory(tree: TaskTree, id: string, event: TaskHistory
 }
 
 /** Computes the weighted share of completed root work. Parent weights weight their child group; progress is never saved. */
-export function weightedTaskProgress(tree: TaskTree): number {
+export function weightedTaskProgress(tree: TaskTree, rootId?: string): number {
   const children = new Map<string | null, TaskNode[]>()
   for (const task of tree) children.set(task.parentId, [...(children.get(task.parentId) ?? []), task])
 
@@ -327,7 +327,8 @@ export function weightedTaskProgress(tree: TaskTree): number {
     return weightedAverage(descendants.map(child => [progress(child, path), child.weight]))
   }
 
-  return weightedAverage((children.get(null) ?? []).map(task => [progress(task, new Set()), task.weight]))
+  const roots = rootId === undefined ? (children.get(null) ?? []) : tree.filter(task => task.id === rootId)
+  return weightedAverage(roots.map(task => [progress(task, new Set()), task.weight]))
 }
 
 function weightedAverage(values: [number, number][]): number {

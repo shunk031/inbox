@@ -31,13 +31,12 @@ export function appliedStatus<S extends Session>(
   isCatchUp = false,
 ): S {
   if (!isStatusCallCurrent(s, appliedAfter)) return s
+  const askIds = new Set(s.ledger.items.map(i => i.id))
+  const overview = applyStatus(s.ledger.overview, answer, now, askIds, readSetAt, s.taskTree)
 
   return {
     ...s,
-    ledger: {
-      ...s.ledger,
-      overview: applyStatus(s.ledger.overview, answer, now, new Set(s.ledger.items.map(i => i.id)), readSetAt),
-    },
+    ledger: { ...s.ledger, overview },
     overviewFailure: isCatchUp ? null : s.overviewFailure,
     lastOverviewCallAt: now,
     overviewTurn: appliedAfter,

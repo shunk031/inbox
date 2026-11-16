@@ -1,5 +1,6 @@
 import { EMPTY_SESSION_STATUS } from '../hooks/status-limits'
 import { emptySession } from '../hooks/session-files'
+import { taskTreeFromStatus } from '../hooks/task-tree'
 import { statusListRows, statusPage } from '../hooks/status-page'
 import type { StatusPage } from '../hooks/status-page'
 import { HELD_MARK } from '../hooks/help'
@@ -36,6 +37,7 @@ export function sessionOf(o: SessionStatus, items: Item[], at: number): Session 
   return {
     ...base,
     ledger: { ...base.ledger, overview: o, items },
+    taskTree: taskTreeFromStatus(o),
     presence: { ...base.presence, lastReplyAt: minutes(at) },
   }
 }
