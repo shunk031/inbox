@@ -9,10 +9,7 @@ import { clipMiddle, numberBlocks } from './text'
 import { weightedTaskProgress } from './task-tree'
 import { personInstructionsBlock } from './person-instructions'
 
-export function statusSystem(
-  without: readonly GoalPartId[] = [],
-  instructions: string | null = null,
-): string {
+export function statusSystem(without: readonly GoalPartId[] = [], instructions: string | null = null): string {
   const system = `You keep the Status of a coding session: its focus, goal, current Now, live Children, and a short summary of its task tree.
 
 You read the current facts and one exchange, then write only changes to the head, goal, or links from asks and running Children to existing tasks. The task tree is read-only here. Never create, close, rename, move, or change a task.
@@ -59,6 +56,7 @@ function headText(o: SessionStatus | null): string {
   return `${o.head.title} | ${o.head.description || '(no description yet)'}`
 }
 
+// prettier-ignore
 function taskTreeText(tree: TaskTree, now: number): string {
   const top = tree.filter(task => task.parentId === null).map(task => `${task.id} | ${task.status} | weight ${task.weight} | ${Math.round(weightedTaskProgress(tree, task.id) * 100)}% | ${task.goalId ?? '-'} | ${task.streamId ?? '-'} | ${task.title} | ${task.detail || '-'}`)
   const recent = tree.flatMap(task => task.history.map(event => ({ task, event })))

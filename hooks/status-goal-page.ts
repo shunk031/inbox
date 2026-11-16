@@ -23,7 +23,6 @@ export type GoalBlock = {
   was: string | null
   now: string | null
   awaiting: string | null
-  /** Kept empty so existing look adapters continue to compile until T4 changes their drawing. */
   milestones: MilestoneRow[]
 }
 

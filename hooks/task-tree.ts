@@ -333,6 +333,7 @@ export function weightedTaskProgress(tree: TaskTree, rootIds?: string | string[]
     return weightedAverage((children.get(task.id) ?? []).map(child => [progress(child), child.weight]))
   }
 
+  // prettier-ignore
   const roots = rootIds === undefined ? (children.get(null) ?? []) : tree.filter(task => Array.isArray(rootIds) ? rootIds.includes(task.id) : task.id === rootIds)
   return weightedAverage(roots.map(task => [progress(task), task.weight]))
 }

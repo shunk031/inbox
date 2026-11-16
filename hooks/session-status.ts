@@ -130,16 +130,15 @@ function taskLook<S extends { ledger: Ledger; taskTree?: TaskTree }>(
 ): S {
   const overview = s.ledger.overview
   if (overview === null) return s
-  const prior = { ...before, ...overview.missedInLastLook }
-  const missed = { ...prior }
+  const missed = { ...before, ...overview.missedInLastLook }
   for (const { id, roots } of taskRootGroups(s.taskTree ?? [])) {
     const updatedAt = Math.max(...roots.map(task => task.updatedAt))
     const shownAt = shown === 'all' ? at : (shown[id] ?? -Infinity)
-    const seenAt = id in prior ? prior[id] : baseline
-    if (shownAt >= updatedAt && (!late || seenAt === null || (seenAt !== null && seenAt < at))) {
+    const seenAt = id in missed ? (missed[id] ?? null) : baseline
+    if (shownAt >= updatedAt && (!late || seenAt === null || seenAt < at)) {
       if (late) missed[id] = at
       else delete missed[id]
-    } else if (!late && !(id in prior) && (baseline === null || updatedAt > baseline)) missed[id] = baseline
+    } else if (!late && !(id in missed) && (baseline === null || updatedAt > baseline)) missed[id] = baseline
   }
   return { ...s, ledger: { ...s.ledger, overview: { ...overview, missedInLastLook: missed } } }
 }
@@ -155,8 +154,8 @@ export function lookEndedOn<S extends { ledger: Ledger; taskTree?: TaskTree }>(s
 /** Counts a look another program reported, as the Herdr look does, and keeps the look this host has in progress. */
 export function lookReportedOn<S extends { ledger: Ledger; taskTree?: TaskTree }>(s: S, look: ReportedLook): S {
   const reported = statusChanged(s, o => lookReported(o, look))
-  const lastLookAt = s.ledger.overview?.lastLookAt
-  const late = lastLookAt !== null && lastLookAt !== undefined && look.endedAt <= lastLookAt
+  const lastLookAt = s.ledger.overview?.lastLookAt ?? null
+  const late = lastLookAt !== null && look.endedAt <= lastLookAt
   return look.endedAt - look.startedAt >= 5_000
     ? taskLook(reported, look.endedAt, look.shown, lastLookAt, {}, late)
     : reported

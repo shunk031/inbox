@@ -75,18 +75,14 @@ export function nameBeforeStall(name: string, fits: (shown: string) => boolean):
   return cuts.find(fits) ?? cuts.at(-1)!
 }
 
-function rootOf(taskId: string | null, byId: ReadonlyMap<string, TaskNode>): TaskNode | null {
-  let task = taskId === null ? undefined : byId.get(taskId)
-  while (task?.parentId !== null && task?.parentId !== undefined) task = byId.get(task.parentId)
-  return task ?? null
-}
-
 function statusOf(roots: TaskNode[]): TaskNode['status'] {
-  if (roots.every(task => task.status === 'done' || task.status === 'dropped')) return roots.some(task => task.status === 'done') ? 'done' : 'dropped'
+  if (roots.every(task => task.status === 'done' || task.status === 'dropped'))
+    return roots.some(task => task.status === 'done') ? 'done' : 'dropped'
   if (roots.some(task => task.status === 'working')) return 'working'
   return roots.some(task => task.status === 'waits-on-other') ? 'waits-on-other' : 'queued'
 }
 
+// prettier-ignore
 export function statusPage(
   s: {
     ledger: Pick<Ledger, 'overview' | 'items'>
@@ -100,9 +96,12 @@ export function statusPage(
   const tree = s.taskTree ?? []
   const byId = new Map(tree.map(task => [task.id, task]))
   const groups = taskRootGroups(tree)
-  const rootIds = new Map<string, string>()
-  for (const group of groups) for (const root of group.roots) rootIds.set(root.id, group.id)
-  const rootIdOf = (id: string | null) => { const root = rootOf(id, byId); return root ? rootIds.get(root.id) ?? root.id : null }
+  const rootIds = new Map(groups.flatMap(group => group.roots.map(root => [root.id, group.id] as const)))
+  const rootIdOf = (id: string | null) => {
+    let task = id === null ? undefined : byId.get(id)
+    while (task?.parentId !== null && task?.parentId !== undefined) task = byId.get(task.parentId)
+    return task ? rootIds.get(task.id) ?? task.id : null
+  }
   const openAskIds = new Set(s.ledger.items.map(item => item.id))
   const askLinks = Object.fromEntries(
     Object.entries(o?.askSubjects ?? {})
@@ -174,7 +173,8 @@ export function statusPage(
 }
 
 export function seenSubjectIds(row: StatusRow): string[] {
-  return row.kind === 'subject' ? [row.id] : row.kind === 'fold' ? row.subjectIds : []
+  // prettier-ignore
+  return row.kind === 'subject' ? [row.id] : row.kind === 'fold' ? row.subjectIds : row.kind === 'done-fold' ? row.rows.flatMap(seenSubjectIds) : []
 }
 
 export function statusListRows(page: StatusPage): StatusRow[] {

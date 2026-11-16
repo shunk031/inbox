@@ -557,7 +557,9 @@ function fromLists(o) {
 }
 function missedOf(saved, ids) {
   const entries = typeof saved === "object" && saved !== null ? Object.entries(saved) : [];
-  return Object.fromEntries(entries.filter(([id, at]) => ids.has(id) && (at === null || time2(at) !== null)));
+  return Object.fromEntries(
+    entries.slice(0, 200).filter(([id, at]) => (ids.has(id) || id.length <= 100) && (at === null || time2(at) !== null))
+  );
 }
 function upgradeStatus(saved) {
   const o = saved;
@@ -937,23 +939,30 @@ var TASK_NOTE_LENGTH = 2e3;
 function notesOf(notes) {
   return notes.slice(0, TASK_NOTES_LIMIT).map((note) => note.slice(0, TASK_NOTE_LENGTH));
 }
-function weightedTaskProgress(tree, rootId) {
+function taskRootGroups(tree) {
+  const groups = /* @__PURE__ */ new Map();
+  for (const task of tree.filter((task2) => task2.parentId === null)) {
+    const key = task.streamId ? `stream:${task.streamId}` : `task:${task.id}`;
+    const roots = groups.get(key);
+    if (roots) roots.push(task);
+    else groups.set(key, [task]);
+  }
+  return [...groups.values()].map((roots) => ({ id: roots[0].id, roots }));
+}
+function weightedTaskProgress(tree, rootIds) {
   const children = /* @__PURE__ */ new Map();
   for (const task of tree) children.set(task.parentId, [...children.get(task.parentId) ?? [], task]);
-  const progress = (task, seen) => {
+  const progress = (task) => {
     if (task.status === "done") return 1;
-    if (task.status === "dropped" || seen.has(task.id)) return 0;
-    const descendants = children.get(task.id) ?? [];
-    if (descendants.length === 0) return 0;
-    const path = new Set(seen).add(task.id);
-    return weightedAverage(descendants.map((child) => [progress(child, path), child.weight]));
+    if (task.status === "dropped") return 0;
+    return weightedAverage((children.get(task.id) ?? []).map((child) => [progress(child), child.weight]));
   };
-  const roots = rootId === void 0 ? children.get(null) ?? [] : tree.filter((task) => task.id === rootId);
-  return weightedAverage(roots.map((task) => [progress(task, /* @__PURE__ */ new Set()), task.weight]));
+  const roots = rootIds === void 0 ? children.get(null) ?? [] : tree.filter((task) => Array.isArray(rootIds) ? rootIds.includes(task.id) : task.id === rootIds);
+  return weightedAverage(roots.map((task) => [progress(task), task.weight]));
 }
 function weightedAverage(values) {
   const total = values.reduce((sum, [, weight]) => sum + weight, 0);
-  return total === 0 ? 0 : values.reduce((sum, [value, weight]) => sum + value * weight, 0) / total;
+  return total ? values.reduce((sum, [value, weight]) => sum + value * weight, 0) / total : 0;
 }
 function taskTreeFromStatus(status) {
   if (!status) return [];
@@ -1211,10 +1220,7 @@ var ISSUE_LABEL = "File issue";
 
 // ../hooks/status-goal-gate.ts
 var goalTaskId = (goal) => `goal-${goal.setAt}`;
-function tasksForGoal(tree, goal) {
-  const id = goalTaskId(goal);
-  return tree.filter((task) => task.goalId === id);
-}
+var tasksForGoal = (tree, goal) => tree.filter((task) => task.goalId === goalTaskId(goal));
 function isGoalMet(goal, tree) {
   const tasks = goal === null ? [] : tasksForGoal(tree, goal);
   return tasks.length > 0 && tasks.every((task) => task.status === "done" || task.status === "dropped");
@@ -1476,6 +1482,7 @@ function childRow(c, branch, depth) {
     branch
   };
 }
+var looseChildRows = (children, depth) => children.map((c) => childRow(c, null, depth));
 function partRows(shown, c, depth, afterOpen = [], afterClosed = []) {
   const rows = [];
   const firstClosed = shown.findIndex((x) => !isOpen(x));
@@ -1522,48 +1529,26 @@ function partRows(shown, c, depth, afterOpen = [], afterClosed = []) {
 
 // ../hooks/status-page.ts
 var STATUS_FAILED = "The inbox couldn't update this page from one of the agent's replies. What changed in that reply may be missing. It reads the conversation again after the next reply.";
-function rootOf(taskId, byId) {
-  let task = taskId === null ? void 0 : byId.get(taskId);
-  while (task?.parentId !== null && task?.parentId !== void 0) task = byId.get(task.parentId);
-  return task ?? null;
-}
-function rootsOf(tree) {
-  const groups = /* @__PURE__ */ new Map();
-  for (const task of tree.filter((node) => node.parentId === null)) {
-    const key = task.streamId ? `stream:${task.streamId}` : `task:${task.id}`;
-    groups.set(key, [...groups.get(key) ?? [], task]);
-  }
-  return [...groups.values()].map((roots) => ({ id: roots[0].id, roots }));
-}
 function statusOf2(roots) {
   if (roots.every((task) => task.status === "done" || task.status === "dropped"))
     return roots.some((task) => task.status === "done") ? "done" : "dropped";
   if (roots.some((task) => task.status === "working")) return "working";
-  if (roots.some((task) => task.status === "waits-on-other")) return "waits-on-other";
-  return "queued";
-}
-function progressOf(tree, roots) {
-  const totalWeight = roots.reduce((sum, task) => sum + task.weight, 0);
-  return totalWeight === 0 ? 0 : Math.round(
-    roots.reduce((sum, task) => sum + weightedTaskProgress(tree, task.id) * task.weight, 0) / totalWeight * 100
-  );
+  return roots.some((task) => task.status === "waits-on-other") ? "waits-on-other" : "queued";
 }
 function statusPage(s, now) {
   const o = s.ledger.overview;
   const tree = s.taskTree ?? [];
   const byId = new Map(tree.map((task) => [task.id, task]));
-  const groups = rootsOf(tree);
-  const rootIds = /* @__PURE__ */ new Map();
-  for (const group of groups) for (const root of group.roots) rootIds.set(root.id, group.id);
+  const groups = taskRootGroups(tree);
+  const rootIds = new Map(groups.flatMap((group) => group.roots.map((root) => [root.id, group.id])));
   const rootIdOf = (id) => {
-    const root = rootOf(id, byId);
-    return root === null ? null : rootIds.get(root.id) ?? root.id;
+    let task = id === null ? void 0 : byId.get(id);
+    while (task?.parentId !== null && task?.parentId !== void 0) task = byId.get(task.parentId);
+    return task ? rootIds.get(task.id) ?? task.id : null;
   };
+  const openAskIds = new Set(s.ledger.items.map((item) => item.id));
   const askLinks = Object.fromEntries(
-    Object.entries(o?.askSubjects ?? {}).map(([ask, ids]) => [
-      ask,
-      [...new Set(ids.map(rootIdOf).filter((id) => id !== null))]
-    ])
+    Object.entries(o?.askSubjects ?? {}).filter(([ask]) => openAskIds.has(ask)).map(([ask, ids]) => [ask, [...new Set(ids.map(rootIdOf).filter((id) => id !== null))]])
   );
   const heldIds = new Set(Object.values(askLinks).flat());
   const lastLookAt = o?.lastLookAt ?? null;
@@ -1571,7 +1556,7 @@ function statusPage(s, now) {
   const runningChildren = (o?.children ?? []).filter((child) => isChildRunning(child, now) || isFinishedUnseen(child, lastLookAt)).map((child) => ({ ...child, subjectId: rootIdOf(child.subjectId) })).sort((a, b) => (b.lastActivityAt ?? b.startedAt) - (a.lastActivityAt ?? a.startedAt));
   const taskRows = groups.map(({ id, roots }) => {
     const detail = roots.map((task) => task.detail).filter(Boolean).join("; ");
-    const progress = progressOf(tree, roots);
+    const progress = Math.round(weightedTaskProgress(tree, roots.map((task) => task.id)) * 100);
     const changedAt = Math.max(...roots.map((task) => task.updatedAt));
     const closed = roots.every((task) => task.status === "done" || task.status === "dropped");
     return {
@@ -1579,14 +1564,16 @@ function statusPage(s, now) {
       name: roots.map((task) => task.title).join(", "),
       status: statusOf2(roots),
       text: `${progress}% complete${detail ? ` \xB7 ${detail}` : ""}`,
-      was: null,
-      merged: null,
       createdAt: Math.min(...roots.map((task) => task.createdAt)),
       changedAt,
       closedAt: closed ? changedAt : null,
+      was: null,
+      merged: null,
       into: null
     };
   });
+  const place = { working: 0, "waits-on-other": 1, queued: 2, done: 3, dropped: 3 };
+  taskRows.sort((a, b) => Number(heldIds.has(b.id)) - Number(heldIds.has(a.id)) || place[a.status] - place[b.status] || b.changedAt - a.changedAt);
   const isNew = (task) => {
     const seenAt = task.id in missed ? missed[task.id] : lastLookAt;
     return seenAt === null || seenAt === void 0 || task.changedAt > seenAt;
@@ -1603,9 +1590,17 @@ function statusPage(s, now) {
   };
   const shown = taskRows.filter((task) => isOpen(task) || isNew(task));
   const done = taskRows.filter((task) => task.status === "done" && !isNew(task));
-  const rows = partRows(shown, ctx, 0);
+  const shownIds = new Set(shown.map((task) => task.id));
+  const loose = runningChildren.filter((child) => child.subjectId === null || !shownIds.has(child.subjectId));
+  const rows = [...looseChildRows(loose, 0), ...partRows(shown, ctx, 0)];
   if (done.length > 0)
-    rows.push({ kind: "done-fold", id: "tasks-done", depth: 0, text: `${done.length} tasks done`, rows: [] });
+    rows.push({
+      kind: "done-fold",
+      id: "done",
+      depth: 0,
+      text: `${done.length} done`,
+      rows: partRows(done, { ...ctx, running: [] }, 1)
+    });
   const goalParts = goalPage(o, s.ledger.items, tree);
   const head = o?.head ? { title: o.head.title, description: o.head.description || null } : null;
   return {
@@ -2686,10 +2681,9 @@ function needsYouOrder(ledger) {
   return { questions: newestReplyFirst("question"), tasks: newestReplyFirst("task") };
 }
 function heldTasksOf(ledger, tree, askId) {
-  const ids = ledger.overview?.askSubjects[askId] ?? [];
-  return ids.flatMap((id) => {
+  return (ledger.overview?.askSubjects[askId] ?? []).flatMap((id) => {
     const task = tree.find((node) => node.id === id);
-    return task && task.status !== "done" && task.status !== "dropped" ? [{ title: task.title }] : [];
+    return task && task.status !== "done" && task.status !== "dropped" ? [task.title] : [];
   });
 }
 function inboxView({
@@ -2828,7 +2822,7 @@ function inboxView({
       feedback,
       actions,
       optionDescriptions: optionDescriptionsOf(row.item, actions),
-      holdsUpLine: held2.length > 0 ? `${HOLDS_UP_TEXT} ${held2.map((task) => task.title).join(", ")}` : null,
+      holdsUpLine: held2.length > 0 ? `${HOLDS_UP_TEXT} ${held2.join(", ")}` : null,
       recLine: state.is === "open" ? recLineOf(row.item) : null,
       contextLine: state.is === "open" ? row.item?.context ?? null : null
     };

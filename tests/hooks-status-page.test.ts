@@ -125,7 +125,7 @@ test('on a next build, a Status call that lands after a look does not change its
 
   expect(session!.ledger.overview).toMatchObject({ lastLookAt: seenAt, look: null })
   expect(session!.ledger.overview?.missedInLastLook).toEqual(missed)
-  expect(session!.taskTree.map(task => task.title)).toEqual(['Plan', 'Command'])
+  expect(session!.taskTree?.map(task => task.title)).toEqual(['Plan', 'Command'])
 })
 
 test('a release build keys Asks, Finds and PRs 1 to 3, and a saved Status page shows Asks, tells Claude so, starts no look, stays saved, and names no subject an ask holds up', async ($, on) => {
@@ -170,7 +170,7 @@ test('a release build keys Asks, Finds and PRs 1 to 3, and a saved Status page s
   expect(page.value).toBeNull()
 })
 
-test('the Status page says what it is for before the session has any work', async ($, on) => {
+test('the Status page says what it is for before the session has any work', async () => {
   const session = emptySession()
   const page = statusPage({ ledger: session.ledger, taskTree: session.taskTree, presence: session.presence }, 1_000_000)
 

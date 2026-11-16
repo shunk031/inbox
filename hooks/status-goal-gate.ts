@@ -1,5 +1,7 @@
-import type { GoalRefusal, SessionStatus, StatusGoal, TaskTree } from '../types'
+import type { GoalRefusal, SessionStatus, StatusGoal, TaskNode, TaskTree } from '../types'
 import { GOAL_LEFT_MS } from './status-limits'
+
+type GoalLine = GoalRefusal['line']
 
 export const goalTaskId = (goal: StatusGoal): string => `goal-${goal.setAt}`
 
@@ -23,7 +25,7 @@ export function goalLeftFor(o: SessionStatus, tree: TaskTree, now: number): numb
   return left >= GOAL_LEFT_MS ? left : null
 }
 
-function refusalOf(o: SessionStatus, tree: TaskTree, kind: GoalRefusal['line'], now: number): GoalRefusal['why'] | null {
+function refusalOf(o: SessionStatus, tree: TaskTree, kind: GoalLine, now: number): GoalRefusal['why'] | null {
   const goal = o.goal
   if (goal === null || isGoalMet(goal, tree)) return kind === 'goal' ? null : 'met'
   if (goal.source === 'typed') return 'typed'
@@ -32,7 +34,7 @@ function refusalOf(o: SessionStatus, tree: TaskTree, kind: GoalRefusal['line'], 
   return goalLeftFor(o, tree, now) === null ? 'moved' : null
 }
 
-export function goalRefusal(o: SessionStatus, start: SessionStatus, tree: TaskTree, kind: GoalRefusal['line'], now: number): GoalRefusal['why'] | null {
+export const goalRefusal = (o: SessionStatus, start: SessionStatus, tree: TaskTree, kind: GoalLine, now: number) => {
   const why = refusalOf(o, tree, kind, now)
   if (why === null || start === o || o.goal?.setAt !== start.goal?.setAt) return why
   return refusalOf(start, tree, kind, now) === null ? null : why

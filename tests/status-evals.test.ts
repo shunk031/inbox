@@ -45,11 +45,10 @@ test('a replay from a call record sends its saved prompt and ignores legacy task
   }
   const input = { last, asks: [], taskTree: [], now: minutes(30) + 1234 }
   const prompts: string[] = []
-  const replay = replayFromRecord(
-    { input, exchange },
-    'recorded',
-    { before: { focus: 'sync', focusMatch: 'sync', pieces: [], asks: [], notWork: [], children: [], changed: [] }, after: {} },
-  )
+  const replay = replayFromRecord({ input, exchange }, 'recorded', {
+    before: { focus: 'sync', focusMatch: 'sync', pieces: [], asks: [], notWork: [], children: [], changed: [] },
+    after: {},
+  })
   const [step] = await runReplay(replay, {
     agent: 'claude',
     ask: async prompt => {
@@ -75,13 +74,17 @@ test('the judge answer parser reads one verdict per check and refuses a missing 
 test('a page is called right only when the judge fails just the check a bad page breaks', () => {
   const page: JudgePage = { id: 'p', page: '', previous: null, facts: '', breaks: 'marks', note: '' }
   const verdicts = (failing: string[]) =>
-    parseJudgeAnswer(JUDGE_CHECKS.map(check => `${check.id} | ${failing.includes(check.id) ? 'fail' : 'pass'} | x`).join('\n'))
+    parseJudgeAnswer(
+      JUDGE_CHECKS.map(check => `${check.id} | ${failing.includes(check.id) ? 'fail' : 'pass'} | x`).join('\n'),
+    )
 
   expect(pageMistakes(page, verdicts(['marks']))).toEqual([])
   expect(pageMistakes(page, verdicts([]))).toEqual(['marks: pass, expected fail'])
   expect(pageMistakes(page, verdicts(['marks', 'head']))).toEqual(['head: fail, expected pass'])
   const noGoal: JudgePage = { ...page, breaks: null, na: ['goal'] }
-  const withNa = parseJudgeAnswer(JUDGE_CHECKS.map(check => `${check.id} | ${check.id === 'goal' ? 'n/a' : 'pass'} | x`).join('\n'))
+  const withNa = parseJudgeAnswer(
+    JUDGE_CHECKS.map(check => `${check.id} | ${check.id === 'goal' ? 'n/a' : 'pass'} | x`).join('\n'),
+  )
   expect(pageMistakes(noGoal, withNa)).toEqual([])
   expect(pageMistakes(noGoal, verdicts([]))).toEqual(['goal: pass, expected n/a'])
 })

@@ -5,7 +5,6 @@ import { applyGoalOp, hasSameWords, settleGoal } from './status-goal-ops'
 
 const linksWith = (ids: readonly string[], id: string): string[] => (ids.includes(id) ? [...ids] : [...ids, id])
 
-/** Applies the Status call's allowed changes. Task nodes are facts and cannot be changed here. */
 export function applyOps(
   last: SessionStatus | null,
   ops: Op[],
@@ -45,7 +44,6 @@ export function applyOps(
   return settleGoal(o, tree, now)
 }
 
-/** The Status after an answer, applied at `now`. `taskTree` is read-only input to goal settlement and link validation. */
 export function applyStatus(
   last: SessionStatus | null,
   answer: StatusAnswer,

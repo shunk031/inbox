@@ -1,6 +1,6 @@
 import type { GoalRefusal, SessionStatus, StatusGoal, TaskTree } from '../types'
 import type { Op } from './status'
-import { goalRefusal, goalTaskId, isGoalMet, tasksForGoal } from './status-goal-gate'
+import { goalRefusal, goalTaskId, tasksForGoal } from './status-goal-gate'
 import { clipWords, DESCRIPTION_KEPT, nameKey, REMOVED_KEPT, stems, words } from './status-limits'
 
 const RESTATED_SHARE = 0.8
@@ -14,12 +14,18 @@ export function restatesGoal(text: string, goal: string): boolean {
 }
 
 export function hasSameWords(a: string, b: string): boolean {
-  const x = words(a), y = words(b)
+  const x = words(a),
+    y = words(b)
   return x.size === y.size && [...x].every(word => y.has(word))
 }
 
 function setGoal(o: SessionStatus, text: string, now: number, source: StatusGoal['source']): SessionStatus {
-  return { ...o, goal: { text, setAt: now, metAt: null, was: o.goal?.text ?? null, isAwaitingMilestones: true, source }, goalRemoved: null, goalRefused: null }
+  return {
+    ...o,
+    goal: { text, setAt: now, metAt: null, was: o.goal?.text ?? null, isAwaitingMilestones: true, source },
+    goalRemoved: null,
+    goalRefused: null,
+  }
 }
 
 function goalLineRefusal(
@@ -29,9 +35,11 @@ function goalLineRefusal(
 ): GoalRefusal['why'] | null {
   const text = clipWords(op.text, DESCRIPTION_KEPT)
   const goal = o.goal
-  if ((goal !== null && restatesGoal(text, goal.text)) || (goal?.was != null && restatesGoal(text, goal.was)) || o.removedGoals.some(key => restatesGoal(text, key))) return 'restates'
-
-  return tree.some(task => task.status !== 'done' && task.status !== 'dropped' && task.goalId !== (o.goal && goalTaskId(o.goal))) ? null : 'no-work'
+  if ([goal?.text, goal?.was, ...o.removedGoals].some(old => old != null && restatesGoal(text, old))) return 'restates'
+  const goalId = goal ? goalTaskId(goal) : null
+  return tree.some(task => task.status !== 'done' && task.status !== 'dropped' && task.goalId !== goalId)
+    ? null
+    : 'no-work'
 }
 
 export function applyGoalOp(
@@ -61,7 +69,12 @@ export function removeGoal(o: SessionStatus): SessionStatus {
 export function restoreGoal(o: SessionStatus): SessionStatus {
   const removed = o.goalRemoved
   if (removed === null || o.goal !== null) return o
-  return { ...o, goal: removed.goal, removedGoals: o.removedGoals.filter(key => key !== nameKey(removed.goal.text)), goalRemoved: null }
+  return {
+    ...o,
+    goal: removed.goal,
+    removedGoals: o.removedGoals.filter(key => key !== nameKey(removed.goal.text)),
+    goalRemoved: null,
+  }
 }
 
 export function settleGoal(saved: SessionStatus, tree: TaskTree, now: number): SessionStatus {
@@ -70,7 +83,10 @@ export function settleGoal(saved: SessionStatus, tree: TaskTree, now: number): S
   const linked = tasksForGoal(tree, goal)
   const awaiting = linked.length === 0
   const was = saved.lastLookAt !== null && goal.setAt <= saved.lastLookAt ? null : goal.was
-  const metAt = isGoalMet(goal, tree) ? (goal.metAt ?? now) : null
+  const metAt =
+    linked.length > 0 && linked.every(task => task.status === 'done' || task.status === 'dropped')
+      ? (goal.metAt ?? now)
+      : null
   if (awaiting === goal.isAwaitingMilestones && metAt === goal.metAt && was === goal.was) return saved
   return { ...saved, goal: { ...goal, isAwaitingMilestones: awaiting, metAt, was } }
 }

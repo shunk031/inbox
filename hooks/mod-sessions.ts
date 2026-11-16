@@ -60,6 +60,7 @@ export function drawnSession(
   now: number,
 ): Session {
   const { ledger, stop, prViews, lastActions, turns } = drawn
+  // prettier-ignore
   const s = {
     ...session, ledger, taskTree: isDemo ? taskTreeFromStatus(ledger.overview) : session.taskTree,
     stop, prViews, lastActions, presence: { ...session.presence, ...turns },

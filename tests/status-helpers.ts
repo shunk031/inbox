@@ -1,5 +1,4 @@
 import { parseStatus } from '../hooks/status'
-import type { Op } from '../hooks/status'
 import { applyOps } from '../hooks/status-ops'
 import { emptySession } from '../hooks/session-files'
 import { EMPTY_SESSION_STATUS } from '../hooks/status-limits'
@@ -9,13 +8,6 @@ import type { StatusRow } from '../hooks/status-page'
 import type { Item, SessionStatus, Session, Subject, SubjectStatus } from '../types'
 
 export const MIN = 60_000
-
-const opsOf = (text: string): Op[] => {
-  const answer = parseStatus(text)
-  if (answer?.kind !== 'ops') throw new Error(`not ops: ${text}`)
-
-  return answer.ops
-}
 
 const NO_ASKS: ReadonlySet<string> = new Set()
 
