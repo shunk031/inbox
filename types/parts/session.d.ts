@@ -39,7 +39,7 @@ export type OldPresence = Away & {
 export type Tab = 'needsYou' | 'findings' | 'prs'
 
 /** A tab that shows a page instead of rows. `'overview'` is the Status tab, under the id it was saved with. */
-export type PageTab = 'overview'
+export type PageTab = 'overview' | 'timeline'
 
 /**
  * A tab's open row: its id, its position, and when a click or key opened it.
