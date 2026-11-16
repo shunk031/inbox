@@ -4,6 +4,7 @@ import { prMarkId } from '../../hooks/pr-rows'
 import type { TabView } from './core'
 import { pendingLocal, act } from './tab-rows'
 import { closingFolds, drawnRows, timelineFolded } from './tab-state'
+import { outPending } from './tab-press'
 import { selectTimelineRow, timelinePageOf, toggleTimelineFold } from './rows'
 
 const TREE_BRANCH = { mid: '├─ ', last: '└─ ' } as const
@@ -84,12 +85,16 @@ export function TimelineTab({ view }: { view: TabView }) {
                         const press = link.press
                         if (press.action !== 'pr-open') return null
                         const ref = press.ref
+                        const pending = outPending(view, prMarkId(ref))
+                        const isOpening =
+                          link.result?.state === 'pending' ||
+                          (pending?.is === 'local' && pending.result.state === 'pending')
                         return (
                           <span key={`${row.task.id}-${link.label}`}>
                             <button
                               type="button"
                               class="key"
-                              disabled={link.isOut}
+                              disabled={link.isOut || isOpening}
                               onClick={() =>
                                 void act(
                                   prMarkId(ref),
@@ -99,10 +104,12 @@ export function TimelineTab({ view }: { view: TabView }) {
                                 )
                               }
                             >
-                              {link.result?.state === 'pending' ? 'Opening…' : link.label}
+                              {isOpening ? 'Opening…' : link.label}
                             </button>
-                            {link.result?.state === 'done' ? <span class="tone-done">✓ Opened</span> : null}
-                            {link.result?.state === 'failed' ? (
+                            {!isOpening && link.result?.state === 'done' ? (
+                              <span class="tone-done">✓ Opened</span>
+                            ) : null}
+                            {!isOpening && link.result?.state === 'failed' ? (
                               <span class="tone-error">{link.result.parts.find(part => part.error)?.error}</span>
                             ) : null}
                           </span>
