@@ -241,7 +241,7 @@ export function repeatsClosed(
 ): boolean {
   const context = closed.slice(-CLOSED_CONTEXT_LIMIT)
   const recent = context.filter(c => c.at >= since && !isAskedForChoices(c))
-  const settled = context.filter(c => c.at < since && c.how !== 'expired')
+  const settled = context.filter(c => c.at < since && !canAskAgain(c))
 
   return (
     matchOpen(recent, a) >= 0 ||
@@ -249,6 +249,11 @@ export function repeatsClosed(
     settled.some(c => repeatsSettled(c, a)) ||
     dismissedFindingOf(closedFindings, a.ask) !== undefined
   )
+}
+
+/** A close without the user's answer does not prevent the agent from recording the ask again. */
+export function canAskAgain(c: Pick<Closed, 'how'>): boolean {
+  return c.how === 'expired' || c.how === 'claude' || c.how === 'update'
 }
 
 /**

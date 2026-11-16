@@ -207,7 +207,7 @@ export function recordItem(
   return {
     ledger: recorded,
     result:
-      `Recorded. The user sees it in ${host.surface}.` +
+      `${r.reopened ? 'Reopened' : 'Recorded'}. The user sees it in ${host.surface}.` +
       leftOut +
       missingText(after, fields.record) +
       (r.expired ? ` The list was full, so the oldest item closed: ${r.expired.ask}.` : '') +
@@ -261,7 +261,7 @@ function closedHow(c: Pick<Closed, 'how' | 'outcome'>): string {
     case 'expired':
       return 'it expired'
     case 'claude':
-      return 'you closed it earlier'
+      return 'the agent closed it earlier'
     case 'update':
       return `the inbox closed it (${c.outcome})`
   }
