@@ -158,9 +158,10 @@ test('folding a selected parent hides its children and keeps the parent selected
 })
 
 test('Timeline offers Select only for unselected rows and keeps planned action order', () => {
-  const tree = [task('root'), task('child', { parentId: 'root' })]
+  const tree = [task('root'), task('branch', { parentId: 'root' }), task('leaf', { parentId: 'branch' })]
   const page = timelinePage(timelineData(tree, segments, {}, [], now), 'root', [])
 
   expect(page.rows.find(row => row.task.id === 'root')?.actions.map(action => action.action)).toEqual(['toggle-branch'])
-  expect(page.rows.find(row => row.task.id === 'child')?.actions.map(action => action.action)).toEqual(['select'])
+  expect(page.rows.find(row => row.task.id === 'branch')?.actions.map(action => action.action)).toEqual(['select'])
+  expect(page.rows.find(row => row.task.id === 'leaf')?.actions.map(action => action.action)).toEqual(['select'])
 })

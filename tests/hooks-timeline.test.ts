@@ -1,4 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
+import type { TabsProps } from '../hooks/tabs-client'
 import { w, world } from './hooks-world'
 import { PANE } from './hooks-helpers'
 
@@ -103,4 +104,53 @@ test('Timeline puts the selected row actions in the footer without offering Sele
   expect(text.some(line => line.includes('Updated · '))).toBe(true)
   expect(text.some(line => line.includes('Note · Keep the row short'))).toBe(true)
   expect(text.some(line => line.includes('History · '))).toBe(true)
+})
+
+test('the desktop Timeline draws every planned row action as one button per action', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  world($, on, [])
+  w.files = ['/.next-build']
+  w.surfaces = ['desktop']
+  on('state.get', { plugin: 'inbox', key: 'timelineSelection' } as const, () => {
+    return { value: { value: 'plan', version: 1 } as never }
+  })
+  on('state.get', { plugin: 'inbox', key: 'timelineFolded' } as const, () => {
+    return { value: { value: [], version: 1 } as never }
+  })
+
+  await $.session.start({ cwd: '/tmp/project', surface: null, isInteractive: false })
+  for (const [task_id, parent_id] of [
+    ['plan', undefined],
+    ['branch', 'plan'],
+    ['leaf', 'branch'],
+  ] as const) {
+    await $.tool.call({
+      tool: 'mcp__inbox__tasks',
+      operation: 'add',
+      task_id,
+      ...(parent_id ? { parent_id } : {}),
+      title: task_id,
+    })
+  }
+  const pane = await $.ui.mount({ ...PANE, surface: 'desktop', props: { ...PANE.props, bodyColumns: 120 } })
+  const { tabs, gap } = (await pane.find({ key: 'tabs' }))?.props.props as TabsProps
+  const timelineAt = tabs
+    .slice(
+      0,
+      tabs.findIndex(tab => tab.id === 'timeline'),
+    )
+    .reduce((x, tab) => x + tab.width + gap, 0)
+  await pane.pointer({ type: 'down', x: timelineAt, y: 1, button: 'left', in: 'tabs' })
+  await clock.settle()
+
+  const plannedButtons = async () =>
+    (await pane.findAll({ type: 'Button' })).filter(
+      button => button.key === 'toggle-branch' || button.key?.startsWith('timeline-select-'),
+    )
+  let buttons = await plannedButtons()
+  expect(buttons.map(button => [button.key, button.props.label, button.props.plain])).toEqual([
+    ['timeline-select-branch', 'branch', true],
+    ['timeline-select-leaf', 'leaf', true],
+    ['toggle-branch', 'Close branch', true],
+  ])
 })

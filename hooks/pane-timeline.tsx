@@ -43,6 +43,7 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
       {page.rows.map(row => {
         const selected = row.task.id === page.selected?.row.task.id
         const selection = selected ? page.selected : null
+        const selectAction = row.actions.find(action => action.action === 'select')
         const branch = row.branch === 'mid' ? '├─ ' : row.branch === 'last' ? '└─ ' : ''
         const detail = `${'  '.repeat(row.depth + 1)}└─ `
         return (
@@ -53,7 +54,16 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
                 {selected ? '>' : ' '} {branch}
                 {marks[row.status] ?? '·'}{' '}
               </Text>
-              <Text>{row.task.title}</Text>
+              {selectAction ? (
+                <Button
+                  plain
+                  key={`timeline-select-${row.task.id}`}
+                  label={row.task.title}
+                  onPress={() => void selectTimelineRow(selectAction.id)}
+                />
+              ) : (
+                <Text>{row.task.title}</Text>
+              )}
               <Text color={pal.muted}>
                 {' · '}
                 {row.statusLabel} · {row.measure}

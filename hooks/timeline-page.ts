@@ -202,7 +202,7 @@ export function timelinePage(
             },
           ]
         : []),
-      ...(row.hasChildren
+      ...(row.task.id === selected?.task.id && row.hasChildren
         ? [
             {
               action: 'toggle-branch' as const,
