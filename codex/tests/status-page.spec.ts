@@ -301,9 +301,7 @@ test('the Codex tab draws the Status page from a next build’s view, and new ro
     ]
     const withGoal = applyStatus(
       state.ledger.overview,
-      parseStatus(
-        'GOAL: Status tab shipped',
-      )!,
+      parseStatus('GOAL: Status tab shipped')!,
       now,
       new Set(),
       null,
@@ -342,10 +340,7 @@ test('the Codex tab draws the Status page from a next build’s view, and new ro
     assert.deepEqual(presses.at(-1), { action: 'type', id: 'goal', text: 'Status tab in the store' })
     assert.equal(root.querySelector('#type-goal'), null)
     assert.equal(root.querySelector('.status-head.goal h1')?.textContent, 'Status tab in the store')
-    assert.equal(
-      [...root.querySelectorAll('.status-head.goal p')].at(-1)?.textContent,
-      'No tasks linked yet',
-    )
+    assert.equal([...root.querySelectorAll('.status-head.goal p')].at(-1)?.textContent, 'No tasks linked yet')
 
     await click('Remove')
     assert.deepEqual(presses.at(-1), { action: 'remove-goal', id: 'goal' })
@@ -393,12 +388,7 @@ test('a look counts only the task roots the tab reported on screen, across its r
   const state = emptyState('look-rows')
   state.ledger = {
     ...EMPTY,
-    overview: applyStatus(
-      null,
-      parseStatus('HEAD: Shipping | First version')!,
-      500,
-      new Set(),
-    ),
+    overview: applyStatus(null, parseStatus('HEAD: Shipping | First version')!, 500, new Set()),
   }
   state.taskTree = [
     task('s1', 'Sync', 'working', 500, 'under way'),
