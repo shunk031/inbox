@@ -1,0 +1,147 @@
+import type { JSX } from 'preact'
+import { SUBJECT_MARKS } from '../../hooks/help'
+import { prMarkId } from '../../hooks/pr-rows'
+import type { TabView } from './core'
+import { pendingLocal, act } from './tab-rows'
+import { closingFolds, drawnRows, timelineFolded } from './tab-state'
+import { selectTimelineRow, timelinePageOf, toggleTimelineFold } from './rows'
+
+export function TimelineTab({ view }: { view: TabView }) {
+  const page = timelinePageOf(view)
+  const all = view.timeline.rows
+  const visible = new Map(page.rows.map(row => [row.task.id, row]))
+  const hidden = new Set([...timelineFolded].filter(id => !closingFolds.has(`timeline-${id}`)))
+
+  const children = (parentId: string | null) =>
+    all.filter(row => row.task.parentId === parentId && !hidden.has(parentId ?? ''))
+  const drawRow = (row: (typeof all)[number]): JSX.Element => {
+    const id = `timeline:${row.task.id}`
+    const track = drawnRows.get(id)?.track
+    const selected = page.selected?.row.task.id === row.task.id
+    const selection = selected ? page.selected : track?.hasPanel ? (drawnRows.get(id)?.openTimeline ?? null) : null
+    const selectAction = visible.get(row.task.id)?.actions.find(action => action.action === 'select')
+    const branchAction = selection?.row.actions.find(action => action.action === 'toggle-branch')
+    const isClosing = track?.state === 'closing' || track?.state === 'leaving'
+    const mark = row.status === 'stalled' ? '!' : (SUBJECT_MARKS[row.status as keyof typeof SUBJECT_MARKS]?.mark ?? '·')
+
+    return (
+      <section class="timeline-tree-item" key={row.task.id}>
+        <div
+          class={`row timeline-node${selected ? ' selected' : ''}${isClosing ? ' closing' : ''}`}
+          data-motion={id}
+          style={{ '--depth': row.depth }}
+        >
+          <span class={`mark tone-${row.status === 'done' ? 'done' : row.status === 'stalled' ? 'error' : 'needsYou'}`}>
+            {mark}
+          </span>
+          <div class="content tight">
+            <div>
+              {row.branch ? <span class="muted">{row.branch === 'mid' ? '├─ ' : '└─ '}</span> : null}
+              {selectAction && !isClosing ? (
+                <button
+                  type="button"
+                  class="timeline-title-link"
+                  style={{ textDecoration: 'underline' }}
+                  onClick={() => selectTimelineRow(selectAction.id)}
+                >
+                  {row.task.title}
+                </button>
+              ) : (
+                <span class="timeline-title">{row.task.title}</span>
+              )}
+              <span class="muted">{` ${row.statusLabel} · ${row.measure}`}</span>
+            </div>
+            {row.warnings.map((warning, index) => (
+              <div class="warning" key={`${row.task.id}-warning-${index}`}>
+                ⚠ {warning}
+              </div>
+            ))}
+          </div>
+          {selection ? (
+            <div class={`timeline-detail${isClosing ? ' closing' : ''}`} {...(isClosing ? { inert: true } : {})}>
+              {branchAction ? (
+                <button type="button" class="key quiet" onClick={() => toggleTimelineFold(view, branchAction.id)}>
+                  {branchAction.label}
+                </button>
+              ) : null}
+              {selection.details.map((line, index) =>
+                line.label === 'Links' ? (
+                  <div key={`${row.task.id}-detail-${index}`}>
+                    <strong class="timeline-detail-label">{line.label} · </strong>
+                    {line.actions.map(link => {
+                      const press = link.press
+                      if (press.action !== 'pr-open') return null
+                      const ref = press.ref
+                      return (
+                        <span key={`${row.task.id}-${link.label}`}>
+                          <button
+                            type="button"
+                            class="key"
+                            disabled={link.isOut}
+                            onClick={() =>
+                              void act(
+                                prMarkId(ref),
+                                press,
+                                undefined,
+                                pendingLocal({ kind: 'open', target: ref, name: link.label }),
+                              )
+                            }
+                          >
+                            {link.result?.state === 'pending' ? 'Opening…' : link.label}
+                          </button>
+                          {link.result?.state === 'done' ? <span class="tone-done">✓ Opened</span> : null}
+                          {link.result?.state === 'failed' ? (
+                            <span class="tone-error">{link.result.parts.find(part => part.error)?.error}</span>
+                          ) : null}
+                        </span>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div key={`${row.task.id}-detail-${index}`}>
+                    <strong class="timeline-detail-label">{line.label} · </strong>
+                    {line.text}
+                  </div>
+                ),
+              )}
+            </div>
+          ) : null}
+        </div>
+        {row.hasChildren && !hidden.has(row.task.id) ? (
+          <div class="timeline-children" data-motion={`closed-timeline-${row.task.id}`}>
+            {children(row.task.id).map(drawRow)}
+          </div>
+        ) : null}
+      </section>
+    )
+  }
+
+  return (
+    <main class="status-page timeline-page">
+      <div class="timeline-bars" style={{ padding: '0 14px 8px var(--text-x)' }}>
+        <div class="muted">Task plan · {page.summary}</div>
+        {page.bars.map(bar => (
+          <div class="timeline-bar" key={bar.id}>
+            <span class="muted">{bar.label}: </span>
+            {bar.parts.map((part, index) => (
+              <span
+                class={`tone-${part.state === 'stalled' ? 'error' : part.state === 'working' ? 'needsYou' : part.state === 'done' ? 'done' : 'muted'}`}
+                key={`${bar.id}-${index}`}
+              >
+                {part.mark.repeat(part.count)}
+              </span>
+            ))}
+          </div>
+        ))}
+      </div>
+      {page.isEmpty ? (
+        <div class="empty">
+          <h1>{page.empty.title}</h1>
+          <p>{page.empty.hint}</p>
+        </div>
+      ) : (
+        <div class="list timeline-list">{children(null).map(drawRow)}</div>
+      )}
+    </main>
+  )
+}
