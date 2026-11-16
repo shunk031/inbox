@@ -21,6 +21,7 @@ Part of [the look map](../looks.md#differences-on-purpose).
 | Demo for a recording | `/inbox demo recording` shows the demo without its notice line, its "Demo:" prefix and Hide demo. | Same as terminal. | A build made with `INBOX_DEMO_RECORDING=1` shows Show demo, and its demo leaves out the notice line. | Codex has no command, and its demo is reachable only from Show demo, which a release build leaves out. | `hooks/register.tsx:setDemo`, `codex/build.mjs:isDemoRecording` |
 | Look for mobile and VS Code | Used. | Not used. | Not used. | The engine's `surface` can be `mobile` or `vscode`, which nobody has checked. They get the terminal look. | `hooks/palettes.ts:lookOf` |
 | PRs empty hint (`prs-empty-hint`) | "Your open PRs show here, along with PRs this session links and the PR for its branch." | Same as terminal. | "Your open PRs show here, along with PRs this chat links and the PR for its branch." | The Codex app calls a conversation a chat. | `hooks/pr-rows.ts:prsEmptyHint`, `codex/src/tab-prs.tsx:Prs` |
+| `timeline` status mark | The mark follows the selection and tree glyphs in the task line. | Same as terminal. | The status mark stays in the left gutter. | Codex keeps marks in a fixed gutter across tabs so task text aligns with other rows. | `hooks/pane-timeline.tsx`, `codex/src/tab-timeline.tsx` |
 
 A refused Done notification stays visible in its task's Closed entry as
 "Done · Not sent: …", with Undo. The shared view decides whether recovery is

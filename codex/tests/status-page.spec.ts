@@ -236,8 +236,27 @@ test('the Codex tab draws the Status page from a next build’s view, and new ro
     assert.ok(root.querySelector('.row.selected') === null, 'a row is open')
     assert.deepEqual(tabLabels(), ['Status', 'Asks1', 'Finds1', 'Timeline', 'PRs'])
 
+    state.taskTree = [
+      taskTree[0]!,
+      { ...taskTree[1]!, parentId: 'omp-task' },
+      { ...taskTree[2]!, parentId: 'omp-task' },
+    ]
+    await afterPoll()
     key('4')
     assert.equal(shownTab(), 'Timeline')
+    assert.equal(root.querySelectorAll('.timeline-bars > div').length, 1)
+    assert.match(root.querySelector('.timeline-bars > div')?.textContent ?? '', /^Task plan · .* weight · .+/)
+    assert.equal(root.querySelectorAll('.timeline-bars').length, 1)
+    assert.match(root.querySelector('.timeline-node .content > div')?.textContent ?? '', /^omp panel · working · /)
+    assert.equal(
+      [...root.querySelectorAll('.timeline-node .content > div')][1]?.textContent,
+      '├─ Label · working · w1',
+    )
+    assert.equal(
+      [...root.querySelectorAll('.timeline-node .content > div')][2]?.textContent,
+      '└─ Page · done · w1',
+    )
+    assert.match(root.querySelector('.timeline-detail > div')?.textContent ?? '', /^└─ Detail · /)
     assert.deepEqual(
       [...root.querySelectorAll('.timeline-detail-label')].map(label => label.textContent?.replace(' · ', '')),
       ['Detail', 'Updated', 'Note', 'History', 'Links'],
@@ -249,6 +268,8 @@ test('the Codex tab draws the Status page from a next build’s view, and new ro
     assert.equal(drawnRows.get('timeline:label-task')?.track.state, 'opening')
     key('1')
     assert.equal(shownTab(), 'Status')
+    state.taskTree = taskTree
+    await afterPoll()
 
     key('3')
     assert.equal(shownTab(), 'Finds1')
