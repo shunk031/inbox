@@ -353,7 +353,8 @@ describe('items the agent recorded', () => {
     expect(reopened.ledger.items).toMatchObject([{ id: 'i2', from: 'record' }])
 
     for (const how of ['update', 'expired'] as const) {
-      const closed = closeItem(recorded(), 'i1', { how, outcome: '回答待ちのまま変更なし' }, 1500)
+      const outcome = how === 'update' ? 'done: 回答待ちのまま変更なし' : '回答待ちのまま変更なし'
+      const closed = closeItem(recorded(), 'i1', { how, outcome }, 1500)
       const result = recordItem(CLAUDE_CODE, closed, ask, 2000, TOOL_FIELDS)
       expect(result.result).toStartWith('Reopened.')
       expect(result.ledger.items).toMatchObject([{ id: 'i2', from: 'record' }])
@@ -361,6 +362,7 @@ describe('items the agent recorded', () => {
 
     const refusals = [
       [{ how: 'answered', outcome: 'Redis' }, 'Not recorded: the user answered it (Redis).'],
+      [{ how: 'update', outcome: 'はい' }, 'Not recorded: the user answered it (はい).'],
       [{ how: 'done', outcome: 'fixed' }, 'Not recorded: the user marked it done.'],
       [{ how: 'dismissed', outcome: 'dismissed' }, 'Not recorded: the user dismissed it.'],
     ] as const

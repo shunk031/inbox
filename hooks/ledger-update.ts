@@ -135,7 +135,7 @@ export function applyUpdate(ledger: Ledger, u: Update, now: number, turn: number
       addedIds.push(null)
       continue
     }
-    if (repeatsClosed(ledger.closed, a, promptAt, ledger.closedFindings)) {
+    if (repeatsClosed(ledger.closed, a, promptAt, isPersonsAnswer, ledger.closedFindings)) {
       addedIds.push(null)
       continue
     }
@@ -171,7 +171,7 @@ export function applyUpdate(ledger: Ledger, u: Update, now: number, turn: number
     const isKnown =
       items.some(i => restates(i.ask, work)) ||
       ledger.findings.some(f => !f.feedOwned && restates(f.title, work)) ||
-      repeatsClosed(ledger.closed, { ...todo, helps: [] }, promptAt)
+      repeatsClosed(ledger.closed, { ...todo, helps: [] }, promptAt, isPersonsAnswer)
     if (isKnown) continue
     items.push({ ...todo, helps: [], id: `i${nextId}`, turn, at: now, from: 'update' })
     nextId += 1
@@ -367,9 +367,9 @@ export function addAgentItem(
     }
   }
   const recentClosed = ledger.closed.slice(-CLOSED_CONTEXT_LIMIT)
-  const reopened = recentClosed.findLast(c => canAskAgain(c) && repeatsSettled(c, candidate))
+  const reopened = recentClosed.findLast(c => canAskAgain(c, isPersonsAnswer) && repeatsSettled(c, candidate))
   const repeated =
-    recentClosed.findLast(c => !canAskAgain(c) && repeatsSettled(c, candidate)) ??
+    recentClosed.findLast(c => !canAskAgain(c, isPersonsAnswer) && repeatsSettled(c, candidate)) ??
     dismissedFindingOf(ledger.closedFindings, entry.ask)
   if (repeated) return { ledger, is: 'closed', record: repeated }
 

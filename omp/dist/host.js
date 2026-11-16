@@ -372,14 +372,14 @@ function sameAsk(a, b) {
 function matchOpen(items, a, sameBatch = new Set) {
   return items.findIndex((i) => i.id === a.label || sameAsk(i.ask, a.ask) || !sameBatch.has(i.id) && i.kind === a.kind && restates(i.ask, a.ask));
 }
-function repeatsClosed(closed, a, since, closedFindings = []) {
+function repeatsClosed(closed, a, since, isPersonsAnswer, closedFindings = []) {
   const context = closed.slice(-CLOSED_CONTEXT_LIMIT);
   const recent = context.filter((c) => c.at >= since && !isAskedForChoices(c));
-  const settled = context.filter((c) => c.at < since && !canAskAgain(c));
+  const settled = context.filter((c) => c.at < since && !canAskAgain(c, isPersonsAnswer));
   return matchOpen(recent, a) >= 0 || a.label !== null && recent.some((c) => c.label === a.label) || settled.some((c) => repeatsSettled(c, a)) || dismissedFindingOf(closedFindings, a.ask) !== undefined;
 }
-function canAskAgain(c) {
-  return c.how === "expired" || c.how === "claude" || c.how === "update";
+function canAskAgain(c, isPersonsAnswer) {
+  return c.how === "expired" || c.how === "claude" || c.how === "update" && !isPersonsAnswer(c.outcome);
 }
 function dismissedFindingOf(closedFindings, ask) {
   return closedFindings.findLast((f) => f.how === "dismissed" && raisesOnly(f.title, ask));
@@ -2263,7 +2263,7 @@ function applyUpdate(ledger, u, now, turn, promptAt = now) {
       addedIds.push(null);
       continue;
     }
-    if (repeatsClosed(ledger.closed, a, promptAt, ledger.closedFindings)) {
+    if (repeatsClosed(ledger.closed, a, promptAt, isPersonsAnswer, ledger.closedFindings)) {
       addedIds.push(null);
       continue;
     }
@@ -2296,7 +2296,7 @@ function applyUpdate(ledger, u, now, turn, promptAt = now) {
       options: ["Proceed", "Not yet"],
       rec: null
     };
-    const isKnown = items.some((i) => restates(i.ask, work)) || ledger.findings.some((f) => !f.feedOwned && restates(f.title, work)) || repeatsClosed(ledger.closed, { ...todo, helps: [] }, promptAt);
+    const isKnown = items.some((i) => restates(i.ask, work)) || ledger.findings.some((f) => !f.feedOwned && restates(f.title, work)) || repeatsClosed(ledger.closed, { ...todo, helps: [] }, promptAt, isPersonsAnswer);
     if (isKnown)
       continue;
     items.push({ ...todo, helps: [], id: `i${nextId}`, turn, at: now, from: "update" });
@@ -2411,8 +2411,8 @@ function addAgentItem(ledger, entry, now) {
     };
   }
   const recentClosed = ledger.closed.slice(-CLOSED_CONTEXT_LIMIT);
-  const reopened = recentClosed.findLast((c) => canAskAgain(c) && repeatsSettled(c, candidate));
-  const repeated = recentClosed.findLast((c) => !canAskAgain(c) && repeatsSettled(c, candidate)) ?? dismissedFindingOf(ledger.closedFindings, entry.ask);
+  const reopened = recentClosed.findLast((c) => canAskAgain(c, isPersonsAnswer) && repeatsSettled(c, candidate));
+  const repeated = recentClosed.findLast((c) => !canAskAgain(c, isPersonsAnswer) && repeatsSettled(c, candidate)) ?? dismissedFindingOf(ledger.closedFindings, entry.ask);
   if (repeated)
     return { ledger, is: "closed", record: repeated };
   const id = `i${ledger.nextId}`;
@@ -6831,7 +6831,7 @@ function recordItem(host, ledger, input, now, fields = V0_3_TOOL_FIELDS) {
   if (r.is === "source-managed")
     return unchanged(ledger, "Not recorded: a matching task is managed by the active work source and was left unchanged.");
   if (r.is === "closed")
-    return unchanged(ledger, "title" in r.record ? `Not recorded: the user dismissed the finding "${r.record.title}", which this raises. Ask about it only if they bring it up.` : `Not recorded: ${closedHow(r.record)}. Ask it again only if they bring it up.`);
+    return unchanged(ledger, "title" in r.record ? `Not recorded: the user dismissed the finding "${r.record.title}", which this raises. Ask about it only if they bring it up.` : `Not recorded: ${closedHow(r.record, true)}. Ask it again only if they bring it up.`);
   const body = input.kind === "question" ? questionBody(input, options) : {};
   const before = r.ledger.items.find((i) => i.id === r.id);
   const after = before && withBody(before, body);
@@ -6883,7 +6883,7 @@ function recordFinding(host, ledger, input, now) {
     personLine: `${kind === "opportunity" ? "Opportunity" : "Issue"}: ${title}`
   };
 }
-function closedHow(c) {
+function closedHow(c, asRecordedAnswer = false) {
   switch (c.how) {
     case "answered":
       return `the user answered it (${c.outcome})`;
@@ -6896,7 +6896,7 @@ function closedHow(c) {
     case "claude":
       return "the agent closed it earlier";
     case "update":
-      return `the inbox closed it (${c.outcome})`;
+      return asRecordedAnswer && isPersonsAnswer(c.outcome) ? `the user answered it (${c.outcome})` : `the inbox closed it (${c.outcome})`;
   }
 }
 function isAfterCompareThisTurn(id, at, presses) {

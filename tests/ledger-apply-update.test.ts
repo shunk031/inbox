@@ -94,7 +94,8 @@ describe('applyUpdate', () => {
     ).ledger
     const reply = parseReply('NEW: decide | - | Which cache should the API use? | Redis / Memcached | -')!
     for (const how of ['update', 'claude', 'expired'] as const) {
-      const closed = closeItem(opened, 'i1', { how, outcome: 'no answer yet' }, 2)
+      const outcome = how === 'update' ? 'done: no answer yet' : 'no answer yet'
+      const closed = closeItem(opened, 'i1', { how, outcome }, 2)
       const next = applyUpdate({ ...closed, turn: 2 }, reply, 4, 2, 3)
       expect(next.items).toMatchObject([{ id: 'i2', from: 'update' }])
     }

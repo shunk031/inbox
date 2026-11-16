@@ -332,14 +332,14 @@ function matchOpen(items, a, sameBatch = /* @__PURE__ */ new Set()) {
     (i) => i.id === a.label || sameAsk(i.ask, a.ask) || !sameBatch.has(i.id) && i.kind === a.kind && restates(i.ask, a.ask)
   );
 }
-function repeatsClosed(closed, a, since, closedFindings = []) {
+function repeatsClosed(closed, a, since, isPersonsAnswer2, closedFindings = []) {
   const context = closed.slice(-CLOSED_CONTEXT_LIMIT);
   const recent = context.filter((c) => c.at >= since && !isAskedForChoices(c));
-  const settled = context.filter((c) => c.at < since && !canAskAgain(c));
+  const settled = context.filter((c) => c.at < since && !canAskAgain(c, isPersonsAnswer2));
   return matchOpen(recent, a) >= 0 || a.label !== null && recent.some((c) => c.label === a.label) || settled.some((c) => repeatsSettled(c, a)) || dismissedFindingOf(closedFindings, a.ask) !== void 0;
 }
-function canAskAgain(c) {
-  return c.how === "expired" || c.how === "claude" || c.how === "update";
+function canAskAgain(c, isPersonsAnswer2) {
+  return c.how === "expired" || c.how === "claude" || c.how === "update" && !isPersonsAnswer2(c.outcome);
 }
 function dismissedFindingOf(closedFindings, ask) {
   return closedFindings.findLast((f) => f.how === "dismissed" && raisesOnly(f.title, ask));
@@ -767,7 +767,7 @@ function applyUpdate(ledger, u, now, turn, promptAt = now) {
       addedIds.push(null);
       continue;
     }
-    if (repeatsClosed(ledger.closed, a, promptAt, ledger.closedFindings)) {
+    if (repeatsClosed(ledger.closed, a, promptAt, isPersonsAnswer, ledger.closedFindings)) {
       addedIds.push(null);
       continue;
     }
@@ -800,7 +800,7 @@ function applyUpdate(ledger, u, now, turn, promptAt = now) {
       options: ["Proceed", "Not yet"],
       rec: null
     };
-    const isKnown = items.some((i) => restates(i.ask, work)) || ledger.findings.some((f) => !f.feedOwned && restates(f.title, work)) || repeatsClosed(ledger.closed, { ...todo, helps: [] }, promptAt);
+    const isKnown = items.some((i) => restates(i.ask, work)) || ledger.findings.some((f) => !f.feedOwned && restates(f.title, work)) || repeatsClosed(ledger.closed, { ...todo, helps: [] }, promptAt, isPersonsAnswer);
     if (isKnown) continue;
     items.push({ ...todo, helps: [], id: `i${nextId}`, turn, at: now, from: "update" });
     nextId += 1;
