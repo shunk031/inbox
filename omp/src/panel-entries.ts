@@ -57,6 +57,8 @@ import {
 import type { Button, Entry, Group, Lead } from './panel-lines'
 import type { PanelScreen, PanelUi } from './panel'
 
+const TIMELINE_MARKS: Record<string, string> = { done: '✓', working: '●', stalled: '!', 'waits-on-other': '◌' }
+
 /** The question before omp installs the inbox's Herdr mod, as a row its buttons can focus, while it shows. */
 function herdrAskEntries(screen: PanelScreen): Entry[] {
   const banner = herdrAskBanner(screen.herdrAsk ?? null)
@@ -429,7 +431,6 @@ function timelineEntries(screen: PanelScreen, ui: PanelUi): Entry[] {
 
   for (const row of page.rows) {
     const selected = page.selected?.row.task.id === row.task.id ? page.selected : null
-    const isSelected = selected !== null
     const buttons: Button[] = row.actions.map(action => ({
       label: action.label,
       key: action.hotkey ?? null,
@@ -452,19 +453,11 @@ function timelineEntries(screen: PanelScreen, ui: PanelUi): Entry[] {
             isRecommended: false,
             isFollowUp: false,
             isOut: link.isOut,
+            result: link.result,
           })),
         )
     const branch = row.depth === 0 ? '' : `${row.branch === 'last' ? '└─' : '├─'} `
-    const marker =
-      row.status === 'done'
-        ? '✓'
-        : row.status === 'working'
-          ? '●'
-          : row.status === 'stalled'
-            ? '!'
-            : row.status === 'waits-on-other'
-              ? '◌'
-              : '·'
+    const marker = TIMELINE_MARKS[row.status] ?? '·'
     out.push({
       kind: 'row',
       line: {
@@ -478,15 +471,13 @@ function timelineEntries(screen: PanelScreen, ui: PanelUi): Entry[] {
         },
         title: row.task.title,
         status: { text: `${row.statusLabel} · ${row.measure}`, tone: null, rest: '', separator: ' · ' },
-        detail: null,
         body: body || null,
         buttons,
-        isDetailShown: isSelected,
         isWaiting: false,
       },
     })
-    row.warnings.forEach((warning, index) =>
-      out.push({
+    out.push(
+      ...row.warnings.map((warning, index): Entry => ({
         kind: 'row',
         line: {
           ...blankLine(`${row.task.id}:warning:${index}`),
@@ -494,9 +485,8 @@ function timelineEntries(screen: PanelScreen, ui: PanelUi): Entry[] {
           lead: { text: '└─ ⚠', tone: 'error', padMark: false },
           title: warning,
           isStatic: true,
-          isWaiting: false,
         },
-      }),
+      })),
     )
   }
   return out

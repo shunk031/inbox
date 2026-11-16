@@ -1,5 +1,5 @@
 import type { GoalPart } from './panel-goal'
-import type { FoldKind } from '../../types'
+import type { FoldKind, LocalResult } from '../../types'
 import type { PrAction } from '../../hooks/pr-press'
 import {
   closedLineAction,
@@ -43,6 +43,8 @@ export type Button = {
   isOut?: boolean
   /** It holds up nothing, so it draws dim until focused. */
   isQuiet?: boolean
+  /** The outcome of a Timeline link's shared Local open action. */
+  result?: LocalResult | null
 }
 
 /** What a button draws. A Status button presses nothing the host runs, so it has a face and no `press`. */

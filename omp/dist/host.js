@@ -9062,6 +9062,7 @@ var isSelectable = (line) => line.settled === null && !line.isStatic;
 var isShut = (line, ui) => line.isFolded && ui.opened !== line.id;
 
 // src/panel-entries.ts
+var TIMELINE_MARKS = { done: "\u2713", working: "\u25CF", stalled: "!", "waits-on-other": "\u25CC" };
 function herdrAskEntries(screen) {
   const banner = herdrAskBanner(screen.herdrAsk ?? null);
   if (!banner)
@@ -9410,7 +9411,6 @@ function timelineEntries(screen, ui) {
     ];
   for (const row of page.rows) {
     const selected = page.selected?.row.task.id === row.task.id ? page.selected : null;
-    const isSelected = selected !== null;
     const buttons = row.actions.map((action) => ({
       label: action.label,
       key: action.hotkey ?? null,
@@ -9430,10 +9430,11 @@ function timelineEntries(screen, ui) {
           press: link.press,
           isRecommended: false,
           isFollowUp: false,
-          isOut: link.isOut
+          isOut: link.isOut,
+          result: link.result
         })));
     const branch = row.depth === 0 ? "" : `${row.branch === "last" ? "\u2514\u2500" : "\u251C\u2500"} `;
-    const marker = row.status === "done" ? "\u2713" : row.status === "working" ? "\u25CF" : row.status === "stalled" ? "!" : row.status === "waits-on-other" ? "\u25CC" : "\xB7";
+    const marker = TIMELINE_MARKS[row.status] ?? "\xB7";
     out.push({
       kind: "row",
       line: {
@@ -9447,24 +9448,21 @@ function timelineEntries(screen, ui) {
         },
         title: row.task.title,
         status: { text: `${row.statusLabel} \xB7 ${row.measure}`, tone: null, rest: "", separator: " \xB7 " },
-        detail: null,
         body: body || null,
         buttons,
-        isDetailShown: isSelected,
         isWaiting: false
       }
     });
-    row.warnings.forEach((warning, index) => out.push({
+    out.push(...row.warnings.map((warning, index) => ({
       kind: "row",
       line: {
         ...blankLine(`${row.task.id}:warning:${index}`),
         depth: row.depth,
         lead: { text: "\u2514\u2500 \u26A0", tone: "error", padMark: false },
         title: warning,
-        isStatic: true,
-        isWaiting: false
+        isStatic: true
       }
-    }));
+    })));
   }
   return out;
 }
@@ -9675,7 +9673,13 @@ function pageKey(screen, ui, key, now) {
       return null;
     if (key === "j" || key === "k") {
       const id = moveTimelineSelection(page.rows, ui.timelineSelection, key === "k" ? -1 : 1);
-      return { ui: { ...ui, selectedId: id, timelineSelection: id, detailTop: 0, focus: null } };
+      const target = linesOf(entriesOf(screen, ui, ui.tab, now)).find((item) => item.id === id);
+      const select = target?.buttons.find((button) => button.press.action === "timeline-select" && button.press.id === id);
+      if (target && select)
+        return activate(screen, ui, target, select, now);
+      if (!ui.timelineSelection && id === row.task.id)
+        return { ui: { ...withSelection(ui, id), timelineSelection: id } };
+      return null;
     }
     const line = linesOf(entriesOf(screen, ui, ui.tab, now)).find((item) => item.id === row.task.id);
     if (!line)
@@ -9746,14 +9750,15 @@ function bannerLines(b, width, s) {
   return boxed(lines, b.tone, width, s);
 }
 function buttonCell(b, isFocused, s, mark = "") {
+  const result = b.result?.state === "done" ? s.tone("done", " \u2713 Opened") : b.result?.state === "failed" ? s.tone("error", b.result.parts.find((part) => part.error)?.error ?? "") : "";
   if (isFocused)
-    return s.inverse(b.isOut ? s.dim(` \u21B5 ${b.label}${mark} `) : s.bold(` \u21B5 ${b.label}${mark} `));
+    return s.inverse(b.isOut ? s.dim(` \u21B5 ${b.label}${mark} `) : s.bold(` \u21B5 ${b.label}${mark} `)) + result;
   if (b.isOut && !b.isFollowUp)
-    return s.dim(b.key ? ` ${b.key} ${b.label}${mark} ` : ` ${b.label}${mark} `);
+    return s.dim(b.key ? ` ${b.key} ${b.label}${mark} ` : ` ${b.label}${mark} `) + result;
   if (b.isFollowUp || b.isQuiet)
-    return s.dim(b.key ? ` ${b.key} ${b.label} ` : ` ${b.label} `);
+    return s.dim(b.key ? ` ${b.key} ${b.label} ` : ` ${b.label} `) + result;
   const label = (b.isRecommended ? s.underline(b.label) : b.label) + mark;
-  return b.key ? ` ${s.bold(b.key)} ${label} ` : ` ${label} `;
+  return (b.key ? ` ${s.bold(b.key)} ${label} ` : ` ${label} `) + result;
 }
 function labelMark(b, room, s) {
   const fits = (label) => visibleLength(buttonCell({ ...b, label }, true, s)) <= room;

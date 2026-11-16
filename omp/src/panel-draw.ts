@@ -50,12 +50,18 @@ export function bannerLines(b: BannerView, width: number, s: Style): string[] {
 }
 
 function buttonCell(b: ButtonFace, isFocused: boolean, s: Style, mark = ''): string {
-  if (isFocused) return s.inverse(b.isOut ? s.dim(` ↵ ${b.label}${mark} `) : s.bold(` ↵ ${b.label}${mark} `))
-  if (b.isOut && !b.isFollowUp) return s.dim(b.key ? ` ${b.key} ${b.label}${mark} ` : ` ${b.label}${mark} `)
-  if (b.isFollowUp || b.isQuiet) return s.dim(b.key ? ` ${b.key} ${b.label} ` : ` ${b.label} `)
+  const result =
+    b.result?.state === 'done'
+      ? s.tone('done', ' ✓ Opened')
+      : b.result?.state === 'failed'
+        ? s.tone('error', b.result.parts.find(part => part.error)?.error ?? '')
+        : ''
+  if (isFocused) return s.inverse(b.isOut ? s.dim(` ↵ ${b.label}${mark} `) : s.bold(` ↵ ${b.label}${mark} `)) + result
+  if (b.isOut && !b.isFollowUp) return s.dim(b.key ? ` ${b.key} ${b.label}${mark} ` : ` ${b.label}${mark} `) + result
+  if (b.isFollowUp || b.isQuiet) return s.dim(b.key ? ` ${b.key} ${b.label} ` : ` ${b.label} `) + result
   const label = (b.isRecommended ? s.underline(b.label) : b.label) + mark
 
-  return b.key ? ` ${s.bold(b.key)} ${label} ` : ` ${label} `
+  return (b.key ? ` ${s.bold(b.key)} ${label} ` : ` ${label} `) + result
 }
 
 /** What `actionLabel` adds to the label, measured on the focused cell, the widest form, alone on a line. */

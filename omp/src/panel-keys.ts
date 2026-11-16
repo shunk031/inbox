@@ -239,7 +239,13 @@ function pageKey(screen: PanelScreen, ui: PanelUi, key: string, now: number): Ke
     if (!row) return null
     if (key === 'j' || key === 'k') {
       const id = moveTimelineSelection(page.rows, ui.timelineSelection, key === 'k' ? -1 : 1)
-      return { ui: { ...ui, selectedId: id, timelineSelection: id, detailTop: 0, focus: null } }
+      const target = linesOf(entriesOf(screen, ui, ui.tab, now)).find(item => item.id === id)
+      const select = target?.buttons.find(button => button.press.action === 'timeline-select' && button.press.id === id)
+      if (target && select) return activate(screen, ui, target, select, now)
+      // With no saved cursor, the shared page already selects its first row as a fallback; persist that selection.
+      if (!ui.timelineSelection && id === row.task.id)
+        return { ui: { ...withSelection(ui, id), timelineSelection: id } }
+      return null
     }
     const line = linesOf(entriesOf(screen, ui, ui.tab, now)).find(item => item.id === row.task.id)
     if (!line) return null
