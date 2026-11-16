@@ -37,6 +37,7 @@ import { FINDING_GROUPS, HELP_COPY, helpKeys, markLegend, tabLegend } from '../.
 import { isDrawnInPlace, runningMark } from '../../hooks/timing'
 import { isRowTab } from '../../hooks/tabs'
 import { statusKeyRows } from '../../hooks/status-keys'
+import { timelinePage } from '../../hooks/timeline-page'
 import { goalSection, setGoal } from './panel-goal'
 import { unfoldedRows } from '../../hooks/status-page-parts'
 import type { StatusPage } from '../../hooks/status-page'
@@ -385,7 +386,7 @@ function pageEntries(page: StatusPage, typing: string | null, isUnfolded: (id: s
 
 /** Help in place of the tab's lines: the keys the panel takes, what each mark means, then each tab's symbol. */
 function helpEntries(screen: PanelScreen, tab: ShownTab): Entry[] {
-  const keys = helpKeys('omp', screen.isNextBuild === true, tab, statusKeyRows(screen.view.statusPage).length > 0)
+  const keys = helpKeys('omp', screen.isNextBuild === true, tab, statusKeyRows(screen.view.statusPage).length > 0, true)
   const column = Math.max(...keys.map(k => cellWidth(k.keys))) + 2
 
   return [
@@ -396,12 +397,109 @@ function helpEntries(screen: PanelScreen, tab: ShownTab): Entry[] {
     ...markLegend(screen.isNextBuild === true).map((entry): Entry => ({ kind: 'legend', entry })),
     { kind: 'note', text: '' },
     { kind: 'heading', text: HELP_COPY.tabs },
-    ...tabLegend(screen.isNextBuild === true).map((key): Entry => ({ kind: 'key', key, column: Math.max(column, 4) })),
+    ...tabLegend(screen.isNextBuild === true, true).map((key): Entry => ({
+      kind: 'key',
+      key,
+      column: Math.max(column, 4),
+    })),
   ]
+}
+
+function timelineEntries(screen: PanelScreen, ui: PanelUi): Entry[] {
+  const page = timelinePage(screen.view.timeline, ui.timelineSelection, ui.timelineFolded, screen.view.lastActions)
+  const [taskPlanBar, ...streamBars] = page.bars
+  const taskPlan = taskPlanBar?.parts.map(part => part.mark.repeat(part.count)).join('') ?? ''
+  const out: Entry[] = [
+    {
+      kind: 'note' as const,
+      text: `Task plan · ${page.summary}${taskPlan ? ` · ${taskPlan}` : ''}`,
+      isPlain: true,
+    },
+    ...streamBars.map(bar => ({
+      kind: 'note' as const,
+      text: `${bar.label}: ${bar.parts.map(part => part.mark.repeat(part.count)).join('')}`,
+    })),
+  ]
+  if (page.isEmpty)
+    return [
+      ...out,
+      { kind: 'note', text: page.empty.title, isStrong: true },
+      { kind: 'note', text: page.empty.hint, isWhole: true },
+    ]
+
+  for (const row of page.rows) {
+    const selected = page.selected?.row.task.id === row.task.id ? page.selected : null
+    const isSelected = selected !== null
+    const buttons: Button[] = row.actions.map(action => ({
+      label: action.label,
+      key: action.hotkey ?? null,
+      press: { action: action.action === 'select' ? 'timeline-select' : 'timeline-toggle', id: action.id },
+      isRecommended: false,
+      isFollowUp: false,
+      isQuiet: action.emphasis === 'quiet',
+    }))
+    const detailLines = selected?.details ?? []
+    const body = detailLines
+      .map(line => (line.label === 'Links' ? 'Links ·' : `${line.label} · ${line.text}`))
+      .join('\n')
+    for (const line of detailLines) {
+      if (line.label === 'Links')
+        buttons.push(
+          ...line.actions.map(link => ({
+            label: link.result?.state === 'pending' ? 'Opening…' : link.label,
+            key: null,
+            press: link.press,
+            isRecommended: false,
+            isFollowUp: false,
+            isOut: link.isOut,
+          })),
+        )
+    }
+    const branch = row.depth === 0 ? '' : `${row.branch === 'last' ? '└─' : '├─'} `
+    const marker =
+      row.status === 'done'
+        ? '✓'
+        : row.status === 'working'
+          ? '●'
+          : row.status === 'stalled'
+            ? '!'
+            : row.status === 'waits-on-other'
+              ? '◌'
+              : '·'
+    out.push({
+      kind: 'row',
+      line: {
+        ...blankLine(row.task.id),
+        depth: row.depth,
+        lead: { text: marker, tone: row.status === 'stalled' ? 'error' : row.status === 'done' ? 'done' : 'needsYou' },
+        title: `${branch}${row.task.title}`,
+        status: { text: `${row.statusLabel} · ${row.measure}`, tone: null, rest: '' },
+        detail: null,
+        body: body || null,
+        buttons,
+        isDetailShown: isSelected,
+        isWaiting: false,
+      },
+    })
+    if (row.warnings.length > 0)
+      out.push({
+        kind: 'row',
+        line: {
+          ...blankLine(`${row.task.id}:warning`),
+          depth: row.depth + 1,
+          lead: { text: '!', tone: 'error' },
+          title: row.warnings.join(' · '),
+          isStatic: true,
+          isWaiting: false,
+        },
+      })
+  }
+  return out
 }
 
 export function entriesOf(screen: PanelScreen, ui: PanelUi, tab: ShownTab, now: number): Entry[] {
   if (ui.isHelpShown && tab === ui.tab) return helpEntries(screen, tab)
+  if (tab === 'timeline') return timelineEntries(screen, ui)
   if (!isRowTab(tab)) return pageEntries(screen.view.statusPage, ui.typing, id => ui.statusUnfolded.includes(id))
 
   return tab === 'prs' ? prEntries(screen, ui, now) : rowEntries(screen, ui, tab)

@@ -8,6 +8,7 @@ import { NO_HOLDS, SETTLED_MS } from '../../hooks/timing'
 import { shownTabs } from '../../hooks/tabs'
 import { rowKeyPlan } from '../../hooks/action-plan'
 import { answeringOf, herdrAskOf } from '../../hooks/herdr-ask'
+import { entriesOf } from '../src/panel-entries'
 import type { RowView } from '../../hooks/rows'
 import { sessionView } from '../../hooks/session-view'
 import { demoState } from '../src/demo'
@@ -27,6 +28,8 @@ import {
   plannedLabels,
   screenOf,
   strip,
+  taskNode,
+  taskScreen,
   text,
 } from './panel-harness'
 
@@ -46,6 +49,63 @@ test('a selected row draws its buttons in the shared key plan order', () => {
       from = at + label.length
     }
   }
+})
+
+test('Timeline draws the shared empty state, task details and planned buttons, and moves and folds branches', () => {
+  const empty = taskScreen([])
+  const emptyText = text(empty, { ...INITIAL_UI, tab: 'timeline' })
+  expect(emptyText).toContain('No tasks have been recorded for this session.')
+
+  const root = taskNode('root', 'Build the view', 'working', NOW - 60_000, {
+    detail: 'Keep the task-tree view compact.',
+  })
+  root.links = { pr: 'https://github.com/example/project/pull/4', issue: 'https://github.com/example/project/issues/7' }
+  root.notes = ['Preserve the title.']
+  root.history = [{ at: NOW - 60_000, source: 'agent', kind: 'updated', detail: 'Added the panel view.' }]
+  const first = taskNode('first', 'Read the design', 'done', NOW - 60_000, { parentId: 'root' })
+  const second = taskNode('second', 'Draw the panel', 'queued', NOW, { parentId: 'root' })
+  const screen = taskScreen([root, first, second])
+  screen.view.timeline.rows[0]!.warnings.push('PR merged, task still open')
+  const ui: PanelUi = { ...INITIAL_UI, tab: 'timeline', timelineSelection: 'root', selectedId: 'root' }
+  const rootLine = entriesOf(screen, ui, 'timeline', NOW).find(
+    entry => entry.kind === 'row' && entry.line.id === 'root',
+  )
+  expect(rootLine?.kind === 'row' ? rootLine.line.buttons.map(button => button.label) : []).toEqual([
+    'Close branch',
+    'Open PR',
+    'Open issue',
+  ])
+  const childLine = entriesOf(screen, ui, 'timeline', NOW).find(
+    entry => entry.kind === 'row' && entry.line.id === 'first',
+  )
+  expect(childLine?.kind === 'row' ? childLine.line.buttons.map(button => button.label) : []).toEqual(['Select'])
+  const detailed = text(screen, ui, 100)
+  const planLines = detailed.split('\n').filter(line => line.includes('Task plan'))
+  expect(planLines).toHaveLength(1)
+  const detailLabels = ['Detail ·', 'Updated ·', 'Note ·', 'History ·', 'Links ·', 'Open PR', 'Open issue']
+  const detailPositions = detailLabels.map(label => detailed.indexOf(label))
+  expect(detailPositions.every(position => position >= 0)).toBe(true)
+  expect(detailPositions).toEqual([...detailPositions].sort((left, right) => left - right))
+  expect(detailed).not.toContain('Updated 1m')
+  const shown = text(screen, ui, 42)
+  expect(shown).toContain('Task plan')
+  expect(shown).toContain('Note · Preserve the title.')
+  expect(shown).toContain('PR merged, task still open')
+  expect(shown).toContain('├─ Read the design')
+  expect(shown).toContain('└─ Draw the panel')
+  expect(shown.split('\n').every(line => line.length <= 42)).toBe(true)
+
+  expect(handleKey(screen, { ...ui, timelineSelection: null, selectedId: null }, 'j', NOW).ui.timelineSelection).toBe(
+    'root',
+  )
+  expect(handleKey(screen, { ...ui, focus: { rowId: 'root', index: 0 } }, 'enter', NOW).ui.timelineFolded).toEqual([
+    'root',
+  ])
+  expect(handleKey(screen, { ...ui, timelineFolded: ['root'] }, 'l', NOW).ui.timelineFolded).toEqual([])
+  expect(handleKey(screen, { ...ui, focus: { rowId: 'root', index: 1 } }, 'enter', NOW).press).toEqual({
+    action: 'pr-open',
+    ref: 'https://github.com/example/project/pull/4',
+  })
 })
 
 test('a feed finding draws in the Progress group', () => {
@@ -201,9 +261,11 @@ test('the report reader scrolls with arrows and j/k, and b or Escape returns to 
 for (const isNextBuild of [false, true])
   test(`on a ${isNextBuild ? 'next' : 'release'} build, Tab and Shift+Tab cycle through the build's tabs in order, and each digit picks its tab`, () => {
     const screen = screenOf({ isNextBuild })
-    const tabs = shownTabs(isNextBuild)
+    const tabs = shownTabs(isNextBuild, true)
     const ids = tabs.map(t => t.id)
     expect(ids.includes('overview')).toBe(isNextBuild)
+    expect(ids.includes('timeline')).toBe(isNextBuild)
+    if (isNextBuild) expect(ids).toEqual(['overview', 'needsYou', 'findings', 'prs', 'timeline'])
     const start = ids.indexOf(INITIAL_UI.tab)
     const cycled = ids.map((_, n) => keys(screen, INITIAL_UI, ...ids.slice(0, n).map(() => 'tab')).tab)
     expect(cycled).toEqual([...ids.slice(start), ...ids.slice(0, start)])

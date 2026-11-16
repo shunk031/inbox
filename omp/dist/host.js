@@ -3761,11 +3761,18 @@ var DOCUMENT_KEYS = [
   { keys: "v", does: "Read the selected report, if available" },
   { keys: "b", does: "Return to the inbox from a report" }
 ];
+var TIMELINE_KEYS = [
+  { keys: "j k", does: "Select a task" },
+  { keys: "h l", does: "Close or open a task branch" },
+  { keys: "enter", does: "Select a task or open its link" },
+  { keys: "\u2191 \u2193", does: "Scroll the selected task details" }
+];
 function helpKeys(look, isNextBuild, tab, hasStatusButtons, includeTimeline = false) {
   const tabKeys = shownTabs(isNextBuild, includeTimeline).map((t) => t.hotkey).join(" ");
   const hasRows = isRowTab(tab);
   const hasDocumentRows = tab === "needsYou" || tab === "findings";
   const selectsStatusRows = tab === "overview" && hasStatusButtons;
+  const isTimeline = tab === "timeline";
   const switchTabs = { keys: tabKeys, does: "Switch tabs" };
   const prTabKeys = tab === "prs" ? PR_TAB_HELP_KEYS : [];
   const undoKey = { keys: UNDO_KEY, does: "Undo the last close" };
@@ -3775,6 +3782,7 @@ function helpKeys(look, isNextBuild, tab, hasStatusButtons, includeTimeline = fa
     case "terminal":
       return [
         switchTabs,
+        ...isTimeline ? TIMELINE_KEYS : [],
         ...hasRows || selectsStatusRows ? [{ keys: "j k", does: "Select the next or previous row" }] : [],
         ...hasRows ? [undoKey] : [],
         ...hasRows || selectsStatusRows ? [
@@ -3790,6 +3798,7 @@ function helpKeys(look, isNextBuild, tab, hasStatusButtons, includeTimeline = fa
     case "codex":
       return [
         switchTabs,
+        ...isTimeline ? TIMELINE_KEYS : [],
         ...hasRows ? [
           {
             keys: "j k \u2191 \u2193",
@@ -3805,6 +3814,7 @@ function helpKeys(look, isNextBuild, tab, hasStatusButtons, includeTimeline = fa
     case "omp":
       return [
         { keys: `tab ${tabKeys}`, does: "Switch tabs" },
+        ...isTimeline ? TIMELINE_KEYS : [],
         ...hasRows ? [
           { keys: "\u2191 \u2193 j k", does: hasDocumentRows ? "Move between rows or scroll a report" : "Move between rows" },
           ...hasDocumentRows ? DOCUMENT_KEYS : [],
@@ -3813,7 +3823,7 @@ function helpKeys(look, isNextBuild, tab, hasStatusButtons, includeTimeline = fa
           { keys: "t", does: "Reply to the selected row" },
           undoKey,
           ...prTabKeys
-        ] : [
+        ] : isTimeline ? [] : [
           ...selectsStatusRows ? [
             { keys: "j k", does: "Select the next or previous row with a button" },
             { keys: "\u2190 \u2192", does: "Pick a button" },
@@ -7698,6 +7708,14 @@ var BAR_MARKS = {
   queued: "\xB7"
 };
 var BAR_STATES = Object.keys(BAR_MARKS);
+var HISTORY_TEXT = {
+  created: "Task created",
+  updated: "Task updated",
+  moved: "Task moved",
+  completed: "Task completed",
+  note: "Note added",
+  imported: "Task imported"
+};
 function timelineTask(task, now) {
   const { createdAt: _createdAt, updatedAt, history, ...details } = task;
   return {
@@ -7762,6 +7780,100 @@ function timelineData(tree, segments, stalledSince, warnings, now) {
     rows,
     bars
   };
+}
+function timelineLinkPlan(task, lastActions) {
+  return ["pr", "issue"].flatMap((kind) => {
+    const url = task.links?.[kind];
+    if (!url)
+      return [];
+    const result = lastActions[prMarkId(url)]?.result ?? null;
+    return [
+      {
+        press: { action: "pr-open", ref: url },
+        label: kind === "pr" ? "Open PR" : "Open issue",
+        kind: "local",
+        emphasis: "normal",
+        icon: "open",
+        isOut: result?.state === "pending",
+        result
+      }
+    ];
+  });
+}
+function timelinePage(data, selectedId, folded, lastActions = {}) {
+  const nodes = new Map(data.rows.map((row) => [row.task.id, row]));
+  const foldedIds = new Set(folded);
+  const rows = data.rows.filter((row) => {
+    let parent = row.task.parentId;
+    while (parent !== null) {
+      if (foldedIds.has(parent))
+        return false;
+      parent = nodes.get(parent)?.task.parentId ?? null;
+    }
+    return true;
+  });
+  let selected = rows.find((row) => row.task.id === selectedId);
+  if (!selected && selectedId) {
+    let parent = nodes.get(selectedId)?.task.parentId ?? null;
+    while (parent !== null && !selected) {
+      selected = rows.find((row) => row.task.id === parent);
+      parent = nodes.get(parent)?.task.parentId ?? null;
+    }
+  }
+  selected ??= rows[0];
+  const drawnRows = rows.map((row) => {
+    const isFolded = foldedIds.has(row.task.id);
+    const actions = [
+      ...row.task.id !== selected?.task.id ? [
+        {
+          action: "select",
+          id: row.task.id,
+          label: "Select",
+          hotkey: "enter",
+          kind: "view",
+          emphasis: "normal"
+        }
+      ] : [],
+      ...row.task.id === selected?.task.id && row.hasChildren ? [
+        {
+          action: "toggle-branch",
+          id: row.task.id,
+          label: isFolded ? "Open branch" : "Close branch",
+          hotkey: isFolded ? "l" : "h",
+          kind: "view",
+          emphasis: "quiet"
+        }
+      ] : []
+    ];
+    return { ...row, actions };
+  });
+  const selectedRow = selected ? drawnRows.find((row) => row.task.id === selected.task.id) : null;
+  const selectedLinks = selectedRow ? timelineLinkPlan(selectedRow.task, lastActions) : [];
+  const details = selectedRow ? [
+    ...selectedRow.task.detail ? [{ label: "Detail", text: selectedRow.task.detail }] : [],
+    { label: "Updated", text: selectedRow.task.updatedAgo },
+    ...selectedRow.task.notes.map((text) => ({ label: "Note", text })),
+    ...selectedRow.task.history.map((event) => ({
+      label: "History",
+      text: `${event.time} \xB7 ${event.source} \xB7 ${event.detail ?? HISTORY_TEXT[event.kind]}`
+    })),
+    ...selectedLinks.length ? [{ label: "Links", actions: selectedLinks }] : []
+  ] : [];
+  return {
+    ...data,
+    rows: drawnRows,
+    selected: selectedRow ? { row: selectedRow, details, links: selectedLinks } : null
+  };
+}
+function moveTimelineSelection(rows, selectedId, step) {
+  if (rows.length === 0)
+    return null;
+  const at = rows.findIndex((row) => row.task.id === selectedId);
+  const to = ((at < 0 ? step < 0 ? 0 : -1 : at) + step + rows.length) % rows.length;
+  return rows[to].task.id;
+}
+function toggleTimelineBranch(folded, id) {
+  return folded.includes(id) ? folded.filter((value) => value !== id) : [...folded, id];
 }
 
 // ../hooks/session-view.ts
@@ -9258,7 +9370,7 @@ function pageEntries(page, typing, isUnfolded) {
   return isGapNeeded ? [...top, blank, ...rows] : [...top, ...rows];
 }
 function helpEntries(screen, tab) {
-  const keys = helpKeys("omp", screen.isNextBuild === true, tab, statusKeyRows(screen.view.statusPage).length > 0);
+  const keys = helpKeys("omp", screen.isNextBuild === true, tab, statusKeyRows(screen.view.statusPage).length > 0, true);
   const column = Math.max(...keys.map((k) => cellWidth(k.keys))) + 2;
   return [
     { kind: "heading", text: HELP_COPY.keys },
@@ -9268,12 +9380,96 @@ function helpEntries(screen, tab) {
     ...markLegend(screen.isNextBuild === true).map((entry) => ({ kind: "legend", entry })),
     { kind: "note", text: "" },
     { kind: "heading", text: HELP_COPY.tabs },
-    ...tabLegend(screen.isNextBuild === true).map((key) => ({ kind: "key", key, column: Math.max(column, 4) }))
+    ...tabLegend(screen.isNextBuild === true, true).map((key) => ({
+      kind: "key",
+      key,
+      column: Math.max(column, 4)
+    }))
   ];
+}
+function timelineEntries(screen, ui) {
+  const page = timelinePage(screen.view.timeline, ui.timelineSelection, ui.timelineFolded, screen.view.lastActions);
+  const [taskPlanBar, ...streamBars] = page.bars;
+  const taskPlan = taskPlanBar?.parts.map((part) => part.mark.repeat(part.count)).join("") ?? "";
+  const out = [
+    {
+      kind: "note",
+      text: `Task plan \xB7 ${page.summary}${taskPlan ? ` \xB7 ${taskPlan}` : ""}`,
+      isPlain: true
+    },
+    ...streamBars.map((bar) => ({
+      kind: "note",
+      text: `${bar.label}: ${bar.parts.map((part) => part.mark.repeat(part.count)).join("")}`
+    }))
+  ];
+  if (page.isEmpty)
+    return [
+      ...out,
+      { kind: "note", text: page.empty.title, isStrong: true },
+      { kind: "note", text: page.empty.hint, isWhole: true }
+    ];
+  for (const row of page.rows) {
+    const selected = page.selected?.row.task.id === row.task.id ? page.selected : null;
+    const isSelected = selected !== null;
+    const buttons = row.actions.map((action) => ({
+      label: action.label,
+      key: action.hotkey ?? null,
+      press: { action: action.action === "select" ? "timeline-select" : "timeline-toggle", id: action.id },
+      isRecommended: false,
+      isFollowUp: false,
+      isQuiet: action.emphasis === "quiet"
+    }));
+    const detailLines = selected?.details ?? [];
+    const body = detailLines.map((line) => line.label === "Links" ? "Links \xB7" : `${line.label} \xB7 ${line.text}`).join(`
+`);
+    for (const line of detailLines) {
+      if (line.label === "Links")
+        buttons.push(...line.actions.map((link) => ({
+          label: link.result?.state === "pending" ? "Opening\u2026" : link.label,
+          key: null,
+          press: link.press,
+          isRecommended: false,
+          isFollowUp: false,
+          isOut: link.isOut
+        })));
+    }
+    const branch = row.depth === 0 ? "" : `${row.branch === "last" ? "\u2514\u2500" : "\u251C\u2500"} `;
+    const marker = row.status === "done" ? "\u2713" : row.status === "working" ? "\u25CF" : row.status === "stalled" ? "!" : row.status === "waits-on-other" ? "\u25CC" : "\xB7";
+    out.push({
+      kind: "row",
+      line: {
+        ...blankLine(row.task.id),
+        depth: row.depth,
+        lead: { text: marker, tone: row.status === "stalled" ? "error" : row.status === "done" ? "done" : "needsYou" },
+        title: `${branch}${row.task.title}`,
+        status: { text: `${row.statusLabel} \xB7 ${row.measure}`, tone: null, rest: "" },
+        detail: null,
+        body: body || null,
+        buttons,
+        isDetailShown: isSelected,
+        isWaiting: false
+      }
+    });
+    if (row.warnings.length > 0)
+      out.push({
+        kind: "row",
+        line: {
+          ...blankLine(`${row.task.id}:warning`),
+          depth: row.depth + 1,
+          lead: { text: "!", tone: "error" },
+          title: row.warnings.join(" \xB7 "),
+          isStatic: true,
+          isWaiting: false
+        }
+      });
+  }
+  return out;
 }
 function entriesOf(screen, ui, tab, now) {
   if (ui.isHelpShown && tab === ui.tab)
     return helpEntries(screen, tab);
+  if (tab === "timeline")
+    return timelineEntries(screen, ui);
   if (!isRowTab(tab))
     return pageEntries(screen.view.statusPage, ui.typing, (id) => ui.statusUnfolded.includes(id));
   return tab === "prs" ? prEntries(screen, ui, now) : rowEntries(screen, ui, tab);
@@ -9306,10 +9502,11 @@ function withSelection(ui, id) {
 }
 var withTab = (ui, tab, now) => ({
   ...withSelection(ui, null),
+  selectedId: tab === "timeline" ? ui.timelineSelection : null,
   tab,
   document: null,
   pageTop: 0,
-  pageReveal: isRowTab(tab) ? null : true,
+  pageReveal: tab === "overview" ? true : null,
   shownSince: tab === ui.tab ? ui.shownSince : now,
   isHelpShown: false
 });
@@ -9330,6 +9527,24 @@ function activate(screen, ui, line, button, now) {
   const { press } = button;
   if (button.isOut)
     return { ui };
+  if (press.action === "timeline-select")
+    return {
+      ui: {
+        ...ui,
+        selectedId: press.id,
+        timelineSelection: press.id,
+        detailTop: 0,
+        focus: null
+      }
+    };
+  if (press.action === "timeline-toggle")
+    return {
+      ui: {
+        ...ui,
+        timelineFolded: toggleTimelineBranch(ui.timelineFolded, press.id),
+        focus: null
+      }
+    };
   if (press.action === "all-options") {
     const index = line.buttons.findIndex((b) => b.press === press);
     return { ui: { ...ui, optionsShown: [...ui.optionsShown, press.id], focus: { rowId: line.id, index } } };
@@ -9375,7 +9590,7 @@ function typingKey(ui, id, key, now, text) {
 function handleKey(screen, ui, key, now, text) {
   const lines = linesOf(entriesOf(screen, ui, ui.tab, now));
   const selected = resolveSelected(lines, ui.selectedId);
-  const isPage = !isRowTab(ui.tab);
+  const isPage = ui.tab === "overview";
   const base = isPage ? ui : { ...ui, selectedId: selected?.id ?? null };
   if (base.typing !== null)
     return typingKey(base, base.typing, key, now, text);
@@ -9387,13 +9602,13 @@ function handleKey(screen, ui, key, now, text) {
       return { ui: { ...base, pageTop: Math.max(0, base.pageTop + (isUp ? -1 : 1)) } };
     return { ui: base };
   }
-  const shown = shownTabs(screen.isNextBuild === true);
+  const shown = shownTabs(screen.isNextBuild === true, true);
   const isTabKey = key === "tab" || key === "shift+tab" || shown.some((t) => t.hotkey === key);
   if (key === "?" || base.isHelpShown && key === "escape")
     return { ui: { ...base, isHelpShown: key === "?" && !base.isHelpShown, pageTop: 0 } };
   if (key === "escape")
     return { ui: base, close: true };
-  if (isPage && !base.isHelpShown) {
+  if ((isPage || ui.tab === "timeline") && !base.isHelpShown) {
     const page = pageKey(screen, base, key, now);
     if (page)
       return page;
@@ -9402,7 +9617,7 @@ function handleKey(screen, ui, key, now, text) {
     return { ui: base };
   if ((base.isHelpShown || isPage) && (isUp || key === "down" || key === "j"))
     return { ui: { ...base, pageTop: Math.max(0, base.pageTop + (isUp ? -1 : 1)) } };
-  if (!isPage && selected?.detail && base.detailScrollMax > 0 && (key === "up" || key === "down"))
+  if (!isPage && (selected?.detail || selected?.body) && base.detailScrollMax > 0 && (key === "up" || key === "down"))
     return {
       ui: {
         ...base,
@@ -9450,6 +9665,25 @@ function handleKey(screen, ui, key, now, text) {
   return button ? activate(screen, base, selected, button, now) : { ui: base };
 }
 function pageKey(screen, ui, key, now) {
+  if (ui.tab === "timeline") {
+    const page = timelinePage(screen.view.timeline, ui.timelineSelection, ui.timelineFolded, screen.view.lastActions);
+    const row = page.selected?.row;
+    if (!row)
+      return null;
+    if (key === "j" || key === "k") {
+      const id = moveTimelineSelection(page.rows, ui.timelineSelection, key === "k" ? -1 : 1);
+      return { ui: { ...ui, selectedId: id, timelineSelection: id, detailTop: 0, focus: null } };
+    }
+    const line = linesOf(entriesOf(screen, ui, ui.tab, now)).find((item) => item.id === row.task.id);
+    if (!line)
+      return null;
+    if (key === "left" || key === "right") {
+      const index = steppedIndex(focusOf2(line, ui), key === "left" ? -1 : 1, line.buttons.length);
+      return { ui: { ...ui, selectedId: row.task.id, focus: { rowId: line.id, index } } };
+    }
+    const button = key === "enter" ? line.buttons[focusOf2(line, ui)] : line.buttons.find((item) => item.key === key);
+    return button ? activate(screen, ui, line, button, now) : null;
+  }
   const page = screen.view.statusPage;
   const rows = statusKeyRows(page);
   const row = statusSelected(page, ui.selectedId);
@@ -9673,7 +9907,7 @@ function tabBar(d) {
     findings: screen.view.findings.count,
     prs: screen.view.prs.count
   };
-  const tabs = shownTabs(screen.isNextBuild === true).map((t) => ({
+  const tabs = shownTabs(screen.isNextBuild === true, true).map((t) => ({
     ...t,
     tone: isRowTab(t.id) ? t.id : null,
     badge: tabBadge(t.id, counts),
@@ -9689,7 +9923,7 @@ function footer(d, isPageScrolling, isDetailScrolling = false) {
   const status = footerStatus(ui.tab, screen.view.status, { isFetching: screen.isFetchingPrs, hasPrs: screen.view.prs.drawn.length > 0 }, screen.view.statusPage.error);
   if (status.text)
     out.push(` ${s.dim(status.text)}`);
-  const hints = ui.typing !== null ? [`\u21B5 ${ui.typing === GOAL_KEYS_ID ? GOAL_FIELD.submit : ROW_COPY.send}`, `esc ${ROW_COPY.cancel}`] : ui.isHelpShown ? [...isPageScrolling ? ["\u2191\u2193 scroll"] : [], "esc close help"] : isRowTab(ui.tab) ? [
+  const hints = ui.typing !== null ? [`\u21B5 ${ui.typing === GOAL_KEYS_ID ? GOAL_FIELD.submit : ROW_COPY.send}`, `esc ${ROW_COPY.cancel}`] : ui.isHelpShown ? [...isPageScrolling ? ["\u2191\u2193 scroll"] : [], "esc close help"] : ui.tab === "timeline" ? ["j k move", "h l branch", "\u2190 \u2192 pick", "\u21B5 select / open", "\u2191\u2193 scroll", "tab switch", "? help"] : isRowTab(ui.tab) ? [
     "\u2190\u2192 pick",
     "\u21B5 press",
     ...isDetailScrolling ? ["\u2191\u2193 scroll", "j k move"] : ["\u2191\u2193 move"],
@@ -9765,6 +9999,8 @@ var INITIAL_UI = {
   closedAll: [],
   optionsShown: [],
   statusUnfolded: [],
+  timelineSelection: null,
+  timelineFolded: [],
   resuming: null,
   opened: null,
   pageTop: 0,
@@ -9819,7 +10055,7 @@ function drawPanel(screen, ui, width, now, style, height, minHeight = 0) {
   ];
   const body = [];
   let selectedAt = [0, 0];
-  const pageSelected = isRowTab(ui.tab) || ui.typing !== null ? null : statusSelected(screen.view.statusPage, ui.selectedId);
+  const pageSelected = ui.tab !== "overview" || ui.typing !== null ? null : statusSelected(screen.view.statusPage, ui.selectedId);
   let pageSelectedAt = null;
   const subjectAt = [];
   for (const e of entries) {
@@ -9856,13 +10092,13 @@ function drawPanel(screen, ui, width, now, style, height, minHeight = 0) {
     }
   }
   const roomBeside = (foot) => height === undefined ? Infinity : Math.max(6, height - head.length - foot.length);
-  const isPage = ui.isHelpShown || !isRowTab(ui.tab);
+  const isPage = ui.isHelpShown || ui.tab === "overview";
   const isPageTaller = isPage && body.length > roomBeside(footer(d, false));
   const selectedLines = selectedAt[1] - selectedAt[0] + 1;
-  const isDetailScrolling = !isPage && selected?.detail !== null && selected?.detail !== undefined && selectedLines > roomBeside(footer(d, false)) - 2;
+  const isDetailScrolling = !isPage && (selected?.detail !== null && selected?.detail !== undefined || selected?.body !== null && selected?.body !== undefined) && selectedLines > roomBeside(footer(d, false)) - 2;
   const foot = footer(d, isPageTaller, isDetailScrolling);
   const room = roomBeside(foot);
-  const detailScrollMax = !isPage && selected?.detail !== null && selected?.detail !== undefined ? Math.max(0, selectedLines - room + 2) : 0;
+  const detailScrollMax = !isPage && (selected?.detail !== null && selected?.detail !== undefined || selected?.body !== null && selected?.body !== undefined) ? Math.max(0, selectedLines - room + 2) : 0;
   const blanks = (shown) => Array(Math.max(0, minHeight - head.length - shown.length - foot.length)).fill("");
   const isOverflowing = body.length > room;
   const [first = 0, last = 0] = pageSelectedAt ?? [];
@@ -9882,7 +10118,7 @@ function drawPanel(screen, ui, width, now, style, height, minHeight = 0) {
   };
 }
 function tallestTabHeight(screen, ui, width, now, style, height) {
-  const heights = shownTabs(screen.isNextBuild === true).map((t) => drawPanel(screen, t.id === ui.tab ? ui : withTab(ui, t.id, now), width, now, style, height).lines.length);
+  const heights = shownTabs(screen.isNextBuild === true, true).map((t) => drawPanel(screen, t.id === ui.tab ? ui : withTab(ui, t.id, now), width, now, style, height).lines.length);
   return Math.max(...heights);
 }
 function bandLines(screen, width, now, style) {
@@ -9948,6 +10184,13 @@ function createPanel(deps) {
       return;
     }
     screen = next;
+    if (isOpening) {
+      ui = {
+        ...ui,
+        timelineSelection: next.timelineSelection ?? null,
+        timelineFolded: next.timelineFolded ?? []
+      };
+    }
     const followed = followRows(next, ui, seen, isOpening, deps.now());
     ui = pressedId === undefined ? followed.ui : afterHandOff(next, followed.ui, pressedId, deps.now());
     seen = followed.seen;
@@ -9983,6 +10226,8 @@ function createPanel(deps) {
     if (p.action === "herdr-ask")
       return source.answerHerdr?.(p.isYes).then(() => refresh());
     if (p.action === "all-options")
+      return;
+    if (p.action === "timeline-select" || p.action === "timeline-toggle")
       return;
     if (!isPrPress(p) && p.action === "read-document")
       return showDocument(p.id);
@@ -10041,8 +10286,12 @@ function createPanel(deps) {
       if (screen === null)
         return;
       const now = deps.now();
+      const previous = ui;
       const result = handleKey(screen, ui, key, now, text);
       ui = { ...result.ui, listInput: withListInput(ui.listInput, now) };
+      const sameFolded = previous.timelineFolded.length === ui.timelineFolded.length && previous.timelineFolded.every((value, index) => value === ui.timelineFolded[index]);
+      if (previous.timelineSelection !== ui.timelineSelection || !sameFolded)
+        source.saveTimelineNavigation?.(ui.timelineSelection, ui.timelineFolded);
       source.shown(ui.tab, holdsOf(ui));
       if (result.close)
         deps.close();
@@ -12007,14 +12256,26 @@ function checkVersion(saved) {
 
 // src/state.ts
 function emptyState(sessionId) {
-  return { version: SESSION_VERSION, sessionId, ...emptySession() };
+  return { version: SESSION_VERSION, sessionId, timelineSelection: null, timelineFolded: [], ...emptySession() };
 }
 function statePath(dir, sessionId) {
   return join(dir, "sessions", sessionFile(sessionId));
 }
+function upgradedTimelineSelection(id) {
+  return typeof id === "string" && id.length > 0 ? id : null;
+}
+function upgradedTimelineFolded(folded) {
+  return Array.isArray(folded) ? [...new Set(folded.filter((id) => typeof id === "string" && id.length > 0))] : [];
+}
 function upgraded(saved, sessionId) {
   checkVersion(saved);
-  return { version: SESSION_VERSION, sessionId, ...upgradeSession(saved) };
+  return {
+    version: SESSION_VERSION,
+    sessionId,
+    ...upgradeSession(saved),
+    timelineSelection: upgradedTimelineSelection(saved.timelineSelection),
+    timelineFolded: upgradedTimelineFolded(saved.timelineFolded)
+  };
 }
 async function readSaved(dir, sessionId) {
   const saved = await readFile(statePath(dir, sessionId), "utf8").catch(missingAsNull);
@@ -13564,7 +13825,9 @@ function panelCalls(context, sessions, herdrAsk) {
         isFetchingPrs: prFetches.isFetching(id),
         stop: s.stop,
         version,
-        isNextBuild: deps.isNextBuild
+        isNextBuild: deps.isNextBuild,
+        timelineSelection: s.timelineSelection,
+        timelineFolded: s.timelineFolded
       };
     },
     openPanel: async (ctx, openedAt) => {
@@ -13608,6 +13871,13 @@ function panelCalls(context, sessions, herdrAsk) {
         checkDelegatesWhenDue(ctx);
       if (isChanged && tab === "prs")
         fetchPrsWhenDue(ctx, true);
+    },
+    saveTimelineNavigation: (ctx, selection, folded) => {
+      const id = sessionIdOf(ctx);
+      deps.background(change(id, (s) => {
+        const sameFolded = s.timelineFolded.length === folded.length && s.timelineFolded.every((value, index) => value === folded[index]);
+        return s.timelineSelection === selection && sameFolded ? s : { ...s, timelineSelection: selection, timelineFolded: folded };
+      }));
     },
     closePanel: (ctx) => {
       const id = sessionIdOf(ctx);
@@ -13655,6 +13925,7 @@ function panelCalls(context, sessions, herdrAsk) {
     fetchPrsWhenDue: (isTabShown) => inbox.fetchPrsWhenDue(ctx, isTabShown),
     checkDelegatesWhenDue: () => inbox.checkDelegatesWhenDue(ctx),
     shown: (tab, holds) => inbox.showTab(ctx, tab, holds),
+    saveTimelineNavigation: (selection, folded) => inbox.saveTimelineNavigation(ctx, selection, folded),
     showedRows: (ids) => inbox.showRows(ctx, ids),
     onChange: (listener) => inbox.onChange(ctx, listener)
   });
