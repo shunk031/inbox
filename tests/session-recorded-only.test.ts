@@ -180,6 +180,19 @@ test('a reminder JSON-escapes quoted text after stripping control characters', (
   expect(text).not.toContain('\u0001')
 })
 
+test('upgrade cleans and safely renders legacy unrecorded candidates', () => {
+  const upgraded = upgradeLedger({
+    ...EMPTY,
+    unrecordedDecisions: [{ kind: 'question', ask: 'Which "go" option?\u0001', quote: 'We said "go".\u0001' }],
+  })
+  const candidate = upgraded.unrecordedDecisions[0]!
+  const text = inboxText(CLAUDE_CODE, upgraded, false)
+
+  expect(candidate).toEqual({ kind: 'question', ask: 'Which "go" option?', quote: 'We said "go".' })
+  expect(text).toContain(`question: ${JSON.stringify(candidate.ask)} — reply quote: ${JSON.stringify(candidate.quote)}`)
+  expect(text).not.toContain('\u0001')
+})
+
 test('seven agent-recorded questions stay open after either CLOSED outcome in both modes', async () => {
   for (const recordedItemsOnly of [false, true])
     for (const outcome of ['done: 回答待ちのまま変更なし', '回答待ちのまま変更なし']) {
