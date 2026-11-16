@@ -2,6 +2,7 @@ import type { Help, Item, Ledger, UnrecordedDecision } from '../types'
 import { parseInline } from './inline'
 import {
   keyWords,
+  cleanUnrecordedText,
   matchOpen,
   MAX_UNRECORDED_ASK,
   MAX_UNRECORDED_DECISIONS,
@@ -68,9 +69,13 @@ export function recordedAsksOnly(
   const recorded = new Set(ledger.items.filter(i => i.from === 'record').map(i => i.id))
   const candidates = [
     ...(ledger.unrecordedDecisions ?? []),
-    ...u.added.flatMap(({ kind, ask, quote }) =>
-      quote ? [{ kind, ask: ask.slice(0, MAX_UNRECORDED_ASK), quote: quote.slice(0, MAX_UNRECORDED_QUOTE) }] : [],
-    ),
+    ...u.added.flatMap(({ kind, ask, quote }) => {
+      if (!quote) return []
+      const cleanAsk = cleanUnrecordedText(ask, MAX_UNRECORDED_ASK)
+      const cleanQuote = cleanUnrecordedText(quote, MAX_UNRECORDED_QUOTE)
+
+      return cleanAsk && cleanQuote ? [{ kind, ask: cleanAsk, quote: cleanQuote }] : []
+    }),
   ]
   const unrecordedDecisions: UnrecordedDecision[] = []
   for (const candidate of candidates) {
@@ -265,7 +270,9 @@ export function parseReply(
       const [kind, label, ask, ...rest] = (isLabelSkipped ? [fields[0], '-', ...fields.slice(1)] : fields).map(dash)
       const quoteField = rest.length > 3 ? rest.pop() : null
       const quote =
-        quoteField && quoteField.length <= MAX_UNRECORDED_QUOTE && quoteSource?.includes(quoteField) ? quoteField : null
+        quoteField && quoteField.length <= MAX_UNRECORDED_QUOTE && quoteSource?.includes(quoteField)
+          ? cleanUnrecordedText(quoteField, MAX_UNRECORDED_QUOTE) || null
+          : null
       // A sixth field is the design mark only when it reads "design" or "-", so an answer written after a stray "|"
       // in an older five-field line stays an answer.
       const last = rest.at(-1)
@@ -277,15 +284,13 @@ export function parseReply(
         continue
       }
       const options = rest.flatMap(o => o?.split(/\s+\/\s+/) ?? []).filter(Boolean)
-      const recommendation = recommendedOption(options, rec ?? null)
-      if (options.length > 0 && rec && !recommendation) options.push(rec)
       const isDesignChoice = isDesignField && last !== null && readKind(kind) === 'question'
       const item = {
         kind: readKind(kind),
         label: label ?? null,
         ask,
         options,
-        rec: recommendation,
+        rec: recommendedOption(options, rec ?? null),
         helps: [],
         ...(quote ? { quote } : {}),
         ...(isDesignChoice ? { isDesignChoice } : {}),

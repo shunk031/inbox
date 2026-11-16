@@ -231,6 +231,9 @@ var CLOSED_CONTEXT_LIMIT = 12;
 var MAX_UNRECORDED_DECISIONS = 12;
 var MAX_UNRECORDED_ASK = 200;
 var MAX_UNRECORDED_QUOTE = 160;
+function cleanUnrecordedText(text, max) {
+  return text.replace(/[\p{Cc}\u2028\u2029]/gu, " ").replace(/\s+/g, " ").trim().slice(0, max);
+}
 function words2(text) {
   return text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
 }
@@ -2017,7 +2020,13 @@ function recordedAsksOnly(u, ledger, isPersonsAnswer, promptAt = 0) {
   const recorded = new Set(ledger.items.filter((i) => i.from === "record").map((i) => i.id));
   const candidates = [
     ...ledger.unrecordedDecisions ?? [],
-    ...u.added.flatMap(({ kind, ask, quote }) => quote ? [{ kind, ask: ask.slice(0, MAX_UNRECORDED_ASK), quote: quote.slice(0, MAX_UNRECORDED_QUOTE) }] : [])
+    ...u.added.flatMap(({ kind, ask, quote }) => {
+      if (!quote)
+        return [];
+      const cleanAsk = cleanUnrecordedText(ask, MAX_UNRECORDED_ASK);
+      const cleanQuote = cleanUnrecordedText(quote, MAX_UNRECORDED_QUOTE);
+      return cleanAsk && cleanQuote ? [{ kind, ask: cleanAsk, quote: cleanQuote }] : [];
+    })
   ];
   const unrecordedDecisions = [];
   for (const candidate of candidates) {
@@ -2156,7 +2165,7 @@ function parseReply(text, source = null, quoteSource = source) {
       const isLabelSkipped = !dash(fields[2]) && /\s/.test((fields[1] ?? "").trim());
       const [kind, label, ask, ...rest] = (isLabelSkipped ? [fields[0], "-", ...fields.slice(1)] : fields).map(dash);
       const quoteField = rest.length > 3 ? rest.pop() : null;
-      const quote = quoteField && quoteField.length <= MAX_UNRECORDED_QUOTE && quoteSource?.includes(quoteField) ? quoteField : null;
+      const quote = quoteField && quoteField.length <= MAX_UNRECORDED_QUOTE && quoteSource?.includes(quoteField) ? cleanUnrecordedText(quoteField, MAX_UNRECORDED_QUOTE) || null : null;
       const last = rest.at(-1);
       const isDesignField = rest.length > 2 && (last === null || /^design$/i.test(last ?? ""));
       if (isDesignField)
@@ -2167,16 +2176,13 @@ function parseReply(text, source = null, quoteSource = source) {
         continue;
       }
       const options = rest.flatMap((o) => o?.split(/\s+\/\s+/) ?? []).filter(Boolean);
-      const recommendation = recommendedOption(options, rec ?? null);
-      if (options.length > 0 && rec && !recommendation)
-        options.push(rec);
       const isDesignChoice = isDesignField && last !== null && readKind(kind) === "question";
       const item = {
         kind: readKind(kind),
         label: label ?? null,
         ask,
         options,
-        rec: recommendation,
+        rec: recommendedOption(options, rec ?? null),
         helps: [],
         ...quote ? { quote } : {},
         ...isDesignChoice ? { isDesignChoice } : {}
@@ -2764,7 +2770,7 @@ function upgradeUnrecordedDecisions(value) {
     if (kind !== "question" && kind !== "task")
       return [];
     const cleanKind = kind;
-    const clean = (text, max) => typeof text === "string" ? text.trim().replace(/\s+/g, " ").slice(0, max) : "";
+    const clean = (text, max) => typeof text === "string" ? cleanUnrecordedText(text, max) : "";
     const cleanAsk = clean(ask, MAX_UNRECORDED_ASK);
     const cleanQuote = clean(quote, MAX_UNRECORDED_QUOTE);
     return cleanAsk && cleanQuote ? [{ kind: cleanKind, ask: cleanAsk, quote: cleanQuote }] : [];
@@ -3018,7 +3024,7 @@ function inboxText(host, ledger, isOpen) {
       out.push(findingLine(f));
   }
   if (ledger.unrecordedDecisions.length > 0) {
-    out.push("Possibly unrecorded decisions in your last reply:", ...ledger.unrecordedDecisions.map((candidate) => `- ${candidate.kind}: "${candidate.ask}" \u2014 reply quote: "${candidate.quote}"`), "Record each candidate that waits on the user with `record`, and ignore the rest.");
+    out.push("Possibly unrecorded decisions in your last reply:", ...ledger.unrecordedDecisions.map((candidate) => `- ${candidate.kind}: ${JSON.stringify(candidate.ask)} \u2014 reply quote: ${JSON.stringify(candidate.quote)}`), "Record each candidate that waits on the user with `record`, and ignore the rest.");
   }
   out.push(isOpen ? `The user has ${host.surface} open beside the conversation.` : `${surfaceAtStart(host)} is closed.`);
   return out.join(NL5);

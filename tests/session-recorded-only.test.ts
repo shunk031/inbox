@@ -5,6 +5,7 @@ import { EMPTY } from '../hooks/ledger'
 import { closeItem } from '../hooks/ledger-close'
 import { applyUpdate, isPersonsAnswer } from '../hooks/ledger-update'
 import { upgradeLedger } from '../hooks/ledger'
+import { inboxText } from '../hooks/inbox-text'
 import { parseReply, recordedAsksOnly } from '../hooks/reply-parse'
 import { isRecordedItemsOnly, runUpdates } from '../hooks/session-host'
 import { notePrompt } from '../hooks/session-turns'
@@ -167,6 +168,16 @@ test('recorded-only drops a candidate that matches a recently closed item', () =
   )!
 
   expect(recordedAsksOnly(update, closed, isPersonsAnswer, 20).unrecordedDecisions).toEqual([])
+})
+
+test('a reminder JSON-escapes quoted text after stripping control characters', () => {
+  const quote = 'We said "go".\u0001'
+  const parsed = parseReply(`NEW: decide | - | Should we go? | Go / Stop | Go | - | ${quote}`, quote)!
+  const candidates = recordedAsksOnly(parsed, EMPTY, isPersonsAnswer, 20).unrecordedDecisions!
+  const text = inboxText(CLAUDE_CODE, { ...EMPTY, unrecordedDecisions: candidates }, false)
+
+  expect(text).toContain(`reply quote: ${JSON.stringify('We said "go".')}`)
+  expect(text).not.toContain('\u0001')
 })
 
 test('seven agent-recorded questions stay open after either CLOSED outcome in both modes', async () => {

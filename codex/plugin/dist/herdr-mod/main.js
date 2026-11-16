@@ -1,5 +1,5 @@
 // Built by herdr/build.ts with Bun 1.4.4 from herdr/src and hooks/. Do not edit.
-// Built at 2026-11-16T08:08:13.647Z. 208969 characters follow.
+// Built at 2026-11-16T08:25:58.432Z. 209093 characters follow.
 
 // src/main.ts
 import { View, div as div5 } from "gpui-kit";
@@ -297,6 +297,9 @@ function linkLabel(text) {
 var MAX_UNRECORDED_DECISIONS = 12;
 var MAX_UNRECORDED_ASK = 200;
 var MAX_UNRECORDED_QUOTE = 160;
+function cleanUnrecordedText(text, max) {
+  return text.replace(/[\p{Cc}\u2028\u2029]/gu, " ").replace(/\s+/g, " ").trim().slice(0, max);
+}
 function words2(text) {
   return text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
 }
@@ -741,7 +744,7 @@ function upgradeUnrecordedDecisions(value) {
     if (kind !== "question" && kind !== "task")
       return [];
     const cleanKind = kind;
-    const clean = (text, max) => typeof text === "string" ? text.trim().replace(/\s+/g, " ").slice(0, max) : "";
+    const clean = (text, max) => typeof text === "string" ? cleanUnrecordedText(text, max) : "";
     const cleanAsk = clean(ask, MAX_UNRECORDED_ASK);
     const cleanQuote = clean(quote, MAX_UNRECORDED_QUOTE);
     return cleanAsk && cleanQuote ? [{ kind: cleanKind, ask: cleanAsk, quote: cleanQuote }] : [];

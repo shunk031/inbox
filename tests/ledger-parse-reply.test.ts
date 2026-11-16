@@ -16,11 +16,11 @@ describe('parseReply', () => {
     expect(u?.added[0]?.options).toEqual(['Yes', 'No'])
   })
 
-  test('an answer written after "|" instead of " / " stays an answer, not the recommendation', () => {
+  test('an unmatched answer after "|" is not stored as an option or recommendation', () => {
     const [item] = parseReply(
       'NEW: decide | - | Which port? | Use another port / Stop docs site | Pick one for me | - | -',
     )!.added
-    expect(item?.options).toEqual(['Use another port', 'Stop docs site', 'Pick one for me'])
+    expect(item?.options).toEqual(['Use another port', 'Stop docs site'])
     expect(item?.rec).toBe(null)
   })
 
@@ -48,6 +48,12 @@ describe('parseReply', () => {
       parseReply(`NEW: decide | - | Which cache? | Redis / Memory | Redis | - | ${'x'.repeat(161)}`, 'x'.repeat(161))
         ?.added[0]?.quote ?? null,
     ).toBeNull()
+  })
+
+  test('a NEW quote is stripped of controls after it is matched to the reply', () => {
+    const quote = 'We said "go".\u0001'
+    const line = `NEW: decide | - | Should we go? | Go / Stop | Go | - | ${quote}`
+    expect(parseReply(line, quote)?.added[0]?.quote).toBe('We said "go".')
   })
 
   test('keeps a recommendation only as the answer it names, by its words or its letter', () => {

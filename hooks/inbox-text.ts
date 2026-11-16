@@ -178,7 +178,8 @@ export function inboxText(host: Host, ledger: Ledger, isOpen: boolean): string {
     out.push(
       'Possibly unrecorded decisions in your last reply:',
       ...ledger.unrecordedDecisions.map(
-        candidate => `- ${candidate.kind}: "${candidate.ask}" — reply quote: "${candidate.quote}"`,
+        candidate =>
+          `- ${candidate.kind}: ${JSON.stringify(candidate.ask)} — reply quote: ${JSON.stringify(candidate.quote)}`,
       ),
       'Record each candidate that waits on the user with `record`, and ignore the rest.',
     )

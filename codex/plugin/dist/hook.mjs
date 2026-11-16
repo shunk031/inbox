@@ -164,6 +164,9 @@ var CLOSED_CONTEXT_LIMIT = 12;
 var MAX_UNRECORDED_DECISIONS = 12;
 var MAX_UNRECORDED_ASK = 200;
 var MAX_UNRECORDED_QUOTE = 160;
+function cleanUnrecordedText(text2, max) {
+  return text2.replace(/[\p{Cc}\u2028\u2029]/gu, " ").replace(/\s+/g, " ").trim().slice(0, max);
+}
 function words2(text2) {
   return text2.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
 }
@@ -650,7 +653,7 @@ function upgradeUnrecordedDecisions(value) {
     const { kind, ask, quote } = candidate;
     if (kind !== "question" && kind !== "task") return [];
     const cleanKind = kind;
-    const clean = (text2, max) => typeof text2 === "string" ? text2.trim().replace(/\s+/g, " ").slice(0, max) : "";
+    const clean = (text2, max) => typeof text2 === "string" ? cleanUnrecordedText(text2, max) : "";
     const cleanAsk = clean(ask, MAX_UNRECORDED_ASK);
     const cleanQuote = clean(quote, MAX_UNRECORDED_QUOTE);
     return cleanAsk && cleanQuote ? [{ kind: cleanKind, ask: cleanAsk, quote: cleanQuote }] : [];
@@ -841,7 +844,7 @@ function inboxText(host, ledger, isOpen2) {
     out.push(
       "Possibly unrecorded decisions in your last reply:",
       ...ledger.unrecordedDecisions.map(
-        (candidate) => `- ${candidate.kind}: "${candidate.ask}" \u2014 reply quote: "${candidate.quote}"`
+        (candidate) => `- ${candidate.kind}: ${JSON.stringify(candidate.ask)} \u2014 reply quote: ${JSON.stringify(candidate.quote)}`
       ),
       "Record each candidate that waits on the user with `record`, and ignore the rest."
     );

@@ -1,6 +1,12 @@
 import type { Closed, ClosedFinding, Finding, Item, Ledger, PrOrder, UnrecordedDecision } from '../types'
 
-import { MAX_UNRECORDED_ASK, MAX_UNRECORDED_DECISIONS, MAX_UNRECORDED_QUOTE, recommendedOption } from './ask-match'
+import {
+  cleanUnrecordedText,
+  MAX_UNRECORDED_ASK,
+  MAX_UNRECORDED_DECISIONS,
+  MAX_UNRECORDED_QUOTE,
+  recommendedOption,
+} from './ask-match'
 import { EXPIRED } from './ledger-update'
 import { readKind } from './reply-parse'
 import { upgradeStatus } from './status-upgrade'
@@ -88,8 +94,7 @@ function upgradeUnrecordedDecisions(value: unknown): UnrecordedDecision[] {
       const { kind, ask, quote } = candidate as Record<string, unknown>
       if (kind !== 'question' && kind !== 'task') return []
       const cleanKind: UnrecordedDecision['kind'] = kind
-      const clean = (text: unknown, max: number) =>
-        typeof text === 'string' ? text.trim().replace(/\s+/g, ' ').slice(0, max) : ''
+      const clean = (text: unknown, max: number) => (typeof text === 'string' ? cleanUnrecordedText(text, max) : '')
       const cleanAsk = clean(ask, MAX_UNRECORDED_ASK)
       const cleanQuote = clean(quote, MAX_UNRECORDED_QUOTE)
 
