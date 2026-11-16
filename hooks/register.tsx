@@ -161,7 +161,6 @@ import {
 import { helpKeys, UNDO_KEY } from './help'
 import { agentTools, NOT_SAVED } from './tools'
 import type { AgentTool } from './tools'
-import type { ToolAnswer } from './tools'
 import {
   ARRIVAL_TABS,
   closedGroups,
@@ -253,6 +252,7 @@ import {
   cutOffUpdate,
   DESKTOP_APP_ENTRYPOINTS,
   drawnSession,
+  hasSavedChange,
   isCurrent,
   MAX_TRIES,
   type ModSession,
@@ -587,7 +587,7 @@ async function changeSession(
     if (changed === before) return { before, after: before, isDrawn: true }
     // A resume drops the running turn, so a write that changes only the turn, such as each tool call's activity,
     // leaves the saved copy alone.
-    const isTurnOnly = (Object.keys(changed) as (keyof Session)[]).every(k => k === 'turn' || changed[k] === before[k])
+    const isTurnOnly = !hasSavedChange(before, changed)
     const shown = await read($, SHOWN)
     const kept = pruned({ ...changed, heldRows: [...held], shownSince: shown && !shown.isDemo ? shown.since : null })
     let landed: ModSession | null = null
@@ -1096,18 +1096,19 @@ async function runTool(
   const now = await $.clock.now()
   const owner = currentOwner()
   const toolInput = tool === 'record' ? await withDocumentPreview(input, documentFile($)) : input
-  let answer: Omit<ToolAnswer, 'ledger'> = { result: '', personLine: null }
-  await commit($, owner, s => {
-    const r = answerToolCall(s, tool, toolInput, now)
-    answer = r
-    return r.state
-  })
+  let answer: ReturnType<typeof answerToolCall> = {
+    state: NO_SESSION,
+    result: '',
+    personLine: null,
+    changedSavedState: false,
+  }
+  await commit($, owner, s => (answer = answerToolCall(s, tool, toolInput, now)).state)
   const { personLine } = answer
   if (personLine !== null && toolUseId)
     await update($, PERSON_LINES, lines =>
       Object.fromEntries([...Object.entries(lines), [toolUseId, personLine]].slice(-MAX_PERSON_LINES)),
     )
-  const isChangeUnsaved = personLine !== null && isLastSaveRefused(owner.id)
+  const isChangeUnsaved = answer.changedSavedState && isLastSaveRefused(owner.id)
 
   return isChangeUnsaved ? `${answer.result} ${NOT_SAVED}` : answer.result
 }
