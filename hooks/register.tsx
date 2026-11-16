@@ -82,6 +82,7 @@ import { closeItem } from './ledger-close'
 import { FEED_POLL_MS, startModFeed } from './mod-feed'
 import { tasksRunBy } from './reply-parse'
 import { CLAUDE_CODE, guidedCloseDescription } from './model-text'
+import { tasksDescription } from './tool-descriptions'
 import { statusCarryText, screenText, type ScreenTab } from './inbox-text'
 import { catchUpPrompt, dialogActivity, dialogQuestions, toolActivity, transcriptCatchUpPrompt } from './catch-up-text'
 import { systemText } from './ledger-prompt'
@@ -336,6 +337,7 @@ const DEMO_RECORDING = atom({ plugin: 'inbox', key: 'isDemoRecording' } as const
 const RECORD_TOOL = 'mcp__inbox__record'
 const CLOSE_TOOL = 'mcp__inbox__close'
 const ORDER_TOOL = 'mcp__inbox__order_prs'
+const TASKS_TOOL = 'mcp__inbox__tasks'
 /**
  * The person's line for each `record` or `close` call that has one, by `tool_use_id`. It lives as long as the
  * process, so a call from before it draws nothing under its row.
@@ -2439,8 +2441,7 @@ export const register: Register = on => {
 
   on('prompt.submit', async ($, e, next) => {
     if (!mod.isOn) return next(e)
-    // Where a guard skips classic.SessionStart, the first prompt after /clear, /resume or /branch is what shows the
-    // session has changed conversations. A reload that classic.SessionStart already did leaves the ids equal.
+    // Detect conversation changes on the first prompt when classic.SessionStart is skipped. A reload that ran it leaves ids equal.
     const sessionId = await $.session.id()
     if (sessionId !== conversation.id) {
       const reason = sessionState.endReason
@@ -2516,23 +2517,31 @@ export const register: Register = on => {
   })
 
   on('tool.describe', { tool: RECORD_TOOL }, async (_$, e, next) => ({ ...(await next(e)), isDeferred: false }))
-  on('tool.call', { tool: RECORD_TOOL }, async ($, e) => ({
-    result: await runTool($, 'record', e as unknown as Record<string, unknown>, e.tool_use_id),
-  }))
   on('tool.describe', { tool: CLOSE_TOOL }, async (_$, e, next) => {
     const r = await next(e)
 
     return { ...r, description: guidedCloseDescription(CLAUDE_CODE, r.description), isDeferred: false }
   })
-  on('tool.call', { tool: CLOSE_TOOL }, async ($, e) => ({
-    result: await runTool($, 'close', e as unknown as Record<string, unknown>, e.tool_use_id),
-  }))
   on('tool.describe', { tool: ORDER_TOOL }, async (_$, e, next) => ({ ...(await next(e)), isDeferred: false }))
-  on('tool.call', { tool: ORDER_TOOL }, async ($, e) => ({
-    result: await runTool($, 'order_prs', e as unknown as Record<string, unknown>, e.tool_use_id),
+  on('tool.describe', { tool: TASKS_TOOL }, async (_$, e, next) => ({
+    ...(await next(e)),
+    description: tasksDescription(CLAUDE_CODE),
+    isDeferred: false,
   }))
 
   on('tool.call', async ($, e, next) => {
+    const inboxTool =
+      e.tool === RECORD_TOOL
+        ? 'record'
+        : e.tool === CLOSE_TOOL
+          ? 'close'
+          : e.tool === ORDER_TOOL
+            ? 'order_prs'
+            : e.tool === TASKS_TOOL
+              ? 'tasks'
+              : null
+    if (inboxTool)
+      return { result: await runTool($, inboxTool, e as unknown as Record<string, unknown>, e.tool_use_id) }
     if (!mod.isOn) return next(e)
     const { tool: _tool, tool_use_id: _id, agentId: _agent, ...input } = e as unknown as Record<string, unknown>
     const key = callKey(String(e.tool), input)
