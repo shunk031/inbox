@@ -3505,6 +3505,14 @@ var BAR_MARKS = {
   queued: "\xB7"
 };
 var BAR_STATES = Object.keys(BAR_MARKS);
+function timelineTask(task, now) {
+  const { createdAt: _createdAt, updatedAt, history, ...details } = task;
+  return {
+    ...details,
+    updatedAgo: shortAgo(now - updatedAt),
+    history: history.map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) }))
+  };
+}
 function timelineBar(segments, id, label, width = 16) {
   if (segments.total <= 0) return { id, label, parts: [] };
   let cumulative = 0;
@@ -3530,7 +3538,7 @@ function timelineData(tree, segments, stalledSince, warnings, now) {
       const status = stalledAt === void 0 ? task.status : "stalled";
       const progress = Math.round(weightedTaskProgress(tree, task.id) * 100);
       rows.push({
-        task,
+        task: timelineTask(task, now),
         depth,
         branch: depth === 0 ? null : index === siblings.length - 1 ? "last" : "mid",
         hasChildren: childrenOfTask.length > 0,

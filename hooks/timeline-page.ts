@@ -1,4 +1,4 @@
-import type { LastAction, TaskFactWarning, TaskNode, TaskProgressSegments, TaskTree } from '../types'
+import type { LastAction, TaskFactWarning, TaskHistoryEvent, TaskNode, TaskProgressSegments, TaskTree } from '../types'
 import { prMarkId } from './pr-rows'
 import { shortAgo } from './rows'
 import { weightedTaskProgress, weightedTaskProgressSegments } from './task-tree'
@@ -7,13 +7,18 @@ import type { ActionView } from './rows'
 
 type TimelineBarPart = { state: keyof Omit<TaskProgressSegments, 'total'>; mark: string; count: number }
 type TimelineBar = { id: string; label: string; parts: TimelineBarPart[] }
+type TimelineHistoryEvent = Omit<TaskHistoryEvent, 'at'> & { time: string }
+type TimelineTask = Omit<TaskNode, 'createdAt' | 'updatedAt' | 'history'> & {
+  updatedAgo: string
+  history: TimelineHistoryEvent[]
+}
 type TimelineRowAction = Pick<ActionView, 'label' | 'hotkey' | 'kind' | 'emphasis'> & {
   action: 'select' | 'toggle-branch'
   id: string
 }
 type TimelineLinkAction = PrAction & { result: LastAction['result'] | null }
 type TimelineNode = {
-  task: TaskNode
+  task: TimelineTask
   depth: number
   branch: 'mid' | 'last' | null
   hasChildren: boolean
@@ -40,6 +45,15 @@ const BAR_MARKS: Record<TimelineBarPart['state'], string> = {
   queued: '·',
 }
 const BAR_STATES = Object.keys(BAR_MARKS) as TimelineBarPart['state'][]
+
+function timelineTask(task: TaskNode, now: number): TimelineTask {
+  const { createdAt: _createdAt, updatedAt, history, ...details } = task
+  return {
+    ...details,
+    updatedAgo: shortAgo(now - updatedAt),
+    history: history.map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) })),
+  }
+}
 
 function timelineBar(segments: TaskProgressSegments, id: string, label: string, width = 16): TimelineBar {
   if (segments.total <= 0) return { id, label, parts: [] }
@@ -73,7 +87,7 @@ export function timelineData(
       const status = stalledAt === undefined ? task.status : 'stalled'
       const progress = Math.round(weightedTaskProgress(tree, task.id) * 100)
       rows.push({
-        task,
+        task: timelineTask(task, now),
         depth,
         branch: depth === 0 ? null : index === siblings.length - 1 ? 'last' : 'mid',
         hasChildren: childrenOfTask.length > 0,
@@ -116,7 +130,10 @@ export function timelineData(
   }
 }
 
-function timelineLinkPlan(task: TaskNode, lastActions: Record<string, LastAction>): TimelineLinkAction[] {
+function timelineLinkPlan(
+  task: Pick<TimelineTask, 'links'>,
+  lastActions: Record<string, LastAction>,
+): TimelineLinkAction[] {
   return (['pr', 'issue'] as const).flatMap(kind => {
     const url = task.links?.[kind]
     if (!url) return []

@@ -1,5 +1,5 @@
 // Built by herdr/build.ts with Bun 1.4.4 from herdr/src and hooks/. Do not edit.
-// Built at 2026-11-16T10:16:25.682Z. 216715 characters follow.
+// Built at 2026-11-16T10:31:19.741Z. 217015 characters follow.
 
 // src/main.ts
 import { View, div as div5 } from "gpui-kit";
@@ -3452,6 +3452,14 @@ var BAR_MARKS = {
   queued: "·"
 };
 var BAR_STATES = Object.keys(BAR_MARKS);
+function timelineTask(task, now) {
+  const { createdAt: _createdAt, updatedAt, history, ...details } = task;
+  return {
+    ...details,
+    updatedAgo: shortAgo(now - updatedAt),
+    history: history.map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) }))
+  };
+}
 function timelineBar(segments, id, label, width = 16) {
   if (segments.total <= 0)
     return { id, label, parts: [] };
@@ -3479,7 +3487,7 @@ function timelineData(tree, segments, stalledSince, warnings, now) {
       const status = stalledAt === undefined ? task.status : "stalled";
       const progress = Math.round(weightedTaskProgress(tree, task.id) * 100);
       rows.push({
-        task,
+        task: timelineTask(task, now),
         depth,
         branch: depth === 0 ? null : index === siblings.length - 1 ? "last" : "mid",
         hasChildren: childrenOfTask.length > 0,

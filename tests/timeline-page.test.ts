@@ -71,6 +71,31 @@ test('Timeline summarizes weighted completion and labels waiting work', () => {
   expect(page.rows.find(row => row.task.id === 'waiting')?.statusLabel).toBe('waiting on others')
 })
 
+test('Timeline formats task and history times in the shared plan', () => {
+  const updatedAt = now - 15 * 60_000
+  const page = timelineData(
+    [
+      task('history', {
+        updatedAt,
+        history: [{ at: updatedAt, source: 'claude', kind: 'updated', detail: 'Started implementation' }],
+      }),
+    ],
+    segments,
+    {},
+    [],
+    now,
+  )
+  const displayedTask = page.rows[0]!.task
+
+  expect(displayedTask.updatedAgo).toBe('15m')
+  expect(displayedTask.history).toEqual([
+    { source: 'claude', kind: 'updated', detail: 'Started implementation', time: '15m' },
+  ])
+  expect('updatedAt' in displayedTask).toBe(false)
+  expect('createdAt' in displayedTask).toBe(false)
+  expect('at' in displayedTask.history[0]!).toBe(false)
+})
+
 test('meta sessions show separate top-level stream bars and selection follows visible branches', () => {
   const roots: TaskTree = [
     task('one', { status: 'done', streamId: 's1' }),
