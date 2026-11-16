@@ -9422,7 +9422,7 @@ function timelineEntries(screen, ui) {
     const detailLines = selected?.details ?? [];
     const body = detailLines.map((line) => line.label === "Links" ? "Links \xB7" : `${line.label} \xB7 ${line.text}`).join(`
 `);
-    for (const line of detailLines) {
+    for (const line of detailLines)
       if (line.label === "Links")
         buttons.push(...line.actions.map((link) => ({
           label: link.result?.state === "pending" ? "Opening\u2026" : link.label,
@@ -9432,7 +9432,6 @@ function timelineEntries(screen, ui) {
           isFollowUp: false,
           isOut: link.isOut
         })));
-    }
     const branch = row.depth === 0 ? "" : `${row.branch === "last" ? "\u2514\u2500" : "\u251C\u2500"} `;
     const marker = row.status === "done" ? "\u2713" : row.status === "working" ? "\u25CF" : row.status === "stalled" ? "!" : row.status === "waits-on-other" ? "\u25CC" : "\xB7";
     out.push({
@@ -9763,6 +9762,23 @@ function labelMark(b, room, s) {
 function buttonLines(line, ui, indent, width, s) {
   return faceLines(line.buttons, focusOf2(line, ui), indent, width, s);
 }
+function timelineDetailLines(line, ui, indent, width, s) {
+  const linkStart = line.buttons.findIndex((button) => button.press.action === "pr-open");
+  return (line.body ?? "").split(`
+`).flatMap((detail) => {
+    const head = `${" ".repeat(indent)}\u2514\u2500 `;
+    if (detail === "Links \xB7" && linkStart >= 0) {
+      const label = `${head}${detail} `;
+      const buttons = faceLines(line.buttons.slice(linkStart), focusOf2(line, ui) - linkStart, 0, width - visibleLength(label), s);
+      return [
+        fit(`${label}${buttons[0] ?? ""}`, width),
+        ...buttons.slice(1).map((row) => `${" ".repeat(visibleLength(label))}${row}`)
+      ];
+    }
+    const lines = indentedLinks(detail, indent + visibleLength("\u2514\u2500 "), width, Infinity, s.dim, s.link);
+    return lines.map((text, index) => index === 0 ? `${head}${text.slice(indent + visibleLength("\u2514\u2500 "))}` : text);
+  });
+}
 function faceLines(buttons, focused, indent, width, s, between = "") {
   const cells = buttons.map((b, i) => buttonCell(b, i === focused, s, labelMark(b, width - indent, s)));
   const sizes = cells.map(visibleLength);
@@ -9833,7 +9849,7 @@ function drawLine(line, isSelected, d) {
   if (recLine)
     out.push(...isSelected ? indentedLinks(recLine, indent, width, 3, s.dim, s.link) : [fit(`${" ".repeat(indent)}${s.dim(linkedText(recLine, s.link))}`, width)]);
   if (line.body && isSelected)
-    out.push(...indentedLinks(line.body, indent, width, BODY_LINES, (t) => t, s.link));
+    out.push(...line.selectionMark === ">" ? timelineDetailLines(line, ui, indent, width, s) : indentedLinks(line.body, indent, width, BODY_LINES, (t) => t, s.link));
   if (line.detail && (isSelected || line.isDetailShown))
     out.push(...indentedLinks(line.detail, indent, width, isSelected && line.row?.type !== "finding" ? Infinity : 4, s.dim, s.link));
   if (!isSelected)
@@ -9842,8 +9858,10 @@ function drawLine(line, isSelected, d) {
     out.push(" ".repeat(indent) + s.tone("accent", line.file));
   for (const o of line.row?.optionDescriptions ?? [])
     out.push(fit(" ".repeat(indent) + o.label + s.dim(`: ${o.description}`), width));
+  const hasInlineLinks = line.selectionMark === ">" && line.body?.includes("Links \xB7") === true;
+  const linkStart = hasInlineLinks ? line.buttons.findIndex((button) => button.press.action === "pr-open") : -1;
   if (line.buttons.length > 0 && ui.typing !== line.id)
-    out.push(...buttonLines(line, ui, indent - 1, width, s));
+    out.push(...linkStart < 0 ? buttonLines(line, ui, indent - 1, width, s) : faceLines(line.buttons.slice(0, linkStart), focusOf2(line, ui), indent - 1, width, s));
   if (ui.typing === line.id) {
     const hint = line.row ? replyHint(line.row, AGENT) : "Your reply";
     const text = ui.drafts[line.id]?.text ?? "";

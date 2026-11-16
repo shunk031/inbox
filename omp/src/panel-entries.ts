@@ -442,7 +442,7 @@ function timelineEntries(screen: PanelScreen, ui: PanelUi): Entry[] {
     const body = detailLines
       .map(line => (line.label === 'Links' ? 'Links ·' : `${line.label} · ${line.text}`))
       .join('\n')
-    for (const line of detailLines) {
+    for (const line of detailLines)
       if (line.label === 'Links')
         buttons.push(
           ...line.actions.map(link => ({
@@ -454,7 +454,6 @@ function timelineEntries(screen: PanelScreen, ui: PanelUi): Entry[] {
             isOut: link.isOut,
           })),
         )
-    }
     const branch = row.depth === 0 ? '' : `${row.branch === 'last' ? '└─' : '├─'} `
     const marker =
       row.status === 'done'

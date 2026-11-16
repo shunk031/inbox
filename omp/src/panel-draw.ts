@@ -69,6 +69,29 @@ function buttonLines(line: Line, ui: PanelUi, indent: number, width: number, s: 
   return faceLines(line.buttons, focusOf(line, ui), indent, width, s)
 }
 
+function timelineDetailLines(line: Line, ui: PanelUi, indent: number, width: number, s: Style): string[] {
+  const linkStart = line.buttons.findIndex(button => button.press.action === 'pr-open')
+  return (line.body ?? '').split('\n').flatMap(detail => {
+    const head = `${' '.repeat(indent)}└─ `
+    if (detail === 'Links ·' && linkStart >= 0) {
+      const label = `${head}${detail} `
+      const buttons = faceLines(
+        line.buttons.slice(linkStart),
+        focusOf(line, ui) - linkStart,
+        0,
+        width - visibleLength(label),
+        s,
+      )
+      return [
+        fit(`${label}${buttons[0] ?? ''}`, width),
+        ...buttons.slice(1).map(row => `${' '.repeat(visibleLength(label))}${row}`),
+      ]
+    }
+    const lines = indentedLinks(detail, indent + visibleLength('└─ '), width, Infinity, s.dim, s.link)
+    return lines.map((text, index) => (index === 0 ? `${head}${text.slice(indent + visibleLength('└─ '))}` : text))
+  })
+}
+
 /** Buttons laid out in lines from `indent`, the one at `focused` drawn focused. -1 focuses none. */
 export function faceLines(
   buttons: ButtonFace[],
@@ -182,7 +205,12 @@ export function drawLine(line: Line, isSelected: boolean, d: Draw): string[] {
         ? indentedLinks(recLine, indent, width, 3, s.dim, s.link)
         : [fit(`${' '.repeat(indent)}${s.dim(linkedText(recLine, s.link))}`, width)]),
     )
-  if (line.body && isSelected) out.push(...indentedLinks(line.body, indent, width, BODY_LINES, t => t, s.link))
+  if (line.body && isSelected)
+    out.push(
+      ...(line.selectionMark === '>'
+        ? timelineDetailLines(line, ui, indent, width, s)
+        : indentedLinks(line.body, indent, width, BODY_LINES, t => t, s.link)),
+    )
   if (line.detail && (isSelected || line.isDetailShown))
     out.push(
       ...indentedLinks(
@@ -199,7 +227,14 @@ export function drawLine(line: Line, isSelected: boolean, d: Draw): string[] {
   for (const o of line.row?.optionDescriptions ?? [])
     out.push(fit(' '.repeat(indent) + o.label + s.dim(`: ${o.description}`), width))
   // As in the terminal, an open reply field replaces the row's buttons: Enter sends, so no button reads as focused.
-  if (line.buttons.length > 0 && ui.typing !== line.id) out.push(...buttonLines(line, ui, indent - 1, width, s))
+  const hasInlineLinks = line.selectionMark === '>' && line.body?.includes('Links ·') === true
+  const linkStart = hasInlineLinks ? line.buttons.findIndex(button => button.press.action === 'pr-open') : -1
+  if (line.buttons.length > 0 && ui.typing !== line.id)
+    out.push(
+      ...(linkStart < 0
+        ? buttonLines(line, ui, indent - 1, width, s)
+        : faceLines(line.buttons.slice(0, linkStart), focusOf(line, ui), indent - 1, width, s)),
+    )
   if (ui.typing === line.id) {
     const hint = line.row ? replyHint(line.row, AGENT) : 'Your reply'
     const text = ui.drafts[line.id]?.text ?? ''
