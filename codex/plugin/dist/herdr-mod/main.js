@@ -1,5 +1,5 @@
 // Built by herdr/build.ts with Bun 1.4.4 from herdr/src and hooks/. Do not edit.
-// Built at 2026-11-16T13:40:52.024Z. 218413 characters follow.
+// Built at 2026-11-16T14:40:57.470Z. 218492 characters follow.
 
 // src/main.ts
 import { View, div as div5 } from "gpui-kit";
@@ -4242,7 +4242,7 @@ function rowTabBlocks(screen, ui, tab) {
 function tabCells(screen, tab) {
   const { view } = screen;
   const counts = { needsYou: view.needsYou.count, findings: view.findings.count, prs: view.prs.count };
-  return shownTabs(screen.isNextBuild).map((t) => ({
+  return shownTabs(screen.isNextBuild).filter((t) => t.id !== "timeline").map((t) => ({
     id: t.id,
     label: t.label,
     badge: tabBadge(t.id, counts),
@@ -4260,6 +4260,8 @@ function tabBlocks(screen, ui) {
   }
   if (ui.tab === "prs")
     return prTabBlocks(screen, ui.selected);
+  if (ui.tab === "timeline")
+    return [];
   return rowTabBlocks(screen, ui, ui.tab);
 }
 

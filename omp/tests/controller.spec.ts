@@ -103,7 +103,7 @@ test('the panel restores Timeline navigation and saves selection and branch fold
   })
 
   await panel.start()
-  panel.handleInput('5')
+  panel.handleInput('4')
   panel.handleInput('j')
   panel.handleInput('h')
   expect(saved).toEqual([

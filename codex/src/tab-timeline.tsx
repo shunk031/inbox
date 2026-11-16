@@ -125,7 +125,8 @@ export function TimelineTab({ view }: { view: TabView }) {
     <main class="status-page timeline-page">
       <div class="timeline-bars" style={{ padding: '0 14px 8px var(--text-x)' }}>
         <div class="muted">
-          Task plan · {page.summary}{page.bars[0]?.parts.length ? ' · ' : null}
+          Task plan · {page.summary}
+          {page.bars[0]?.parts.length ? ' · ' : null}
           {page.bars[0] ? barParts(page.bars[0].id, page.bars[0].parts) : null}
         </div>
         {page.bars.slice(1).map(bar => (
