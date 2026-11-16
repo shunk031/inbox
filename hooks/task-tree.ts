@@ -228,6 +228,8 @@ export function updateTask(
       const updated = { ...node, ...fields, updatedAt: at, history: boundedHistory(node.history, event) }
       if (links === null) delete updated.links
       else if (links !== undefined) updated.links = { ...links, ...(links.owner ? { owner: { ...links.owner } } : {}) }
+      if (updated.prMergedApplied && updated.links?.pr && updated.links.pr !== updated.prMergedApplied)
+        delete updated.prMergedApplied
       return updated
     }),
   )

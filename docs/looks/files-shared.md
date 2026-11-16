@@ -56,7 +56,7 @@ Part of [the look map](../looks.md#files).
 | `hooks/inbox-text.ts` | Shared module. The `inbox:` texts beside a prompt, the state a new conversation starts with, and the question numbers a typed answer such as "1 yes" refers to. `screenText` tells the models whether the inbox is open, and on which tab. |
 | `hooks/session-version.ts` | Shared module. The version every host writes on a session it saves, and `checkVersion`, which Codex and omp run when they read one. |
 | `hooks/session-files.ts` | Shared module. The empty session, a session's saved file name, which saved files may be deleted, and `upgradeSession`, which converts a session an earlier build saved to the current shape. |
-| `hooks/task-tree.ts` | Shared module. Pure task-tree operations, validated task links, bounded notes and history, weighted progress, and the Status subject and milestone migration used by `upgradeSession`. |
+| `hooks/task-tree.ts` | Shared module. Pure task-tree operations, validated task links, bounded notes and history, the durable marker for a PR merge already applied to a task, weighted progress, and the Status subject and milestone migration used by `upgradeSession`. |
 | `hooks/task-facts.ts` | Shared module. Applies linked PR states to task nodes and derives merged-with-open-children and closed-without-merge warnings. |
 | `hooks/session-view.ts` | Shared view. Carries derived task-fact warnings to each look beside the PR and Status views. |
 | `hooks/saved-check-keys.ts` | Shared module. `withCheckKeys`, which `upgradeSession` runs to rename the checks an earlier build saved by name alone, in last actions, sent rows and a PR order's recorded statuses, to each check's `checkKey`. |

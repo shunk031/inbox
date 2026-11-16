@@ -40,6 +40,8 @@ export type TaskNode = {
   goalId?: string
   streamId?: string
   mergedIntoId?: string
+  /** The linked PR whose merge fact completed this task, retained if bounded history rolls over. */
+  prMergedApplied?: string
   links?: TaskLinks
 }
 

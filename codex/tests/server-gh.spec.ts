@@ -65,6 +65,7 @@ test('Codex saves task completion from its tracked PR view and leaves the task u
     status: 'done',
     updatedAt: 100,
     history: [{ at: 100, source: 'pr', kind: 'completed', detail: url }],
+    prMergedApplied: url,
   })
 
   const failed = await prServer(args =>

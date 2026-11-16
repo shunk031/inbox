@@ -3305,6 +3305,8 @@ function updateTask(tree, id, changes, at, source) {
       delete updated.links;
     else if (links !== undefined)
       updated.links = { ...links, ...links.owner ? { owner: { ...links.owner } } : {} };
+    if (updated.prMergedApplied && updated.links?.pr && updated.links.pr !== updated.prMergedApplied)
+      delete updated.prMergedApplied;
     return updated;
   }));
 }
@@ -8004,6 +8006,8 @@ function applyTaskPrFacts(tree, states, at) {
     }
     if (state !== "MERGED")
       continue;
+    if (task.prMergedApplied === pr)
+      continue;
     if (task.history.some((event) => event.source === "pr" && event.kind === "completed" && event.detail === pr))
       continue;
     if (tree.some((child) => child.parentId === task.id && child.status !== "done" && child.status !== "dropped")) {
@@ -8012,7 +8016,7 @@ function applyTaskPrFacts(tree, states, at) {
     }
     const completed = completeTask(next, task.id, at, "pr", pr);
     if (completed.ok)
-      next = completed.tree;
+      next = completed.tree.map((node) => node.id === task.id ? { ...node, prMergedApplied: pr } : node);
   }
   return { tree: next, warnings };
 }
