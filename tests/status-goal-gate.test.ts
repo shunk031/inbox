@@ -3,6 +3,7 @@ import { expect, test } from 'claude-code/testing'
 import { GOAL_PARTS, goalRules } from '../hooks/status-prompt-goal'
 import { EMPTY_SESSION_STATUS } from '../hooks/status-limits'
 import { goalRefusal, goalTaskId, isGoalMet } from '../hooks/status-goal-gate'
+import { applyOps } from '../hooks/status-ops'
 import { setTypedGoal } from '../hooks/status-goal-ops'
 import type { TaskNode } from '../types'
 
@@ -34,7 +35,12 @@ test('Status cannot invent a goal without open work or replace a goal while its 
   const goal = { ...setTypedGoal(EMPTY_SESSION_STATUS, 'Ship search', 10).goal!, source: 'inferred' as const }
   const open = task('search', 'working', goalTaskId(goal))
 
-  expect(goalRefusal(EMPTY_SESSION_STATUS, EMPTY_SESSION_STATUS, [], 'goal', 20)).toBe('no-work')
+  expect(goalRefusal(EMPTY_SESSION_STATUS, EMPTY_SESSION_STATUS, [], 'goal', 20)).toBeNull()
+  expect(
+    applyOps(EMPTY_SESSION_STATUS, [{ kind: 'goal', text: 'Ship search' }], 20, new Set(), []).goalRefused,
+  ).toMatchObject({
+    why: 'no-work',
+  })
   const current = { ...EMPTY_SESSION_STATUS, goal }
   expect(goalRefusal(current, current, [open], 'goal', 20)).toBe('work-open')
 })
@@ -44,7 +50,7 @@ test('typed goals stay user-owned until their linked work is met', () => {
   const linked = task('search', 'working', goalTaskId(saved.goal!))
 
   expect(goalRefusal(saved, saved, [linked], 'retire', 20)).toBe('typed')
-  expect(goalRefusal(saved, saved, [{ ...linked, status: 'done' }], 'retire', 20)).toBeNull()
+  expect(goalRefusal(saved, saved, [{ ...linked, status: 'done' }], 'retire', 20)).toBe('met')
 })
 
 test('the Status goal guidance names only task-tree links and can omit an individual rule', () => {

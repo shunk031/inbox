@@ -5,7 +5,6 @@ export type Op =
   | { kind: 'none' }
   | { kind: 'head'; title: string; description: string }
   | { kind: 'link'; ref: string; taskId: string }
-  /** A goal the call sets from the session's work. */
   | { kind: 'goal'; text: string }
   /** Clears an inferred goal the session's work has left, when no next goal is clear. */
   | { kind: 'retire'; why: string }

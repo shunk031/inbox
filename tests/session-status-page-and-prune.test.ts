@@ -8,11 +8,18 @@ import { applyStatus } from '../hooks/status-ops'
 import { CLAUDE_CODE } from '../hooks/model-text'
 import { emptySession, upgradeSession } from '../hooks/session-files'
 import { startContext } from '../hooks/session-turns'
-import { appliedCatchUp, forkedFrom, hasLedger, isUnseen } from '../hooks/session-status'
+import {
+  appliedCatchUp,
+  forkedFrom,
+  hasLedger,
+  isUnseen,
+  lookEndedOn,
+  lookReportedOn,
+  withLook,
+} from '../hooks/session-status'
 import { pruned } from '../hooks/session-presses'
 import { sessionView } from '../hooks/session-view'
 import type { Item, Session, TaskNode } from '../types'
-import { taskTreeFromStatus } from '../hooks/task-tree'
 import { allRows } from '../hooks/rows'
 import { NO_HOLDS } from '../hooks/timing'
 import { prMarkId } from '../hooks/pr-rows'
@@ -36,26 +43,29 @@ const ITEM: Item = {
 test('the Status page draws each status with its mark and tone, and ◆ on a subject an open ask holds up, whose Asks row names it until the subject closes', () => {
   const statuses = ['working', 'queued', 'waits-on-other', 'queued'] as const
   const asks = new Set([ITEM.id])
-  const opened = applyStatus(
-    null,
-    parseStatus([...statuses.map((st, n) => `NEW: ${st} | Part ${n} | step`), `LINK: ${ITEM.id} | s4`].join('\n'))!,
-    1000,
-    asks,
-  )
-  const closed = applyStatus(opened, parseStatus('DONE: s1 | built')!, 2000, asks)
-  const taskTree = taskTreeFromStatus(closed).map(task =>
-    task.id === 's1' ? { ...task, status: 'done' as const } : task,
-  )
-  const held = { ...emptySession(), taskTree, ledger: { ...EMPTY, items: [ITEM], overview: closed } }
+  const taskTree: TaskNode[] = statuses.map((status, n) => ({
+    id: `s${n + 1}`,
+    parentId: null,
+    status,
+    weight: 1,
+    title: `Part ${n}`,
+    detail: 'step',
+    notes: [],
+    createdAt: 1000,
+    updatedAt: 1000,
+    history: [],
+  }))
+  const opened = applyStatus(null, parseStatus(`LINK: ${ITEM.id} | s4`)!, 1000, asks, null, taskTree)!
+  const held = { ...emptySession(), taskTree, ledger: { ...EMPTY, items: [ITEM], overview: opened } }
   const rows = sessionView(held, 3000, 1000, NO_HOLDS).statusPage.rows.flatMap(r =>
     r.kind === 'subject' ? [[r.name, r.mark, r.tone]] : [],
   )
 
   expect(rows).toEqual([
     ['Part 3', '◆', 'needsYou'],
+    ['Part 0', '◐', null],
     ['Part 2', '◌', null],
     ['Part 1', '○', null],
-    ['Part 0', '✓', 'done'],
   ])
   expect(allRows(sessionView(held, 3000, 1000, NO_HOLDS)).find(r => r.id === ITEM.id)?.holdsUpLine).toBe(
     'Holds up Part 3',
@@ -63,7 +73,6 @@ test('the Status page draws each status with its mark and tone, and ◆ on a sub
   const heldDone = {
     ...held,
     taskTree: taskTree.map(task => (task.id === 's4' ? { ...task, status: 'done' as const } : task)),
-    ledger: { ...held.ledger, overview: applyStatus(closed, parseStatus('DONE: s4 | built')!, 2500, asks) },
   }
   expect(allRows(sessionView(heldDone, 3000, 1000, NO_HOLDS)).find(r => r.id === ITEM.id)?.holdsUpLine).toBeNull()
 })
@@ -128,6 +137,43 @@ test('one ask linked to two subjects marks both ◆, and its Asks row names each
   expect(allRows(oneDone).find(r => r.id === ITEM.id)?.holdsUpLine).toBe('Holds up Hotfix release')
 })
 
+test('task freshness keeps the prior seen time for rows missed in a look, including after a save and a late Herdr report', () => {
+  const taskTree: TaskNode[] = ['s1', 's2'].map(id => ({
+    id,
+    parentId: null,
+    status: 'done',
+    weight: 1,
+    title: id,
+    detail: '',
+    notes: [],
+    createdAt: 900,
+    updatedAt: 900,
+    history: [],
+  }))
+  const overview = applyStatus(null, parseStatus('HEAD: Focus | Current work')!, 900, new Set())!
+  const session = {
+    ...emptySession(),
+    taskTree,
+    ledger: { ...EMPTY, overview: { ...overview, lastLookAt: 800 } },
+  }
+  const started = withLook(session, true, 1000, {})
+  const ended = lookEndedOn(started, 6000, { s1: 6000 })
+  expect(ended.ledger.overview?.missedInLastLook).toMatchObject({ s2: 800 })
+  expect(upgradeSession(ended).ledger.overview?.missedInLastLook).toMatchObject({ s2: 800 })
+
+  const late = lookReportedOn(
+    {
+      ...session,
+      ledger: {
+        ...session.ledger,
+        overview: { ...overview, lastLookAt: 6000, missedInLastLook: { s2: null } },
+      },
+    },
+    { startedAt: 0, endedAt: 5500, shown: { s2: 5000 } },
+  )
+  expect(late.ledger.overview?.missedInLastLook.s2).toBe(5500)
+})
+
 test('a session saved by the Progress trial build loads without its results, subagents and stated step', () => {
   const saved = {
     ...emptySession(),
@@ -165,12 +211,8 @@ test('a sample saved without a Status is replaced, and the sample session carrie
   expect(isDemoCopy({ ...old, ledger: { ...old.ledger, overview: undefined } })).toBe(false)
   const page = sessionView(demoSession(1_000_000, 'Claude'), 1_000_000, 1000, NO_HOLDS).statusPage
   expect(page.head?.title).toBe('Pinch to dismiss')
-  expect(page.goal?.milestones.map(m => m.rows.map(r => r.kind))).toEqual([
-    ['subject'],
-    ['subject', 'child', 'child', 'child'],
-    ['subject'],
-  ])
-  expect(page.rows.map(r => r.kind)).toEqual(['part', 'subject', 'child', 'subject', 'done-fold'])
+  expect(page.goal?.milestones).toEqual([])
+  expect(page.rows.flatMap(r => (r.kind === 'subject' ? [r.id] : []))).toEqual(['s2', 'm3', 'm2', 's5'])
 })
 
 test('a conversation start carries the head and where each open subject stands, not on a resume the guidance, and nothing for an empty session', () => {
@@ -178,7 +220,7 @@ test('a conversation start carries the head and where each open subject stands, 
   const ledger = { ...described.ledger, overview: applyStatus(null, answer, 1000, new Set()) }
   const carried = startContext(CLAUDE_CODE, { ...described, ledger }, 'resume')
   expect(carried).toContain('Working on: Work offline: Letting the app work without a connection')
-  expect(carried).toContain('- Offline mode: queue built (working)')
+  expect(carried).not.toContain('Offline mode')
   expect(startContext(CLAUDE_CODE, { ...described, ledger }, 'startup')).toContain('Working on: Work offline')
   expect(startContext(CLAUDE_CODE, described, 'resume')).toBeNull()
 })

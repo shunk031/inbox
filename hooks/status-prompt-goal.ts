@@ -22,7 +22,6 @@ export const GOAL_PARTS = {
   'task-links': `Write LINK only to connect an open ask or a live child to a task already listed in <task tree>. Use its exact task id. Never create, close, rename or relink a task here.`,
 } as const
 
-/** Goal rules can be selectively omitted by local prompt checks. */
 export type GoalPartId = keyof typeof GOAL_PARTS
 
 export function goalRules(without: readonly GoalPartId[] = []): string {

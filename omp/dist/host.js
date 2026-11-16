@@ -133,8 +133,7 @@ var EMPTY_SESSION_STATUS = {
   serves: {},
   goalRefused: null
 };
-var OPEN_STATUSES = ["working", "queued", "waits-on-other"];
-var STATUSES = [...OPEN_STATUSES, "done", "dropped"];
+var STATUSES = ["working", "queued", "waits-on-other", "done", "dropped"];
 function clipWords(text, limit) {
   const words = text.trim().split(/\s+/).filter(Boolean);
   return words.length <= limit ? words.join(" ") : `${words.slice(0, limit).join(" ")}\u2026`;
@@ -3319,38 +3318,23 @@ function addTaskNote(tree, id, note, at, source) {
     return failed("limit");
   return succeeded(tree.map((node) => node.id === id ? { ...node, notes: [...node.notes, note], updatedAt: at, history: boundedHistory(node.history, event) } : node));
 }
-function weightedTaskSegments(tree, rootIds) {
+function weightedTaskProgress(tree, rootId) {
   const children = new Map;
   for (const task of tree)
     children.set(task.parentId, [...children.get(task.parentId) ?? [], task]);
-  const empty = () => ({ done: 0, working: 0, "waits-on-other": 0, queued: 0 });
-  const combine = (values) => {
-    const included = values.filter(({ segments }) => Object.values(segments).some(Boolean));
-    return Object.fromEntries(["done", "working", "waits-on-other", "queued"].map((status) => [
-      status,
-      weightedAverage(included.map(({ task, segments }) => [segments[status], task.weight]))
-    ]));
-  };
-  const segments = (task, seen) => {
-    if (task.status === "dropped" || seen.has(task.id))
-      return empty();
+  const progress = (task, seen) => {
     if (task.status === "done")
-      return { ...empty(), done: 1 };
+      return 1;
+    if (task.status === "dropped" || seen.has(task.id))
+      return 0;
     const descendants = children.get(task.id) ?? [];
     if (descendants.length === 0)
-      return { ...empty(), [task.status]: 1 };
+      return 0;
     const path = new Set(seen).add(task.id);
-    return combine(descendants.map((task) => ({ task, segments: segments(task, path) })));
+    return weightedAverage(descendants.map((child) => [progress(child, path), child.weight]));
   };
-  const roots = rootIds === undefined ? children.get(null) ?? [] : tree.filter((task) => rootIds.includes(task.id));
-  return combine(roots.map((task) => ({ task, segments: segments(task, new Set) })));
-}
-function taskProgressPercent(progress) {
-  const total = Object.values(progress).reduce((sum, value) => sum + value, 0);
-  return total === 0 ? 0 : progress.done / total * 100;
-}
-function weightedTaskProgress(tree, rootId) {
-  return taskProgressPercent(weightedTaskSegments(tree, rootId === undefined ? undefined : [rootId])) / 100;
+  const roots = rootId === undefined ? children.get(null) ?? [] : tree.filter((task) => task.id === rootId);
+  return weightedAverage(roots.map((task) => [progress(task, new Set), task.weight]));
 }
 function weightedAverage(values) {
   const total = values.reduce((sum, [, weight]) => sum + weight, 0);
@@ -4151,13 +4135,13 @@ function goalPage(o, _items, tree) {
   const linked = tasksForGoal(tree, goal);
   const isMet = isGoalMet(goal, tree);
   const awaiting = linked.length === 0;
-  const done = linked.filter((task) => task.status === "done" || task.status === "dropped").length;
+  const done = linked.filter((task) => task.status === "done").length;
   const was = goal.was !== null && (o.lastLookAt === null || goal.setAt > o.lastLookAt) ? goal.was : null;
   return {
     goal: {
       label: isMet ? "Goal met" : GOAL_HEADING,
       text: goal.text,
-      count: isMet || awaiting ? null : `${done} of ${linked.length} tasks done`,
+      count: isMet || awaiting ? null : `${done} of ${linked.filter((task) => task.status !== "dropped").length} tasks done`,
       isMet,
       was,
       now: o.head ? `Now: ${o.head.description || o.head.title}` : null,
@@ -4289,6 +4273,10 @@ function statusOf2(roots) {
     return "waits-on-other";
   return "queued";
 }
+function progressOf(tree, roots) {
+  const totalWeight = roots.reduce((sum, task) => sum + task.weight, 0);
+  return totalWeight === 0 ? 0 : Math.round(roots.reduce((sum, task) => sum + weightedTaskProgress(tree, task.id) * task.weight, 0) / totalWeight * 100);
+}
 function statusPage(s, now) {
   const o = s.ledger.overview;
   const tree = s.taskTree ?? [];
@@ -4312,15 +4300,14 @@ function statusPage(s, now) {
   const runningChildren = (o?.children ?? []).filter((child) => isChildRunning(child, now) || isFinishedUnseen(child, lastLookAt)).map((child) => ({ ...child, subjectId: rootIdOf(child.subjectId) })).sort((a, b) => (b.lastActivityAt ?? b.startedAt) - (a.lastActivityAt ?? a.startedAt));
   const taskRows = groups.map(({ id, roots }) => {
     const detail = roots.map((task) => task.detail).filter(Boolean).join("; ");
-    const progressSegments = weightedTaskSegments(tree, roots.map((task) => task.id));
+    const progress = progressOf(tree, roots);
     const changedAt = Math.max(...roots.map((task) => task.updatedAt));
     const closed = roots.every((task) => task.status === "done" || task.status === "dropped");
     return {
       id,
       name: roots.map((task) => task.title).join(", "),
       status: statusOf2(roots),
-      text: detail,
-      progressSegments,
+      text: `${progress}% complete${detail ? ` \xB7 ${detail}` : ""}`,
       was: null,
       merged: null,
       createdAt: Math.min(...roots.map((task) => task.createdAt)),
@@ -4345,11 +4332,7 @@ function statusPage(s, now) {
   };
   const shown = taskRows.filter((task) => isOpen(task) || isNew(task));
   const done = taskRows.filter((task) => task.status === "done" && !isNew(task));
-  const segmentsById = new Map(taskRows.map((task) => [task.id, task.progressSegments]));
-  const rows = partRows(shown, ctx, 0).map((row) => {
-    const progressSegments = row.kind === "subject" ? segmentsById.get(row.id) : undefined;
-    return progressSegments ? { ...row, progressSegments } : row;
-  });
+  const rows = partRows(shown, ctx, 0);
   if (done.length > 0)
     rows.push({ kind: "done-fold", id: "tasks-done", depth: 0, text: `${done.length} tasks done`, rows: [] });
   const goalParts = goalPage(o, s.ledger.items, tree);
@@ -9793,6 +9776,7 @@ function demoSession(now, agent) {
   return withDemoPresence({
     ...s,
     ledger: d.ledger,
+    taskTree: taskTreeFromStatus(d.ledger.overview),
     lastActions: d.lastActions,
     prViews: d.prViews,
     presence: { ...s.presence, ...d.turns }
@@ -10954,7 +10938,7 @@ function applied(s, parsed, now, promptAt) {
 
 // ../hooks/status-ops.ts
 var linksWith = (ids, id) => ids.includes(id) ? [...ids] : [...ids, id];
-function applyOps(last, ops, now, askIds, tree) {
+function applyOps(last, ops, now, askIds, tree = []) {
   let o = {
     ...last ?? EMPTY_SESSION_STATUS,
     children: (last?.children ?? []).map((child) => ({ ...child })),
@@ -11006,12 +10990,11 @@ function isStatusCallCurrent(s, appliedAfter) {
 function appliedStatus(s, answer, appliedAfter, now, readSetAt = s.ledger.overview?.goal?.setAt ?? null, isCatchUp = false) {
   if (!isStatusCallCurrent(s, appliedAfter))
     return s;
+  const askIds = new Set(s.ledger.items.map((i) => i.id));
+  const overview = applyStatus(s.ledger.overview, answer, now, askIds, readSetAt, s.taskTree);
   return {
     ...s,
-    ledger: {
-      ...s.ledger,
-      overview: applyStatus(s.ledger.overview, answer, now, new Set(s.ledger.items.map((i) => i.id)), readSetAt, s.taskTree)
-    },
+    ledger: { ...s.ledger, overview },
     overviewFailure: isCatchUp ? null : s.overviewFailure,
     lastOverviewCallAt: now,
     overviewTurn: appliedAfter
@@ -11256,7 +11239,7 @@ function statusBlocks({ last, asks, taskTree, now }) {
   return [
     ...goalBlocks(last, taskTree, now),
     `<head>${NL5}${headText(last)}${NL5}</head>`,
-    `<task tree>${NL5}${clipMiddle(taskTreeText(taskTree, now), 8000, 2000)}${NL5}</task tree>`,
+    `<task tree>${NL5}${clipMiddle(taskTreeText(taskTree ?? [], now), 8000, 2000)}${NL5}</task tree>`,
     ...running === "" ? [] : [`<running>${NL5}${running}${NL5}</running>`],
     ...held === "" ? [] : [`<asks>${NL5}${held}${NL5}</asks>`]
   ];

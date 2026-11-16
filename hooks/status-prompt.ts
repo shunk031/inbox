@@ -11,7 +11,6 @@ import { personInstructionsBlock } from './person-instructions'
 
 export function statusSystem(
   without: readonly GoalPartId[] = [],
-  _splitsParts = false,
   instructions: string | null = null,
 ): string {
   const system = `You keep the Status of a coding session: its focus, goal, current Now, live Children, and a short summary of its task tree.
@@ -46,10 +45,10 @@ Never write task operations or a task plan. Use the task tree as the sole durabl
 }
 
 export const STATUS_SYSTEM = statusSystem()
-export const PARTS_STATUS_SYSTEM = statusSystem([], true)
+export const PARTS_STATUS_SYSTEM = statusSystem()
 
 export function hostStatusSystem(_names: Host, instructions: string | null = null): string {
-  return statusSystem([], false, instructions)
+  return statusSystem([], instructions)
 }
 
 export type StatusCallInput = { last: SessionStatus | null; asks: readonly Item[]; taskTree?: TaskTree; now: number }
@@ -61,20 +60,11 @@ function headText(o: SessionStatus | null): string {
 }
 
 function taskTreeText(tree: TaskTree, now: number): string {
-  const roots = tree.filter(task => task.parentId === null)
-  const top = roots.map(task => {
-    const progress = Math.round(weightedTaskProgress(tree, task.id) * 100)
-    return `${task.id} | ${task.status} | weight ${task.weight} | ${progress}% | ${task.goalId ?? '-'} | ${task.streamId ?? '-'} | ${task.title} | ${task.detail || '-'}`
-  })
-  const recent = tree
-    .flatMap(task => task.history.map(event => ({ task, event })))
-    .sort((a, b) => b.event.at - a.event.at)
-    .slice(0, 8)
-    .map(
-      ({ task, event }) =>
-        `${task.id} | ${event.kind} | ${Math.max(0, now - event.at)}ms ago${event.detail ? ` | ${event.detail}` : ''}`,
-    )
-  return [...top, ...(recent.length > 0 ? [`Recent changes:`, ...recent] : [])].join(NL) || '(no tasks yet)'
+  const top = tree.filter(task => task.parentId === null).map(task => `${task.id} | ${task.status} | weight ${task.weight} | ${Math.round(weightedTaskProgress(tree, task.id) * 100)}% | ${task.goalId ?? '-'} | ${task.streamId ?? '-'} | ${task.title} | ${task.detail || '-'}`)
+  const recent = tree.flatMap(task => task.history.map(event => ({ task, event })))
+    .sort((a, b) => b.event.at - a.event.at).slice(0, 8)
+    .map(({ task, event }) => `${task.id} | ${event.kind} | ${Math.max(0, now - event.at)}ms ago${event.detail ? ` | ${event.detail}` : ''}`)
+  return [...top, ...(recent.length ? ['Recent changes:', ...recent] : [])].join(NL) || '(no tasks yet)'
 }
 
 function statusBlocks({ last, asks, taskTree, now }: StatusCallInput): string[] {

@@ -60,6 +60,8 @@ function childRow(c: Child, branch: StatusBranch | null, depth: number): StatusR
   }
 }
 
+export const looseChildRows = (children: Child[], depth: number) => children.map(c => childRow(c, null, depth))
+
 /** What every part of the list reads to place and draw a subject. */
 export type ListContext = {
   isNew: (x: Subject) => boolean

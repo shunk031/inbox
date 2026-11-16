@@ -90,8 +90,7 @@ var EMPTY_SESSION_STATUS = {
   serves: {},
   goalRefused: null
 };
-var OPEN_STATUSES = ["working", "queued", "waits-on-other"];
-var STATUSES = [...OPEN_STATUSES, "done", "dropped"];
+var STATUSES = ["working", "queued", "waits-on-other", "done", "dropped"];
 function clipWords(text2, limit) {
   const words3 = text2.trim().split(/\s+/).filter(Boolean);
   return words3.length <= limit ? words3.join(" ") : `${words3.slice(0, limit).join(" ")}\u2026`;
@@ -938,29 +937,19 @@ var TASK_NOTE_LENGTH = 2e3;
 function notesOf(notes) {
   return notes.slice(0, TASK_NOTES_LIMIT).map((note) => note.slice(0, TASK_NOTE_LENGTH));
 }
-function weightedTaskSegments(tree, rootIds) {
+function weightedTaskProgress(tree, rootId) {
   const children = /* @__PURE__ */ new Map();
   for (const task of tree) children.set(task.parentId, [...children.get(task.parentId) ?? [], task]);
-  const empty = () => ({ done: 0, working: 0, "waits-on-other": 0, queued: 0 });
-  const combine = (values) => {
-    const included = values.filter(({ segments: segments2 }) => Object.values(segments2).some(Boolean));
-    return Object.fromEntries(
-      ["done", "working", "waits-on-other", "queued"].map((status) => [
-        status,
-        weightedAverage(included.map(({ task, segments: segments2 }) => [segments2[status], task.weight]))
-      ])
-    );
-  };
-  const segments = (task, seen) => {
-    if (task.status === "dropped" || seen.has(task.id)) return empty();
-    if (task.status === "done") return { ...empty(), done: 1 };
+  const progress = (task, seen) => {
+    if (task.status === "done") return 1;
+    if (task.status === "dropped" || seen.has(task.id)) return 0;
     const descendants = children.get(task.id) ?? [];
-    if (descendants.length === 0) return { ...empty(), [task.status]: 1 };
+    if (descendants.length === 0) return 0;
     const path = new Set(seen).add(task.id);
-    return combine(descendants.map((task2) => ({ task: task2, segments: segments(task2, path) })));
+    return weightedAverage(descendants.map((child) => [progress(child, path), child.weight]));
   };
-  const roots = rootIds === void 0 ? children.get(null) ?? [] : tree.filter((task) => rootIds.includes(task.id));
-  return combine(roots.map((task) => ({ task, segments: segments(task, /* @__PURE__ */ new Set()) })));
+  const roots = rootId === void 0 ? children.get(null) ?? [] : tree.filter((task) => task.id === rootId);
+  return weightedAverage(roots.map((task) => [progress(task, /* @__PURE__ */ new Set()), task.weight]));
 }
 function weightedAverage(values) {
   const total = values.reduce((sum, [, weight]) => sum + weight, 0);
@@ -1436,13 +1425,13 @@ function goalPage(o, _items, tree) {
   const linked = tasksForGoal(tree, goal);
   const isMet = isGoalMet(goal, tree);
   const awaiting = linked.length === 0;
-  const done = linked.filter((task) => task.status === "done" || task.status === "dropped").length;
+  const done = linked.filter((task) => task.status === "done").length;
   const was = goal.was !== null && (o.lastLookAt === null || goal.setAt > o.lastLookAt) ? goal.was : null;
   return {
     goal: {
       label: isMet ? "Goal met" : GOAL_HEADING,
       text: goal.text,
-      count: isMet || awaiting ? null : `${done} of ${linked.length} tasks done`,
+      count: isMet || awaiting ? null : `${done} of ${linked.filter((task) => task.status !== "dropped").length} tasks done`,
       isMet,
       was,
       now: o.head ? `Now: ${o.head.description || o.head.title}` : null,
@@ -1553,6 +1542,12 @@ function statusOf2(roots) {
   if (roots.some((task) => task.status === "waits-on-other")) return "waits-on-other";
   return "queued";
 }
+function progressOf(tree, roots) {
+  const totalWeight = roots.reduce((sum, task) => sum + task.weight, 0);
+  return totalWeight === 0 ? 0 : Math.round(
+    roots.reduce((sum, task) => sum + weightedTaskProgress(tree, task.id) * task.weight, 0) / totalWeight * 100
+  );
+}
 function statusPage(s, now) {
   const o = s.ledger.overview;
   const tree = s.taskTree ?? [];
@@ -1576,15 +1571,14 @@ function statusPage(s, now) {
   const runningChildren = (o?.children ?? []).filter((child) => isChildRunning(child, now) || isFinishedUnseen(child, lastLookAt)).map((child) => ({ ...child, subjectId: rootIdOf(child.subjectId) })).sort((a, b) => (b.lastActivityAt ?? b.startedAt) - (a.lastActivityAt ?? a.startedAt));
   const taskRows = groups.map(({ id, roots }) => {
     const detail = roots.map((task) => task.detail).filter(Boolean).join("; ");
-    const progressSegments = weightedTaskSegments(tree, roots.map((task) => task.id));
+    const progress = progressOf(tree, roots);
     const changedAt = Math.max(...roots.map((task) => task.updatedAt));
     const closed = roots.every((task) => task.status === "done" || task.status === "dropped");
     return {
       id,
       name: roots.map((task) => task.title).join(", "),
       status: statusOf2(roots),
-      text: detail,
-      progressSegments,
+      text: `${progress}% complete${detail ? ` \xB7 ${detail}` : ""}`,
       was: null,
       merged: null,
       createdAt: Math.min(...roots.map((task) => task.createdAt)),
@@ -1609,12 +1603,9 @@ function statusPage(s, now) {
   };
   const shown = taskRows.filter((task) => isOpen(task) || isNew(task));
   const done = taskRows.filter((task) => task.status === "done" && !isNew(task));
-  const segmentsById = new Map(taskRows.map((task) => [task.id, task.progressSegments]));
-  const rows = partRows(shown, ctx, 0).map((row) => {
-    const progressSegments = row.kind === "subject" ? segmentsById.get(row.id) : void 0;
-    return progressSegments ? { ...row, progressSegments } : row;
-  });
-  if (done.length > 0) rows.push({ kind: "done-fold", id: "tasks-done", depth: 0, text: `${done.length} tasks done`, rows: [] });
+  const rows = partRows(shown, ctx, 0);
+  if (done.length > 0)
+    rows.push({ kind: "done-fold", id: "tasks-done", depth: 0, text: `${done.length} tasks done`, rows: [] });
   const goalParts = goalPage(o, s.ledger.items, tree);
   const head = o?.head ? { title: o.head.title, description: o.head.description || null } : null;
   return {

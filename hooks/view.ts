@@ -76,13 +76,10 @@ function needsYouOrder(ledger: Ledger): { questions: Item[]; tasks: Item[] } {
   return { questions: newestReplyFirst('question'), tasks: newestReplyFirst('task') }
 }
 
-/** The open tasks the Status call linked to an ask. */
-function heldTasksOf(ledger: Ledger, tree: TaskTree, askId: string): { title: string }[] {
-  const ids = ledger.overview?.askSubjects[askId] ?? []
-
-  return ids.flatMap(id => {
+function heldTasksOf(ledger: Ledger, tree: TaskTree, askId: string): string[] {
+  return (ledger.overview?.askSubjects[askId] ?? []).flatMap(id => {
     const task = tree.find(node => node.id === id)
-    return task && task.status !== 'done' && task.status !== 'dropped' ? [{ title: task.title }] : []
+    return task && task.status !== 'done' && task.status !== 'dropped' ? [task.title] : []
   })
 }
 
@@ -264,7 +261,7 @@ export function inboxView({
       feedback,
       actions,
       optionDescriptions: optionDescriptionsOf(row.item, actions),
-      holdsUpLine: held.length > 0 ? `${HOLDS_UP_TEXT} ${held.map(task => task.title).join(', ')}` : null,
+      holdsUpLine: held.length > 0 ? `${HOLDS_UP_TEXT} ${held.join(', ')}` : null,
       recLine: state.is === 'open' ? recLineOf(row.item) : null,
       contextLine: state.is === 'open' ? (row.item?.context ?? null) : null,
     }

@@ -5,9 +5,9 @@ import { cutAtPhrase } from './text'
 import type { StatusTone } from './help'
 import { goalPage, oldestAsk } from './status-goal-page'
 import type { GoalParts } from './status-goal-page'
-import { isFinishedUnseen, partRows } from './status-page-parts'
+import { isFinishedUnseen, looseChildRows, partRows } from './status-page-parts'
 import type { ListContext } from './status-page-parts'
-import { weightedTaskProgress } from './task-tree'
+import { taskRootGroups, weightedTaskProgress } from './task-tree'
 
 const STATUS_FAILED =
   "The inbox couldn't update this page from one of the agent's replies. What changed in that reply may be missing. It reads the conversation again after the next reply."
@@ -81,30 +81,10 @@ function rootOf(taskId: string | null, byId: ReadonlyMap<string, TaskNode>): Tas
   return task ?? null
 }
 
-function rootsOf(tree: TaskTree): { id: string; roots: TaskNode[] }[] {
-  const groups = new Map<string, TaskNode[]>()
-  for (const task of tree.filter(node => node.parentId === null)) {
-    const key = task.streamId ? `stream:${task.streamId}` : `task:${task.id}`
-    groups.set(key, [...(groups.get(key) ?? []), task])
-  }
-  return [...groups.values()].map(roots => ({ id: roots[0]!.id, roots }))
-}
-
 function statusOf(roots: TaskNode[]): TaskNode['status'] {
-  if (roots.every(task => task.status === 'done' || task.status === 'dropped'))
-    return roots.some(task => task.status === 'done') ? 'done' : 'dropped'
+  if (roots.every(task => task.status === 'done' || task.status === 'dropped')) return roots.some(task => task.status === 'done') ? 'done' : 'dropped'
   if (roots.some(task => task.status === 'working')) return 'working'
-  if (roots.some(task => task.status === 'waits-on-other')) return 'waits-on-other'
-  return 'queued'
-}
-
-function progressOf(tree: TaskTree, roots: TaskNode[]): number {
-  const totalWeight = roots.reduce((sum, task) => sum + task.weight, 0)
-  return totalWeight === 0
-    ? 0
-    : Math.round(
-        (roots.reduce((sum, task) => sum + weightedTaskProgress(tree, task.id) * task.weight, 0) / totalWeight) * 100,
-      )
+  return roots.some(task => task.status === 'waits-on-other') ? 'waits-on-other' : 'queued'
 }
 
 export function statusPage(
@@ -119,18 +99,15 @@ export function statusPage(
   const o = s.ledger.overview
   const tree = s.taskTree ?? []
   const byId = new Map(tree.map(task => [task.id, task]))
-  const groups = rootsOf(tree)
+  const groups = taskRootGroups(tree)
   const rootIds = new Map<string, string>()
   for (const group of groups) for (const root of group.roots) rootIds.set(root.id, group.id)
-  const rootIdOf = (id: string | null) => {
-    const root = rootOf(id, byId)
-    return root === null ? null : (rootIds.get(root.id) ?? root.id)
-  }
+  const rootIdOf = (id: string | null) => { const root = rootOf(id, byId); return root ? rootIds.get(root.id) ?? root.id : null }
+  const openAskIds = new Set(s.ledger.items.map(item => item.id))
   const askLinks = Object.fromEntries(
-    Object.entries(o?.askSubjects ?? {}).map(([ask, ids]) => [
-      ask,
-      [...new Set(ids.map(rootIdOf).filter((id): id is string => id !== null))],
-    ]),
+    Object.entries(o?.askSubjects ?? {})
+      .filter(([ask]) => openAskIds.has(ask))
+      .map(([ask, ids]) => [ask, [...new Set(ids.map(rootIdOf).filter((id): id is string => id !== null))]]),
   )
   const heldIds = new Set(Object.values(askLinks).flat())
   const lastLookAt = o?.lastLookAt ?? null
@@ -140,26 +117,19 @@ export function statusPage(
     .map(child => ({ ...child, subjectId: rootIdOf(child.subjectId) }))
     .sort((a, b) => (b.lastActivityAt ?? b.startedAt) - (a.lastActivityAt ?? a.startedAt))
   const taskRows = groups.map(({ id, roots }) => {
-    const detail = roots
-      .map(task => task.detail)
-      .filter(Boolean)
-      .join('; ')
-    const progress = progressOf(tree, roots)
+    const detail = roots.map(task => task.detail).filter(Boolean).join('; ')
+    const progress = Math.round(weightedTaskProgress(tree, roots.map(task => task.id)) * 100)
     const changedAt = Math.max(...roots.map(task => task.updatedAt))
     const closed = roots.every(task => task.status === 'done' || task.status === 'dropped')
     return {
-      id,
-      name: roots.map(task => task.title).join(', '),
-      status: statusOf(roots),
+      id, name: roots.map(task => task.title).join(', '), status: statusOf(roots),
       text: `${progress}% complete${detail ? ` · ${detail}` : ''}`,
-      was: null,
-      merged: null,
-      createdAt: Math.min(...roots.map(task => task.createdAt)),
-      changedAt,
-      closedAt: closed ? changedAt : null,
-      into: null,
+      createdAt: Math.min(...roots.map(task => task.createdAt)), changedAt,
+      closedAt: closed ? changedAt : null, was: null, merged: null, into: null,
     }
   })
+  const place = { working: 0, 'waits-on-other': 1, queued: 2, done: 3, dropped: 3 }
+  taskRows.sort((a, b) => Number(heldIds.has(b.id)) - Number(heldIds.has(a.id)) || place[a.status] - place[b.status] || b.changedAt - a.changedAt)
   const isNew = (task: Subject) => {
     const seenAt = task.id in missed ? missed[task.id] : lastLookAt
     return seenAt === null || seenAt === undefined || task.changedAt > seenAt
@@ -176,9 +146,17 @@ export function statusPage(
   }
   const shown: Subject[] = taskRows.filter(task => isOpen(task) || isNew(task))
   const done = taskRows.filter(task => task.status === 'done' && !isNew(task))
-  const rows = partRows(shown, ctx, 0)
+  const shownIds = new Set(shown.map(task => task.id))
+  const loose = runningChildren.filter(child => child.subjectId === null || !shownIds.has(child.subjectId))
+  const rows = [...looseChildRows(loose, 0), ...partRows(shown, ctx, 0)]
   if (done.length > 0)
-    rows.push({ kind: 'done-fold', id: 'tasks-done', depth: 0, text: `${done.length} tasks done`, rows: [] })
+    rows.push({
+      kind: 'done-fold',
+      id: 'done',
+      depth: 0,
+      text: `${done.length} done`,
+      rows: partRows(done, { ...ctx, running: [] }, 1),
+    })
   const goalParts = goalPage(o, s.ledger.items, tree)
   const head = o?.head ? { title: o.head.title, description: o.head.description || null } : null
 

@@ -1,6 +1,6 @@
 import type { GoalRefusal, SessionStatus, StatusGoal, TaskTree } from '../types'
 import type { Op } from './status'
-import { goalRefusal, hasWorkForGoal, isGoalMet, tasksForGoal } from './status-goal-gate'
+import { goalRefusal, goalTaskId, isGoalMet, tasksForGoal } from './status-goal-gate'
 import { clipWords, DESCRIPTION_KEPT, nameKey, REMOVED_KEPT, stems, words } from './status-limits'
 
 const RESTATED_SHARE = 0.8
@@ -10,28 +10,16 @@ export function restatesGoal(text: string, goal: string): boolean {
   const theirs = stems(goal)
   const shared = own.filter(word => theirs.has(word)).length
   const hasNewNumber = own.some(word => /\d/.test(word) && !theirs.has(word))
-
   return own.length > 0 && !hasNewNumber && shared >= RESTATED_SHARE * own.length
 }
 
 export function hasSameWords(a: string, b: string): boolean {
-  const x = words(a)
-  const y = words(b)
-
+  const x = words(a), y = words(b)
   return x.size === y.size && [...x].every(word => y.has(word))
 }
 
-function inferredGoal(o: SessionStatus, text: string, now: number): SessionStatus {
-  const goal: StatusGoal = {
-    text,
-    setAt: now,
-    metAt: null,
-    was: o.goal?.text ?? null,
-    isAwaitingMilestones: true,
-    source: 'inferred',
-  }
-
-  return { ...o, goal, goalRemoved: null, goalRefused: null }
+function setGoal(o: SessionStatus, text: string, now: number, source: StatusGoal['source']): SessionStatus {
+  return { ...o, goal: { text, setAt: now, metAt: null, was: o.goal?.text ?? null, isAwaitingMilestones: true, source }, goalRemoved: null, goalRefused: null }
 }
 
 function goalLineRefusal(
@@ -41,13 +29,9 @@ function goalLineRefusal(
 ): GoalRefusal['why'] | null {
   const text = clipWords(op.text, DESCRIPTION_KEPT)
   const goal = o.goal
-  const repeats =
-    (goal !== null && restatesGoal(text, goal.text)) ||
-    (goal?.was !== null && goal?.was !== undefined && restatesGoal(text, goal.was)) ||
-    o.removedGoals.some(key => restatesGoal(text, key))
-  if (repeats) return 'restates'
+  if ((goal !== null && restatesGoal(text, goal.text)) || (goal?.was != null && restatesGoal(text, goal.was)) || o.removedGoals.some(key => restatesGoal(text, key))) return 'restates'
 
-  return hasWorkForGoal(o, tree) ? null : 'no-work'
+  return tree.some(task => task.status !== 'done' && task.status !== 'dropped' && task.goalId !== (o.goal && goalTaskId(o.goal))) ? null : 'no-work'
 }
 
 export function applyGoalOp(
@@ -62,10 +46,9 @@ export function applyGoalOp(
   if (refused !== null) return { ...o, goalRefused: { line: op.kind, why: refused } }
   if (op.kind === 'retire') return { ...o, goal: null, goalRefused: null }
 
-  return inferredGoal(o, clipWords(op.text, DESCRIPTION_KEPT), now)
+  return setGoal(o, clipWords(op.text, DESCRIPTION_KEPT), now, 'inferred')
 }
 
-/** Saves current ownership and the legacy snapshot fields so Undo keeps reading old saved shapes until T7. */
 export function removeGoal(o: SessionStatus): SessionStatus {
   const goal = o.goal
   if (goal === null) return o
@@ -78,26 +61,17 @@ export function removeGoal(o: SessionStatus): SessionStatus {
 export function restoreGoal(o: SessionStatus): SessionStatus {
   const removed = o.goalRemoved
   if (removed === null || o.goal !== null) return o
-
-  return {
-    ...o,
-    goal: removed.goal,
-    removedGoals: o.removedGoals.filter(key => key !== nameKey(removed.goal.text)),
-    goalRemoved: null,
-  }
+  return { ...o, goal: removed.goal, removedGoals: o.removedGoals.filter(key => key !== nameKey(removed.goal.text)), goalRemoved: null }
 }
 
-/** Keeps saved met and awaiting state in step with the task tree for prompts and old saved readers. */
 export function settleGoal(saved: SessionStatus, tree: TaskTree, now: number): SessionStatus {
   const goal = saved.goal
   if (goal === null) return saved
   const linked = tasksForGoal(tree, goal)
   const awaiting = linked.length === 0
-  const met = isGoalMet(goal, tree)
   const was = saved.lastLookAt !== null && goal.setAt <= saved.lastLookAt ? null : goal.was
-  const metAt = met ? (goal.metAt ?? now) : null
+  const metAt = isGoalMet(goal, tree) ? (goal.metAt ?? now) : null
   if (awaiting === goal.isAwaitingMilestones && metAt === goal.metAt && was === goal.was) return saved
-
   return { ...saved, goal: { ...goal, isAwaitingMilestones: awaiting, metAt, was } }
 }
 
@@ -106,14 +80,5 @@ export function setTypedGoal(o: SessionStatus, text: string, now: number): Sessi
   if (typed === '') return o
   const same = o.goal !== null && o.goal.metAt === null && hasSameWords(o.goal.text, typed)
   if (same) return { ...o, goal: { ...o.goal!, text: typed, source: 'typed' } }
-  const goal: StatusGoal = {
-    text: typed,
-    setAt: now,
-    metAt: null,
-    was: o.goal?.text ?? null,
-    isAwaitingMilestones: true,
-    source: 'typed',
-  }
-
-  return { ...o, goal, goalRemoved: null, goalRefused: null }
+  return setGoal(o, typed, now, 'typed')
 }
