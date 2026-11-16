@@ -39,6 +39,17 @@ describe('parseReply', () => {
     ])
   })
 
+  test('a NEW quote is kept only when it is a bounded excerpt of the reply', () => {
+    const quote = 'We should choose the cache.'
+    const line = `NEW: decide | - | Which cache? | Redis / Memory | Redis | - | ${quote}`
+    expect(parseReply(line, quote)?.added[0]?.quote).toBe(quote)
+    expect(parseReply(line, 'The reply said something else.')?.added[0]?.quote ?? null).toBeNull()
+    expect(
+      parseReply(`NEW: decide | - | Which cache? | Redis / Memory | Redis | - | ${'x'.repeat(161)}`, 'x'.repeat(161))
+        ?.added[0]?.quote ?? null,
+    ).toBeNull()
+  })
+
   test('keeps a recommendation only as the answer it names, by its words or its letter', () => {
     const [stray, named] = parseReply(
       [
