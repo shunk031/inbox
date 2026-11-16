@@ -3435,10 +3435,7 @@ function isGoalMet(goal, tree) {
 var lastProgressAt = (goal, tree) => Math.max(goal.setAt, ...tasksForGoal(tree, goal).map((task) => task.updatedAt));
 function goalLeftFor(o, tree, now) {
   const goal = o.goal;
-  if (goal === null || isGoalMet(goal, tree) || goal.source !== "inferred")
-    return null;
-  const linked = tasksForGoal(tree, goal);
-  if (!linked.length || linked.some((task) => task.status !== "done" && task.status !== "dropped"))
+  if (goal === null || goal.source !== "inferred" || tasksForGoal(tree, goal).length)
     return null;
   const left = now - lastProgressAt(goal, tree);
   return left >= GOAL_LEFT_MS ? left : null;
@@ -3446,7 +3443,7 @@ function goalLeftFor(o, tree, now) {
 function refusalOf(o, tree, kind, now) {
   const goal = o.goal;
   if (goal === null || isGoalMet(goal, tree))
-    return kind === "goal" ? null : "met";
+    return goal === null && kind === "retire" ? "met" : null;
   if (goal.source === "typed")
     return "typed";
   if (tasksForGoal(tree, goal).some((task) => task.status !== "done" && task.status !== "dropped"))
@@ -3463,14 +3460,12 @@ var goalRefusal = (o, start, tree, kind, now) => {
 // ../hooks/status-goal-ops.ts
 var RESTATED_SHARE = 0.8;
 function restatesGoal(text, goal) {
-  const own = [...stems(text)];
-  const theirs = stems(goal);
-  const shared = own.filter((word) => theirs.has(word)).length;
-  const hasNewNumber = own.some((word) => /\d/.test(word) && !theirs.has(word));
+  const own = [...stems(text)], theirs = stems(goal);
+  const shared = own.filter((word) => theirs.has(word)).length, hasNewNumber = own.some((word) => /\d/.test(word) && !theirs.has(word));
   return own.length > 0 && !hasNewNumber && shared >= RESTATED_SHARE * own.length;
 }
 function hasSameWords(a, b) {
-  const x = words(a), y = words(b);
+  const [x, y] = [words(a), words(b)];
   return x.size === y.size && [...x].every((word) => y.has(word));
 }
 function setGoal(o, text, now, source) {
@@ -3481,16 +3476,12 @@ function setGoal(o, text, now, source) {
     goalRefused: null
   };
 }
-function goalLineRefusal(o, op, tree) {
+function goalLineRefusal(o, op) {
   const text = clipWords(op.text, DESCRIPTION_KEPT);
-  const goal = o.goal;
-  if ([goal?.text, goal?.was, ...o.removedGoals].some((old) => old != null && restatesGoal(text, old)))
-    return "restates";
-  const goalId = goal ? goalTaskId(goal) : null;
-  return tree.some((task) => task.status !== "done" && task.status !== "dropped" && task.goalId !== goalId) ? null : "no-work";
+  return [o.goal?.text, o.goal?.was, ...o.removedGoals].some((old) => old != null && restatesGoal(text, old)) ? "restates" : null;
 }
 function applyGoalOp(o, op, now, tree, start = o) {
-  const why = op.kind === "goal" ? goalLineRefusal(o, op, tree) : null;
+  const why = op.kind === "goal" ? goalLineRefusal(o, op) : null;
   const refused = why ?? goalRefusal(o, start, tree, op.kind, now);
   if (refused !== null)
     return { ...o, goalRefused: { line: op.kind, why: refused } };
@@ -6519,9 +6510,6 @@ var TASK_STATUSES = ["working", "queued", "waits-on-other", "done", "dropped"];
 function hasTaskLinks(input) {
   return TASK_LINK_FIELDS.some((key) => Object.prototype.hasOwnProperty.call(input, key));
 }
-function taskId(value) {
-  return typeof value === "string" ? value.trim() : "";
-}
 function taskText(value) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -6541,11 +6529,11 @@ function failure2(tree, result, id) {
   };
   return { taskTree: tree, result: `Not saved: ${detail[result.reason]}` };
 }
-function taskTreeAnswer(tree, input, now) {
+function taskTreeAnswer(tree, input, now, goalId) {
   const operation = input.operation;
   if (!["add", "update", "move", "complete", "note"].includes(String(operation)))
     return { taskTree: tree, result: "Not saved: operation must be add, update, move, complete or note." };
-  const id = taskId(input.task_id);
+  const id = taskText(input.task_id);
   if (!id || id.length > TASK_ID_LENGTH)
     return { taskTree: tree, result: `Not saved: task_id must be 1\u2013${TASK_ID_LENGTH} characters.` };
   let result;
@@ -6576,6 +6564,7 @@ function taskTreeAnswer(tree, input, now) {
         taskTree: tree,
         result: `Not saved: parent_id must be an existing task id up to ${TASK_ID_LENGTH} characters, or null.`
       };
+    const linkedGoalId = typeof parent === "string" ? tree.find((task) => task.id === parent.trim())?.goalId : goalId;
     const node = {
       id,
       parentId: typeof parent === "string" ? parent.trim() : null,
@@ -6587,6 +6576,7 @@ function taskTreeAnswer(tree, input, now) {
       createdAt: now,
       updatedAt: now,
       history: [],
+      ...linkedGoalId ? { goalId: linkedGoalId } : {},
       ...linkInput.links ? { links: linkInput.links } : {}
     };
     result = createTask(tree, node, "agent");
@@ -6739,6 +6729,7 @@ function agentTools(host) {
   ];
 }
 function toolAnswer(host, ledger, tool, input, now, presses, fields, taskTree = []) {
+  const goalId = ledger.overview?.goal ? goalTaskId(ledger.overview.goal) : undefined;
   switch (tool) {
     case "record":
       return recordAfterCompare(host, ledger, input, now, presses, fields) ?? recordItem(host, ledger, input, now, fields);
@@ -6747,7 +6738,7 @@ function toolAnswer(host, ledger, tool, input, now, presses, fields, taskTree = 
     case "order_prs":
       return orderPrs(host, ledger, input, now, presses.lastActions);
     case "tasks":
-      return { ledger, ...taskTreeAnswer(taskTree, input, now), personLine: null };
+      return { ledger, ...taskTreeAnswer(taskTree, input, now, goalId), personLine: null };
   }
 }
 function cut(value, max) {
@@ -11123,11 +11114,11 @@ var GOAL_INPUT = `- <goal>: the outcome, its stable task-link id, and whether it
 var GOAL_PARTS = {
   "goal-when-clear": `Write GOAL only when the task tree and exchange support one checkable outcome for the session. Never invent an outcome from a summary of finished work.`,
   "goal-finish-line": `A goal has a finish line someone could check as met or not, such as "2.5 in the store" or "the import ready to demo". A direction such as "make search faster" is not a goal.`,
-  "goal-wait": `When the next outcome is not clear, write no GOAL and wait. A met goal stays until the next one is clear.`,
+  "goal-wait": `When the next outcome is not clear, write no GOAL and wait. Keep a met goal if it still fits; RETIRE it when it no longer fits and no next outcome is clear.`,
   "goal-not-again": `Never write the goal in <goal> or one in <removed> again, in the same words or other words. A goal the person removed stays removed until they type it.`,
   "goal-typed-kept": `A goal marked typed belongs to the person. Never reword, replace or retire it before its linked task tree is met.`,
   "goal-outcome-happened": `The task tree is the source of task status. Do not mark a goal met from prose; task updates are made through the tasks tool.`,
-  "goal-work-left": `Do not replace a goal while one of its linked tasks is open. Once its work is met, write GOAL only for a clear next outcome, or RETIRE when none is clear.`,
+  "goal-work-left": `Do not replace an unmet goal while one of its linked tasks is open. Once work is met, write GOAL for a clear next outcome, or RETIRE when the goal no longer fits and none is clear.`,
   "task-links": `Write LINK only to connect an open ask or a live child to a task already listed in <task tree>. Use its exact task id. Never create, close, rename or relink a task here.`
 };
 function goalRules(without = []) {

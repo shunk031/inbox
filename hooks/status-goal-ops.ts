@@ -1,21 +1,20 @@
 import type { GoalRefusal, SessionStatus, StatusGoal, TaskTree } from '../types'
 import type { Op } from './status'
-import { goalRefusal, goalTaskId, tasksForGoal } from './status-goal-gate'
+import { goalRefusal, tasksForGoal } from './status-goal-gate'
 import { clipWords, DESCRIPTION_KEPT, nameKey, REMOVED_KEPT, stems, words } from './status-limits'
 
 const RESTATED_SHARE = 0.8
 
 export function restatesGoal(text: string, goal: string): boolean {
-  const own = [...stems(text)]
-  const theirs = stems(goal)
-  const shared = own.filter(word => theirs.has(word)).length
-  const hasNewNumber = own.some(word => /\d/.test(word) && !theirs.has(word))
+  const own = [...stems(text)],
+    theirs = stems(goal)
+  const shared = own.filter(word => theirs.has(word)).length,
+    hasNewNumber = own.some(word => /\d/.test(word) && !theirs.has(word))
   return own.length > 0 && !hasNewNumber && shared >= RESTATED_SHARE * own.length
 }
 
 export function hasSameWords(a: string, b: string): boolean {
-  const x = words(a),
-    y = words(b)
+  const [x, y] = [words(a), words(b)]
   return x.size === y.size && [...x].every(word => y.has(word))
 }
 
@@ -28,18 +27,11 @@ function setGoal(o: SessionStatus, text: string, now: number, source: StatusGoal
   }
 }
 
-function goalLineRefusal(
-  o: SessionStatus,
-  op: Extract<Op, { kind: 'goal' }>,
-  tree: TaskTree,
-): GoalRefusal['why'] | null {
+function goalLineRefusal(o: SessionStatus, op: Extract<Op, { kind: 'goal' }>): GoalRefusal['why'] | null {
   const text = clipWords(op.text, DESCRIPTION_KEPT)
-  const goal = o.goal
-  if ([goal?.text, goal?.was, ...o.removedGoals].some(old => old != null && restatesGoal(text, old))) return 'restates'
-  const goalId = goal ? goalTaskId(goal) : null
-  return tree.some(task => task.status !== 'done' && task.status !== 'dropped' && task.goalId !== goalId)
-    ? null
-    : 'no-work'
+  return [o.goal?.text, o.goal?.was, ...o.removedGoals].some(old => old != null && restatesGoal(text, old))
+    ? 'restates'
+    : null
 }
 
 export function applyGoalOp(
@@ -49,7 +41,7 @@ export function applyGoalOp(
   tree: TaskTree,
   start: SessionStatus = o,
 ): SessionStatus {
-  const why = op.kind === 'goal' ? goalLineRefusal(o, op, tree) : null
+  const why = op.kind === 'goal' ? goalLineRefusal(o, op) : null
   const refused = why ?? goalRefusal(o, start, tree, op.kind, now)
   if (refused !== null) return { ...o, goalRefused: { line: op.kind, why: refused } }
   if (op.kind === 'retire') return { ...o, goal: null, goalRefused: null }

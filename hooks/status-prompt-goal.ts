@@ -14,11 +14,11 @@ export const GOAL_INPUT = `- <goal>: the outcome, its stable task-link id, and w
 export const GOAL_PARTS = {
   'goal-when-clear': `Write GOAL only when the task tree and exchange support one checkable outcome for the session. Never invent an outcome from a summary of finished work.`,
   'goal-finish-line': `A goal has a finish line someone could check as met or not, such as "2.5 in the store" or "the import ready to demo". A direction such as "make search faster" is not a goal.`,
-  'goal-wait': `When the next outcome is not clear, write no GOAL and wait. A met goal stays until the next one is clear.`,
+  'goal-wait': `When the next outcome is not clear, write no GOAL and wait. Keep a met goal if it still fits; RETIRE it when it no longer fits and no next outcome is clear.`,
   'goal-not-again': `Never write the goal in <goal> or one in <removed> again, in the same words or other words. A goal the person removed stays removed until they type it.`,
   'goal-typed-kept': `A goal marked typed belongs to the person. Never reword, replace or retire it before its linked task tree is met.`,
   'goal-outcome-happened': `The task tree is the source of task status. Do not mark a goal met from prose; task updates are made through the tasks tool.`,
-  'goal-work-left': `Do not replace a goal while one of its linked tasks is open. Once its work is met, write GOAL only for a clear next outcome, or RETIRE when none is clear.`,
+  'goal-work-left': `Do not replace an unmet goal while one of its linked tasks is open. Once work is met, write GOAL for a clear next outcome, or RETIRE when the goal no longer fits and none is clear.`,
   'task-links': `Write LINK only to connect an open ask or a live child to a task already listed in <task tree>. Use its exact task id. Never create, close, rename or relink a task here.`,
 } as const
 

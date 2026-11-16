@@ -18,16 +18,14 @@ export const lastProgressAt = (goal: StatusGoal, tree: TaskTree): number =>
 
 export function goalLeftFor(o: SessionStatus, tree: TaskTree, now: number): number | null {
   const goal = o.goal
-  if (goal === null || isGoalMet(goal, tree) || goal.source !== 'inferred') return null
-  const linked = tasksForGoal(tree, goal)
-  if (!linked.length || linked.some(task => task.status !== 'done' && task.status !== 'dropped')) return null
+  if (goal === null || goal.source !== 'inferred' || tasksForGoal(tree, goal).length) return null
   const left = now - lastProgressAt(goal, tree)
   return left >= GOAL_LEFT_MS ? left : null
 }
 
 function refusalOf(o: SessionStatus, tree: TaskTree, kind: GoalLine, now: number): GoalRefusal['why'] | null {
   const goal = o.goal
-  if (goal === null || isGoalMet(goal, tree)) return kind === 'goal' ? null : 'met'
+  if (goal === null || isGoalMet(goal, tree)) return goal === null && kind === 'retire' ? 'met' : null
   if (goal.source === 'typed') return 'typed'
   if (tasksForGoal(tree, goal).some(task => task.status !== 'done' && task.status !== 'dropped')) return 'work-open'
 
