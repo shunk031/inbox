@@ -3,12 +3,12 @@ import { moveTimelineSelection, timelinePage, toggleTimelineBranch } from './tim
 
 type TimelinePaneBase = Pick<
   PaneBase,
-  'Box' | 'Button' | 'Text' | 'look' | 'pal' | 'view' | 'now' | 'timelineSelection' | 'timelineFolded'
+  'Box' | 'Button' | 'Text' | 'pal' | 'view' | 'now' | 'timelineSelection' | 'timelineFolded'
 >
 type TimelinePaneHandlers = Pick<PaneHandlers, 'runPress' | 'selectTimelineRow' | 'updateTimelineFolded'>
 
 export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHandlers) {
-  const { Box, Button, Text, look, pal, view, timelineSelection, timelineFolded } = context
+  const { Box, Button, Text, pal, view, timelineSelection, timelineFolded } = context
   const { selectTimelineRow, updateTimelineFolded, runPress } = handlers
   const page = timelinePage(view.timeline, timelineSelection, timelineFolded, view.lastActions)
   const tones = {
@@ -45,15 +45,6 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
         const selection = selected ? page.selected : null
         const branch = row.branch === 'mid' ? '├─ ' : row.branch === 'last' ? '└─ ' : ''
         const detail = `${'  '.repeat(row.depth + 1)}└─ `
-        const details = selection
-          ? [
-              ...(selection.row.task.detail ? [`Note · ${selection.row.task.detail}`] : []),
-              ...selection.row.task.notes.map(note => `Note · ${note}`),
-              ...selection.row.task.history.map(
-                event => `History · ${event.time} · ${event.source}${event.detail ? ` · ${event.detail}` : ''}`,
-              ),
-            ]
-          : []
         return (
           <Box key={`timeline-${row.task.id}`} flexDirection="column">
             <Box flexDirection="row">
@@ -67,62 +58,65 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
                 {' · '}
                 {row.statusLabel} · {row.measure}
               </Text>
-              {selected ? <Text color={pal.muted}> </Text> : null}
-              {selected
-                ? row.actions.map(action => (
-                    <Button
-                      key={action.action}
-                      label={look === 'desktop' ? action.label : `${action.hotkey}: ${action.label}`}
-                      hotkey={action.hotkey}
-                      plain
-                      onPress={() =>
-                        action.action === 'select'
-                          ? void selectTimelineRow(action.id)
-                          : void updateTimelineFolded(folded => toggleTimelineBranch(folded, action.id))
-                      }
-                    />
-                  ))
-                : null}
             </Box>
             {row.warnings.map(warning => (
               <Text color={pal.tone.issue ?? pal.muted}>
                 {detail}⚠ {warning}
               </Text>
             ))}
-            {details.map(line => (
-              <Text color={pal.muted}>
-                {detail}
-                {line}
-              </Text>
-            ))}
-            {selection?.links.length ? (
-              <Box flexDirection="row">
-                <Text color={pal.muted}>{detail}Links · </Text>
-                {selection.links.map(link => (
-                  <Box key={`${link.label}-${row.task.id}`} flexDirection="row">
-                    <Button
-                      label={link.result?.state === 'pending' ? 'Opening…' : link.label}
-                      dimColor={link.isOut}
-                      onPress={press => void runPress(link.press, press.surface)}
-                    />
-                    {link.result?.state === 'done' ? <Text color={pal.tone.done}>✓ Opened</Text> : null}
-                    {link.result?.state === 'failed' ? (
-                      <Text color={pal.tone.issue ?? pal.muted}>
-                        {link.result.parts.find(part => part.error)?.error}
-                      </Text>
-                    ) : null}
-                  </Box>
-                ))}
-              </Box>
-            ) : null}
+            {selection?.details.map(line =>
+              line.label === 'Links' ? (
+                <Box flexDirection="row">
+                  <Text color={pal.muted}>{detail}Links · </Text>
+                  {line.actions.map(link => (
+                    <Box key={`${link.label}-${row.task.id}`} flexDirection="row">
+                      <Button
+                        label={link.result?.state === 'pending' ? 'Opening…' : link.label}
+                        dimColor={link.isOut}
+                        onPress={press => void runPress(link.press, press.surface)}
+                      />
+                      {link.result?.state === 'done' ? <Text color={pal.tone.done}>✓ Opened</Text> : null}
+                      {link.result?.state === 'failed' ? (
+                        <Text color={pal.tone.issue ?? pal.muted}>
+                          {link.result.parts.find(part => part.error)?.error}
+                        </Text>
+                      ) : null}
+                    </Box>
+                  ))}
+                </Box>
+              ) : (
+                <Text color={pal.muted}>
+                  {detail}
+                  {line.label} · {line.text}
+                </Text>
+              ),
+            )}
           </Box>
         )
       })}
     </Box>
   )
+  const footer = page.selected?.row.actions.length ? (
+    <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
+      {page.selected.row.actions.map(action => (
+        <Button
+          key={action.action}
+          label={action.label}
+          hotkey={action.hotkey === 'enter' ? undefined : action.hotkey}
+          plain
+          onPress={() =>
+            action.action === 'select'
+              ? void selectTimelineRow(action.id)
+              : void updateTimelineFolded(folded => toggleTimelineBranch(folded, action.id))
+          }
+        />
+      ))}
+    </Box>
+  ) : null
 
   return {
     view: timelineView,
+    footer,
     move(step: number) {
       const id = moveTimelineSelection(page.rows, timelineSelection, step)
       if (id) void selectTimelineRow(id)

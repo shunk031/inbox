@@ -3588,7 +3588,7 @@ function updateRecovery(s) {
   if (s.pending.length === 0 && presence.isConversationUnreadable) return "unreadable";
   return presence.failedAttempts > 1 ? "failed-again" : "waiting";
 }
-function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}) {
+function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timelineTaskTree = s.taskTree) {
   const l = s.ledger;
   const lastActions = withoutStalePending(s.lastActions, now);
   const inbox = inboxView({
@@ -3612,6 +3612,7 @@ function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}) {
   }
   Object.assign(ownerFacts, s.taskOwnerFacts);
   const taskOwnerView = applyTaskOwnerFacts(s.taskTree, ownerFacts, now);
+  const timelineOwnerView = timelineTaskTree === s.taskTree ? taskOwnerView : applyTaskOwnerFacts(timelineTaskTree, ownerFacts, now);
   const feedStalledSince = Object.fromEntries(
     l.findings.flatMap((finding) => {
       const fact = finding.owner ? ownerFacts[taskOwnerKey(finding.owner)] : void 0;
@@ -3625,10 +3626,10 @@ function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}) {
     prs: prTabOf(s, lastActions, now, holds, settleWindowMs),
     statusPage: statusPage(s, now, new Set(Object.keys(taskOwnerView.stalledSince))),
     timeline: timelineData(
-      s.taskTree,
-      taskOwnerView.segments,
-      taskOwnerView.stalledSince,
-      [...s.taskFactWarnings, ...taskOwnerView.warnings],
+      timelineTaskTree,
+      timelineOwnerView.segments,
+      timelineOwnerView.stalledSince,
+      [...s.taskFactWarnings, ...timelineOwnerView.warnings],
       now
     ),
     taskProgressSegments: taskOwnerView.segments,

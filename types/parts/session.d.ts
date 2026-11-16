@@ -99,6 +99,8 @@ export type DemoCopy = {
   lastActions: Record<string, LastAction>
   /** Each sample row's latest note, by the row's id. */
   notes: Record<string, RowNote>
+  /** Sample task tree shown only by Timeline; Status keeps its own sample rows. */
+  timelineTaskTree: TaskTree
   turns: Turns
 }
 

@@ -3346,6 +3346,11 @@ export const register: Register = on => {
       view.statusPage.error,
     )
     const status = shownStatus.text ?? ''
+    const {
+      view: timelineView,
+      move: moveTimeline,
+      footer: timelineFooter,
+    } = paneTimeline({ Box, Button, Text, pal, view, now, timelineSelection, timelineFolded }, handlers)
 
     const openIds = openRowIds(view)
     const drawnIds = new Set([...openIds.needsYou, ...openIds.findings, ...prRowIds(shownPrs)])
@@ -3384,6 +3389,7 @@ export const register: Register = on => {
         blankLine,
         isHelpShown,
         view,
+        timelineFooter,
       },
       handlers,
     )
@@ -3572,10 +3578,6 @@ export const register: Register = on => {
       const to = steppedIndex(at, step, ids.length)
       void select($, tab, ids[to] ?? '', to)
     }
-    const { view: timelineView, move: moveTimeline } = paneTimeline(
-      { look, Box, Button, Text, pal, view, now, timelineSelection, timelineFolded },
-      handlers,
-    )
     const canMove = !isPageShown && !isHelpShown && (ids.length > 1 || (at < 0 && ids.length > 0))
     const moveStatus = (step: number) => {
       const from = statusPressRows.findIndex(r => r.id === statusKeyRow?.id)

@@ -198,7 +198,7 @@ for (const isNextBuild of [false, true])
     const tabBar = async () => await pane.find({ key: 'tabs' })
     const narrowest = (await tabBar())?.props.props as TabsProps
     expect(narrowest.tabs.map(t => t.id)).toEqual(shownTabs(isNextBuild, isNextBuild).map(t => t.id))
-    if (isNextBuild) expect(narrowest.tabs.map(t => t.label)).toEqual(shownTabs(true, true).map(t => t.label))
+    if (isNextBuild) expect(narrowest.tabs.map(t => t.label)).toEqual(shownTabs(true, true).map(t => t.symbol))
     expect(tabLines(narrowest.tabs, narrowest.gap, narrowest.columns)).toHaveLength(1)
     await pane.redraw({ ...PANE.props, bodyColumns: 12 })
     const { tabs, gap, columns } = (await tabBar())?.props.props as TabsProps

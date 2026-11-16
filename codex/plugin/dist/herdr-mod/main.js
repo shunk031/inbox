@@ -1,5 +1,5 @@
 // Built by herdr/build.ts with Bun 1.4.4 from herdr/src and hooks/. Do not edit.
-// Built at 2026-11-16T10:36:28.883Z. 217313 characters follow.
+// Built at 2026-11-16T10:52:21.358Z. 217496 characters follow.
 
 // src/main.ts
 import { View, div as div5 } from "gpui-kit";
@@ -3541,7 +3541,7 @@ function updateRecovery(s) {
     return "unreadable";
   return presence.failedAttempts > 1 ? "failed-again" : "waiting";
 }
-function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}) {
+function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timelineTaskTree = s.taskTree) {
   const l = s.ledger;
   const lastActions = withoutStalePending(s.lastActions, now);
   const inbox = inboxView({
@@ -3567,6 +3567,7 @@ function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}) {
   }
   Object.assign(ownerFacts, s.taskOwnerFacts);
   const taskOwnerView = applyTaskOwnerFacts(s.taskTree, ownerFacts, now);
+  const timelineOwnerView = timelineTaskTree === s.taskTree ? taskOwnerView : applyTaskOwnerFacts(timelineTaskTree, ownerFacts, now);
   const feedStalledSince = Object.fromEntries(l.findings.flatMap((finding) => {
     const fact = finding.owner ? ownerFacts[taskOwnerKey(finding.owner)] : undefined;
     return finding.kind === "progress" && fact && fact.state !== "working" ? [[finding.id, fact.since]] : [];
@@ -3577,7 +3578,7 @@ function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}) {
     turns: { turnsStarted: s.presence.turnsStarted, turnsApplied: s.presence.turnsApplied },
     prs: prTabOf(s, lastActions, now, holds, settleWindowMs),
     statusPage: statusPage(s, now, new Set(Object.keys(taskOwnerView.stalledSince))),
-    timeline: timelineData(s.taskTree, taskOwnerView.segments, taskOwnerView.stalledSince, [...s.taskFactWarnings, ...taskOwnerView.warnings], now),
+    timeline: timelineData(timelineTaskTree, timelineOwnerView.segments, timelineOwnerView.stalledSince, [...s.taskFactWarnings, ...timelineOwnerView.warnings], now),
     taskProgressSegments: taskOwnerView.segments,
     taskStalledSince: taskOwnerView.stalledSince,
     feedStalledSince,
