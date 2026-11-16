@@ -285,7 +285,7 @@ test('in a Herdr app terminal, a press the look ran itself records its result an
   expect(existsSync(join(folder, 'p1.json'))).toBe(false)
   expect(w.execCalls.filter(c => c.command === 'open')).toEqual([])
   const screen = await inbox.screen(makeCtx())
-  expect(JSON.stringify(screen.view.lastActions[screen.view.needsYou.tasks[0]!.id]?.result)).toContain('no browser')
+  expect(JSON.stringify(screen.view.lastActions[stepPress(1).id]?.result)).toContain('no browser')
   const published = () => JSON.parse(readFileSync(sessionFile, 'utf8'))
   expect(published().lastPress).toEqual({ id: 'p1', outcome: 'applied' })
 
