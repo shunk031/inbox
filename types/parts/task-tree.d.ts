@@ -18,6 +18,14 @@ export type TaskLinks = {
   owner?: TaskOwner
 }
 
+export type TaskPrState = 'OPEN' | 'CLOSED' | 'MERGED'
+
+export type TaskFactWarning = {
+  taskId: string
+  pr: string
+  message: 'PR merged, task still open' | 'PR closed without merge'
+}
+
 export type TaskNode = {
   id: string
   parentId: string | null

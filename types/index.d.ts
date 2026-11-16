@@ -496,6 +496,14 @@ export type TaskLinks = {
   owner?: TaskOwner
 }
 
+export type TaskPrState = 'OPEN' | 'CLOSED' | 'MERGED'
+
+export type TaskFactWarning = {
+  taskId: string
+  pr: string
+  message: 'PR merged, task still open' | 'PR closed without merge'
+}
+
 export type TaskNode = {
   id: string
   parentId: string | null
@@ -715,6 +723,12 @@ export type Session = {
   ledger: Ledger
   /** Durable work copied from Status subjects and milestones; order is the saved tree order. */
   taskTree: TaskTree
+  /** Last known GitHub state for each linked task PR; warnings are derived from these states and the task tree. */
+  taskPrStates: Record<string, TaskPrState>
+  /** Warnings from the latest task-fact pass. These are not task history. */
+  taskFactWarnings: TaskFactWarning[]
+  /** Last linked task PR checked when a poll is bounded to a subset. */
+  taskPrFactCursor: string | null
   /** What the turn running now gathered for the per-reply update. */
   turn: {
     person: string | null
