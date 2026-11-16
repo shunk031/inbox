@@ -6,6 +6,8 @@ import { pendingLocal, act } from './tab-rows'
 import { closingFolds, drawnRows, timelineFolded } from './tab-state'
 import { selectTimelineRow, timelinePageOf, toggleTimelineFold } from './rows'
 
+const TREE_BRANCH = { mid: '├─ ', last: '└─ ' } as const
+
 export function TimelineTab({ view }: { view: TabView }) {
   const page = timelinePageOf(view)
   const all = view.timeline.rows
@@ -45,7 +47,7 @@ export function TimelineTab({ view }: { view: TabView }) {
           </span>
           <div class="content tight">
             <div>
-              {row.branch ? <span class="muted">{row.branch === 'mid' ? '├─ ' : '└─ '}</span> : null}
+              {row.branch ? <span class="muted">{TREE_BRANCH[row.branch]}</span> : null}
               {selectAction && !isClosing ? (
                 <button
                   type="button"
@@ -75,7 +77,7 @@ export function TimelineTab({ view }: { view: TabView }) {
               ) : null}
               {selection.details.map((line, index) => (
                 <div key={`${row.task.id}-detail-${index}`}>
-                  <span class="muted">└─ </span>
+                  <span class="muted">{TREE_BRANCH.last}</span>
                   <strong class="timeline-detail-label">{line.label} · </strong>
                   {line.label === 'Links'
                     ? line.actions.map(link => {
