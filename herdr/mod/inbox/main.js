@@ -1,5 +1,5 @@
 // Built by herdr/build.ts with Bun 1.4.4 from herdr/src and hooks/. Do not edit.
-// Built at 2026-11-16T07:25:48.942Z. 212184 characters follow.
+// Built at 2026-11-16T07:48:24.435Z. 212112 characters follow.
 
 // src/main.ts
 import { View, div as div5 } from "gpui-kit";
@@ -923,11 +923,9 @@ function weightedTaskProgressSegments(tree, stalledTasks = new Set) {
       return;
     }
     const descendants = children.get(task.id) ?? [];
-    if (descendants.length > 0) {
-      const active = descendants.filter((child) => child.status !== "dropped");
+    const active = descendants.filter((child) => child.status !== "dropped");
+    if (active.length > 0) {
       const total = active.reduce((sum, child) => sum + child.weight, 0);
-      if (total === 0)
-        return;
       const nextPath = new Set(path).add(task.id);
       for (const child of active)
         add(child, weight * child.weight / total, nextPath);
@@ -3443,7 +3441,7 @@ function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}) {
     lastTypedMessageAt: s.presence.lastTypedMessageAt
   });
   const ownerFacts = {};
-  for (const finding of [...l.findings, ...l.closedFindings]) {
+  for (const finding of l.findings) {
     if (!finding.owner || !finding.ownerFact)
       continue;
     const key = taskOwnerKey(finding.owner);

@@ -360,10 +360,9 @@ export function weightedTaskProgressSegments(
       return
     }
     const descendants = children.get(task.id) ?? []
-    if (descendants.length > 0) {
-      const active = descendants.filter(child => child.status !== 'dropped')
+    const active = descendants.filter(child => child.status !== 'dropped')
+    if (active.length > 0) {
       const total = active.reduce((sum, child) => sum + child.weight, 0)
-      if (total === 0) return
       const nextPath = new Set(path).add(task.id)
       for (const child of active) add(child, (weight * child.weight) / total, nextPath)
       return

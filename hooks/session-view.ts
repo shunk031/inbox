@@ -128,7 +128,7 @@ export function sessionView(
     lastTypedMessageAt: s.presence.lastTypedMessageAt,
   })
   const ownerFacts: TaskOwnerFacts = {}
-  for (const finding of [...l.findings, ...l.closedFindings]) {
+  for (const finding of l.findings) {
     if (!finding.owner || !finding.ownerFact) continue
     const key = taskOwnerKey(finding.owner)
     if (!ownerFacts[key] || ownerFacts[key]!.since < finding.ownerFact.since) ownerFacts[key] = finding.ownerFact

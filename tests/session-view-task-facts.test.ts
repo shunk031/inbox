@@ -98,3 +98,37 @@ test('a remote patrol row with an agent key and state time marks its Progress ro
   expect(view.taskStalledSince).toEqual({ 'task-1': NOW - 20 * 60_000 })
   expect(view.feedStalledSince).toEqual({ f1: NOW - 20 * 60_000 })
 })
+
+test('a patrol owner that is no longer reported does not keep markers or warnings', () => {
+  const path = '/feed/remote.json'
+  const patrol: Feed = {
+    version: 1,
+    source: 'herdr-meta-patrol',
+    writtenAt: NOW,
+    entries: [
+      {
+        key: 'herdr/builder/worker-2',
+        state: 'blocked',
+        title: 'Remote work',
+        detail: 'Waiting.',
+        at: NOW,
+      },
+    ],
+  }
+  const emptyPatrol: Feed = { version: 1, source: 'herdr-meta-patrol', writtenAt: NOW + 1, entries: [] }
+  const ledger = applyFeed(applyFeed(EMPTY, patrol, NOW, path), emptyPatrol, NOW + 1, path)
+  const view = sessionView(
+    {
+      ...emptySession(),
+      ledger,
+      taskTree: [{ ...task, links: { owner: { machine: 'builder', agent: 'worker-2' } } }],
+    },
+    NOW + 1,
+    30_000,
+  )
+
+  expect(ledger.closedFindings[0]?.ownerFact).toEqual({ state: 'blocked', since: NOW })
+  expect(view.taskStalledSince).toEqual({})
+  expect(view.feedStalledSince).toEqual({})
+  expect(view.taskFactWarnings).toEqual([])
+})

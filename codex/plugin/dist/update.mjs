@@ -1432,10 +1432,9 @@ function weightedTaskProgressSegments(tree, stalledTasks = /* @__PURE__ */ new S
       return;
     }
     const descendants = children.get(task.id) ?? [];
-    if (descendants.length > 0) {
-      const active = descendants.filter((child) => child.status !== "dropped");
+    const active = descendants.filter((child) => child.status !== "dropped");
+    if (active.length > 0) {
       const total = active.reduce((sum, child) => sum + child.weight, 0);
-      if (total === 0) return;
       const nextPath = new Set(path).add(task.id);
       for (const child of active) add(child, weight * child.weight / total, nextPath);
       return;
@@ -3465,7 +3464,7 @@ function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}) {
     lastTypedMessageAt: s.presence.lastTypedMessageAt
   });
   const ownerFacts = {};
-  for (const finding of [...l.findings, ...l.closedFindings]) {
+  for (const finding of l.findings) {
     if (!finding.owner || !finding.ownerFact) continue;
     const key = taskOwnerKey(finding.owner);
     if (!ownerFacts[key] || ownerFacts[key].since < finding.ownerFact.since) ownerFacts[key] = finding.ownerFact;

@@ -204,6 +204,15 @@ test('weighted progress segments sum active work and exclude dropped tasks', () 
   expect(weightedTaskProgress(tree)).toBe(1 / 66)
 })
 
+test('a task with only dropped children counts its own state in progress segments', () => {
+  expect(
+    weightedTaskProgressSegments([
+      node('working-root'),
+      node('dropped-child', { parentId: 'working-root', status: 'dropped' }),
+    ]),
+  ).toEqual({ total: 1, done: 0, working: 1, stalled: 0, waiting: 0, queued: 0 })
+})
+
 test('empty Status and pre-v0.4 saves migrate to an empty or upgraded task tree', () => {
   expect(taskTreeFromStatus(null)).toEqual([])
   expect(upgradeSession({}).taskTree).toEqual([])
