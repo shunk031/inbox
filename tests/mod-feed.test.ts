@@ -160,6 +160,7 @@ describe('the mod feed poller', () => {
       version: 1,
       source: 'meta-open-items',
       writtenAt: 1,
+      projected: true,
       entries: [{ key: 'task-1', kind: 'task', state: 'working', title: 'Task', detail: 'Work', at: 1 }],
     })
     const resolvedPaths: string[] = []

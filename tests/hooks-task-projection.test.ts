@@ -88,6 +88,7 @@ describe('task-tree projection', () => {
     const first = await projection.sync('meta', initial, 20)
 
     expect(first.kind).toBe('written')
+    expect(JSON.parse(file!).projected).toBe(true)
     expect(JSON.parse(file!).entries).toMatchObject([
       { key: 'projected', kind: 'task', state: 'blocked', title: 'Title projected', detail: 'Waiting for the owner' },
     ])

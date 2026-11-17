@@ -56,6 +56,7 @@ const taskProjectionFeed = (tree: TaskTree, now: number): Feed => ({
   source: 'meta-open-items',
   writtenAt: now,
   entries: projectedTaskEntries(tree),
+  projected: true,
 })
 
 /** Serializes writes by path and holds the exclusive lock until release. */

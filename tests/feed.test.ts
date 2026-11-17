@@ -62,16 +62,30 @@ describe('progress feed', () => {
     expect(
       parseFeed(JSON.stringify({ ...valid, entries: Array.from({ length: 41 }, (_, i) => entry({ key: `m/${i}` })) })),
     ).toBeNull()
+    const projected = parseFeed(
+      JSON.stringify({
+        version: 1,
+        source: 'meta-open-items',
+        writtenAt: 1,
+        projected: true,
+        entries: Array.from({ length: 41 }, (_, i) => entry({ key: `task/${i}`, kind: 'task', owner: undefined })),
+      }),
+    )
+    expect(projected).toMatchObject({ projected: true, entries: [] })
+    expect(
+      parseFeed(JSON.stringify({ ...valid, source: 'meta-open-items', entries: [entry({ kind: 'task' })] })),
+    ).toBeNull()
     expect(
       parseFeed(
         JSON.stringify({
-          version: 1,
+          ...valid,
           source: 'meta-open-items',
-          writtenAt: 1,
-          entries: Array.from({ length: 41 }, (_, i) => entry({ key: `task/${i}`, kind: 'task', owner: undefined })),
+          entries: Array.from({ length: 41 }, (_, i) =>
+            entry({ key: `task/${i}`, kind: 'task', owner: { machine: 'local', agent: 'meta' } }),
+          ),
         }),
-      )?.entries,
-    ).toHaveLength(41)
+      ),
+    ).toBeNull()
   })
 
   test('reads durable Meta tasks without six-hour expiry and keeps live warnings separate', () => {
@@ -204,6 +218,45 @@ describe('progress feed', () => {
 
     const skipped = applyFeedFiles(previouslyImported, '/feed', [{ path, feed: projection }], 101, [path])
     expect(skipped.items).toEqual([])
+  })
+
+  test('does not import projected task rows in another session but still imports hand-written entries', () => {
+    const projected = parseFeed(
+      JSON.stringify({
+        version: 1,
+        source: 'meta-open-items',
+        writtenAt: 100,
+        projected: true,
+        entries: [entry({ key: 'projected-task', kind: 'task', title: 'Projected task', owner: undefined })],
+      }),
+    )
+    const handWritten = parseFeed(
+      JSON.stringify({
+        version: 1,
+        source: 'meta-open-items',
+        writtenAt: 100,
+        entries: [
+          entry({
+            key: 'hand-written-task',
+            kind: 'task',
+            title: 'Hand-written task',
+            owner: { machine: 'local', agent: 'meta' },
+          }),
+        ],
+      }),
+    )
+    const imported = applyFeedFiles(
+      EMPTY,
+      '/feed',
+      [
+        { path: '/feed/projection.json', feed: projected },
+        { path: '/feed/hand-written.json', feed: handWritten },
+      ],
+      100,
+    )
+
+    expect(imported.items.map(item => item.ask)).toEqual(['Hand-written task'])
+    expect(imported.findings).toEqual([])
   })
 
   test('retains untracked warnings while a machine snapshot is invalid and clears them on a valid snapshot', () => {

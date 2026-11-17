@@ -1,6 +1,5 @@
 import type { Finding, Ledger } from '../types'
 import { closeFinding } from './ledger-close'
-import { TASK_NODE_LIMIT } from './task-tree'
 
 export type FeedEntry = {
   key: string
@@ -13,7 +12,9 @@ export type FeedEntry = {
   signalKey?: string
 }
 type FeedWarning = { key: string; title: string; detail: string; at: number }
-export type Feed = { version: 1; source: string; writtenAt: number; entries: FeedEntry[]; warnings?: FeedWarning[] }
+export type Feed = { version: 1; source: string; writtenAt: number; entries: FeedEntry[]; warnings?: FeedWarning[] } & {
+  projected?: true
+}
 export type FeedFile = { path: string; feed: Feed | null | undefined }
 
 export const FEED_TTL_MS = 6 * 60 * 60 * 1000
@@ -33,7 +34,11 @@ export function parseFeed(text: string): Feed | null {
       (f.warnings !== undefined && !Array.isArray(f.warnings))
     )
       return null
-    if (f.entries.length > (f.source === 'meta-open-items' ? TASK_NODE_LIMIT : 40)) return null
+    if (f.projected === true)
+      return f.source === 'meta-open-items'
+        ? { version: 1, source: f.source, writtenAt: f.writtenAt, entries: [], projected: true }
+        : null
+    if (f.entries.length > 40) return null
     const keys = new Set<string>()
     const entries: FeedEntry[] = []
     for (const value of f.entries) {
@@ -55,8 +60,7 @@ export function parseFeed(text: string): Feed | null {
           (typeof e.signalKey !== 'string' || e.signalKey.length === 0 || e.signalKey.length > 100))
       )
         return null
-      if (f.source === 'meta-open-items' && (e.kind === undefined || (e.kind === 'work' && e.owner === undefined)))
-        return null
+      if (f.source === 'meta-open-items' && (e.kind === undefined || e.owner === undefined)) return null
       keys.add(e.key)
       entries.push({ ...e, title: e.title.slice(0, 120), detail: e.detail.slice(0, 600) } as FeedEntry)
     }
@@ -99,7 +103,8 @@ const validOwner = (value: unknown): value is { machine: string; agent: string }
 }
 
 export function applyFeed(ledger: Ledger, feed: Feed, now: number, source = ''): Ledger {
-  if (feed.source === 'meta-open-items') return applyMetaOpenItems(ledger, feed, now, source)
+  if (feed.source === 'meta-open-items')
+    return applyMetaOpenItems(ledger, feed.projected ? { ...feed, entries: [] } : feed, now, source)
   const keys = new Set(feed.entries.map(e => e.key))
   // Older versions could overwrite a hand finding's feedKey/feedSource while
   // matching by title. Treat those unmarked saved rows as hand findings.

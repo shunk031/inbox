@@ -719,7 +719,6 @@ function outcomeText(d) {
 // ../hooks/task-tree.ts
 var TASK_NOTES_LIMIT = 40;
 var TASK_NOTE_LENGTH = 2e3;
-var TASK_NODE_LIMIT = 200;
 function notesOf(notes) {
   return notes.slice(0, TASK_NOTES_LIMIT).map((note) => note.slice(0, TASK_NOTE_LENGTH));
 }
@@ -5172,7 +5171,9 @@ function parseFeed(text2) {
     const f = feed;
     if (f.version !== 1 || !validSource(f.source) || !validTime(f.writtenAt) || !Array.isArray(f.entries) || f.warnings !== void 0 && !Array.isArray(f.warnings))
       return null;
-    if (f.entries.length > (f.source === "meta-open-items" ? TASK_NODE_LIMIT : 40)) return null;
+    if (f.projected === true)
+      return f.source === "meta-open-items" ? { version: 1, source: f.source, writtenAt: f.writtenAt, entries: [], projected: true } : null;
+    if (f.entries.length > 40) return null;
     const keys = /* @__PURE__ */ new Set();
     const entries = [];
     for (const value of f.entries) {
@@ -5180,8 +5181,7 @@ function parseFeed(text2) {
       const e = value;
       if (typeof e.key !== "string" || e.key.length === 0 || e.key.length > 100 || keys.has(e.key) || !["queued", "working", "blocked", "done"].includes(e.state) || typeof e.title !== "string" || e.title.length === 0 || typeof e.detail !== "string" || !validTime(e.at) || e.kind !== void 0 && !["work", "task"].includes(e.kind) || e.owner !== void 0 && !validOwner(e.owner) || e.signalKey !== void 0 && (typeof e.signalKey !== "string" || e.signalKey.length === 0 || e.signalKey.length > 100))
         return null;
-      if (f.source === "meta-open-items" && (e.kind === void 0 || e.kind === "work" && e.owner === void 0))
-        return null;
+      if (f.source === "meta-open-items" && (e.kind === void 0 || e.owner === void 0)) return null;
       keys.add(e.key);
       entries.push({ ...e, title: e.title.slice(0, 120), detail: e.detail.slice(0, 600) });
     }
@@ -5209,7 +5209,8 @@ var validOwner = (value) => {
   return validSource(owner.machine) && validSource(owner.agent) && owner.machine.length <= 100 && owner.agent.length <= 80;
 };
 function applyFeed(ledger, feed, now, source = "") {
-  if (feed.source === "meta-open-items") return applyMetaOpenItems(ledger, feed, now, source);
+  if (feed.source === "meta-open-items")
+    return applyMetaOpenItems(ledger, feed.projected ? { ...feed, entries: [] } : feed, now, source);
   const keys = new Set(feed.entries.map((e) => e.key));
   const owns = (f) => f.feedOwned === true && f.feedKey !== void 0 && f.feedSource === source;
   const staleClosed = ledger.closedFindings.some((f) => owns(f) && !keys.has(f.feedKey));
