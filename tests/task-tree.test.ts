@@ -287,6 +287,21 @@ test('subjects only migrate in order with their status, detail, prior notes and 
   expect(tree[0]!.history).toMatchObject([
     { at: 10, source: 'status', kind: 'created' },
     { at: 20, kind: 'imported' },
+    { at: 20, source: 'status', kind: 'detail' },
+  ])
+})
+
+test('Status imports keep current details ahead of prior text carried as notes', () => {
+  const tree = taskTreeFromStatus(
+    taskStatus({
+      milestones: [taskMilestone('m1', { was: 'Earlier milestone details' })],
+      subjects: [taskSubject('s1', { was: 'Earlier task details' })],
+    }),
+  )
+
+  expect(tree.map(currentTaskText)).toEqual([
+    { text: 'Details for m1', at: 20 },
+    { text: 'Details for s1', at: 20 },
   ])
 })
 

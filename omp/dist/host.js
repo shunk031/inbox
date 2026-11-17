@@ -3271,7 +3271,10 @@ function taskTreeFromStatus(status) {
       notes: notesOf(milestone.was ? [milestone.was] : []),
       createdAt: milestone.changedAt,
       updatedAt: milestone.closedAt ?? milestone.changedAt,
-      history: [{ at: milestone.changedAt, source: "status", kind: "imported" }],
+      history: [
+        { at: milestone.changedAt, source: "status", kind: "imported" },
+        { at: milestone.changedAt, source: "status", kind: "detail" }
+      ],
       ...goalId ? { goalId } : {}
     };
     if (milestone.closedAt !== null) {
@@ -3307,7 +3310,8 @@ function taskTreeFromStatus(status) {
       updatedAt: subject.closedAt ?? subject.changedAt,
       history: [
         { at: subject.createdAt, source: "status", kind: "created" },
-        { at: subject.changedAt, source: "status", kind: "imported" }
+        { at: subject.changedAt, source: "status", kind: "imported" },
+        { at: subject.changedAt, source: "status", kind: "detail" }
       ],
       ...goalId && milestoneId ? { goalId } : {},
       ...mergedIntoId ? { mergedIntoId } : {}
