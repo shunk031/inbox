@@ -14,9 +14,10 @@ An item or finding may carry a local Markdown report path and a short excerpt. `
 
 Shared modules are in `hooks/`. Every host consumes them, directly or through a build. They import only shared modules and shared types. `scripts/check-structure.mjs` checks those boundaries, including type imports. Codex and omp type checking need no generated Claude engine types.
 
-Every source file in `hooks/`, `codex/src`, `omp/src` and `herdr/src` needs a row in one of the six parts below. Put a file split out of another next to that file's row. The structure check reads the rows in every `docs/looks/files-*.md`.
+Every source file in `hooks/`, `codex/src`, `omp/src` and `herdr/src` needs a row in one of the files below. Put a file split out of another next to that file's row. The structure check reads the rows in every `docs/looks/files-*.md`.
 
 - [Shared modules](looks/files-shared.md)
+- [Shared task modules](looks/files-shared-tasks.md)
 - [Shared modules for Herdr](looks/files-shared-herdr.md)
 - [The mod](looks/files-mod.md)
 - [Codex](looks/files-codex.md)

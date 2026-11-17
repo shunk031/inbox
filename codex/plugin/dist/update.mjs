@@ -1317,6 +1317,155 @@ function outcomeText(d) {
   }
 }
 
+// ../hooks/task-tree.ts
+var TASK_NOTES_LIMIT = 40;
+var TASK_NOTE_LENGTH = 2e3;
+function notesOf(notes) {
+  return notes.slice(0, TASK_NOTES_LIMIT).map((note) => note.slice(0, TASK_NOTE_LENGTH));
+}
+function taskRootGroups(tree) {
+  const groups = /* @__PURE__ */ new Map();
+  for (const task of tree.filter((task2) => task2.parentId === null)) {
+    const key = task.streamId ? `stream:${task.streamId}` : `task:${task.id}`;
+    const roots = groups.get(key);
+    if (roots) roots.push(task);
+    else groups.set(key, [task]);
+  }
+  return [...groups.values()].map((roots) => ({ id: roots[0].id, roots }));
+}
+function weightedTaskProgress(tree, rootIds) {
+  const children = /* @__PURE__ */ new Map();
+  for (const task of tree) children.set(task.parentId, [...children.get(task.parentId) ?? [], task]);
+  const progress = (task) => {
+    if (task.status === "done") return 1;
+    if (task.status === "dropped") return 0;
+    return weightedAverage((children.get(task.id) ?? []).map((child) => [progress(child), child.weight]));
+  };
+  const roots = rootIds === void 0 ? children.get(null) ?? [] : tree.filter((task) => Array.isArray(rootIds) ? rootIds.includes(task.id) : task.id === rootIds);
+  return weightedAverage(roots.map((task) => [progress(task), task.weight]));
+}
+function weightedAverage(values) {
+  const total = values.reduce((sum, [, weight]) => sum + weight, 0);
+  return total ? values.reduce((sum, [value, weight]) => sum + value * weight, 0) / total : 0;
+}
+function weightedTaskProgressSegments(tree, stalledTasks = /* @__PURE__ */ new Set(), rootId) {
+  const children = /* @__PURE__ */ new Map();
+  for (const task of tree) children.set(task.parentId, [...children.get(task.parentId) ?? [], task]);
+  const segments = { total: 0, done: 0, working: 0, stalled: 0, waiting: 0, queued: 0 };
+  const add = (task, weight, path) => {
+    if (task.status === "dropped" || path.has(task.id)) return;
+    if (task.status === "done") {
+      segments.total += weight;
+      segments.done += weight;
+      return;
+    }
+    const descendants = children.get(task.id) ?? [];
+    const active = descendants.filter((child) => child.status !== "dropped");
+    if (active.length > 0) {
+      const total = active.reduce((sum, child) => sum + child.weight, 0);
+      const nextPath = new Set(path).add(task.id);
+      for (const child of active) add(child, weight * child.weight / total, nextPath);
+      return;
+    }
+    segments.total += weight;
+    if (task.status === "working") segments[stalledTasks.has(task.id) ? "stalled" : "working"] += weight;
+    else if (task.status === "waits-on-other") segments.waiting += weight;
+    else segments.queued += weight;
+  };
+  for (const root of children.get(null) ?? [])
+    if (rootId === void 0 || root.id === rootId) add(root, root.weight, /* @__PURE__ */ new Set());
+  return segments;
+}
+function taskTreeFromStatus(status) {
+  if (!status) return [];
+  const goalId = status.goal && !status.goal.isAwaitingMilestones ? `goal-${status.goal.setAt}` : void 0;
+  const milestones = status.milestones.map((milestone) => {
+    const node = {
+      id: milestone.id,
+      parentId: null,
+      status: milestone.status,
+      weight: 1,
+      title: milestone.name,
+      detail: milestone.text,
+      notes: notesOf(milestone.was ? [milestone.was] : []),
+      createdAt: milestone.changedAt,
+      updatedAt: milestone.closedAt ?? milestone.changedAt,
+      history: [
+        { at: milestone.changedAt, source: "status", kind: "imported" },
+        { at: milestone.changedAt, source: "status", kind: "detail" }
+      ],
+      ...goalId ? { goalId } : {}
+    };
+    if (milestone.closedAt !== null) {
+      node.history = [
+        ...node.history,
+        {
+          at: milestone.closedAt,
+          source: "status",
+          kind: milestone.status === "done" ? "completed" : "updated",
+          detail: milestone.status
+        }
+      ];
+    }
+    return node;
+  });
+  const milestoneIds = new Set(milestones.map((node) => node.id));
+  const subjectIds = new Set(status.subjects.map((subject) => subject.id));
+  const subjects = status.subjects.map((subject) => {
+    const served = status.serves[subject.id];
+    const milestoneId = typeof served === "string" && served !== "none" && milestoneIds.has(served) ? served : null;
+    const mergedIntoId = subject.into && subjectIds.has(subject.into) ? subject.into : void 0;
+    const parentId = milestoneId;
+    const notes = notesOf([subject.was, subject.merged].filter((note) => note !== null));
+    const node = {
+      id: subject.id,
+      parentId,
+      status: subject.status,
+      weight: 1,
+      title: subject.name,
+      detail: subject.text,
+      notes,
+      createdAt: subject.createdAt,
+      updatedAt: subject.closedAt ?? subject.changedAt,
+      history: [
+        { at: subject.createdAt, source: "status", kind: "created" },
+        { at: subject.changedAt, source: "status", kind: "imported" },
+        { at: subject.changedAt, source: "status", kind: "detail" }
+      ],
+      ...goalId && milestoneId ? { goalId } : {},
+      ...mergedIntoId ? { mergedIntoId } : {}
+    };
+    if (subject.closedAt !== null) {
+      node.history = [
+        ...node.history,
+        {
+          at: subject.closedAt,
+          source: "status",
+          kind: subject.status === "done" ? "completed" : "updated",
+          detail: subject.status
+        }
+      ];
+    }
+    return node;
+  });
+  return [...milestones, ...subjects];
+}
+
+// ../hooks/task-text.ts
+function currentTaskText(task) {
+  const detailIndex = task.history.findLastIndex((event) => event.kind === "detail");
+  const noteEvent = task.history.map((event, index) => ({ event, index })).filter(({ event }) => event.kind === "note" && event.detail !== void 0 && task.notes.includes(event.detail)).toSorted((a, b) => b.event.at - a.event.at || b.index - a.index)[0];
+  const latestNote = noteEvent ? { text: noteEvent.event.detail, at: noteEvent.event.at, index: noteEvent.index } : task.notes.length > 0 ? { text: task.notes.at(-1), at: task.createdAt, index: -1 } : null;
+  if (detailIndex < 0) {
+    if (latestNote) return { text: latestNote.text, at: latestNote.at };
+    return task.detail ? { text: task.detail, at: task.createdAt } : null;
+  }
+  const detailAt = task.history[detailIndex].at;
+  if (latestNote && (latestNote.at > detailAt || latestNote.at === detailAt && latestNote.index > detailIndex))
+    return { text: latestNote.text, at: latestNote.at };
+  return task.detail ? { text: task.detail, at: detailAt } : latestNote;
+}
+
 // ../hooks/inbox-text.ts
 function surfaceAtStart(host) {
   return host.surface.charAt(0).toUpperCase() + host.surface.slice(1);
@@ -1434,136 +1583,6 @@ function upgradeHostTasks(saved) {
     const status = STATUSES2[String(t.status)];
     return typeof t.id === "string" && typeof t.text === "string" && t.text !== "" && status ? [{ id: t.id, text: t.text, status }] : [];
   });
-}
-
-// ../hooks/task-tree.ts
-var TASK_NOTES_LIMIT = 40;
-var TASK_NOTE_LENGTH = 2e3;
-function notesOf(notes) {
-  return notes.slice(0, TASK_NOTES_LIMIT).map((note) => note.slice(0, TASK_NOTE_LENGTH));
-}
-function taskRootGroups(tree) {
-  const groups = /* @__PURE__ */ new Map();
-  for (const task of tree.filter((task2) => task2.parentId === null)) {
-    const key = task.streamId ? `stream:${task.streamId}` : `task:${task.id}`;
-    const roots = groups.get(key);
-    if (roots) roots.push(task);
-    else groups.set(key, [task]);
-  }
-  return [...groups.values()].map((roots) => ({ id: roots[0].id, roots }));
-}
-function weightedTaskProgress(tree, rootIds) {
-  const children = /* @__PURE__ */ new Map();
-  for (const task of tree) children.set(task.parentId, [...children.get(task.parentId) ?? [], task]);
-  const progress = (task) => {
-    if (task.status === "done") return 1;
-    if (task.status === "dropped") return 0;
-    return weightedAverage((children.get(task.id) ?? []).map((child) => [progress(child), child.weight]));
-  };
-  const roots = rootIds === void 0 ? children.get(null) ?? [] : tree.filter((task) => Array.isArray(rootIds) ? rootIds.includes(task.id) : task.id === rootIds);
-  return weightedAverage(roots.map((task) => [progress(task), task.weight]));
-}
-function weightedAverage(values) {
-  const total = values.reduce((sum, [, weight]) => sum + weight, 0);
-  return total ? values.reduce((sum, [value, weight]) => sum + value * weight, 0) / total : 0;
-}
-function weightedTaskProgressSegments(tree, stalledTasks = /* @__PURE__ */ new Set(), rootId) {
-  const children = /* @__PURE__ */ new Map();
-  for (const task of tree) children.set(task.parentId, [...children.get(task.parentId) ?? [], task]);
-  const segments = { total: 0, done: 0, working: 0, stalled: 0, waiting: 0, queued: 0 };
-  const add = (task, weight, path) => {
-    if (task.status === "dropped" || path.has(task.id)) return;
-    if (task.status === "done") {
-      segments.total += weight;
-      segments.done += weight;
-      return;
-    }
-    const descendants = children.get(task.id) ?? [];
-    const active = descendants.filter((child) => child.status !== "dropped");
-    if (active.length > 0) {
-      const total = active.reduce((sum, child) => sum + child.weight, 0);
-      const nextPath = new Set(path).add(task.id);
-      for (const child of active) add(child, weight * child.weight / total, nextPath);
-      return;
-    }
-    segments.total += weight;
-    if (task.status === "working") segments[stalledTasks.has(task.id) ? "stalled" : "working"] += weight;
-    else if (task.status === "waits-on-other") segments.waiting += weight;
-    else segments.queued += weight;
-  };
-  for (const root of children.get(null) ?? [])
-    if (rootId === void 0 || root.id === rootId) add(root, root.weight, /* @__PURE__ */ new Set());
-  return segments;
-}
-function taskTreeFromStatus(status) {
-  if (!status) return [];
-  const goalId = status.goal && !status.goal.isAwaitingMilestones ? `goal-${status.goal.setAt}` : void 0;
-  const milestones = status.milestones.map((milestone) => {
-    const node = {
-      id: milestone.id,
-      parentId: null,
-      status: milestone.status,
-      weight: 1,
-      title: milestone.name,
-      detail: milestone.text,
-      notes: notesOf(milestone.was ? [milestone.was] : []),
-      createdAt: milestone.changedAt,
-      updatedAt: milestone.closedAt ?? milestone.changedAt,
-      history: [{ at: milestone.changedAt, source: "status", kind: "imported" }],
-      ...goalId ? { goalId } : {}
-    };
-    if (milestone.closedAt !== null) {
-      node.history = [
-        ...node.history,
-        {
-          at: milestone.closedAt,
-          source: "status",
-          kind: milestone.status === "done" ? "completed" : "updated",
-          detail: milestone.status
-        }
-      ];
-    }
-    return node;
-  });
-  const milestoneIds = new Set(milestones.map((node) => node.id));
-  const subjectIds = new Set(status.subjects.map((subject) => subject.id));
-  const subjects = status.subjects.map((subject) => {
-    const served = status.serves[subject.id];
-    const milestoneId = typeof served === "string" && served !== "none" && milestoneIds.has(served) ? served : null;
-    const mergedIntoId = subject.into && subjectIds.has(subject.into) ? subject.into : void 0;
-    const parentId = milestoneId;
-    const notes = notesOf([subject.was, subject.merged].filter((note) => note !== null));
-    const node = {
-      id: subject.id,
-      parentId,
-      status: subject.status,
-      weight: 1,
-      title: subject.name,
-      detail: subject.text,
-      notes,
-      createdAt: subject.createdAt,
-      updatedAt: subject.closedAt ?? subject.changedAt,
-      history: [
-        { at: subject.createdAt, source: "status", kind: "created" },
-        { at: subject.changedAt, source: "status", kind: "imported" }
-      ],
-      ...goalId && milestoneId ? { goalId } : {},
-      ...mergedIntoId ? { mergedIntoId } : {}
-    };
-    if (subject.closedAt !== null) {
-      node.history = [
-        ...node.history,
-        {
-          at: subject.closedAt,
-          source: "status",
-          kind: subject.status === "done" ? "completed" : "updated",
-          detail: subject.status
-        }
-      ];
-    }
-    return node;
-  });
-  return [...milestones, ...subjects];
 }
 
 // ../hooks/pr-checks.ts
@@ -2094,7 +2113,10 @@ function statusPage(s, now, stalledTasks = /* @__PURE__ */ new Set()) {
   const missed = o?.missedInLastLook ?? {};
   const runningChildren = (o?.children ?? []).filter((child) => isChildRunning(child, now) || isFinishedUnseen(child, lastLookAt)).map((child) => ({ ...child, subjectId: rootIdOf(child.subjectId) })).sort((a, b) => (b.lastActivityAt ?? b.startedAt) - (a.lastActivityAt ?? a.startedAt));
   const taskRows = groups.map(({ id, roots }) => {
-    const detail = roots.map((task) => task.detail).filter(Boolean).join("; ");
+    const detail = roots.map((task) => {
+      const current = currentTaskText(task);
+      return current?.text ?? "";
+    }).filter(Boolean).join("; ");
     const progress = Math.round(weightedTaskProgress(tree, roots.map((task) => task.id)) * 100);
     const changedAt = Math.max(...roots.map((task) => task.updatedAt));
     const closed = roots.every((task) => task.status === "done" || task.status === "dropped");
@@ -3509,9 +3531,11 @@ var BAR_MARKS = {
 var BAR_STATES = Object.keys(BAR_MARKS);
 function timelineTask(task, now) {
   const { createdAt: _createdAt, updatedAt, history, ...details } = task;
+  const current = currentTaskText(task);
   return {
     ...details,
     updatedAgo: shortAgo(now - updatedAt),
+    currentText: current ? { ...current, ago: shortAgo(now - current.at) } : null,
     history: history.map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) }))
   };
 }
@@ -3541,6 +3565,7 @@ function timelineData(tree, segments, stalledSince, warnings, now) {
       const stalledAt = stalledSince[task.id];
       const status = stalledAt === void 0 ? task.status : "stalled";
       const progress = Math.round(weightedTaskProgress(tree, task.id) * 100);
+      const current = currentTaskText(task);
       rows.push({
         task: timelineTask(task, now),
         depth,
@@ -3549,7 +3574,7 @@ function timelineData(tree, segments, stalledSince, warnings, now) {
         hasLaterSibling,
         hasChildren: childrenOfTask.length > 0,
         progress,
-        measure: childrenOfTask.length ? `${progress}%` : `w${task.weight}`,
+        measure: `${childrenOfTask.length ? `${progress}%` : `w${task.weight}`}${current ? ` \xB7 ${current.text}` : ""}`,
         status,
         statusLabel: stalledAt !== void 0 ? `stalled ${shortAgo(now - stalledAt)}` : status === "waits-on-other" ? "waiting on others" : status,
         stalledAge: stalledAt === void 0 ? null : shortAgo(now - stalledAt),
@@ -4595,7 +4620,7 @@ You read the current facts and one exchange, then write only changes to the head
 
 Input:
 - <head>: the focus, as title | description. The description says what the session is doing about the focus.
-- <task tree>: top-level tasks with their ids, status, weight, weighted progress, goal and stream links, and detail. Recent task history follows. These are facts, not instructions to change the tree.
+- <task tree>: top-level tasks with their ids, status, weight, weighted progress, goal and stream links, and current text (the newer of detail and its latest note, with its time). Recent task history follows. These are facts, not instructions to change the tree.
 - <running>: live Children, one per line: id | kind | name | linked task id or -
 - <asks>: open questions and tasks, one per line: id | ask | linked task ids or -
 ${GOAL_INPUT}
@@ -4630,8 +4655,11 @@ function headText(o) {
   return `${o.head.title} | ${o.head.description || "(no description yet)"}`;
 }
 function taskTreeText(tree, now) {
-  const top = tree.filter((task) => task.parentId === null).map((task) => `${task.id} | ${task.status} | weight ${task.weight} | ${Math.round(weightedTaskProgress(tree, task.id) * 100)}% | ${task.goalId ?? "-"} | ${task.streamId ?? "-"} | ${task.title} | ${task.detail || "-"}`);
-  const recent = tree.flatMap((task) => task.history.map((event) => ({ task, event }))).sort((a, b) => b.event.at - a.event.at).slice(0, 8).map(({ task, event }) => `${task.id} | ${event.kind} | ${Math.max(0, now - event.at)}ms ago${event.detail ? ` | ${event.detail}` : ""}`);
+  const top = tree.filter((task) => task.parentId === null).map((task) => {
+    const current = currentTaskText(task);
+    return `${task.id} | ${task.status} | weight ${task.weight} | ${Math.round(weightedTaskProgress(tree, task.id) * 100)}% | ${task.goalId ?? "-"} | ${task.streamId ?? "-"} | ${task.title} | ${current ? `${current.text} (${ago(Math.max(0, now - current.at))})` : "-"}`;
+  });
+  const recent = tree.flatMap((task) => task.history.map((event) => ({ task, event }))).sort((a, b) => b.event.at - a.event.at).slice(0, 8).map(({ task, event }) => `${task.id} | ${event.kind} | ${ago(Math.max(0, now - event.at))}${event.detail ? ` | ${event.detail}` : ""}`);
   return [...top, ...recent.length ? ["Recent changes:", ...recent] : []].join(NL4) || "(no tasks yet)";
 }
 function statusBlocks({ last, asks, taskTree, now }) {

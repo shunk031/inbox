@@ -247,13 +247,18 @@ export function updateTask(
     kind: 'updated',
     ...(changes.links !== undefined ? { detail: 'links updated' } : {}),
   }
-  if (!eventIsValid(event)) return failed('limit')
+  const detailEvent: TaskHistoryEvent | null =
+    changes.detail !== undefined && changes.detail !== task.detail ? { at, source, kind: 'detail' } : null
+  if (!eventIsValid(event) || (detailEvent !== null && !eventIsValid(detailEvent))) return failed('limit')
 
   return succeeded(
     tree.map(node => {
       if (node.id !== id) return node
       const { links, ...fields } = changes
-      const updated = { ...node, ...fields, updatedAt: at, history: boundedHistory(node.history, event) }
+      const history = detailEvent
+        ? boundedHistory(boundedHistory(node.history, detailEvent), event)
+        : boundedHistory(node.history, event)
+      const updated = { ...node, ...fields, updatedAt: at, history }
       if (links === null) delete updated.links
       else if (links !== undefined) updated.links = { ...links, ...(links.owner ? { owner: { ...links.owner } } : {}) }
       if (updated.prMergedApplied && updated.links?.pr && updated.links.pr !== updated.prMergedApplied)
@@ -423,7 +428,10 @@ export function taskTreeFromStatus(status: SessionStatus | null): TaskTree {
       notes: notesOf(milestone.was ? [milestone.was] : []),
       createdAt: milestone.changedAt,
       updatedAt: milestone.closedAt ?? milestone.changedAt,
-      history: [{ at: milestone.changedAt, source: 'status', kind: 'imported' }],
+      history: [
+        { at: milestone.changedAt, source: 'status', kind: 'imported' },
+        { at: milestone.changedAt, source: 'status', kind: 'detail' },
+      ],
       ...(goalId ? { goalId } : {}),
     }
     if (milestone.closedAt !== null) {
@@ -460,6 +468,7 @@ export function taskTreeFromStatus(status: SessionStatus | null): TaskTree {
       history: [
         { at: subject.createdAt, source: 'status', kind: 'created' },
         { at: subject.changedAt, source: 'status', kind: 'imported' },
+        { at: subject.changedAt, source: 'status', kind: 'detail' },
       ],
       ...(goalId && milestoneId ? { goalId } : {}),
       ...(mergedIntoId ? { mergedIntoId } : {}),

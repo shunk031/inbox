@@ -19,6 +19,7 @@ import {
   weightedTaskProgress,
   weightedTaskProgressSegments,
 } from '../hooks/task-tree'
+import { currentTaskText } from '../hooks/task-text'
 import { upgradeSession } from '../hooks/session-files'
 import type { TaskNode, TaskTree } from '../types'
 import { taskMilestone, taskStatus, taskSubject } from './task-tree-fixtures'
@@ -42,6 +43,29 @@ const resultTree = (result: ReturnType<typeof createTask>) => {
   if (!result.ok) throw new Error(result.reason)
   return result.tree
 }
+
+test("current task text uses the newer detail or note and keeps that text's time", () => {
+  const original = node('task', {
+    detail: 'The initial plan',
+    createdAt: 10,
+    updatedAt: 20,
+    notes: ['Progress is blocked', 'The fix is ready'],
+    history: [
+      { at: 10, source: 'agent', kind: 'created' },
+      { at: 20, source: 'agent', kind: 'note', detail: 'Progress is blocked' },
+      { at: 30, source: 'agent', kind: 'note', detail: 'The fix is ready' },
+    ],
+  })
+
+  expect(currentTaskText(original)).toEqual({ text: 'The fix is ready', at: 30 })
+  expect(
+    currentTaskText({
+      ...original,
+      detail: 'Verified in the app',
+      history: [...original.history, { at: 40, source: 'agent', kind: 'detail' }],
+    }),
+  ).toEqual({ text: 'Verified in the app', at: 40 })
+})
 
 test('create, update, move, complete, note and history operations are pure and preserve explicit facts', () => {
   const initial = [node('parent')]
@@ -263,6 +287,21 @@ test('subjects only migrate in order with their status, detail, prior notes and 
   expect(tree[0]!.history).toMatchObject([
     { at: 10, source: 'status', kind: 'created' },
     { at: 20, kind: 'imported' },
+    { at: 20, source: 'status', kind: 'detail' },
+  ])
+})
+
+test('Status imports keep current details ahead of prior text carried as notes', () => {
+  const tree = taskTreeFromStatus(
+    taskStatus({
+      milestones: [taskMilestone('m1', { was: 'Earlier milestone details' })],
+      subjects: [taskSubject('s1', { was: 'Earlier task details' })],
+    }),
+  )
+
+  expect(tree.map(currentTaskText)).toEqual([
+    { text: 'Details for m1', at: 20 },
+    { text: 'Details for s1', at: 20 },
   ])
 })
 

@@ -2,6 +2,8 @@ import type { LastAction, TaskFactWarning, TaskHistoryEvent, TaskNode, TaskProgr
 import { prMarkId } from './pr-rows'
 import { shortAgo } from './rows'
 import { weightedTaskProgress, weightedTaskProgressSegments } from './task-tree'
+import { currentTaskText } from './task-text'
+import type { CurrentTaskText } from './task-text'
 import type { PrAction } from './pr-press'
 import type { ActionView } from './rows'
 
@@ -10,6 +12,7 @@ type TimelineBar = { id: string; label: string; parts: TimelineBarPart[] }
 type TimelineHistoryEvent = Omit<TaskHistoryEvent, 'at'> & { time: string }
 type TimelineTask = Omit<TaskNode, 'createdAt' | 'updatedAt' | 'history'> & {
   updatedAgo: string
+  currentText: (CurrentTaskText & { ago: string }) | null
   history: TimelineHistoryEvent[]
 }
 type TimelineRowAction = Pick<ActionView, 'label' | 'hotkey' | 'kind' | 'emphasis'> & {
@@ -18,7 +21,8 @@ type TimelineRowAction = Pick<ActionView, 'label' | 'hotkey' | 'kind' | 'emphasi
 }
 type TimelineLinkAction = PrAction & { result: LastAction['result'] | null }
 type TimelineDetailLine =
-  { label: 'Detail' | 'Updated' | 'Note' | 'History'; text: string } | { label: 'Links'; actions: TimelineLinkAction[] }
+  | { label: 'Current' | 'Detail' | 'Updated' | 'Note' | 'History'; text: string }
+  | { label: 'Links'; actions: TimelineLinkAction[] }
 type TimelineNode = {
   task: TimelineTask
   depth: number
@@ -57,15 +61,18 @@ const HISTORY_TEXT: Record<TaskHistoryEvent['kind'], string> = {
   updated: 'Task updated',
   moved: 'Task moved',
   completed: 'Task completed',
+  detail: 'Task detail updated',
   note: 'Note added',
   imported: 'Task imported',
 }
 
 function timelineTask(task: TaskNode, now: number): TimelineTask {
   const { createdAt: _createdAt, updatedAt, history, ...details } = task
+  const current = currentTaskText(task)
   return {
     ...details,
     updatedAgo: shortAgo(now - updatedAt),
+    currentText: current ? { ...current, ago: shortAgo(now - current.at) } : null,
     history: history.map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) })),
   }
 }
@@ -103,6 +110,7 @@ export function timelineData(
       const stalledAt = stalledSince[task.id]
       const status = stalledAt === undefined ? task.status : 'stalled'
       const progress = Math.round(weightedTaskProgress(tree, task.id) * 100)
+      const current = currentTaskText(task)
       rows.push({
         task: timelineTask(task, now),
         depth,
@@ -111,7 +119,7 @@ export function timelineData(
         hasLaterSibling,
         hasChildren: childrenOfTask.length > 0,
         progress,
-        measure: childrenOfTask.length ? `${progress}%` : `w${task.weight}`,
+        measure: `${childrenOfTask.length ? `${progress}%` : `w${task.weight}`}${current ? ` · ${current.text}` : ''}`,
         status,
         statusLabel:
           stalledAt !== undefined
@@ -237,6 +245,14 @@ export function timelinePage(
   const selectedLinks = selectedRow ? timelineLinkPlan(selectedRow.task, lastActions) : []
   const details: TimelineDetailLine[] = selectedRow
     ? [
+        ...(selectedRow.task.currentText
+          ? [
+              {
+                label: 'Current' as const,
+                text: `${selectedRow.task.currentText.text} · ${selectedRow.task.currentText.ago}`,
+              },
+            ]
+          : []),
         ...(selectedRow.task.detail ? [{ label: 'Detail' as const, text: selectedRow.task.detail }] : []),
         { label: 'Updated', text: selectedRow.task.updatedAgo },
         ...selectedRow.task.notes.map(text => ({ label: 'Note' as const, text })),

@@ -117,6 +117,20 @@ test('on the Status page, a subject’s name stays plain, and where it stands go
   expect(wide[wide.findIndex(l => l.includes(name)) + 1]?.trim()).toBe(`0% complete · ${where}`)
 })
 
+test('the Status page shows a newer task note as its current text', () => {
+  const task = taskNode('t1', 'Implement the cache', 'working', NOW, { detail: 'The original plan' })
+  task.notes = ['The latest note']
+  task.history = [
+    { at: NOW - 1, source: 'agent', kind: 'created' },
+    { at: NOW, source: 'agent', kind: 'note', detail: 'The latest note' },
+  ]
+  const screen = taskScreen([task], { children: [], askSubjects: {} })
+  const shown = text(screen, onPage, 200)
+
+  expect(shown).toContain('0% complete · The latest note')
+  expect(shown).not.toContain('The original plan')
+})
+
 test('each subject’s mark takes its tone, and a mark with no tone is muted', () => {
   const screen = trialChangedScreen()
   const subjects = screen.view.statusPage.rows.flatMap(r => (r.kind === 'subject' ? [r] : []))

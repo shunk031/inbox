@@ -3,7 +3,7 @@ export type TaskStatus = 'working' | 'queued' | 'waits-on-other' | 'done' | 'dro
 export type TaskHistoryEvent = {
   at: number
   source: string
-  kind: 'created' | 'updated' | 'moved' | 'completed' | 'note' | 'imported'
+  kind: 'created' | 'updated' | 'moved' | 'completed' | 'detail' | 'note' | 'imported'
   detail?: string
 }
 

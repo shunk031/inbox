@@ -209,7 +209,7 @@ test('the Codex tab draws the Status page from a next build’s view, and new ro
       ]),
       [
         ['mark tone-needsYou', '◆', ['Label · waiting', '0% complete · pick one', 'View question']],
-        ['mark running', '●', ['omp panel', '0% complete · reading the draw code']],
+        ['mark running', '●', ['omp panel', '0% complete · Keep the row selected while reviewing its details.']],
         ['mark done', '✓', ['Page', '100% complete · built']],
       ],
     )
@@ -250,9 +250,12 @@ test('the Codex tab draws the Status page from a next build’s view, and new ro
     assert.match(root.querySelector('.timeline-node .content > div')?.textContent ?? '', /^  ● omp panel · working · /)
     assert.equal(
       [...root.querySelectorAll('.timeline-node .content > div')][1]?.textContent,
-      '  ├─ ● Label · working · w1',
+      '  ├─ ● Label · working · w1 · pick one',
     )
-    assert.equal([...root.querySelectorAll('.timeline-node .content > div')][2]?.textContent, '  └─ ✓ Page · done · w1')
+    assert.equal(
+      [...root.querySelectorAll('.timeline-node .content > div')][2]?.textContent,
+      '  └─ ✓ Page · done · w1 · built',
+    )
     assert.equal(
       [...root.querySelectorAll('.timeline-detail > div')].every(line => line.textContent?.startsWith('     ')),
       true,
@@ -260,7 +263,7 @@ test('the Codex tab draws the Status page from a next build’s view, and new ro
     assert.equal(root.querySelectorAll('.timeline-child-guide').length, 1)
     assert.deepEqual(
       [...root.querySelectorAll('.timeline-detail-label')].map(label => label.textContent?.replace(' · ', '')),
-      ['Detail', 'Updated', 'Note', 'History', 'Links'],
+      ['Current', 'Detail', 'Updated', 'Note', 'History', 'Links'],
     )
     const { drawnRows } = await import('../src/tab-state')
     key('j')

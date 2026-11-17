@@ -6,7 +6,7 @@ import { cutInline } from './inline'
 import type { Host } from './model-text'
 import { MAX_ORDERED_PRS, tabPrs } from './pr-fetch'
 import { isDismissed } from './pr-views'
-import { bodyChanges, missingText, questionBody, withBody } from './question-checks'
+import { alreadyOpenAnswer, bodyChanges, missingText, questionBody, withBody } from './question-checks'
 import { CLOSE_SCHEMA, ORDER_SCHEMA, RECORD_SCHEMA, TASKS_SCHEMA, V0_3_TOOL_FIELDS } from './tool-schemas'
 import { CLOSE_DESCRIPTION, orderDescription, recordDescription, tasksDescription } from './tool-descriptions'
 import { taskTreeAnswer } from './task-tool'
@@ -174,16 +174,13 @@ export function recordItem(
   }
   const r = addAgentItem(ledger, entry, now)
   if (r.is === 'source-managed')
-    return unchanged(
-      ledger,
-      'Not recorded: a matching task is managed by the active work source and was left unchanged.',
-    )
+    return unchanged(ledger, `Not recorded: already open as ${r.id} in the active work source; nothing changed.`)
   if (r.is === 'closed')
     return unchanged(
       ledger,
       'title' in r.record
-        ? `Not recorded: the user dismissed the finding "${r.record.title}", which this raises. Ask about it only if they bring it up.`
-        : `Not recorded: ${closedHow(r.record, true)}. Ask it again only if they bring it up.`,
+        ? `Not recorded: it matches dismissed finding ${r.record.id} ("${r.record.title}"); nothing changed. Ask about it only if the user brings it up.`
+        : `Not recorded: it matches closed item ${r.record.id} (${closedHow(r.record, true)}); nothing changed. Ask again only if the user brings it up.`,
     )
   const body = input.kind === 'question' ? questionBody(input, options) : {}
   const before = r.ledger.items.find(i => i.id === r.id)
@@ -205,11 +202,25 @@ export function recordItem(
       ...(r.isNewReason ? ['gave its recommendation your reason'] : []),
       ...(before && after ? bodyChanges(before, after) : []),
     ]
-    const updated = changes.length > 0 ? ` and ${changes.join(' and ')}` : ''
+    const sameText =
+      before !== undefined &&
+      after !== undefined &&
+      before.ask === ask &&
+      JSON.stringify(before.options) === JSON.stringify(options) &&
+      before.kind === input.kind &&
+      before.rec === after.rec &&
+      before.recReason === after.recReason &&
+      before.detail === after.detail &&
+      JSON.stringify(before.helps) === JSON.stringify(after.helps) &&
+      before.document === after.document &&
+      before.documentPreview === after.documentPreview &&
+      before.isDesignChoice === after.isDesignChoice &&
+      JSON.stringify(before.context) === JSON.stringify(after.context) &&
+      JSON.stringify(before.optionDescriptions) === JSON.stringify(after.optionDescriptions)
 
     return unchanged(
       recorded,
-      `Already open as ${r.id}, so this record updated it${updated}. ${r.id} is the only copy and stays open; do not close it to replace it.${leftOut}${documentNote}`,
+      `${alreadyOpenAnswer(r.id, changes, sameText, changes.length > 0)}${leftOut}${documentNote}`,
     )
   }
 
@@ -234,20 +245,48 @@ function recordFinding(host: Host, ledger: Ledger, input: Record<string, unknown
     { field: 'detail', text: raw(input.detail), max: MAX_FINDING_DETAIL },
   ])
   if (linkProblem) return unchanged(ledger, linkProblem)
-  const path = cut(input.path, 300)
+  const path = input.path === undefined ? undefined : cut(input.path, 300) || null
   const document = cut(input.document, 4096) || undefined
   const documentPreview = document ? cut(input.document_preview, 180) || undefined : undefined
   const documentError = cut(input.document_error, 160)
   const documentNote = documentError ? ` The Markdown report was not attached: ${documentError}` : ''
   const kind = input.finding_kind === 'opportunity' ? 'opportunity' : 'issue'
-  const r = addFinding(ledger, { kind, title, detail, path: path || null, document, documentPreview, at: now })
+  const r = addFinding(ledger, {
+    kind,
+    title,
+    detail,
+    ...(path === undefined ? {} : { path }),
+    document,
+    documentPreview,
+    at: now,
+  })
 
   if (r.dismissed)
     return unchanged(
       ledger,
-      `Not recorded: the user already closed this (${r.dismissed.outcome}). Record it again only if they bring it up.${documentNote}`,
+      `Not recorded: it matches closed item ${r.dismissed.id} (the user already closed it: ${r.dismissed.outcome}); nothing changed. Record it again only if the user brings it up.${documentNote}`,
     )
-  if (!r.isAdded) return unchanged(r.ledger, `Already recorded.${documentNote}`)
+  if (!r.isAdded) {
+    if (r.matched === 'finding') {
+      const before = ledger.findings.find(f => f.id === r.id)!
+      const matched = r.ledger.findings.find(f => f.id === r.id)!
+      const changed = before !== matched
+      const sameText =
+        !changed &&
+        before.title === title &&
+        before.detail === detail &&
+        (path === undefined || before.path === path) &&
+        before.kind === kind &&
+        (document === undefined || (before.document === document && before.documentPreview === documentPreview))
+      return unchanged(r.ledger, `${alreadyOpenAnswer(r.id, [], sameText, changed)}${documentNote}`)
+    }
+    return unchanged(
+      r.ledger,
+      r.matched === 'item'
+        ? `Already open as ${r.id} as a matching ask; nothing changed.${documentNote}`
+        : `Not recorded: already open as ${r.id} in the active work source; nothing changed.${documentNote}`,
+    )
+  }
 
   return {
     ledger: r.ledger,

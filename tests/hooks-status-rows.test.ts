@@ -108,3 +108,42 @@ test('on the Status, a task tree stays the source of Working on while the goal k
   await clock.settle()
   expect(await inline.find({ key: 'status-s2' })).toBeDefined()
 })
+
+test('a task note replaces older detail as the current text in terminal and desktop Status and Timeline', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  world($, on, [])
+  w.files = ['/.next-build']
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  await $.prompt.submit({ text: 'implement the greeting CLI', wait: false, origin: { kind: 'composer' } })
+  await seedTasks($, [
+    { id: 't1', title: 'Add the greeting command', status: 'working', detail: 'Design the first draft' },
+  ])
+  await clock.advance(1000)
+  await $.tool.call({
+    tool: 'mcp__inbox__tasks',
+    operation: 'note',
+    task_id: 't1',
+    note: 'The command now passes its tests',
+  })
+  await clock.settle()
+
+  const terminal = await $.ui.mount(PANE)
+  await terminal.press({ key: 'tab-key-overview' })
+  await clock.settle()
+  expect((await terminal.find({ key: 'status-t1-text' }))?.text).toContain('The command now passes its tests')
+  expect((await terminal.find({ key: 'status-t1-text' }))?.text).not.toContain('Design the first draft')
+  await terminal.press({ key: 'tab-timeline' })
+  await clock.settle()
+  expect(await terminal.find({ text: /Current · The command now passes its tests/ })).toBeDefined()
+  expect(await terminal.find({ text: /Detail · Design the first draft/ })).toBeDefined()
+  expect(await terminal.find({ text: /Note · The command now passes its tests/ })).toBeDefined()
+  await terminal.unmount()
+
+  const desktop = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await $.session.attach({ surface: 'desktop', clientId: 'desktop:default' })
+  await clock.settle()
+  await desktop.pointer({ type: 'down', x: 0, y: 1, button: 'left', in: 'tabs' })
+  await clock.settle()
+  expect((await desktop.find({ key: 'status-t1-text' }))?.text).toContain('The command now passes its tests')
+  expect((await desktop.find({ key: 'status-t1-text' }))?.text).not.toContain('Design the first draft')
+})

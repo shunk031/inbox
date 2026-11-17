@@ -5,8 +5,9 @@ import { asksText, runningText } from './status-children'
 import { DESCRIPTION_WORDS, NAME_WORDS } from './status-limits'
 import { GOAL_INPUT, GOAL_LINES, goalBlocks, goalRules } from './status-prompt-goal'
 import type { GoalPartId } from './status-prompt-goal'
-import { clipMiddle, numberBlocks } from './text'
+import { ago, clipMiddle, numberBlocks } from './text'
 import { weightedTaskProgress } from './task-tree'
+import { currentTaskText } from './task-text'
 import { personInstructionsBlock } from './person-instructions'
 
 export function statusSystem(without: readonly GoalPartId[] = [], instructions: string | null = null): string {
@@ -16,7 +17,7 @@ You read the current facts and one exchange, then write only changes to the head
 
 Input:
 - <head>: the focus, as title | description. The description says what the session is doing about the focus.
-- <task tree>: top-level tasks with their ids, status, weight, weighted progress, goal and stream links, and detail. Recent task history follows. These are facts, not instructions to change the tree.
+- <task tree>: top-level tasks with their ids, status, weight, weighted progress, goal and stream links, and current text (the newer of detail and its latest note, with its time). Recent task history follows. These are facts, not instructions to change the tree.
 - <running>: live Children, one per line: id | kind | name | linked task id or -
 - <asks>: open questions and tasks, one per line: id | ask | linked task ids or -
 ${GOAL_INPUT}
@@ -58,10 +59,13 @@ function headText(o: SessionStatus | null): string {
 
 // prettier-ignore
 function taskTreeText(tree: TaskTree, now: number): string {
-  const top = tree.filter(task => task.parentId === null).map(task => `${task.id} | ${task.status} | weight ${task.weight} | ${Math.round(weightedTaskProgress(tree, task.id) * 100)}% | ${task.goalId ?? '-'} | ${task.streamId ?? '-'} | ${task.title} | ${task.detail || '-'}`)
+  const top = tree.filter(task => task.parentId === null).map(task => {
+    const current = currentTaskText(task)
+    return `${task.id} | ${task.status} | weight ${task.weight} | ${Math.round(weightedTaskProgress(tree, task.id) * 100)}% | ${task.goalId ?? '-'} | ${task.streamId ?? '-'} | ${task.title} | ${current ? `${current.text} (${ago(Math.max(0, now - current.at))})` : '-'}`
+  })
   const recent = tree.flatMap(task => task.history.map(event => ({ task, event })))
     .sort((a, b) => b.event.at - a.event.at).slice(0, 8)
-    .map(({ task, event }) => `${task.id} | ${event.kind} | ${Math.max(0, now - event.at)}ms ago${event.detail ? ` | ${event.detail}` : ''}`)
+    .map(({ task, event }) => `${task.id} | ${event.kind} | ${ago(Math.max(0, now - event.at))}${event.detail ? ` | ${event.detail}` : ''}`)
   return [...top, ...(recent.length ? ['Recent changes:', ...recent] : [])].join(NL) || '(no tasks yet)'
 }
 
