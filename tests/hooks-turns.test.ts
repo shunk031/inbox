@@ -122,6 +122,31 @@ test('tool.call does not double count when classic PostToolUse runs', async ($, 
   expect(saved.taskReminder.callsSinceTasks).toBe(1)
 })
 
+for (const isNextBuild of [false, true])
+  test(`tool.call counts a skipped same-source hook after a classic hook in a ${isNextBuild ? 'next' : 'release'} build`, async ($, on) => {
+    mock.clock(on, { now: 1_000_000 })
+    world($, on, [])
+    w.files = isNextBuild ? ['/.next-build'] : []
+    await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+
+    w.raisesPostHooks = true
+    await $.tool.call({
+      tool: 'Read',
+      file_path: '/tmp/project/with-hook',
+      tool_use_id: 'read-with-hook',
+    } as never)
+
+    w.raisesPostHooks = false
+    await $.tool.call({
+      tool: 'Read',
+      file_path: '/tmp/project/without-hook',
+      tool_use_id: 'read-without-hook',
+    } as never)
+
+    const saved = JSON.parse(w.stored.get('s:session-1')!) as Session
+    expect(saved.taskReminder.callsSinceTasks).toBe(2)
+  })
+
 test('a denied tool.call does not count when classic PostToolUse hooks are skipped', async ($, on) => {
   mock.clock(on, { now: 1_000_000 })
   world($, on, [])

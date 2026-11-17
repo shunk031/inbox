@@ -2555,7 +2555,7 @@ export const register: Register = on => {
         call.didRun = endedCallRan(e.tool_use_id, String(e.tool))
         if (call.didRun && activity) await noteActivity($, activity)
       }
-      if (call.didRun && !isDeniedToolCall(result) && !e.agentId && !call.sawPostHook)
+      if (e.tool_use_id && !isDeniedToolCall(result) && !e.agentId && !call.sawPostHook)
         reminder = await noteReminderAfterCall($, true)
 
       return result
