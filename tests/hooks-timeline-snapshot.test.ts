@@ -54,6 +54,7 @@ for (const bodyColumns of [110, 200] as const) {
     const { pane } = await openTree($, on, bodyColumns)
     const ids = ['scene-root', 'scene-wrap', 'scene-long', 'scene-deep']
     const snapshot = []
+    const rowEnds = []
     for (const id of ids) {
       const title = await pane.find({ key: `timeline-title-${id}` })
       const status = await pane.find({ key: `timeline-chip-${id}` })
@@ -62,9 +63,19 @@ for (const bodyColumns of [110, 200] as const) {
       const titleArea = await pane.find({ key: `timeline-title-area-${id}` })
       const bar = await pane.find({ key: `timeline-row-bar-${id}` })
       const gap = await pane.find({ key: `timeline-row-bar-gap-${id}` })
+      const percent = await pane.find({ key: `timeline-row-percent-${id}` })
       expect(chipLead?.props.width, `${id} chip begins in the title's first cell`).toBe(titleLead?.props.width)
       expect(cellWidth(titleLead?.text ?? ''), `${id} title lead uses its measured cells`).toBe(titleLead?.props.width)
       expect(cellWidth(chipLead?.text ?? ''), `${id} chip lead fills the title column`).toBe(titleLead?.props.width)
+      expect(titleArea?.props.flexGrow, `${id} keeps its measured title budget fixed`).toBeUndefined()
+      const rowEnd =
+        cellWidth(titleLead?.text ?? '') +
+        Number(titleArea?.props.width) +
+        Number(gap?.props.width ?? 0) +
+        (bar ? 10 : 0) +
+        cellWidth(percent?.text ?? '')
+      expect(rowEnd, `${id} title, bar and percent fit in the row budget`).toBeLessThanOrEqual(bodyColumns - 4)
+      rowEnds.push(rowEnd)
       for (const line of [titleLead?.text ?? '', chipLead?.text ?? '']) {
         expect(line).not.toContain('|')
         expect(line).not.toContain('│ │')
@@ -86,6 +97,7 @@ for (const bodyColumns of [110, 200] as const) {
         id === 'scene-wrap' ? `${title?.text ?? ''}\n${continuation?.text ?? ''}` : (title?.text ?? '')
       snapshot.push([id, displayedTitle, status?.text ?? null])
     }
+    expect(new Set(rowEnds).size, 'every percent shares the same ending column').toBe(1)
     const labels = (await pane.findAll({ type: 'Text' })).map(line => line.text)
     const renderedText = await pane.findAll({ type: 'Text' })
     const continuationIndex = renderedText.findIndex(line => line.text === '次の行も表示する')

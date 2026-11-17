@@ -175,7 +175,7 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
       </Box>
       <Box
         key="timeline-progress-bar"
-        flexDirection={bodyColumns < 36 ? 'column' : 'row'}
+        flexDirection={bodyColumns < 44 ? 'column' : 'row'}
         justifyContent="space-between"
       >
         <Box flexDirection="row" flexShrink={0}>
@@ -315,13 +315,7 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
                     </Text>
                   </Box>
                   <Box flexDirection="row" flexGrow={1} flexShrink={1} minWidth={0}>
-                    <Box
-                      key={`timeline-title-area-${row.task.id}`}
-                      width={titleCells}
-                      flexGrow={1}
-                      flexShrink={1}
-                      minWidth={0}
-                    >
+                    <Box key={`timeline-title-area-${row.task.id}`} width={titleCells} flexShrink={1} minWidth={0}>
                       <Button
                         plain
                         key={`timeline-title-${row.task.id}`}

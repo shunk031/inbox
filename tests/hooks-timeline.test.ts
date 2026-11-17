@@ -279,7 +279,7 @@ test('terminal Timeline keeps Japanese titles, row metadata and detail guides at
     lines.some(line => line.trim() === '0.00%'),
     'the row percentage keeps every character',
   ).toBe(true)
-  expect((await pane.find({ key: 'timeline-progress-bar' }))?.props.flexDirection).toBe('row')
+  expect((await pane.find({ key: 'timeline-progress-bar' }))?.props.flexDirection).toBe('column')
 
   await pane.press({ key: 'timeline-title-child-a' })
   await clock.settle()
