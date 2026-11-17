@@ -9,6 +9,12 @@ const nestedTasks: { id: string; parent_id?: string; title: string; status: 'wor
   [
     { id: 'scene-root', title: 'Review task tree', status: 'working' },
     {
+      id: 'scene-wrap',
+      parent_id: 'scene-root',
+      title: '折り返し用の日本語タイトル\n次の行も表示する',
+      status: 'done',
+    },
+    {
       id: 'scene-long',
       parent_id: 'scene-root',
       title: '長い日本語の作業内容を確認するためのタイトル'.repeat(3),
@@ -19,12 +25,6 @@ const nestedTasks: { id: string; parent_id?: string; title: string; status: 'wor
       parent_id: 'scene-long',
       title: 'ログと結果を見て仕上がりを確かめる',
       status: 'waits-on-other',
-    },
-    {
-      id: 'scene-wrap',
-      parent_id: 'scene-root',
-      title: '折り返し用の日本語タイトル\n次の行も表示する',
-      status: 'done',
     },
   ]
 
@@ -52,7 +52,7 @@ async function openTree($: Engine, on: On, bodyColumns: number) {
 for (const bodyColumns of [110, 200] as const) {
   test(`terminal Timeline tree text snapshot at ${bodyColumns} columns`, async ($, on) => {
     const { pane } = await openTree($, on, bodyColumns)
-    const ids = ['scene-root', 'scene-long', 'scene-deep', 'scene-wrap']
+    const ids = ['scene-root', 'scene-wrap', 'scene-long', 'scene-deep']
     const snapshot = []
     for (const id of ids) {
       const title = await pane.find({ key: `timeline-title-${id}` })
@@ -67,7 +67,12 @@ for (const bodyColumns of [110, 200] as const) {
       expect(cellWidth(chipLead?.text ?? ''), `${id} chip lead fills the title column`).toBe(titleLead?.props.width)
       for (const line of [titleLead?.text ?? '', chipLead?.text ?? '']) {
         expect(line).not.toContain('|')
-        for (const match of line.matchAll(/│/g)) expect(Number(match.index) % 3).toBe(2)
+        expect(line).not.toContain('│ │')
+        expect(line.at(-1), `${id} leaves a cell before the chip`).toBe(' ')
+        for (const match of line.matchAll(/│/g)) {
+          expect(Number(match.index) % 3).toBe(2)
+          expect(Number(match.index), `${id} guide does not touch the chip`).toBeLessThan(line.length - 1)
+        }
       }
       if (title?.text.endsWith('…') && bar) {
         expect(gap?.props.width, `${id} has a two-cell gap after its truncated title`).toBeGreaterThanOrEqual(2)
@@ -76,20 +81,28 @@ for (const bodyColumns of [110, 200] as const) {
           `${id} bar starts at least two cells after the displayed ellipsis`,
         ).toBeGreaterThanOrEqual(2)
       }
-      snapshot.push([id, title?.text ?? null, status?.text ?? null])
+      const continuation = (await pane.findAll({ type: 'Text' })).find(line => line.text === '次の行も表示する')
+      const displayedTitle =
+        id === 'scene-wrap' ? `${title?.text ?? ''}\n${continuation?.text ?? ''}` : (title?.text ?? '')
+      snapshot.push([id, displayedTitle, status?.text ?? null])
     }
     const labels = (await pane.findAll({ type: 'Text' })).map(line => line.text)
-    snapshot.unshift(['heading', labels.includes('Task plan') ? 'Task plan' : null])
+    const renderedText = await pane.findAll({ type: 'Text' })
+    const continuationIndex = renderedText.findIndex(line => line.text === '次の行も表示する')
+    const continuationLead = renderedText[continuationIndex - 1]?.text ?? ''
+    expect(continuationLead[2], 'wrapped title keeps the child-group guide').toBe('│')
+    expect(continuationLead.at(-1), 'wrapped title guide leaves a cell before the text').toBe(' ')
+    snapshot.unshift(['heading', labels.includes('Progress') ? 'Progress' : null])
     const titleArea = await pane.find({ key: 'timeline-title-area-scene-long' })
-    const longTask = nestedTasks[1]!
+    const longTask = nestedTasks.find(task => task.id === 'scene-long')!
     const longTitle =
       bodyColumns === 110 ? `${cutToCells(longTask.title, (titleArea?.props.width as number) - 1)}…` : longTask.title
     expect(snapshot).toEqual([
-      ['heading', 'Task plan'],
+      ['heading', 'Progress'],
       ['scene-root', 'Review task tree', 'In progress'],
+      ['scene-wrap', '折り返し用の日本語タイトル\n次の行も表示する', 'Completed'],
       ['scene-long', longTitle, 'In progress'],
       ['scene-deep', 'ログと結果を見て仕上がりを確かめる', 'Waiting'],
-      ['scene-wrap', '折り返し用の日本語タイトル\n次の行も表示する', 'Completed'],
     ])
   })
 }
@@ -104,7 +117,7 @@ for (const bodyColumns of [110, 200] as const) {
     await emptyPane.press({ key: 'tab-key-timeline' })
     await clock.settle()
     const emptyText = (await emptyPane.findAll({ type: 'Text' })).map(line => line.text)
-    expect(emptyText).toContain('Task plan')
+    expect(emptyText).toContain('Progress')
     expect(emptyText).toContain('No tasks have been recorded for this session.')
 
     await $.tool.call({

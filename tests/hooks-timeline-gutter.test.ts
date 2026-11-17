@@ -130,11 +130,28 @@ test('terminal Timeline aligns every status chip with its title and keeps warnin
   expect(completedParentLead.indexOf('│'), 'parent guide aligns with child connector').toBe(
     completedChildTitleLead.indexOf('├'),
   )
-  expect(completedChildLead, 'completed child chip lead contains no stray branch glyph').not.toContain('│')
+  expect(completedChildLead.indexOf('│'), "earlier child chip keeps its parent's guide").toBe(2)
+  expect(completedChildLead.at(-1), 'a guide never touches the chip').toBe(' ')
+  const completedChildLeads = await Promise.all(
+    ['done-child-a', 'done-child-b', 'done-child-c'].map(
+      async id => (await pane.find({ key: `timeline-chip-lead-${id}` }))?.text ?? '',
+    ),
+  )
+  expect(
+    [completedParentLead, ...completedChildLeads].map(line => line[2]),
+    'the parent and earlier children keep one continuous guide column',
+  ).toEqual(['│', '│', '│', '│'])
+  const finalChildLead = (await pane.find({ key: 'timeline-chip-lead-done-child-d' }))?.text ?? ''
+  const finalChildTitleLead = (await pane.find({ key: 'timeline-title-lead-done-child-d' }))?.text ?? ''
+  expect(finalChildTitleLead[2], 'the final child closes the guide with its elbow').toBe('└')
+  expect(finalChildLead[2], 'the guide stops after the final child connector').toBe(' ')
   expect(stalledChipLead.indexOf('│'), 'stalled chip uses the normal guide column').toBe(rootChipLead.indexOf('│'))
   expect(prChipLead.indexOf('│'), 'merged-PR chip uses the normal guide column').toBe(rootChipLead.indexOf('│'))
   expect((await pane.find({ key: 'timeline-title-stalled-sibling' }))?.text.endsWith('…')).toBe(true)
-  expect((await pane.find({ key: 'timeline-title-pr-sibling' }))?.text).toContain('\n')
+  expect((await pane.find({ key: 'timeline-title-pr-sibling' }))?.text).toBe('折り返しを含む日本語タスク')
+  const continuationIndex = rows.indexOf('二行目も確認する')
+  expect(continuationIndex).toBeGreaterThan(0)
+  expect(rows[continuationIndex - 1]?.[2], 'wrapped title keeps its parent guide').toBe('│')
   const warnings = rows.filter(line => line.includes('⚠'))
   expect(warnings.some(line => line.includes('Owner idle 15m+'))).toBe(true)
   expect(warnings.some(line => line.includes('Owner finished, task open'))).toBe(true)
@@ -145,7 +162,11 @@ test('terminal Timeline aligns every status chip with its title and keeps warnin
     const warningColumn = cellWidth(warning.slice(0, warning.indexOf('⚠')))
     const titleLead = warning.includes('PR merged') ? prTitleLead : stalledTitleLead
     expect(warningColumn, 'warning text starts in its title column').toBe(titleLead?.props.width)
-    expect([...warning.matchAll(/│/g)], 'warning keeps only its ancestor guide').toHaveLength(1)
+    expect(
+      [...warning.matchAll(/│/g)].map(match => Number(match.index)),
+      'warning keeps the ancestor and child guides in their separate columns',
+    ).toEqual([2, 5])
+    expect(warning[2], 'the warning keeps the guide in its tree column').toBe('│')
   }
 
   expect((await pane.find({ key: 'timeline-title-lead-done-parent' }))?.text.startsWith('> ')).toBe(true)

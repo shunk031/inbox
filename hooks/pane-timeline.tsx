@@ -1,6 +1,7 @@
 import type { PaneBase, PaneHandlers } from './pane-context'
 import { cellWidth, cutToCells } from './text'
 import { moveTimelineSelection, timelinePage, toggleTimelineBranch } from './timeline-page'
+import type { TimelinePage } from './timeline-page'
 
 type TimelineStyle = Pick<PaneBase, 'Box' | 'Text' | 'pal'>
 
@@ -23,6 +24,12 @@ export function timelineRowLead(row: { prefix: string; mark: string }, selected:
 function padToCells(text: string, cells: number) {
   const fitted = cutToCells(text, cells)
   return fitted + ' '.repeat(Math.max(0, cells - cellWidth(fitted)))
+}
+
+function terminalTreeLead(row: TimelinePage['rows'][number], cells: number) {
+  const siblingGuide = row.depth > 0 ? (row.hasLaterSibling ? '│  ' : '   ') : ''
+  const childGuide = row.hasVisibleChildren ? '│  ' : '   '
+  return padToCells(`  ${row.guides.join('')}${siblingGuide}${childGuide}`, cells)
 }
 
 export function timelineRowBackground(pal: PaneBase['pal'], alternate: boolean) {
@@ -162,7 +169,7 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
     <Box width={paneWidth} flexDirection="column" borderStyle="single" paddingX={1}>
       <Box flexDirection={bodyColumns < 28 ? 'column' : 'row'} justifyContent="space-between">
         <Box flexShrink={0}>
-          <Text bold>Task plan</Text>
+          <Text bold>Progress</Text>
         </Box>
         <Box flexShrink={0}>{chip(page.progressCard.statusLabel, page.progressCard.tone)}</Box>
       </Box>
@@ -279,8 +286,8 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
             const rowLead = timelineRowLead(row, selected)
             const titleLeadWidth = cellWidth(rowLead)
             const chipLeadWidth = titleLeadWidth
-            const chipLead = padToCells(row.treeLead, chipLeadWidth)
-            const warningLead = cutToCells(row.treeLead, titleLeadWidth).padEnd(titleLeadWidth)
+            const chipLead = terminalTreeLead(row, chipLeadWidth)
+            const warningLead = terminalTreeLead(row, titleLeadWidth)
             const percent = row.percent.padStart(7)
             const percentCells = cellWidth(` ${percent}`)
             const availableWithBar = bodyColumns - 2 - cellWidth(rowLead) - 12 - percentCells
@@ -290,6 +297,7 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
               cellWidth(row.task.title) > titleCells
                 ? `${cutToCells(row.task.title, Math.max(0, titleCells - 1))}…`
                 : row.task.title
+            const [firstTitleLine = '', ...continuationTitleLines] = title.split('\n')
             return (
               <Box
                 key={`timeline-${row.task.id}`}
@@ -322,10 +330,10 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
                       >
                         {look === 'terminal' ? (
                           <Text color={color(row.tone)} wrap="truncate-end">
-                            {title}
+                            {firstTitleLine}
                           </Text>
                         ) : (
-                          title
+                          firstTitleLine
                         )}
                       </Button>
                     </Box>
@@ -344,6 +352,24 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
                     </Box>
                   </Box>
                 </Box>
+                {continuationTitleLines.map((line, index) => (
+                  <Box key={`timeline-title-continuation-row-${row.task.id}-${index}`} flexDirection="row">
+                    <Box width={titleLeadWidth} flexShrink={0}>
+                      <Text key={`timeline-title-continuation-lead-${row.task.id}-${index}`} color={color(row.tone)}>
+                        {terminalTreeLead(row, titleLeadWidth)}
+                      </Text>
+                    </Box>
+                    <Box width={titleCells} flexGrow={1} flexShrink={1} minWidth={0}>
+                      <Text
+                        key={`timeline-title-continuation-${row.task.id}-${index}`}
+                        color={color(row.tone)}
+                        wrap="truncate-end"
+                      >
+                        {line}
+                      </Text>
+                    </Box>
+                  </Box>
+                ))}
                 <Box key={`timeline-status-line-${row.task.id}`} flexDirection="row">
                   <Box key={`timeline-chip-lead-${row.task.id}`} width={chipLeadWidth} flexShrink={0}>
                     <Text>{chipLead}</Text>
