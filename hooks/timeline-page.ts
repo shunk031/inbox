@@ -1,4 +1,12 @@
-import type { LastAction, TaskFactWarning, TaskHistoryEvent, TaskNode, TaskProgressSegments, TaskTree } from '../types'
+import type {
+  LastAction,
+  TaskFactWarning,
+  TaskHistoryEvent,
+  TaskNode,
+  TaskProgressSegments,
+  TaskStatusMismatch,
+  TaskTree,
+} from '../types'
 import { prMarkId } from './pr-rows'
 import { shortAgo } from './rows'
 import { weightedTaskProgress, weightedTaskProgressSegments } from './task-tree'
@@ -194,10 +202,17 @@ export function timelineData(
   stalledSince: Record<string, number>,
   warnings: readonly TaskFactWarning[],
   now: number,
+  taskStatusMismatches: readonly TaskStatusMismatch[] = [],
 ): TimelineData {
   const children = new Map<string | null, TaskNode[]>()
   for (const task of tree) children.set(task.parentId, [...(children.get(task.parentId) ?? []), task])
   const stalled = new Set(Object.keys(stalledSince))
+  const mismatchByTask = new Map(
+    taskStatusMismatches.map(mismatch => [
+      mismatch.taskId,
+      `Task status mismatch: agent says ${mismatch.claim}; saved status is ${mismatch.savedStatus}`,
+    ]),
+  )
   const rows: TimelineDataRow[] = []
   const visit = (siblings: TaskNode[], depth: number, guides: string[]) => {
     siblings.forEach((task, index) => {
@@ -224,7 +239,10 @@ export function timelineData(
         tone: presentation.tone,
         mark: presentation.mark,
         alternate: rows.length % 2 === 1,
-        warnings: warnings.filter(warning => warning.taskId === task.id).map(warning => warning.message),
+        warnings: [
+          ...warnings.filter(warning => warning.taskId === task.id).map(warning => warning.message),
+          ...(mismatchByTask.has(task.id) ? [mismatchByTask.get(task.id)!] : []),
+        ],
       })
       visit(childrenOfTask, depth + 1, depth === 0 ? guides : [...guides, hasLaterSibling ? '│  ' : '   '])
     })

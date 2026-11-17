@@ -1,4 +1,4 @@
-import type { Closed, Finding, Item, Ledger, TaskTree, Told } from '../types'
+import type { Closed, Finding, Item, Ledger, TaskStatusMismatch, TaskTree, Told } from '../types'
 import { CLOSED_CONTEXT_LIMIT } from './ask-match'
 import { NL, outcomeText } from './ledger-prompt'
 import type { Host } from './model-text'
@@ -206,13 +206,34 @@ export function carryText(ledger: Ledger, title: string, taskTree: TaskTree = []
 
 export const CLOSE_ID_RULE = 'A close id is only for the close tool. Never write one in a reply.'
 
-export function inboxText(host: Host, ledger: Ledger, isOpen: boolean, taskTree: TaskTree = []): string {
+export function inboxText(
+  host: Host,
+  ledger: Ledger,
+  isOpen: boolean,
+  taskTree: TaskTree = [],
+  taskStatusMismatches: readonly TaskStatusMismatch[] = [],
+): string {
   const findings = ledger.findings.filter(f => !f.feedOwned)
+  const taskById = new Map(taskTree.map(task => [task.id, task]))
+  const mismatches = taskStatusMismatches
+    .flatMap(mismatch => {
+      const task = taskById.get(mismatch.taskId)
+      return task
+        ? [
+            clipLabel(
+              `- ${task.title.replace(/\s+/g, ' ')}: agent says ${mismatch.claim}; saved status is ${mismatch.savedStatus}`,
+              96,
+            ),
+          ]
+        : []
+    })
+    .slice(0, 3)
   const out = [
     `inbox: what waits on the user, as of your last reply. Anything not listed here is closed. ${CLOSE_ID_RULE}`,
   ]
   out.push(...statusFocusLines(ledger))
   out.push(...taskSnapshotLines(ledger, taskTree))
+  if (mismatches.length > 0) out.push('Task status mismatches:', ...mismatches)
   if (promptItems(ledger).length > 0) {
     out.push('Waiting on the user:')
     for (const item of promptItems(ledger)) out.push(itemLine(item))
@@ -261,17 +282,19 @@ export function promptNotes(
   prompt: { text: string; isPress: boolean; isOpen: boolean },
   told: Told,
   taskTree: TaskTree = [],
+  taskStatusMismatches: readonly TaskStatusMismatch[] = [],
 ): { notes: string[]; told: Told; shownUnrecorded: boolean } {
   const notes: string[] = []
   const answer = prompt.isPress ? null : answerNote(ledger, prompt.text)
   if (answer) notes.push(answer)
-  const inbox = inboxText(host, ledger, prompt.isOpen, taskTree)
+  const inbox = inboxText(host, ledger, prompt.isOpen, taskTree, taskStatusMismatches)
   const toldClosed = new Set(told.closed)
   const closed = closedText(ledger.closed.filter(d => !toldClosed.has(d.id)))
   const hasUnrecorded = ledger.unrecordedDecisions.length > 0
   const isEmpty =
     promptItems(ledger).length === 0 &&
     ledger.findings.every(f => f.feedOwned) &&
+    taskStatusMismatches.length === 0 &&
     taskTree.every(task => task.status === 'done' || task.status === 'dropped')
   if (!closed && !hasUnrecorded && (inbox === told.inbox || (isEmpty && told.inbox === null)))
     return { notes, told, shownUnrecorded: false }

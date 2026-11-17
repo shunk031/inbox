@@ -1,4 +1,5 @@
 import { linkDialogs } from './dialogs'
+import { afterTaskTreeUpdate } from './task-mismatches'
 import { closedAt } from './ledger-close'
 import type { Host } from './model-text'
 import { applyPrPress, withFinishedPrsSettled } from './pr-tab'
@@ -134,7 +135,12 @@ export function recorded<S extends Session>(
   const presses = { lastActions: s.lastActions, turnStartedAt: s.presence.turnStartedAt }
   const r = toolAnswer(host, s.ledger, tool, args, now, presses, fields, s.taskTree)
   const ledger = withOrderStatuses(r.ledger, s.prViews.views)
-  const state = linkDialogs({ ...s, ledger, taskTree: r.taskTree ?? s.taskTree }, now)
+  const taskTree = r.taskTree ?? s.taskTree
+  const taskStatusMismatches =
+    tool === 'tasks' && taskTree !== s.taskTree
+      ? afterTaskTreeUpdate(s.taskStatusMismatches, taskTree)
+      : s.taskStatusMismatches
+  const state = linkDialogs({ ...s, ledger, taskTree, taskStatusMismatches }, now)
   const answered = ledger.items.find(i => !state.ledger.items.some(o => o.id === i.id))
   if (!answered) return { state, result: r.result, personLine: r.personLine }
   const outcome = state.ledger.closed.findLast(c => c.id === answered.id)?.outcome ?? ''

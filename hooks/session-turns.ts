@@ -31,6 +31,7 @@ export function cleared<S extends Session>(s: S): S {
     ...s,
     hostTasks: [],
     ledger: EMPTY,
+    taskStatusMismatches: [],
     turn: NO_TURN,
     told: { inbox: null, closed: [] },
     pending: [],
@@ -181,7 +182,14 @@ export function recordPrompt<S extends Session>(
   sentBy: SentBy | null,
 ): { state: S; notes: string[] } {
   const ledger = { ...s.ledger, turn: s.ledger.turn + 1 }
-  const r = promptNotes(host, ledger, { text, isPress: sentBy !== null, isOpen }, s.told, s.taskTree)
+  const r = promptNotes(
+    host,
+    ledger,
+    { text, isPress: sentBy !== null, isOpen },
+    s.told,
+    s.taskTree,
+    s.taskStatusMismatches,
+  )
   const person = s.turn.person === null ? text : `${s.turn.person}\n\n${text}`
 
   return {

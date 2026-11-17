@@ -4,6 +4,8 @@ Part of [the look map](../looks.md#who-owns-each-rule).
 
 | Rule | Owner | Read by |
 | --- | --- | --- |
+| Explicit task-status mismatches from replies; Status applies only valid lines for existing tasks, while successful task updates clear matching claims. The tree's saved status never changes from a reply. | `hooks/status.ts`, `hooks/task-mismatches.ts`, `hooks/session-status.ts`, `hooks/session-presses.ts`. | Every host's Status and task tools. |
+| The Status page shows each open mismatch on its task's work row. | `hooks/status-page.ts:statusPage`. | All four looks. |
 | Status reads the task tree as facts. It can update the head, goal and links from open asks or live Children to existing task ids. It never creates, closes, renames or relinks a task. Legacy subject and milestone reply lines are ignored. | `hooks/status-prompt.ts`, `hooks/status.ts`, `hooks/status-ops.ts`. | Claude Code, Codex and omp Status calls. |
 | The Status work rows are top-level tasks, grouped into one row per stream when they share a stream id. Each row shows the weighted completed-work percentage derived from task facts. | `hooks/status-page.ts:statusPage`, `hooks/task-tree.ts:weightedTaskProgress`. | The shared Status view model, before each look draws it. |
 | Current task text is the newer of its detail and latest note, with the time it became current. | `hooks/task-text.ts:currentTaskText`; detail changes record a history time in `hooks/task-tree.ts:updateTask`. | Status, Timeline, prompt summaries and each look. |

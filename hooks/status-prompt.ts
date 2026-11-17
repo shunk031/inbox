@@ -31,6 +31,10 @@ Write a fresh HEAD on every reply and catch-up, even if the focus is unchanged. 
 Write only these lines when they apply:
 HEAD: title | description
 ${GOAL_LINES}
+TASK-MISMATCH: task id | status claimed in reply | saved status
+TASK-CLEAR: task id | reason
+
+Write TASK-MISMATCH only for an explicit conflict with an existing task. Write TASK-CLEAR only when a later reply retracts that claim. Use one exact task status for the reply claim: working, queued, waits-on-other, done or dropped. The saved status must match the current <task tree>.
 
 The head names the session's current focus, in at most ${NAME_WORDS} words. Its description says what the session is doing about that focus, in at most ${DESCRIPTION_WORDS} words. Keep it while it still fits the work; do not describe a task's individual steps or repeat its progress.
 

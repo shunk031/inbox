@@ -9,19 +9,34 @@ const DIFFERENCE_TABLES = { 'claude-code': 'main', codex: 'main', omp: 'omp' }
 
 function parityRecord(root) {
   const path = 'hooks/clients.ts'
-  const supportPath = 'hooks/client-support.ts'
-  if (!existsSync(join(root, path)) || !existsSync(join(root, supportPath))) return null
+  const supportPaths = [
+    'hooks/client-support.ts',
+    'hooks/client-support-claude.ts',
+    'hooks/client-support-codex.ts',
+    'hooks/client-support-omp.ts',
+  ].filter(file => existsSync(join(root, file)))
+  if (!existsSync(join(root, path)) || !supportPaths.includes('hooks/client-support.ts')) return null
   const api = new API({ cwd: root })
   try {
     const absolute = join(root, path)
-    const supportAbsolute = join(root, supportPath)
-    const project = api.updateSnapshot({ openFiles: [absolute, supportAbsolute] }).getDefaultProjectForFile(absolute)
+    const supportAbsolutes = supportPaths.map(file => join(root, file))
+    const project = api
+      .updateSnapshot({ openFiles: [absolute, ...supportAbsolutes] })
+      .getDefaultProjectForFile(absolute)
     const source = project?.program.getSourceFile(absolute) ?? project?.program.getSourceFile(realpathSync(absolute))
-    const supportSource =
-      project?.program.getSourceFile(supportAbsolute) ?? project?.program.getSourceFile(realpathSync(supportAbsolute))
+    const supportSources = supportAbsolutes
+      .map(file => project?.program.getSourceFile(file) ?? project?.program.getSourceFile(realpathSync(file)))
+      .filter(Boolean)
     if (!source) throw new Error(`Cannot parse ${path}.`)
-    if (!supportSource) throw new Error(`Cannot parse ${supportPath}.`)
+    if (supportSources.length !== supportAbsolutes.length) throw new Error('Cannot parse a client support file.')
     const record = { features: [], clients: new Map() }
+    const supportDeclarations = new Map()
+    for (const supportSource of supportSources)
+      for (const statement of supportSource.statements)
+        if (ts.isVariableStatement(statement))
+          for (const declaration of statement.declarationList.declarations)
+            if (ts.isIdentifier(declaration.name) && declaration.initializer)
+              supportDeclarations.set(declaration.name.text, declaration.initializer)
     const visit = node => {
       if (ts.isTypeAliasDeclaration(node) && node.name.text === 'FeatureId') {
         const members = ts.isUnionTypeNode(node.type) ? node.type.types : [node.type]
@@ -31,7 +46,10 @@ function parityRecord(root) {
       } else if (ts.isVariableDeclaration(node) && node.name.text === 'CLIENTS' && node.initializer) {
         for (const client of propertiesOf(node.initializer)) {
           const support = new Map()
-          for (const entry of propertiesOf(propertyOf(client.initializer, 'support') ?? client.initializer)) {
+          let supportObject = propertyOf(client.initializer, 'support') ?? client.initializer
+          if (ts.isIdentifier(supportObject))
+            supportObject = supportDeclarations.get(supportObject.text) ?? supportObject
+          for (const entry of propertiesOf(supportObject)) {
             const kind = propertyOf(entry.initializer, 'kind')
             const reason = propertyOf(entry.initializer, 'reason')
             support.set(nameOf(entry.name), {
@@ -45,7 +63,7 @@ function parityRecord(root) {
       node.forEachChild(visit)
     }
     visit(source)
-    visit(supportSource)
+    for (const supportSource of supportSources) visit(supportSource)
 
     return record
   } finally {

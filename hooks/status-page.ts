@@ -1,4 +1,13 @@
-import type { Item, Ledger, Session, Subject, TaskNode, TaskProgressSegments, TaskTree } from '../types'
+import type {
+  Item,
+  Ledger,
+  Session,
+  Subject,
+  TaskNode,
+  TaskProgressSegments,
+  TaskStatusMismatch,
+  TaskTree,
+} from '../types'
 import { isChildRunning } from './status-children'
 import { isOpen } from './status-limits'
 import { cutAtPhrase } from './text'
@@ -89,6 +98,7 @@ export function statusPage(
   s: {
     ledger: Pick<Ledger, 'overview' | 'items'>
     taskTree?: TaskTree
+    taskStatusMismatches?: readonly TaskStatusMismatch[]
     presence: Session['presence']
     overviewFailure?: Session['overviewFailure']
   },
@@ -119,12 +129,23 @@ export function statusPage(
     .map(child => ({ ...child, subjectId: rootIdOf(child.subjectId) }))
     .sort((a, b) => (b.lastActivityAt ?? b.startedAt) - (a.lastActivityAt ?? a.startedAt))
   const taskRows = groups.map(({ id, roots }) => {
-    const detail = roots
+    const mismatchText = (s.taskStatusMismatches ?? [])
+      .filter(mismatch => rootIdOf(mismatch.taskId) === id)
+      .flatMap(mismatch => {
+        const task = byId.get(mismatch.taskId)
+        return task
+          ? [`${task.title.replace(/\s+/g, ' ')}: agent says ${mismatch.claim}; saved status is ${mismatch.savedStatus}`]
+          : []
+      })
+    const detail = [
+      ...mismatchText.map(text => `⚠ ${text}`),
+      ...roots
       .map(task => {
         const current = currentTaskText(task)
         return current?.text ?? ''
       })
-      .filter(Boolean)
+      .filter(Boolean),
+    ]
       .join('; ')
     const progress = Math.round(weightedTaskProgress(tree, roots.map(task => task.id)) * 100)
     const changedAt = Math.max(...roots.map(task => task.updatedAt))
@@ -144,6 +165,7 @@ export function statusPage(
   }
   const isHeld = (task: Subject) => isOpen(task) && heldIds.has(task.id)
   const oldestAskOf = (task: Subject) => (isHeld(task) ? oldestAsk(s.ledger.items, askLinks, task.id) : null)
+  const mismatchRoots = new Set((s.taskStatusMismatches ?? []).map(mismatch => rootIdOf(mismatch.taskId)))
   const ctx: ListContext = {
     isNew,
     isHeld,
@@ -152,8 +174,8 @@ export function statusPage(
     isTurnRunning: s.presence.isTurnRunning,
     now,
   }
-  const shown: Subject[] = taskRows.filter(task => isOpen(task) || isNew(task))
-  const done = taskRows.filter(task => task.status === 'done' && !isNew(task))
+  const shown: Subject[] = taskRows.filter(task => isOpen(task) || isNew(task) || mismatchRoots.has(task.id))
+  const done = taskRows.filter(task => task.status === 'done' && !isNew(task) && !mismatchRoots.has(task.id))
   const shownIds = new Set(shown.map(task => task.id))
   const loose = runningChildren.filter(child => child.subjectId === null || !shownIds.has(child.subjectId))
   const rows = [...looseChildRows(loose, 0), ...partRows(shown, ctx, 0)]

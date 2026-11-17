@@ -5,6 +5,7 @@ import type { Update } from './reply-parse'
 import { lookEnded, lookReported, lookStarted } from './status-children'
 import type { ReportedLook, ShownRows } from './status-children'
 import { applyStatus } from './status-ops'
+import { applyTaskMismatchOps } from './task-mismatches'
 import { taskRootGroups } from './task-tree'
 import type { StatusAnswer } from './status'
 import type { Ledger, SessionStatus, StatusFailure, Session, TaskTree } from '../types'
@@ -35,10 +36,17 @@ export function appliedStatus<S extends Session>(
   if (!isStatusCallCurrent(s, appliedAfter)) return s
   const askIds = new Set(s.ledger.items.map(i => i.id))
   const overview = applyStatus(s.ledger.overview, answer, now, askIds, readSetAt, s.taskTree, requireHead)
+  const taskStatusMismatches = applyTaskMismatchOps(
+    s.taskStatusMismatches,
+    answer.kind === 'ops' ? answer.ops : [],
+    s.taskTree,
+    now,
+  )
 
   return {
     ...s,
     ledger: { ...s.ledger, overview },
+    taskStatusMismatches,
     overviewFailure: isCatchUp ? null : s.overviewFailure,
     lastOverviewCallAt: now,
     overviewTurn: appliedAfter,
