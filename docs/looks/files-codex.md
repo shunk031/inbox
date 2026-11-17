@@ -17,7 +17,7 @@ Part of [the look map](../looks.md#files).
 | `codex/src/tab-rows.tsx` | Codex adapter. Each tab's rows, built from the view, and `act`, which sends a press. Ask details preserve their line breaks. `act` and the row builders call each other, so they share a file. |
 | `codex/src/tab-parts.tsx` | Codex adapter. Parts several views draw: marks, group titles, banners, key buttons, the Undo place, inline text and host-opened links, and a row's feedback. |
 | `codex/src/tab-list.tsx` | Codex adapter. A list's rows: the motion state of each, the row line and its linked title, its open panel, and settled rows with Undo. |
-| `codex/src/tab-groups.tsx` | Codex adapter. The Asks and Finds tabs: their groups, empty lines and Closed folds. |
+| `codex/src/tab-groups.tsx` | Codex adapter. Asks groups, empty lines and Closed folds. |
 | `codex/src/tab-prs.tsx` | Codex adapter. The PRs tab: PR blocks, their keys, the order lines, and settled PRs. |
 | `codex/src/tab-pr-steps.ts` | Codex adapter. The motion state of each PR block, PR row, PR group, press line and the tab's own buttons on the PRs tab, through the row states. |
 | `codex/src/tab-pr-lines.ts` | Codex adapter. The press status under a PR block's buttons and under the order's changed line. |

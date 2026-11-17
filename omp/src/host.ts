@@ -506,8 +506,7 @@ export function createInbox(pi: ExtensionAPI, deps: HostDeps = defaultDeps): Inb
             modelName: modelNameOf(ctx),
           }).screen(NO_HOLDS)
         : await inbox.screen(ctx)
-      const { needsYou, findings } = screen.view
-      ctx.ui.notify(`Asks ${needsYou.count}, Finds ${findings.count}`, 'info')
+      ctx.ui.notify(`Asks ${screen.view.needsYou.count}`, 'info')
     },
   })
 

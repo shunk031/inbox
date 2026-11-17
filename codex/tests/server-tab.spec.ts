@@ -167,6 +167,7 @@ test('with no dev build, the view names the installed page and inbox_tab_page se
 })
 
 test('the inbox tool answers in text: the count, each row that waits, and where to act on them', async () => {
+  assert.doesNotMatch(CODEX.intro, /legacy findings in Asks/i)
   const { dir, call } = await setup(0)
   const codex = { 'x-codex-turn-metadata': { session_id: 's1', turn_id: 't1' } }
   await updateState(dir, 's1', s => ({
@@ -200,7 +201,7 @@ test('the inbox tool answers in text: the count, each row that waits, and where 
   assert.equal(
     r.result.content[0]?.text,
     [
-      '2 wait on the user · 1 finding',
+      '3 wait on the user · 1 finding',
       'A close id is only for the close tool. Never write one in a reply.',
       'Questions:',
       '1) "Ship it?"; options: Yes / No (close id: i1)',

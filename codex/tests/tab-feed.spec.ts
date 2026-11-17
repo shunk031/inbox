@@ -7,6 +7,7 @@ import { applyFeed, parseFeed } from '../../hooks/feed'
 import { EMPTY } from '../../hooks/ledger'
 import { viewOf } from '../src/core'
 import { emptyState } from '../src/state'
+import { shownTabs } from '../../hooks/tabs'
 
 const window = new Window()
 Object.assign(globalThis, {
@@ -15,15 +16,11 @@ Object.assign(globalThis, {
   Event: window.Event,
   matchMedia: window.matchMedia.bind(window),
 })
-const [{ Findings }, { stepLists }, { tabState }] = await Promise.all([
-  import('../src/tab-groups'),
-  import('../src/tab-list'),
-  import('../src/tab-state'),
-])
+const { tabState } = await import('../src/tab-state')
 const { TabBar } = await import('../src/tab-chrome')
 after(() => window.happyDOM.close())
 
-test('the Codex tab draws feed entries under Progress', () => {
+test('Progress feed entries stay saved while the removed Codex tab does not draw them', () => {
   const now = Date.now()
   const state = emptyState('s1')
   state.ledger = applyFeed(
@@ -46,17 +43,11 @@ test('the Codex tab draws feed entries under Progress', () => {
     )!,
     now,
   )
-  state.shownTab = 'findings'
-  const view = { ...viewOf(state, now), thread: 's1', devPage: '', isFetchingPrs: false, isGhMissing: false }
-  tabState.view = view
-  tabState.tab = 'findings'
-  tabState.shownSince = now
-  tabState.lastLists = null
-  const lists = stepLists(view).lists
-  const root = document.createElement('div')
-  render(h(Findings, { v: view, lists, now }), root)
-  assert.match(root.textContent ?? '', /Progress/)
-  assert.match(root.textContent ?? '', /Implement the progress feed/)
+  const view = viewOf(state, now)
+  assert.equal(state.ledger.findings[0]?.kind, 'progress')
+  assert.equal(state.ledger.findings[0]?.title, 'Implement the progress feed')
+  assert.ok(!shownTabs(true, true).some(tab => tab.id === 'findings'))
+  assert.ok(!view.needsYou.legacyFindings.some(row => row.title === 'Implement the progress feed'))
 })
 
 test('the Codex tab draws untracked live work as a warning banner', () => {

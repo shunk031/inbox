@@ -122,12 +122,8 @@ test('the answer names each field and text, shows a link and offers a way out', 
 describe('record', () => {
   const question = { kind: 'question', ask: 'Merge PR 12?', options: ['Merge', 'Wait'] }
 
-  test('refuses a question, task or finding that names an unlinked reference and changes nothing', () => {
-    for (const input of [
-      question,
-      { kind: 'task', ask: 'Approve #61 on GitHub' },
-      { kind: 'finding', title: 'Config link broken', detail: 'The fix in #62 renamed the file.' },
-    ]) {
+  test('refuses a question or task that names an unlinked reference and changes nothing', () => {
+    for (const input of [question, { kind: 'task', ask: 'Approve #61 on GitHub' }]) {
       const r = recordItem(CLAUDE_CODE, EMPTY, input, 1000)
       expect(r.result).toStartWith('Not recorded: ')
       expect(r.ledger).toBe(EMPTY)
@@ -159,13 +155,23 @@ describe('record', () => {
   test('refuses a field over its limit whose cut would drop its links, instead of calling them unlinked', () => {
     for (const [input, answer] of [
       [{ kind: 'task', ask: 'Sign in', detail: `${link} ${'x'.repeat(1250)}` }, overLimit('detail', 1200)],
-      [{ kind: 'finding', title: 'Broken link', detail: `${link} ${'x'.repeat(650)}` }, overLimit('detail', 600)],
+      [
+        { kind: 'question', ask: 'Is this ready?', options: ['Yes', 'No'], detail: `${link} ${'x'.repeat(1250)}` },
+        overLimit('detail', 1200),
+      ],
       [{ ...question, ask: `${link} ${'x'.repeat(250)}` }, overLimit('ask', 200)],
     ] as [Record<string, unknown>, string][]) {
       const r = recordItem(CLAUDE_CODE, EMPTY, input, 1000)
       expect(r.result).toBe(answer)
       expect(r.ledger).toBe(EMPTY)
     }
+  })
+
+  test('keeps a linked question detail longer than the old 600-character limit', () => {
+    const detail = `${'x'.repeat(610)} ${link}`
+    const r = recordItem(CLAUDE_CODE, EMPTY, { ...question, ask: 'Is this ready?', detail }, 1000)
+    expect(r.result).toStartWith('Recorded. The user sees it in the /inbox pane.')
+    expect(r.ledger.items[0]?.detail).toBe(detail)
   })
 
   test('still cuts a field over its limit that holds no link', () => {

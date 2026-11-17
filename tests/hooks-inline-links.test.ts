@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import { w, world } from './hooks-world'
-import { PANE, selectRow } from './hooks-helpers'
+import { PANE, SAVED_SESSION, selectRow } from './hooks-helpers'
 import { SETTLED_MS } from '../hooks/timing'
 
 async function showsQuestionLink($: Engine, on: On, surface: 'terminal' | 'desktop') {
@@ -81,8 +81,7 @@ async function answersLinkedOption($: Engine, on: On, surface: 'terminal' | 'des
     await clock.settle()
     await pane.pointer({ type: 'down', x: 1, y: 1.1, button: 'left', in: 'tabs' })
   } else {
-    await pane.press({ key: 'tab-findings' })
-    await pane.press({ key: 'tab-needsYou' })
+    await clock.settle()
   }
   await clock.settle()
   if (surface === 'desktop') await pane.post({ isUnfolded: true }, { in: 'fold-question' })
@@ -101,36 +100,39 @@ test('answer feedback and the Closed line render a linked option in the desktop 
 })
 
 async function showsFindingLinks($: Engine, on: On, surface: 'terminal' | 'desktop') {
-  const clock = mock.clock(on, { now: 1_000_000 })
+  mock.clock(on, { now: 1_000_000 })
   world($, on, [])
+  w.stored.set(
+    's:session-1',
+    JSON.stringify({
+      ...SAVED_SESSION,
+      ledger: {
+        ...SAVED_SESSION.ledger,
+        items: [],
+        findings: [
+          {
+            id: 'f3',
+            kind: 'issue',
+            title: 'Read [PR 7171](https://github.com/anthropics/claude-code/pull/7171)',
+            detail: 'See [release notes](https://example.com/release).',
+            path: null,
+            at: 900_000,
+          },
+        ],
+        nextId: 4,
+      },
+    }),
+  )
   await $.session.start({ cwd: '/tmp/project', surface, isInteractive: true })
-  await $.prompt.submit({ text: 'add a greeting cli', wait: false, origin: { kind: 'composer' } })
-  await $.turn.complete({
-    answer: 'Plan ready. 1. Node or Python? 2. Call it greet?',
-    durationMs: 5,
-    isAborted: false,
-    turnId: 't1',
-    reason: 'answer',
-  })
-  await clock.settle()
-  await $.tool.call({
-    tool: 'mcp__inbox__record',
-    kind: 'finding',
-    finding_kind: 'issue',
-    title: 'Read [PR 7171](https://github.com/anthropics/claude-code/pull/7171)',
-    detail: 'See [release notes](https://example.com/release).',
-  } as never)
-  await clock.settle()
   w.paneState = { isShown: true, isFocused: true }
   const pane = await $.ui.mount({ ...PANE, surface })
   if (surface === 'desktop') {
-    const { tabs, gap } = (await pane.find({ key: 'tabs' }))?.props.props as {
-      tabs: { id: string; width: number }[]
-      gap: number
-    }
-    const findingsEnd = tabs[0]!.width + gap + tabs[1]!.width
-    await pane.pointer({ type: 'down', x: findingsEnd - 1, y: 1.1, button: 'left', in: 'tabs' })
-  } else await pane.press({ key: 'tab-findings' })
+    expect(await pane.find({ key: 'fold-legacy' })).toBeUndefined()
+    expect(await pane.find({ text: /Read PR 7171/ })).toBeUndefined()
+    expect(await pane.findAll({ type: 'Link' })).toEqual([])
+    return
+  }
+  await pane.press({ key: 'fold-legacy' })
   await selectRow(pane, 'f3')
   const links = await pane.findAll({ type: 'Link' })
   expect(links.map(link => link.props)).toContainEqual(

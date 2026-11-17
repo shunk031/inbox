@@ -169,14 +169,6 @@ test('last actions an earlier build saved convert once by the table, and a task 
   await $.turn.start({ text: 'load the data', turnId: 't1' })
   await $.turn.complete({ answer: 'Run ./load.sh.', durationMs: 5, isAborted: false, turnId: 't1', reason: 'answer' })
   await clock.settle()
-  await $.tool.call({
-    tool: 'mcp__inbox__record',
-    kind: 'finding',
-    finding_kind: 'issue',
-    title: 'README is stale',
-    detail: 'Old name.',
-  })
-  await $.tool.call({ tool: 'mcp__inbox__close', id: 'f2', reason: 'fixed' } as never)
   saving = old
   savingUnfolded = ['finding', 'do']
   savingOpen = {
@@ -211,6 +203,4 @@ test('last actions an earlier build saved convert once by the table, and a task 
   expect(await pane.find({ text: /Run load script/ })).toBeDefined()
   expect(await band.find({ text: /Asks/ })).toBeUndefined()
   await clock.advance(SETTLED_MS)
-  await pane.press({ key: 'tab-findings' })
-  expect((await pane.find({ key: 'fold-issue' }))?.props.label).toBe('▾ 1 closed')
 })

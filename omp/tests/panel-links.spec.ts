@@ -71,7 +71,7 @@ test('selected item explanations preserve paragraphs, links, and scroll at width
   }
 })
 
-test('finding titles and details draw real OSC 8 links', async () => {
+test('legacy finding links have no omp row drawing', async () => {
   const { applyHyperlinkSetting, urlHyperlink } = await hyperlinkTools()
   applyHyperlinkSetting('always')
   try {
@@ -95,18 +95,18 @@ test('finding titles and details draw real OSC 8 links', async () => {
         },
       },
     }
-    const drawn = drawPanel(screen, { ...INITIAL_UI, tab: 'findings', selectedId: row.id }, 42, NOW, {
+    const drawn = drawPanel(screen, { ...INITIAL_UI, tab: 'needsYou', selectedId: row.id }, 42, NOW, {
       ...style,
       link: urlHyperlink,
     })
     const output = drawn.lines.join('\n')
     const plain = drawn.lines.map(strip).join('\n')
 
-    expect(output).toContain('\x1b]8;id=')
-    expect(output).toContain('https://github.com/anthropics/claude-code/pull/7171')
-    expect(output).toContain('https://example.com/release')
-    expect(plain).toContain('Read PR 7171')
-    expect(plain).toContain('See release notes')
+    expect(output).not.toContain('\x1b]8;id=')
+    expect(output).not.toContain('https://github.com/anthropics/claude-code/pull/7171')
+    expect(output).not.toContain('https://example.com/release')
+    expect(plain).not.toContain('Read PR 7171')
+    expect(plain).not.toContain('See release notes')
   } finally {
     applyHyperlinkSetting('auto')
   }

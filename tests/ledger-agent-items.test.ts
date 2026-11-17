@@ -5,7 +5,8 @@ import { EMPTY, upgradeLedger } from '../hooks/ledger'
 import { closeByAgent, closeItem } from '../hooks/ledger-close'
 import { addAgentItem, applyUpdate } from '../hooks/ledger-update'
 import { parseReply, stepHelp } from '../hooks/reply-parse'
-import { recordClose, recordItem } from '../hooks/tools'
+import { recordClose, recordItem, RETIRED_FINDING_ANSWER } from '../hooks/tools'
+import { addLegacyFinding } from './seed-findings'
 import { TOOL_FIELDS, V0_3_TOOL_FIELDS } from '../hooks/tool-schemas'
 import { actionsOf } from '../hooks/action-plan'
 import { pressed } from '../hooks/pressed'
@@ -339,21 +340,20 @@ describe('items the agent recorded', () => {
       'Task: Sign in to npm',
     )
 
-    const finding = { kind: 'finding', title: 'Retry loop never backs off', detail: 'It hammers the API.' }
-    const found = recordItem(CLAUDE_CODE, first.ledger, finding, 1200, TOOL_FIELDS)
-    expect(found.personLine).toBe('Issue: Retry loop never backs off')
-    expect(recordItem(CLAUDE_CODE, found.ledger, finding, 1300, TOOL_FIELDS).personLine).toBeNull()
-    expect(
-      recordItem(
-        CLAUDE_CODE,
-        EMPTY,
-        { ...finding, finding_kind: 'opportunity', title: 'Cache the token' },
-        1200,
-        TOOL_FIELDS,
-      ).personLine,
-    ).toBe('Opportunity: Cache the token')
+    const finding = {
+      kind: 'issue' as const,
+      title: 'Retry loop never backs off',
+      detail: 'It hammers the API.',
+      path: null,
+      at: 1200,
+    }
+    const found = addLegacyFinding(first.ledger, finding).ledger
+    const refused = recordItem(CLAUDE_CODE, found, { kind: 'finding', title: finding.title }, 1300, TOOL_FIELDS)
+    expect(refused.result).toBe(RETIRED_FINDING_ANSWER)
+    expect(refused.personLine).toBeNull()
+    expect(refused.ledger).toBe(found)
 
-    const closed = recordClose(CLAUDE_CODE, found.ledger, { id: 'i1', answer: 'Redis' }, 1400, {
+    const closed = recordClose(CLAUDE_CODE, found, { id: 'i1', answer: 'Redis' }, 1400, {
       lastActions: {},
       turnStartedAt: null,
     })
@@ -364,9 +364,9 @@ describe('items the agent recorded', () => {
         turnStartedAt: null,
       }).personLine,
     ).toBeNull()
-    const findingId = found.ledger.findings[0]!.id
+    const findingId = found.findings[0]!.id
     expect(
-      recordClose(CLAUDE_CODE, found.ledger, { id: findingId, reason: 'fixed' }, 1400, {
+      recordClose(CLAUDE_CODE, found, { id: findingId, reason: 'fixed' }, 1400, {
         lastActions: {},
         turnStartedAt: null,
       }).personLine,

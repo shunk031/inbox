@@ -53,13 +53,8 @@ test('on a next build, a look starts when the Status page shows, the page shows 
   await pane.press({ key: 'previous' })
   expect(await rowKeys()).toEqual(['show-ask-s1-key', 'no-row-d-key', 'no-row-x-key', 'last-undo-key'])
   await pane.press({ key: 'no-row-d-key' })
-  await $.tool.call({
-    tool: 'mcp__inbox__record',
-    kind: 'finding',
-    finding_kind: 'issue',
-    title: 'No lint script',
-    detail: 'Only tests run.',
-  })
+  const retired = await $.tool.call({ tool: 'mcp__inbox__record', kind: 'finding' } as never)
+  expect(retired.result).toContain('findings are retired')
   await clock.settle()
   expect(await pane.find({ key: 'status-head' })).toBeDefined()
   expect(await rowKeys()).toEqual(['show-ask-s1-key', 'no-row-d-key', 'no-row-x-key', 'last-undo-key'])
@@ -70,8 +65,8 @@ test('on a next build, a look starts when the Status page shows, the page shows 
   expect(await pane.find({ key: 'status-head' })).toBeUndefined()
   expect(await pane.find({ key: 'view-i1' })).toBeDefined()
   expect(await pane.find({ key: 'answer-i1-0' })).toBeDefined()
-  await pane.press({ key: 'tab-findings' })
-  expect(await pane.find({ key: 'address-f3' })).toBeDefined()
+  await pane.press({ key: 'tab-key-needsYou' })
+  expect(await pane.find({ key: 'fold-legacy' })).toBeUndefined()
 
   await $.tool.call({ tool: 'mcp__inbox__close', id: 'i1', answer: 'Node' })
   await pane.press({ key: 'tab-key-overview' })
@@ -128,7 +123,7 @@ test('on a next build, a Status call that lands after a look does not change its
   expect(session!.taskTree?.map(task => task.title)).toEqual(['Plan', 'Command'])
 })
 
-test('a release build keys Asks, Finds, Timeline and PRs 1 to 4, and a saved Status page shows Asks, tells Claude so, starts no look, stays saved, and names no subject an ask holds up', async ($, on) => {
+test('a release build keys Asks, Timeline and PRs 1 to 3, and a saved Status page shows Asks, tells Claude so, starts no look, stays saved, and names no subject an ask holds up', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   const prompts: string[] = []
   world($, on, prompts)
@@ -156,9 +151,8 @@ test('a release build keys Asks, Finds, Timeline and PRs 1 to 4, and a saved Sta
     .map(b => [b.key, b.props.hotkey])
   expect(tabKeys).toEqual([
     ['tab-key-needsYou', '1'],
-    ['tab-key-findings', '2'],
-    ['tab-key-timeline', '3'],
-    ['tab-key-prs', '4'],
+    ['tab-key-timeline', '2'],
+    ['tab-key-prs', '3'],
   ])
   const saved = [...w.stored].find(([k]) => k.startsWith('s:'))
   expect(saved && JSON.parse(saved[1]).ledger.overview.look).toBeNull()
@@ -166,9 +160,9 @@ test('a release build keys Asks, Finds, Timeline and PRs 1 to 4, and a saved Sta
   expect(page.value).toBe('overview')
   expect(prompts.at(-1)).toContain('is open beside the conversation, on its Asks tab, listing every open item.')
 
-  await pane.press({ key: 'tab-key-findings' })
+  await pane.press({ key: 'tab-key-timeline' })
   await clock.settle()
-  expect(page.value).toBeNull()
+  expect(page.value).toBe('timeline')
 })
 
 test('the Status page says what it is for before the session has any work', async () => {

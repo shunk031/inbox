@@ -5,7 +5,7 @@ import { SETTLED_MS } from '../hooks/timing'
 import { NOT_SAVED } from '../hooks/tools'
 import type { Session } from '../types'
 import { storedLength, w, world } from './hooks-world'
-import { BAND, PANE, replyKey, SAVED_SESSION } from './hooks-helpers'
+import { PANE, replyKey, SAVED_SESSION } from './hooks-helpers'
 
 const FINDING = {
   tool: 'mcp__inbox__record',
@@ -15,22 +15,20 @@ const FINDING = {
   detail: 'The fetch retry spins with no delay.',
 } as const
 
-test('while the store is full, a finding Claude records shows to the person, its answer says it is not saved, and the next save that fits writes it', async ($, on) => {
+test('a retired finding is refused even when the store is full and leaves the ledger unchanged', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   world($, on, [])
   await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
   await clock.settle()
   w.storeLimit = storedLength()
+  const ledgerBefore = JSON.parse(w.stored.get('s:session-1') ?? '{}').ledger
 
-  const full = await $.tool.call(FINDING)
-  expect(full.result).toBe(`Recorded. The user sees it in the Finds tab of the /inbox pane. ${NOT_SAVED}`)
-  const band = await $.ui.mount({ plugin: 'inbox', surface: 'terminal', ...BAND })
-  expect(await band.find({ text: /Finds 1/ })).toBeDefined()
+  const result = await $.tool.call(FINDING)
 
-  w.storeLimit = undefined
-  const roomy = await $.tool.call({ ...FINDING, title: 'README is stale', detail: 'It names the old command.' })
-  expect(roomy.result).toBe('Recorded. The user sees it in the Finds tab of the /inbox pane.')
-  expect(w.stored.get('s:session-1')).toContain('Retry loop never backs off')
+  expect(result.result).toBe(
+    'Not recorded: findings are retired. Add it as a task with `tasks` if it is work to track, or record a question or task if the person must decide or act.',
+  )
+  expect(JSON.parse(w.stored.get('s:session-1') ?? '{}').ledger).toEqual(ledgerBefore)
 })
 
 test('while the store is full, a task change Claude makes says it is not saved', async ($, on) => {
@@ -88,10 +86,10 @@ test('a full store makes room by dropping the shared PR views no fetch reads any
   w.stored.set('gh:shared', JSON.stringify({ views, limit: null }))
   w.storeLimit = storedLength()
 
-  const r = await $.tool.call(FINDING)
-  expect(r.result).toBe('Recorded. The user sees it in the Finds tab of the /inbox pane.')
+  const r = await $.tool.call({ tool: 'mcp__inbox__record', kind: 'task', ask: 'Update the project README' })
+  expect(r.result).toContain('Recorded. The user sees it in the /inbox pane.')
   expect(Object.keys(JSON.parse(w.stored.get('gh:shared') ?? '{}').views)).toEqual(['acme/app#2'])
-  expect(w.stored.get('s:session-1')).toContain('Retry loop never backs off')
+  expect(w.stored.get('s:session-1')).toContain('Update the project README')
 })
 
 test('a save keeps its PR views within the cap, dropping merged and closed PRs first and then the open PRs read longest ago, while the drawn session keeps them all', async ($, on) => {

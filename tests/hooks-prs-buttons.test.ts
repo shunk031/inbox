@@ -195,7 +195,7 @@ test(
 
     branchFails = 'HTTP 502'
     isSlow = true
-    await pane.press({ key: 'tab-needsYou' })
+    await pane.press({ key: 'tab-key-needsYou' })
     await pane.press({ key: 'tab-prs' })
     await pane.press({ key: 'dismiss-pr-acme/greet#12' })
     isSlow = false

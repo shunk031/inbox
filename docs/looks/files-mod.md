@@ -10,7 +10,7 @@ Part of [the look map](../looks.md#files).
 | `hooks/pane-context.ts` | Mod only. The types the Pane render hands its drawing files: `PaneBase` for the values the render computed, `PaneClient` for whether the surface draws Clients, `PaneHandlers` for the calls that need `$`, and `Row`, the shape every list row is drawn from. |
 | `hooks/pane-frame.tsx` | Mod only. The pane's frame in both looks: the tab bar, the inline rail, banners, the status line and the footer. |
 | `hooks/pane-row-frame.tsx` | Mod only. `desktopFrame`, the frame a desktop row, group title, PR block or Status row draws in: its mark column, side column and padding. |
-| `hooks/pane-asks.tsx` | Mod only. The Asks and Finds tabs: question, task and finding rows with their details, the Needs you and Finds groups, a tab's empty state, and the scrollable report view drawn with the native `Markdown` element. |
+| `hooks/pane-asks.tsx` | Mod only. Asks: question and task groups, collapsed legacy-findings section, row details, the empty state, and the scrollable report view drawn with the native `Markdown` element. |
 | `hooks/pane-document.ts` | Mod only. Transient document view state and the Read report and Back to inbox actions. |
 | `hooks/pane-rows.tsx` | Mod only. `listRow`, which draws one list row, selected or not, in both looks. |
 | `hooks/pane-row-lines.tsx` | Mod only. The parts a row's lines are drawn from: marks, tree lines, ages, feedback labels, an unselected row's line, and the props of the desktop row Client. |
@@ -31,7 +31,7 @@ Part of [the look map](../looks.md#files).
 | `hooks/palettes.ts` | Mod only. The pane's colors for each Claude Code theme and for desktop. `lookOf` picks a surface's look, and `paletteFor` picks the palette for a theme and look. |
 | `hooks/desktop-svg.ts` | Mod only. The Svg images the desktop pane draws: Undo's draining fill, marks that follow the system's light or dark setting, the running dot and the fold chevron. |
 | `hooks/terminal-text.ts` | Mod only. Text drawn as styled spans: terminal word wrapping, the cut to a line limit with an ellipsis in both looks, and a line budget that includes the Link's plain-text URL fallback. |
-| `hooks/pane-selection.ts` | Mod only. The shown tab, each tab's cursor and selected row, closed folds, the rows each tab gained since the last draw, Undo's scroll and redraw timing, and the keys that hold a settled layout and its scroll. |
+| `hooks/pane-selection.ts` | Mod only. The shown tab, each tab's cursor and selected row, closed folds, the rows each tab gained since the last draw, Undo's scroll and redraw timing, and the keys that hold a settled layout and its scroll. It moves a saved Finds selection into Asks and shows legacy findings in the terminal's unfolded Asks list only. |
 | `hooks/pane-keys.ts` | Mod only. Row buttons and their keys: the `Action` type, each PR press's key, button glyphs, which element takes focus, a reply field's key, and the text a failed copy shows. |
 | `hooks/mod-delivery.ts` | Mod only. Matches each prompt row Claude Code stores to the message a press sent, so the press reads as delivered. It also settles a message another plugin rewrote, and adds back, as uncertain, a queued message's sent record that an older build lost. |
 | `hooks/mod-records.ts` | Mod only. What the mod tracks about tool calls, subagents, workflows and Herdr delegates. That includes which calls ran, and the child a finished Agent, Monitor or Workflow call ended or started. Also the text a permission dialog shows for a tool call. |

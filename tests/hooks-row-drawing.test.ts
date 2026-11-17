@@ -1,6 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { LinksProps } from '../hooks/links-client'
-import type { TabsProps } from '../hooks/tabs-client'
 import { demoView } from '../hooks/demo'
 import { PRESS_GUARD_MS, SETTLED_MS } from '../hooks/timing'
 import { inboxView, perTurnStatus } from '../hooks/view'
@@ -32,7 +31,7 @@ test(
       lastTypedMessageAt: null,
       listInput: null,
     })
-    const row = view.findings.rows.find(r => r.state.is === 'open')!
+    const row = view.needsYou.questions.find(r => r.state.is === 'open')!
     const plan = rowKeyPlan(row, false)
     const labelsOf = (planned: typeof plan.keys) =>
       planned.flatMap(k => (k.slot === 'action' || k.slot === 'choice' ? [k.action.label] : []))
@@ -57,17 +56,6 @@ test(
         look === 'terminal'
           ? await $.ui.mount(PANE)
           : await $.ui.mount({ ...PANE, surface: 'desktop', props: { ...PANE.props, bodyColumns: 120 } })
-      if (look === 'terminal') await pane.press({ key: 'tab-findings' })
-      else {
-        const { tabs: bar, gap } = (await pane.find({ key: 'tabs' }))?.props.props as TabsProps
-        const x = bar
-          .slice(
-            0,
-            bar.findIndex(t => t.id === 'findings'),
-          )
-          .reduce((sum, t) => sum + t.width + gap, 0)
-        await pane.pointer({ type: 'down', x, y: 1, button: 'left', in: 'tabs' })
-      }
       await clock.settle()
       await clock.advance(PRESS_GUARD_MS)
       const selectKey = look === 'terminal' ? `title-${row.id}` : `select-${row.id}`

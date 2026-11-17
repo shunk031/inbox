@@ -87,7 +87,6 @@ test(
       inbox: '9 · Ship it?',
       'inbox-focus': 'Continuing the current work',
       'inbox-needs-you': '9',
-      'inbox-findings': '1',
     })
 
     await $.session.end({ reason: 'other', sessionId: 'session-1' } as never)
@@ -117,22 +116,22 @@ test('the band is [Open inbox] and the counts with full-brightness labels, the s
 
   const standing = await band()
   expect(await standing.find({ key: 'open-inbox' })).toBeDefined()
-  expect(await standing.find({ text: /^Asks 2\u2007·\u2002Finds 1$/ })).toBeDefined()
-  const labels = await standing.findAll({ type: 'Text', text: /^(Asks|Finds) $/ })
-  expect(labels).toHaveLength(2)
+  expect(await standing.find({ text: /^Asks 2$/ })).toBeDefined()
+  const labels = await standing.findAll({ type: 'Text', text: /^Asks $/ })
+  expect(labels).toHaveLength(1)
   expect(labels.some(l => l.props.dimColor)).toBe(false)
   expect(await standing.find({ text: /Use Node or Python|Add a greeting CLI|Waiting on two choices/ })).toBeUndefined()
 
   const working = await band({ isWorking: true })
-  expect(await working.find({ text: /^Asks 2\u2007·\u2002Finds 1$/ })).toBeDefined()
+  expect(await working.find({ text: /^Asks 2$/ })).toBeDefined()
 
   await clock.advance(16 * 60_000)
-  expect(await standing.find({ text: /^Asks 2\u2007·\u2002Finds 1$/ })).toBeDefined()
+  expect(await standing.find({ text: /^Asks 2$/ })).toBeDefined()
   expect(await standing.find({ text: /Plan written|last active/ })).toBeUndefined()
 
   const pane = await $.ui.mount(PANE)
   await selectRow(pane, 'i2')
-  await pane.press({ key: 'tab-findings' })
+  await pane.press({ key: 'tab-key-needsYou' })
   w.panesOpened = []
   await standing.press({ key: 'open-inbox' })
   expect(w.panesOpened).toEqual(['inbox'])

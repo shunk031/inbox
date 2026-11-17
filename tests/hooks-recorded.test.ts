@@ -1,9 +1,8 @@
 import { expect, mock, test } from 'claude-code/testing'
 import { w, world } from './hooks-world'
-import { BAND, PANE, SAVED_SESSION } from './hooks-helpers'
-import { CLAUDE_CODE } from '../hooks/model-text'
-import { recordDescription } from '../hooks/tool-descriptions'
+import { PANE, SAVED_SESSION } from './hooks-helpers'
 import { TOOL_FIELDS } from '../hooks/tool-schemas'
+import { PRESS_GUARD_MS } from '../hooks/timing'
 
 test('the guidance reaches Claude in the close tool’s description and nowhere else, and every inbox tool loads with the session', async ($, on) => {
   mock.clock(on, { now: 1_000_000 })
@@ -16,65 +15,15 @@ test('the guidance reaches Claude in the close tool’s description and nowhere 
   expect(close.description).toContain('Close an item.')
   expect(close.description).toContain('# Inbox')
   expect(close.description).toContain(
-    'Write the text of questions, tasks and findings in the language the person writes to you in.',
+    'Write the text of questions and tasks in the language the person writes to you in.',
   )
   expect(record.description).toBe('Record an item.')
-  expect(recordDescription(CLAUDE_CODE)).toContain(
-    'Before recording a finding, check each fact against its live source; for a pull request, check its current state and whether it was reopened or replaced.',
-  )
   const order = await $.tool.describe({ tool: 'mcp__inbox__order_prs', description: 'Order PRs.', provider })
   const tasks = await $.tool.describe({ tool: 'mcp__inbox__tasks', description: 'Maintain tasks.', provider })
   expect([close, record, order, tasks].map(d => d.isDeferred)).toEqual([false, false, false, false])
   expect(tasks.description).toContain('when you make a plan')
   expect(tasks.description).toContain('finished or stalled work can be noticed')
   for (const field of ['pr', 'issue', 'owner_agent', 'owner_machine']) expect(TOOL_FIELDS.tasks).toContain(field)
-})
-
-test('record updates a matching finding, names its id, and reports an identical repeat as unchanged', async ($, on) => {
-  mock.clock(on, { now: 1_000_000 })
-  world($, on, [])
-  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
-  const first = await $.tool.call({
-    tool: 'mcp__inbox__record',
-    kind: 'finding',
-    finding_kind: 'issue',
-    title: 'The pull request is closed',
-    detail: 'The linked pull request is closed.',
-    path: '/repo/src/old.ts',
-  })
-  expect(first.result).toBe('Recorded. The user sees it in the Finds tab of the /inbox pane.')
-
-  const updated = await $.tool.call({
-    tool: 'mcp__inbox__record',
-    kind: 'finding',
-    finding_kind: 'opportunity',
-    title: 'The pull request is closed',
-    detail: 'The replacement pull request is open under a new number.',
-    path: '/repo/src/new.ts',
-  })
-  expect(updated.result).toBe(
-    'Already open as f1, so this record updated it. f1 is the only copy and stays open; do not close it to replace it.',
-  )
-  const saved = JSON.parse(w.stored.get('s:session-1') ?? '{}')
-  expect(saved.ledger.findings).toMatchObject([
-    {
-      id: 'f1',
-      kind: 'opportunity',
-      title: 'The pull request is closed',
-      detail: 'The replacement pull request is open under a new number.',
-      path: '/repo/src/new.ts',
-    },
-  ])
-
-  const repeated = await $.tool.call({
-    tool: 'mcp__inbox__record',
-    kind: 'finding',
-    finding_kind: 'opportunity',
-    title: 'The pull request is closed',
-    detail: 'The replacement pull request is open under a new number.',
-    path: '/repo/src/new.ts',
-  })
-  expect(repeated.result).toBe('Already open as f1 with the same text; nothing changed.')
 })
 
 test('Claude saves the task-tree tool change through its session store and returns the normalized node', async ($, on) => {
@@ -172,15 +121,42 @@ test("a conversation /resume opens with no saved inbox state is asked only for w
   expect(await recordAsk('Which log store should we use?')).toBe(fullAsk)
 })
 
-test('a finding Claude records while the pane shows an empty tab brings the pane to it, and Fix hands it to Claude, settles its row as the choice made until its Undo ends, then moves it to the Closed fold even when Claude’s reply leaves it open', async ($, on) => {
+test('a retired finding is refused, while an old finding stays in the collapsed Asks section until closed', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   world($, on, [])
   w.paneState = { isShown: true, isFocused: true }
+  w.stored.set(
+    's:session-1',
+    JSON.stringify({
+      ...SAVED_SESSION,
+      ledger: {
+        ...SAVED_SESSION.ledger,
+        findings: [
+          {
+            id: 'f1',
+            kind: 'issue',
+            title: 'Retry loop never backs off',
+            detail: 'The fetch retry spins with no delay and can hammer the API.',
+            path: 'src/api.ts',
+            at: 1_000_000,
+          },
+        ],
+        nextId: 2,
+      },
+    }),
+  )
 
   await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
   await $.command.run({ command: 'inbox', args: '' } as never)
   const pane = await $.ui.mount(PANE)
-  expect(await pane.find({ text: /^Nothing needed$/ })).toBeDefined()
+  await pane.press({ key: 'tab-key-needsYou' })
+  await clock.settle()
+  if (!(await pane.find({ key: 'fold-legacy' }))) throw new Error('Legacy fold is missing from Asks.')
+  if (await pane.find({ text: /Retry loop never backs off/ })) {
+    await pane.press({ key: 'fold-legacy' })
+    await clock.settle()
+  }
+  expect(await pane.find({ text: /Retry loop never backs off/ })).toBeUndefined()
   const r = await $.tool.call({
     tool: 'mcp__inbox__record',
     kind: 'finding',
@@ -189,44 +165,26 @@ test('a finding Claude records while the pane shows an empty tab brings the pane
     detail: 'The fetch retry spins with no delay and can hammer the API.',
     path: 'src/api.ts',
   })
-  expect(r.result).toBe('Recorded. The user sees it in the Finds tab of the /inbox pane.')
+  expect(r.result).toBe(
+    'Not recorded: findings are retired. Add it as a task with `tasks` if it is work to track, or record a question or task if the person must decide or act.',
+  )
   await clock.settle()
+  expect(JSON.parse(w.stored.get('s:session-1') ?? '{}').ledger.findings).toHaveLength(1)
+  if (!(await pane.find({ text: /Retry loop never backs off/ }))) {
+    await pane.press({ key: 'fold-legacy' })
+    await clock.settle()
+  }
+  await pane.press({ key: 'title-f1' })
+  await clock.advance(PRESS_GUARD_MS)
   expect(await pane.find({ text: /Retry loop never backs off/ })).toBeDefined()
-
-  const band = await $.ui.mount({ plugin: 'inbox', surface: 'terminal', ...BAND })
-  expect(await band.find({ text: /Finds 1/ })).toBeDefined()
-
-  const sentBefore = w.sent.length
-  await pane.press({ key: 'address-f1' })
+  for (const key of ['discuss-f1', 'drop-f1'])
+    if (!(await pane.find({ key }))) throw new Error(`Legacy action is missing: ${key}`)
+  await pane.press({ key: 'drop-f1' })
   await clock.settle()
-  expect(w.sent).toHaveLength(sentBefore)
   expect(await pane.find({ key: 'settled-f1' })).toBeDefined()
-  expect(await pane.find({ text: /^Fix$/ })).toBeDefined()
-  expect(await pane.find({ key: 'undo-f1' })).toBeDefined()
-  expect(await band.find({ text: /Finds 1/ })).toBeUndefined()
-  await clock.advance(9000)
-  expect(w.sent.at(-1)).toContain('Please address this finding you recorded:\nIssue: Retry loop never backs off')
-  expect(await pane.find({ key: 'settled-f1' })).toBeUndefined()
-  expect(await pane.find({ text: /1 closed/ })).toBeDefined()
-
-  await $.turn.start({ text: w.sent.at(-1) ?? '', turnId: 't1' })
-  await $.turn.complete({ answer: 'Added a backoff.', durationMs: 5, isAborted: false, turnId: 't1', reason: 'answer' })
-  await clock.settle()
-  expect(await band.find({ text: /Finds 1/ })).toBeUndefined()
-  await pane.press({ key: 'tab-findings' })
-  await clock.settle()
-  expect(await pane.find({ key: 'address-f1-key' })).toBeUndefined()
-  expect(await pane.find({ text: /1 closed/ })).toBeDefined()
-
-  await $.tool.call({
-    tool: 'mcp__inbox__record',
-    kind: 'finding',
-    finding_kind: 'opportunity',
-    title: 'Cache the API token',
-    detail: 'Each call fetches a new token.',
-  })
-  await clock.settle()
-  expect(await pane.find({ text: /Cache the API token/ })).toBeDefined()
+  expect(JSON.parse(w.stored.get('s:session-1') ?? '{}').ledger.closedFindings).toMatchObject([
+    { id: 'f1', how: 'dismissed', outcome: 'dismissed' },
+  ])
 })
 
 test('a recorded report is read through its resolved path and the inbox stores its short excerpt', async ($, on) => {
@@ -379,7 +337,7 @@ test("the result under a record or close call reads the person's line, nothing w
   ).toBeDefined()
 })
 
-test('findings that arrive one by one after the pane moves to them keep the first one open', async ($, on) => {
+test('questions that arrive one by one keep the first one open', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   world($, on, [])
   w.paneState = { isShown: true, isFocused: true }
@@ -387,16 +345,21 @@ test('findings that arrive one by one after the pane moves to them keep the firs
   await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
   await $.command.run({ command: 'inbox', args: '' } as never)
   const pane = await $.ui.mount(PANE)
-  for (const title of ['Retry loop never backs off', 'Token cached forever', 'No lint script']) {
+  await pane.press({ key: 'tab-key-needsYou' })
+  await clock.settle()
+  for (const ask of ['Should retries back off?', 'Should we cache the token?', 'Should we add a lint script?']) {
     await $.tool.call({
       tool: 'mcp__inbox__record',
-      kind: 'finding',
-      finding_kind: 'issue',
-      title,
-      detail: 'Found while reading.',
+      kind: 'question',
+      ask,
+      options: ['Yes', 'Not now'],
     })
     await clock.settle()
   }
-  expect(await pane.find({ key: 'address-f1' })).toBeDefined()
-  expect(await pane.find({ key: 'address-f3' })).toBeUndefined()
+  expect(await pane.find({ key: 'answer-i1-0' })).toBeDefined()
+  expect(await pane.find({ key: 'row-i3' })).toBeDefined()
+  await pane.press({ key: 'title-i3' })
+  await clock.settle()
+  expect(await pane.find({ key: 'answer-i3-0' })).toBeDefined()
+  expect(await pane.find({ key: 'address-i1' })).toBeUndefined()
 })

@@ -2,7 +2,7 @@ export function guidanceText(host: Host): string {
   return `# Inbox
 ${host.intro}
 
-Write the text of questions, tasks and findings in the language the person writes to you in.
+Write the text of questions and tasks in the language the person writes to you in.
 
 When a choice can be inferred from the work or is easy to undo, make it and say what you chose. When you ask the user to decide something, say which option you recommend and why, in one clause ("I'd go with B: it keeps the old API"). If you cannot recommend one, say what would decide it.
 
@@ -11,8 +11,6 @@ Before you hand the user a step, take it yourself when your tools reach it, such
 When asking the user to act, give them the link, path or command, what to do, and how to return the result in your reply. If you cannot read it, such as in their browser, say how to send it.
 
 Ask in your reply as a direct question, and record the same ask in that turn with ${host.recordTool}, so it stays in the inbox after the conversation moves on. Record a decision, an approval or information you need as a question, with its options and the one you recommend. Record an act you hold until the user says so the same way. Record a step only the user can take as a task, with its steps. Do not record rhetorical questions, offers to continue when continuing is the default, FYIs, or invitations to look at finished work.
-
-A finding is something you noticed that deserves the user's attention but is outside the current task: a bug, a risk, missing tests, tech debt, or a chance to improve something. Record it with ${host.recordTool} as a finding, then go on with the task; fixing it waits until the user asks. Record one too when you work around a problem instead of fixing it, such as copying files by hand because a tool does not reach them, and when part of your change cannot be checked from where you are. State those in your reply as well. Mention any other finding only when it bears on what the user asked.
 
 These are not findings. Handle them in the task and your reply instead:
 - A problem in your own change or inside the task: fix it.
@@ -41,9 +39,8 @@ export function guidedCloseDescription(host: Host, description: string): string 
 export type Host = {
   agent: string
   surface: string
-  /** Where the person always sees how many items and findings are open, besides the surface; null when only the surface shows them. */
+  /** Where the person always sees how many items are open, besides the surface; null when only the surface shows them. */
   band: string | null
-  findingsIn: string
   /** Where the person sees their PRs. */
   prsIn: string
   /** The names the agent calls the inbox tools by. */
@@ -63,12 +60,11 @@ export const CLAUDE_CODE: Host = {
   agent: 'Claude',
   surface: 'the /inbox pane',
   band: 'a band above their prompt',
-  findingsIn: 'the Finds tab of the /inbox pane',
   prsIn: 'the PRs tab of the /inbox pane',
   recordTool: 'mcp__inbox__record',
   closeTool: 'mcp__inbox__close',
   taskTool: 'mcp__inbox__tasks',
   splitsPlanIntoSubjects: false,
   intro:
-    "The inbox plugin shows the user what waits on them: your open questions and the tasks only they can do, in the /inbox pane, and your findings, in the pane's Finds tab. A band above their prompt shows only counts: one for your questions and their tasks together, one for your findings, and one for their PRs that wait on them.",
+    'The inbox plugin shows the user what waits on them: your open questions, the tasks only they can do, and legacy findings in Asks, in the /inbox pane. A band above their prompt shows only counts: one for your questions and their tasks together, and one for their PRs that wait on them.',
 }

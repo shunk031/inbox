@@ -33,9 +33,8 @@ const FOCUS_TOKEN = 'inbox-focus'
 const HERDR_VALUE_CHARS = 80
 
 /** Each row tab's token, which holds the tab's count alone, as "2". The README's Herdr config colors each count by its tab. */
-const COUNT_TOKENS: Record<Tab, string> = {
+const COUNT_TOKENS: Partial<Record<Tab, string>> = {
   needsYou: 'inbox-needs-you',
-  findings: 'inbox-findings',
   prs: 'inbox-prs',
 }
 
@@ -134,14 +133,10 @@ function dialogText(dialog: Dialog): string {
   return dialog.kind === 'permission' ? `Allow ${dialog.text}?` : dialog.text
 }
 
-/**
- * What the status line reads when no stop or dialog leads it: the first ask that waits, how many asks and findings
- * wait, what the session is focused on, and `MAYBE_STALE_TEXT` when the band shows it.
- */
+/** What the status line reads when no stop or dialog leads it: the first ask that waits, session focus, or stale state. */
 type StatusInput = {
   firstAsk: string | null
   asks: number
-  findings: number
   focus: string | null
   stale: string | null
 }
@@ -150,11 +145,10 @@ function statusLine(stop: Stop | null, dialogs: readonly Dialog[], input: Status
   if (stop) return stopLine(stop)
   const dialog = dialogs[0]
   if (dialog) return dialogText(dialog)
-  const { firstAsk, asks, findings, focus, stale } = input
+  const { firstAsk, asks, focus, stale } = input
   if (firstAsk !== null) return asks > 1 ? `${asks} · ${firstAsk}` : firstAsk
-  const findingsText = findings === 0 ? null : `${findings} finding${findings === 1 ? '' : 's'}`
 
-  return [stale, focus, findingsText].filter(Boolean).join(' · ')
+  return [stale, focus].filter(Boolean).join(' · ')
 }
 
 /** The head's description, which says what the session does, or its title when it has none. */
@@ -177,15 +171,15 @@ export function herdrTokens(
   const input: StatusInput = {
     firstAsk: [...view.needsYou.questions, ...view.needsYou.tasks].find(isWaitingRow)?.title ?? null,
     asks: view.needsYou.count,
-    findings: view.findings.count,
     focus: focusOf(ledger.overview?.head ?? null),
     stale: bandCounts(view).length === 0 && isMaybeStale(view, isReadFailed) ? MAYBE_STALE_TEXT : null,
   }
   const focus = input.focus ? clipLabel(input.focus, HERDR_VALUE_CHARS) : null
-  const counts = ROW_TABS.map(t => {
+  const counts = ROW_TABS.flatMap(t => {
     const count = view[t.id].count
 
-    return [COUNT_TOKENS[t.id], stop || count === 0 ? null : String(count)]
+    const token = COUNT_TOKENS[t.id]
+    return token ? [[token, stop || count === 0 ? null : String(count)] as const] : []
   })
 
   return {

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { after, test } from 'node:test'
 import { Window } from 'happy-dom'
 import { EMPTY } from '../../hooks/ledger'
+import { addLegacyFinding } from '../../tests/seed-findings'
 import { closeItem } from '../../hooks/ledger-close'
 import { parseStatus } from '../../hooks/status'
 import { LOOK_MIN_MS } from '../../hooks/status-children'
@@ -190,7 +191,7 @@ test('the Codex tab draws the Status page from a next build’s view, and new ro
   try {
     await import('../src/tab')
     await until(() => root.querySelector('.status-head') !== null)
-    assert.deepEqual(tabLabels(), ['Status', 'Asks1', 'Finds', 'Timeline2', 'PRs'])
+    assert.deepEqual(tabLabels(), ['Status', 'Asks1', 'Timeline2', 'PRs'])
     assert.deepEqual(
       [...root.querySelectorAll('.tab')].map(b => [
         b.getAttribute('title'),
@@ -224,17 +225,17 @@ test('the Codex tab draws the Status page from a next build’s view, and new ro
     key('j')
     key('k')
     key('v')
-    state.ledger = recordItem(
-      CODEX,
-      state.ledger,
-      { kind: 'finding', title: 'The bar wraps at 320 px', detail: 'Four tabs need two lines.' },
-      Date.now(),
-      TOOL_FIELDS,
-    ).ledger
+    state.ledger = addLegacyFinding(state.ledger, {
+      kind: 'issue',
+      title: 'The bar wraps at 320 px',
+      detail: 'Four tabs need two lines.',
+      path: null,
+      at: Date.now(),
+    }).ledger
     await afterPoll()
     assert.equal(shownTab(), 'Status')
     assert.ok(root.querySelector('.row.selected') === null, 'a row is open')
-    assert.deepEqual(tabLabels(), ['Status', 'Asks1', 'Finds1', 'Timeline2', 'PRs'])
+    assert.deepEqual(tabLabels(), ['Status', 'Asks2', 'Timeline2', 'PRs'])
 
     state.taskTree = [
       taskTree[0]!,
@@ -242,7 +243,7 @@ test('the Codex tab draws the Status page from a next build’s view, and new ro
       { ...taskTree[2]!, parentId: 'omp-task' },
     ]
     await afterPoll()
-    key('4')
+    key('3')
     assert.equal(shownTab(), 'Timeline2')
     assert.equal(root.querySelectorAll('.timeline-progress-card').length, 1)
     assert.match(root.querySelector('.timeline-progress-card')?.textContent ?? '', /Progress.*In progress/s)
@@ -263,19 +264,18 @@ test('the Codex tab draws the Status page from a next build’s view, and new ro
     state.taskTree = taskTree
     await afterPoll()
 
-    key('3')
-    assert.equal(shownTab(), 'Finds1')
-    assert.match(root.textContent ?? '', /The bar wraps at 320 px/)
+    assert.deepEqual(tabLabels(), ['Status', 'Asks2', 'Timeline2', 'PRs'])
+    assert.doesNotMatch(root.textContent ?? '', /The bar wraps at 320 px/)
     key('1')
     assert.equal(shownTab(), 'Status')
     assert.ok(root.querySelector('.status-head'))
     key('2')
-    assert.equal(shownTab(), 'Asks1')
+    assert.equal(shownTab(), 'Asks2')
     assert.equal(root.querySelector('main .holds-up')?.textContent, '◆ Holds up Label')
     key('1')
     assert.equal(shownTab(), 'Status')
     ;(root.querySelector('main.status-page .list .actions button') as HTMLElement).click()
-    assert.equal(shownTab(), 'Asks1')
+    assert.equal(shownTab(), 'Asks2')
     assert.match(root.querySelector('.row.selected')?.textContent ?? '', /Which label\?/)
     assert.deepEqual(
       [...(root.querySelector('.row.selected .line')?.children ?? [])].map(c => c.className),
@@ -287,7 +287,7 @@ test('the Codex tab draws the Status page from a next build’s view, and new ro
 
     isOlderServer = true
     await afterPoll()
-    assert.equal(shownTab(), 'Asks1')
+    assert.equal(shownTab(), 'Asks2')
     assert.ok(root.querySelector('.status-head') === null, 'the Status page is drawn')
     assert.equal(sentTabs.at(-1), 'overview')
     isOlderServer = false
@@ -297,15 +297,15 @@ test('the Codex tab draws the Status page from a next build’s view, and new ro
 
     isNextBuild = false
     await afterPoll()
-    assert.deepEqual(tabLabels(), ['Asks1', 'Finds1', 'Timeline2', 'PRs'])
+    assert.deepEqual(tabLabels(), ['Asks2', 'Timeline2', 'PRs'])
     assert.deepEqual(
       [...root.querySelectorAll('.tab')].map(b => b.getAttribute('title')),
       shownTabs(false, true).map(t => t.label),
     )
-    assert.equal(shownTab(), 'Asks1')
+    assert.equal(shownTab(), 'Asks2')
     assert.ok(root.querySelector('.status-head') === null, 'the Status page is drawn')
     assert.ok(root.querySelector('main .holds-up') === null, 'a row names what it holds up')
-    key('4')
+    key('3')
     assert.equal(shownTab(), 'PRs')
     isNextBuild = true
     await afterPoll()
@@ -315,7 +315,7 @@ test('the Codex tab draws the Status page from a next build’s view, and new ro
     key('4')
     assert.equal(shownTab(), 'PRs')
     key('1')
-    assert.equal(shownTab(), 'Asks1')
+    assert.equal(shownTab(), 'Asks2')
 
     isNextBuild = true
     state.ledger = closeItem(state.ledger, asked.items[0]!.id, { how: 'claude', outcome: 'answered in chat' }, now)

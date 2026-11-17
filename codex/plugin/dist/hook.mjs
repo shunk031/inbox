@@ -981,7 +981,7 @@ function statusSummaryLines(ledger, taskTree = []) {
   ];
 }
 function carryText(ledger, title, taskTree = []) {
-  const findings = ledger.findings.filter((f) => !f.feedOwned);
+  const findings = ledger.findings.filter((f) => !f.feedOwned && !f.sourceManaged && f.kind !== "progress");
   const lines = statusSummaryLines(ledger, taskTree);
   if (lines.length === 0 && promptItems(ledger).length === 0 && findings.length === 0) return null;
   const out = [title, ...lines];
@@ -990,7 +990,7 @@ function carryText(ledger, title, taskTree = []) {
     for (const item of promptItems(ledger)) out.push(itemLine(item));
   }
   if (findings.length > 0) {
-    out.push("Findings you recorded, still open:");
+    out.push("Legacy findings you recorded, still open:");
     for (const f of findings) out.push(findingLine(f));
   }
   if (ledger.closed.length > 0) {
@@ -1001,7 +1001,7 @@ function carryText(ledger, title, taskTree = []) {
 }
 var CLOSE_ID_RULE = "A close id is only for the close tool. Never write one in a reply.";
 function inboxText(host, ledger, isOpen2, taskTree = [], taskStatusMismatches = []) {
-  const findings = ledger.findings.filter((f) => !f.feedOwned);
+  const findings = ledger.findings.filter((f) => !f.feedOwned && !f.sourceManaged && f.kind !== "progress");
   const taskById = new Map(taskTree.map((task) => [task.id, task]));
   const mismatches = taskStatusMismatches.flatMap((mismatch) => {
     const task = taskById.get(mismatch.taskId);
@@ -1025,7 +1025,7 @@ function inboxText(host, ledger, isOpen2, taskTree = [], taskStatusMismatches = 
     out.push("Nothing is waiting on the user.");
   }
   if (findings.length > 0) {
-    out.push("Findings you recorded, still open:");
+    out.push("Legacy findings you recorded, still open:");
     for (const f of findings) out.push(findingLine(f));
   }
   if (ledger.unrecordedDecisions.length > 0) {
@@ -1382,7 +1382,6 @@ function isGoalMet(goal, tree) {
 var TAB_NAMES = [
   { id: "overview", label: "Status", symbol: "\u{1F9ED}" },
   { id: "needsYou", label: "Asks", symbol: "\u{1F64B}" },
-  { id: "findings", label: "Finds", symbol: "\u{1F50D}" },
   { id: "timeline", label: "Timeline", symbol: "\u25F7" },
   { id: "prs", label: "PRs", symbol: "\u{1F500}" }
 ];
@@ -1392,10 +1391,10 @@ var NEXT_BUILD_TIMELINE_TABS = numbered(TAB_NAMES);
 var RELEASE_TABS = numbered(TAB_NAMES.filter((t) => t.id !== "overview" && t.id !== "timeline"));
 var RELEASE_TIMELINE_TABS = numbered(TAB_NAMES.filter((t) => t.id !== "overview"));
 function isListedTab(tab) {
-  return tab === "needsYou" || tab === "findings";
+  return tab === "needsYou";
 }
 function isRowTab(tab) {
-  return tab !== "overview" && tab !== "timeline";
+  return tab === "needsYou" || tab === "prs";
 }
 function isShownTab(raw) {
   return TAB_NAMES.some((t) => t.id === raw);
@@ -2636,8 +2635,8 @@ var RECORD_SCHEMA = {
   properties: {
     kind: {
       type: "string",
-      enum: ["question", "task", "finding"],
-      description: "question: a decision only the user can make. task: a step only the user can do. finding: something outside the current task that deserves their attention."
+      enum: ["question", "task"],
+      description: "question: a decision only the user can make. task: a step only the user can do."
     },
     ask: {
       type: "string",
@@ -2674,20 +2673,10 @@ var RECORD_SCHEMA = {
       type: "boolean",
       description: "For a question: true when its options are designs or approaches you could try and show side by side, such as two layouts or two ways to build a feature. The user can then ask you to compare them. Leave it out for a fact, an approval or a preference."
     },
-    finding_kind: {
-      type: "string",
-      enum: ["issue", "opportunity"],
-      description: "For a finding. issue: something wrong or risky. opportunity: something that could be better."
-    },
-    title: {
-      type: "string",
-      description: "For a finding: what it is, in at most 12 words. Links as [label](https://\u2026); a link counts as its label."
-    },
     detail: {
       type: "string",
-      description: "For a question or task: why you ask and what it holds up; for a question, what each option leads to. For a finding: why it matters and what you would do. Use short paragraphs. Links as [label](https://\u2026)."
+      description: "For a question or task: why you ask and what it holds up; for a question, what each option leads to. Use short paragraphs. Links as [label](https://\u2026)."
     },
-    path: { type: "string", description: "For a finding: the file it is about, if one." },
     document: {
       type: "string",
       description: "For a Markdown report the user should read in the inbox: its absolute local file path."
@@ -2846,6 +2835,8 @@ function actionsOf(row, last, state, feedback) {
       action({ action: "discard", id }, ROW_COPY.discard, "view")
     ];
   const stepActions = steps2.map((s, n) => action({ action: "step", id, step: n, label: s.label }, s.label, stepKind(s)));
+  if (!item && row.finding && !row.finding.feedOwned && !row.finding.sourceManaged && row.finding.kind !== "progress")
+    return [action({ action: "discuss", id }, "Discuss", "talk"), action({ action: "dismiss", id }, "Close", "mark")];
   if (!item)
     return [
       action({ action: "address", id }, row.finding ? fixLabel(row.finding) : "Fix", "handoff"),
@@ -3072,6 +3063,9 @@ function inboxView({
       steps: []
     })
   );
+  const legacyFindings = findingRows.filter(
+    (r) => r.finding && !r.finding.feedOwned && !r.finding.sourceManaged && r.finding.kind !== "progress"
+  );
   const held = new Set([...questionRows, ...taskRows, ...findingRows].filter((r) => r.state.is === "held").map((r) => r.id));
   const closed = [...ledger.closed].filter((d) => !held.has(d.id)).reverse().map((d) => {
     const delivery = d.doneNotification?.error !== void 0 ? { error: d.doneNotification.error, canUndo: isUndoable(d) } : (d.how === "answered" || d.how === "done") && lastActions[d.id]?.kind === "mark" && lastActions[d.id]?.at === d.at ? pendingDeliveryAt(lastActions[d.id], now) : null;
@@ -3093,9 +3087,10 @@ function inboxView({
   return {
     untrackedWork: ledger.untrackedWork ?? [],
     needsYou: {
-      count: counted.length,
+      count: counted.length + legacyFindings.filter(isWaitingRow).length,
       questions: questionRows,
       tasks: taskRows,
+      legacyFindings,
       closed: { questions: closed.filter((d) => d.kind === "question"), tasks: closed.filter((d) => d.kind === "task") },
       pressOutSince: placingFor.needsYou.pressOutSince
     },
@@ -3540,7 +3535,7 @@ function upgraded(saved, sessionId) {
       turn,
       pending: (saved.pending ?? []).map(({ ex: { checks: _exChecks, ...ex }, ...p }) => ({ ...p, ex }))
     }),
-    shownTab: isShownTab(saved.shownTab) ? saved.shownTab : base.shownTab,
+    shownTab: saved.shownTab === "findings" ? "needsYou" : isShownTab(saved.shownTab) ? saved.shownTab : base.shownTab,
     heard,
     ...saved.callFailures ? {} : { callFailures: withSavedFailure(saved) },
     coveredTurn: saved.coveredTurn !== void 0 ? saved.coveredTurn : coveredBefore(heard, turn.person ?? null)
@@ -3715,7 +3710,7 @@ function guidanceText(host) {
   return `# Inbox
 ${host.intro}
 
-Write the text of questions, tasks and findings in the language the person writes to you in.
+Write the text of questions and tasks in the language the person writes to you in.
 
 When a choice can be inferred from the work or is easy to undo, make it and say what you chose. When you ask the user to decide something, say which option you recommend and why, in one clause ("I'd go with B: it keeps the old API"). If you cannot recommend one, say what would decide it.
 
@@ -3724,8 +3719,6 @@ Before you hand the user a step, take it yourself when your tools reach it, such
 When asking the user to act, give them the link, path or command, what to do, and how to return the result in your reply. If you cannot read it, such as in their browser, say how to send it.
 
 Ask in your reply as a direct question, and record the same ask in that turn with ${host.recordTool}, so it stays in the inbox after the conversation moves on. Record a decision, an approval or information you need as a question, with its options and the one you recommend. Record an act you hold until the user says so the same way. Record a step only the user can take as a task, with its steps. Do not record rhetorical questions, offers to continue when continuing is the default, FYIs, or invitations to look at finished work.
-
-A finding is something you noticed that deserves the user's attention but is outside the current task: a bug, a risk, missing tests, tech debt, or a chance to improve something. Record it with ${host.recordTool} as a finding, then go on with the task; fixing it waits until the user asks. Record one too when you work around a problem instead of fixing it, such as copying files by hand because a tool does not reach them, and when part of your change cannot be checked from where you are. State those in your reply as well. Mention any other finding only when it bears on what the user asked.
 
 These are not findings. Handle them in the task and your reply instead:
 - A problem in your own change or inside the task: fix it.
@@ -3927,13 +3920,12 @@ var CODEX = {
   agent: "Codex",
   surface: "the Inbox tab",
   band: null,
-  findingsIn: "the Finds section of the Inbox tab",
   prsIn: "the PRs section of the Inbox tab",
   recordTool: "mcp__inbox__record",
   closeTool: "mcp__inbox__close",
   taskTool: "tasks",
   splitsPlanIntoSubjects: true,
-  intro: "The inbox plugin shows the user what waits on them: your open questions and the tasks only they can do, and your findings, in the Inbox tab beside the conversation."
+  intro: "The inbox plugin shows the user what waits on them: your open questions and the tasks only they can do, in the Inbox tab beside the conversation. Open legacy findings remain in the `inbox:` text until closed."
 };
 
 // src/core.ts
@@ -4101,7 +4093,6 @@ var FOCUS_TOKEN = "inbox-focus";
 var HERDR_VALUE_CHARS = 80;
 var COUNT_TOKENS = {
   needsYou: "inbox-needs-you",
-  findings: "inbox-findings",
   prs: "inbox-prs"
 };
 var CLEARED_TOKENS = Object.fromEntries(
@@ -4150,10 +4141,9 @@ function statusLine(stop, dialogs, input) {
   if (stop) return stopLine(stop);
   const dialog = dialogs[0];
   if (dialog) return dialogText(dialog);
-  const { firstAsk, asks, findings, focus, stale } = input;
+  const { firstAsk, asks, focus, stale } = input;
   if (firstAsk !== null) return asks > 1 ? `${asks} \xB7 ${firstAsk}` : firstAsk;
-  const findingsText = findings === 0 ? null : `${findings} finding${findings === 1 ? "" : "s"}`;
-  return [stale, focus, findingsText].filter(Boolean).join(" \xB7 ");
+  return [stale, focus].filter(Boolean).join(" \xB7 ");
 }
 function focusOf(head) {
   return head ? head.description || head.title : null;
@@ -4162,14 +4152,14 @@ function herdrTokens(ledger, stop, view, dialogs, isReadFailed = false) {
   const input = {
     firstAsk: [...view.needsYou.questions, ...view.needsYou.tasks].find(isWaitingRow)?.title ?? null,
     asks: view.needsYou.count,
-    findings: view.findings.count,
     focus: focusOf(ledger.overview?.head ?? null),
     stale: bandCounts(view).length === 0 && isMaybeStale(view, isReadFailed) ? MAYBE_STALE_TEXT : null
   };
   const focus = input.focus ? clipLabel(input.focus, HERDR_VALUE_CHARS) : null;
-  const counts = ROW_TABS.map((t) => {
+  const counts = ROW_TABS.flatMap((t) => {
     const count = view[t.id].count;
-    return [COUNT_TOKENS[t.id], stop || count === 0 ? null : String(count)];
+    const token = COUNT_TOKENS[t.id];
+    return token ? [[token, stop || count === 0 ? null : String(count)]] : [];
   });
   return {
     [STATUS_TOKEN]: statusLine(stop, dialogs, input) || null,

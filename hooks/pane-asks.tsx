@@ -7,7 +7,7 @@ import { linkLabel } from './inline'
 import { safeDocumentMarkdown } from './pane-document'
 import { READ_FAILED_TEXT } from './mod-sessions'
 import { sessionState } from './mod-state'
-import type { PaneBase, PaneHandlers, Row } from './pane-context'
+import type { Entry, PaneBase, PaneHandlers, Row } from './pane-context'
 import type { PaneFrame } from './pane-frame'
 import { childPos, holdsUpLineOf, type PaneRowLines } from './pane-row-lines'
 import type { PaneRowParts } from './pane-row-parts'
@@ -198,6 +198,9 @@ export function paneAskTabs(
     glued,
     now,
     findingEntries,
+    legacyEntries,
+    legacyUnfolded,
+    foldRow,
     lists,
     divided,
     listRow,
@@ -230,12 +233,11 @@ export function paneAskTabs(
     | 'now'
     | 'findingEntries'
     | 'lists'
-  > &
-    Pick<PaneRowLines, 'divided'> &
+  > & { legacyEntries: Entry[]; legacyUnfolded: boolean } & Pick<PaneRowLines, 'divided'> &
     Pick<PaneRows, 'listRow'> &
     Pick<
       PaneRowParts,
-      'settledRow' | 'closedFold' | 'section' | 'groupTitle' | 'titleGap' | 'groupEmpty' | 'sections'
+      'settledRow' | 'closedFold' | 'section' | 'groupTitle' | 'titleGap' | 'groupEmpty' | 'sections' | 'foldRow'
     > &
     Pick<PaneFrame, 'banner'>,
   {
@@ -243,9 +245,11 @@ export function paneAskTabs(
     resume,
     closeDocument,
     document,
+    setLegacyFold,
   }: Pick<PaneHandlers, 'readAgain' | 'resume'> & {
     closeDocument: () => void
     document: { title: string; text: string | null; error: string | null } | null
+    setLegacyFold: (unfolded: boolean) => void
   },
 ) {
   const documentView = () =>
@@ -332,9 +336,31 @@ export function paneAskTabs(
         ]),
       ]
     })
-    const isNothing = needsYouGroups.every(
-      g => g.entries.length === 0 && closedTotal(view.needsYou.closed[g.list], settledIn(g.entries)) === 0,
-    )
+    const legacy =
+      look === 'terminal' && view.needsYou.legacyFindings.length > 0
+        ? [
+            section([
+              foldRow('legacy', `Legacy findings · ${view.needsYou.legacyFindings.length}`, legacyUnfolded, () =>
+                setLegacyFold(!legacyUnfolded),
+              ),
+              ...(legacyUnfolded
+                ? divided(
+                    legacyEntries.map((x, n) =>
+                      'row' in x
+                        ? listRow(x.row, childPos(n, legacyEntries.length))
+                        : settledRow(x, childPos(n, legacyEntries.length)),
+                    ),
+                    'legacy',
+                    ROW_COLUMNS.tree.handleAt,
+                  )
+                : []),
+            ]),
+          ]
+        : []
+    const isNothing =
+      needsYouGroups.every(
+        g => g.entries.length === 0 && closedTotal(view.needsYou.closed[g.list], settledIn(g.entries)) === 0,
+      ) && legacy.length === 0
     const unread = isUnread
       ? [
           section(
@@ -371,7 +397,7 @@ export function paneAskTabs(
         ]
       : []
 
-    return sections([...outside, ...unread, ...groups])
+    return sections([...outside, ...unread, ...groups, ...legacy])
   }
   const findingsView = () => {
     const settled = settledIn(findingEntries)

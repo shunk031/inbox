@@ -5,7 +5,7 @@ import { w, world } from './hooks-world'
 import { BAND, PANE, replyKey } from './hooks-helpers'
 
 test(
-  '/inbox demo shows sample entries in every tab, presses change only its copy, the reply to a press leaves the sample’s hand-off waiting, and [Hide demo] goes back',
+  '/inbox demo shows sample entries in the remaining tabs, presses change only its copy, the reply to a press leaves the sample’s hand-off waiting, and [Hide demo] goes back',
   { timeoutMs: 20_000 },
   async ($, on) => {
     const clock = mock.clock(on, { now: 1_000_000 })
@@ -60,7 +60,7 @@ test(
     const band = await $.ui.mount({ plugin: 'inbox', surface: 'terminal', ...BAND })
     expect(await pane.find({ text: 'Sample entries. Buttons here send nothing.' })).toBeDefined()
     expect(await pane.find({ text: /Use Node or Python/ })).toBeUndefined()
-    expect(await band.find({ text: /^Demo: Asks 7/ })).toBeDefined()
+    expect(await band.find({ text: /^Demo: Asks 11/ })).toBeDefined()
     for (const view of [pane, band]) expect(await view.find({ key: 'hide-demo' })).toBeDefined()
     expect(await pane.find({ key: 'settled-d10' })).toBeDefined()
 
@@ -77,12 +77,12 @@ test(
     await clock.advance(SETTLED_MS)
     expect(await pane.find({ text: /✓\sExplain/ })).toBeDefined()
     expect(await pane.find({ text: /Still open/ })).toBeUndefined()
-    expect(await band.find({ text: /Asks 6/ })).toBeDefined()
+    expect(await band.find({ text: /Asks 10/ })).toBeDefined()
 
     await pane.press({ key: 'typekey-d17' })
     await pane.input({ key: await replyKey(pane, 'd17'), text: 'Done in both.' })
     await clock.settle()
-    expect(await band.find({ text: /Asks 5/ })).toBeDefined()
+    expect(await band.find({ text: /Asks 9/ })).toBeDefined()
 
     await pane.press({ key: 'title-d14' })
     await clock.advance(PRESS_GUARD_MS)
@@ -92,22 +92,33 @@ test(
     expect(await pane.find({ key: 'settled-d14' })).toBeDefined()
     const doneTask = literal(demo.ledger.items.find(i => i.id === 'd14')!.ask)
     expect(await pane.find({ text: doneTask })).toBeDefined()
-    expect(await band.find({ text: /Asks 4/ })).toBeDefined()
+    expect(await band.find({ text: /Asks 8/ })).toBeDefined()
     await pane.press({ key: 'undo-d14' })
     expect(await pane.find({ key: 'done-d14' })).toBeDefined()
-    expect(await band.find({ text: /Asks 5/ })).toBeDefined()
+    expect(await band.find({ text: /Asks 9/ })).toBeDefined()
     await clock.advance(PRESS_GUARD_MS)
     await pane.press({ key: 'done-d14' })
     await clock.advance(SETTLED_MS)
     expect(await pane.find({ key: 'settled-d14' })).toBeUndefined()
     expect(await pane.find({ text: doneTask })).toBeUndefined()
     expect(await pane.find({ text: /Still open/ })).toBeDefined()
-    expect(await band.find({ text: /Asks 5/ })).toBeDefined()
+    expect(await band.find({ text: /Asks 9/ })).toBeDefined()
     expect(w.sent).toEqual([])
 
-    await pane.press({ key: 'tab-findings' })
-    expect(await pane.find({ text: literal(demo.ledger.findings[0]!.title) })).toBeDefined()
+    await pane.press({ key: 'tab-key-needsYou' })
+    await clock.settle()
+    if (!(await pane.find({ text: /Legacy findings · 4/ }))) throw new Error('Demo legacy fold is missing.')
+    if (await pane.find({ text: literal(demo.ledger.findings[0]!.title) })) {
+      await pane.press({ key: 'fold-legacy' })
+      await clock.settle()
+    }
+    expect(await pane.find({ text: literal(demo.ledger.findings[0]!.title) })).toBeUndefined()
+    await pane.press({ key: 'fold-legacy' })
+    await clock.settle()
+    if (!(await pane.find({ text: literal(demo.ledger.findings[0]!.title) })))
+      throw new Error('Demo legacy row is missing after opening its fold.')
     await pane.press({ key: 'tab-prs' })
+    await clock.settle()
     expect(await pane.find({ text: literal(demo.prViews.views[branchRef]!.title) })).toBeDefined()
     await pane.press({ key: `open-${branchRef}` })
     expect(await pane.find({ text: /✓ Opened/ })).toBeDefined()
@@ -116,10 +127,12 @@ test(
     await clock.advance(SETTLED_MS)
     expect(await pane.find({ key: `settled-pr:${linkedRef}` })).toBeUndefined()
     expect(await pane.find({ text: literal(demo.prViews.views[linkedRef]!.title) })).toBeUndefined()
-    await pane.press({ key: 'tab-needsYou' })
+    await pane.press({ key: 'tab-key-needsYou' })
+    await clock.settle()
     expect(await pane.find({ key: 'settled-d10' })).toBeUndefined()
     expect(await pane.find({ key: 'settled-d14' })).toBeUndefined()
     await pane.press({ key: 'tab-prs' })
+    await clock.settle()
     expect(w.stored.get('s:session-1')).toBe(saved)
     expect(w.ran.slice(ranBeforeDemo).filter(argv => argv[0] === 'gh' || argv[0] === 'open')).toEqual([])
 
@@ -128,7 +141,8 @@ test(
     expect(await pane.find({ text: /Real linked work/ })).toBeDefined()
     expect(await pane.find({ text: /Real branch work/ })).toBeDefined()
 
-    await pane.press({ key: 'tab-needsYou' })
+    await pane.press({ key: 'tab-key-needsYou' })
+    await clock.settle()
     expect(await pane.find({ text: /Use Node or Python/ })).toBeDefined()
     expect(await pane.find({ key: 'explain-i1-key' })).toBeDefined()
     expect(await pane.find({ text: /Sample entries\./ })).toBeUndefined()
@@ -149,8 +163,11 @@ test('/inbox demo recording shows the sample entries without the notices that ma
   const pane = await $.ui.mount(PANE)
   const band = await $.ui.mount({ plugin: 'inbox', surface: 'terminal', ...BAND })
   expect(await pane.find({ text: demo.ledger.items.find(i => i.id === 'd11')!.options[0] })).toBeDefined()
+  await pane.press({ key: 'tab-key-needsYou' })
+  await clock.settle()
+  if (!(await pane.find({ text: /Legacy findings · 4/ }))) throw new Error('Recording demo legacy fold is missing.')
   expect(await pane.find({ text: /Sample entries\./ })).toBeUndefined()
-  expect(await band.find({ text: /^Asks 7/ })).toBeDefined()
+  expect(await band.find({ text: /^Asks 11/ })).toBeDefined()
   for (const view of [pane, band]) expect(await view.find({ key: 'hide-demo' })).toBeUndefined()
 
   await clock.advance(PRESS_GUARD_MS)
@@ -162,5 +179,5 @@ test('/inbox demo recording shows the sample entries without the notices that ma
   expect((await $.command.run({ command: 'inbox', args: 'demo' } as never)).text).toBe('Opened the inbox.')
   expect((await $.command.run({ command: 'inbox', args: 'demo' } as never)).text).toContain('Run /inbox demo again')
   expect(await pane.find({ text: /Sample entries\./ })).toBeDefined()
-  expect(await band.find({ text: /^Demo: Asks 7/ })).toBeDefined()
+  expect(await band.find({ text: /^Demo: Asks 11/ })).toBeDefined()
 })

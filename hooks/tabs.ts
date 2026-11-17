@@ -14,7 +14,6 @@ type DrawnTab = TabName & { hotkey: string }
 const TAB_NAMES: readonly TabName[] = [
   { id: 'overview', label: 'Status', symbol: '\u{1F9ED}' },
   { id: 'needsYou', label: 'Asks', symbol: '\u{1F64B}' },
-  { id: 'findings', label: 'Finds', symbol: '\u{1F50D}' },
   { id: 'timeline', label: 'Timeline', symbol: '◷' },
   { id: 'prs', label: 'PRs', symbol: '\u{1F500}' },
 ]
@@ -42,7 +41,7 @@ export function shownTabs(isNextBuild: boolean, includeTimeline = false): readon
 export function inboxCommandText(isNextBuild: boolean): string {
   return isNextBuild
     ? 'Show where this session stands and what waits on you'
-    : "Show this session's questions, findings, task plan and PRs"
+    : "Show this session's questions, task plan and PRs"
 }
 
 /** The tab a build draws for a saved or sent one: that tab when the build draws it, else the build's first tab. */
@@ -84,14 +83,14 @@ export function tabBadge(id: ShownTab, counts: Readonly<Record<Tab, number> & { 
   return isRowTab(id) && counts[id] > 0 ? String(counts[id]) : null
 }
 
-/** Whether a shown tab lists rows you answer or close: Asks and Finds. */
+/** Whether a shown tab lists rows you answer or close: Asks. */
 export function isListedTab(tab: ShownTab): tab is ListedTab {
-  return tab === 'needsYou' || tab === 'findings'
+  return tab === 'needsYou'
 }
 
 /** Whether a shown tab is a row tab, which has rows, a count and a cursor. */
 export function isRowTab(tab: ShownTab): tab is Tab {
-  return tab !== 'overview' && tab !== 'timeline'
+  return tab === 'needsYou' || tab === 'prs'
 }
 
 /** Whether a saved or sent value names a tab that some build draws. */
@@ -104,7 +103,7 @@ export function screenTabOf(tab: ShownTab): ScreenTab {
   return { label: TAB_NAMES.find(t => t.id === tab)?.label ?? tab, isPage: !isRowTab(tab) }
 }
 
-/** The tabs that list rows: Asks, Finds and PRs. */
+/** The tabs that list rows: Asks and PRs. */
 export const ROW_TABS = TAB_NAMES.filter((t): t is TabName & { id: Tab } => isRowTab(t.id))
 
 export const LISTED_TABS = TAB_NAMES.filter((t): t is TabName & { id: ListedTab } => isListedTab(t.id))

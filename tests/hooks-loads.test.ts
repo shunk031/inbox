@@ -112,10 +112,8 @@ test('resuming a session waits for its in-flight save before loading it', async 
   }
   const adding = $.tool.call({
     tool: 'mcp__inbox__record',
-    kind: 'finding',
-    finding_kind: 'issue',
-    title: 'New finding',
-    detail: 'New detail.',
+    kind: 'task',
+    ask: 'New task',
   })
   await inSet
   await $.session.end({ reason: 'clear', sessionId: 'session-1', resume: { id: 'session-1' } })
@@ -131,8 +129,8 @@ test('resuming a session waits for its in-flight save before loading it', async 
   await Promise.all([loading, adding])
   await clock.settle()
   const pane = await $.ui.mount(PANE)
-  await pane.press({ key: 'tab-findings' })
-  expect(await pane.find({ text: /New finding/ })).toBeDefined()
+  await pane.press({ key: 'tab-key-needsYou' })
+  expect(await pane.find({ text: /New task/ })).toBeDefined()
 })
 
 test('a delayed saved-session read cannot replace a newer conversation', async ($, on) => {
@@ -221,20 +219,16 @@ test('a tool call after a hot reload, before the load converts the ledger, still
   await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
   await $.tool.call({
     tool: 'mcp__inbox__record',
-    kind: 'finding',
-    finding_kind: 'issue',
-    title: 'README is stale',
-    detail: 'Old.',
+    kind: 'task',
+    ask: 'Review the README',
   })
   strip = true
   await $.tool.call({
     tool: 'mcp__inbox__record',
-    kind: 'finding',
-    finding_kind: 'issue',
-    title: 'Second',
-    detail: 'Two.',
+    kind: 'task',
+    ask: 'Review the second file',
   })
   strip = false
-  const r = await $.tool.call({ tool: 'mcp__inbox__close', id: 'f1', reason: 'fixed' } as never)
-  expect(r.result).toBe('Closed the finding. Name it by what it says, never by its id.')
+  const r = await $.tool.call({ tool: 'mcp__inbox__close', id: 'i1', reason: 'reviewed' } as never)
+  expect(r.result).toContain('Closed. The user sees it in the /inbox pane')
 })

@@ -152,7 +152,7 @@ export function helpKeys(
     .join(' ')
   const hasRows = isRowTab(tab)
   const selectsTimelineRows = tab === 'timeline'
-  const hasDocumentRows = tab === 'needsYou' || tab === 'findings'
+  const hasDocumentRows = tab === 'needsYou'
   const selectsStatusRows = tab === 'overview' && hasStatusButtons
   const switchTabs = { keys: tabKeys, does: 'Switch tabs' }
   const prTabKeys = tab === 'prs' ? PR_TAB_HELP_KEYS : []

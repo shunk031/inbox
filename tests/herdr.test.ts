@@ -146,7 +146,6 @@ describe('herdrLabels', () => {
       'inbox.stop': '',
       'inbox.focus': '',
       'inbox.needs-you': '2',
-      'inbox.findings': '',
       'inbox.prs': '',
     })
   })

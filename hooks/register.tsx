@@ -122,21 +122,10 @@ import { openTarget } from './open-targets'
 import type { RowPress } from './presses'
 import { statusKeyRows, statusSelected } from './status-keys'
 import { footerStatus } from './view'
-import { DOT, NEEDS_YOU_GROUPS, settledRowIds, allRows, resumeLabel, type RowView } from './rows'
+import { DOT, settledRowIds, allRows, resumeLabel, type RowView } from './rows'
 import { isResumable, RESUME_TEXT, stopFix, stopText, DEMO_NOTICE, bannerOf, NEXT_BUILD_MARK } from './banners'
 import { bandCounts, isMaybeStale, noCountsText } from './band'
-import {
-  drawnLists,
-  rowKeyPlan,
-  rowsIn,
-  firstWaiting,
-  keptOpen,
-  rowAfterClose,
-  steppedIndex,
-  tabUndos,
-  latestUndo,
-  type PlannedKey,
-} from './action-plan'
+import { rowKeyPlan, keptOpen, rowAfterClose, steppedIndex, tabUndos, latestUndo, type PlannedKey } from './action-plan'
 import {
   isRowTab,
   isShownTab,
@@ -189,6 +178,7 @@ import {
   lastUndoEnd,
   NO_CURSOR,
   NO_SELECTION,
+  upgradeSelection,
   type PendingUndoScroll,
   RESIZE_SCROLL_MS,
   sameCursor,
@@ -198,8 +188,11 @@ import {
   type Showing,
   type Shown,
   newRows,
-  tabRowIds,
-  tabWaits,
+  paneTabRowIds,
+  paneTabWaits,
+  firstPaneWait,
+  paneListRows,
+  paneRowsByTab,
   UNDO_REDRAW_STEPS,
 } from './pane-selection'
 import {
@@ -283,7 +276,7 @@ import { paneFrame } from './pane-frame'
 import { paneRowParts } from './pane-row-parts'
 import { documentBytes, withDocumentPreview } from './document'
 import type { DocumentFile } from './document'
-import type { PaneClient, PaneHandlers, Row } from './pane-context'
+import type { PaneClient, PaneHandlers } from './pane-context'
 import { panePrBlocks, panePrRows } from './pane-prs'
 import { paneStatusLines } from './pane-status-lines'
 import { paneStatus } from './pane-status'
@@ -1050,18 +1043,12 @@ async function upgradeState($: EngineInterface): Promise<Ledger> {
   const [session] = await Promise.all([
     upgradeDrawn($),
     update($, TAB, t => {
-      const renamed = (t as string) === 'notes' ? 'findings' : (t as string) === 'waiting' ? 'needsYou' : t
+      const renamed = ['notes', 'findings', 'waiting'].includes(t as string) ? 'needsYou' : t
 
       return isShownTab(renamed) && isRowTab(renamed) ? renamed : 'needsYou'
     }),
     update($, PAGE, p => (isShownTab(p) ? p : null)),
-    update($, SELECTION, ({ waiting, ...s }: Record<Tab, Cursor> & { waiting?: Cursor }) => {
-      const cursors: Record<Tab, Cursor> = { ...NO_SELECTION, ...(waiting ? { needsYou: waiting } : {}), ...s }
-      // A cursor saved before `openedAt` existed: no click opened its row in a way that still guards it.
-      return Object.fromEntries(
-        Object.entries(cursors).map(([t, c]) => [t, { ...c, openedAt: c.openedAt ?? 0 }]),
-      ) as Record<Tab, Cursor>
-    }),
+    update($, SELECTION, upgradeSelection),
     update($, UNFOLDED, upgradedUnfolded),
     update($, TIMELINE_SELECTION, upgradedTimelineSelection),
     update($, TIMELINE_FOLDED, upgradedTimelineFolded),
@@ -1211,7 +1198,7 @@ function redrawAtNextFold($: EngineInterface, view: SessionView, lastTypedMessag
   })
 }
 
-/** Opens the open pane again, without asking for the keyboard, once a reply field opened or closed. */
+/** Syncs the pane's Escape setting. */
 async function matchPaneEscape($: EngineInterface) {
   const closesOnEscape = (await read($, TYPING)) === null
   if (closesOnEscape === paneState.paneClosesOnEscape) return
@@ -1221,11 +1208,11 @@ async function matchPaneEscape($: EngineInterface) {
 }
 
 async function openTopRow($: EngineInterface) {
-  const [{ view, lastActions }, tab] = await Promise.all([drawnState($), readRowTab($)])
+  const [{ view, lastActions }, tab, unfolded] = await Promise.all([drawnState($), readRowTab($), read($, UNFOLDED)])
   if (tab === null) return
   const prViews = openPrViews(view.prs.drawn)
-  const ids = tabRowIds(view, prViews)[tab]
-  const top = firstWaiting(tabWaits(tab, view, prViews, lastActions))
+  const ids = paneTabRowIds(view, prViews, unfolded)[tab]
+  const top = firstPaneWait(tab, view, prViews, lastActions, unfolded)
   if (top === null) await update($, SELECTION, s => ({ ...s, [tab]: NO_CURSOR }))
   else await select($, tab, top, ids.indexOf(top))
 }
@@ -1423,14 +1410,19 @@ async function finishPendingUndoScroll($: EngineInterface) {
   const pending = paneState.pendingUndoScroll
   if (!pending) return
   const revision = paneState.undoScrollRevision
-  const [tab, selection, drawn] = await Promise.all([readRowTab($), read($, SELECTION), drawnState($)])
+  const [tab, selection, drawn, unfolded] = await Promise.all([
+    readRowTab($),
+    read($, SELECTION),
+    drawnState($),
+    read($, UNFOLDED),
+  ])
   if (paneState.pendingUndoScroll !== pending || revision !== paneState.undoScrollRevision) return
   const cursor = tab === null ? NO_CURSOR : selection[tab]
   if (tab !== null && tab === pending.tab && paneState.isInlineTerminalPane && conversation.id === pending.sessionId) {
     const prs = drawn.view.prs.drawn
     const openId =
       cursor.id ??
-      (cursor.openedAt === 0 ? firstWaiting(tabWaits(tab, drawn.view, openPrViews(prs), drawn.lastActions)) : null)
+      (cursor.openedAt === 0 ? firstPaneWait(tab, drawn.view, openPrViews(prs), drawn.lastActions, unfolded) : null)
     const isSettling = drawn.now < pending.expiresAt
     const baseKey = isSettling && pending.revealUndo ? pending.key : openId ? `view-${openId}` : null
     const block = isSettling && pending.revealUndo ? pending.block : 'start'
@@ -1461,10 +1453,14 @@ async function scrollToOpenRow($: EngineInterface, tab: Tab, surface?: RenderSur
   if (surface !== 'desktop' && (await revealPendingUndo($))) return
   if (revision !== paneState.undoScrollRevision) return
   if (paneState.isInlinePane) {
-    const [selection, { view, lastActions }] = await Promise.all([read($, SELECTION), drawnState($)])
+    const [selection, { view, lastActions }, unfolded] = await Promise.all([
+      read($, SELECTION),
+      drawnState($),
+      read($, UNFOLDED),
+    ])
     const prViews = openPrViews(view.prs.drawn)
     const cursor = selection[tab]
-    const id = cursor.id ?? (cursor.openedAt === 0 ? firstWaiting(tabWaits(tab, view, prViews, lastActions)) : null)
+    const id = cursor.id ?? (cursor.openedAt === 0 ? firstPaneWait(tab, view, prViews, lastActions, unfolded) : null)
     if (revision !== paneState.undoScrollRevision) return
     if (id !== null) {
       await scrollToKey($, `view-${id}`, 'start', () => revision === paneState.undoScrollRevision)
@@ -1476,10 +1472,15 @@ async function scrollToOpenRow($: EngineInterface, tab: Tab, surface?: RenderSur
 }
 
 async function selectClicked($: EngineInterface, id: string) {
-  const [{ view, now }, tab, selection] = await Promise.all([drawnState($), readRowTab($), read($, SELECTION)])
+  const [{ view, now }, tab, selection, unfolded] = await Promise.all([
+    drawnState($),
+    readRowTab($),
+    read($, SELECTION),
+    read($, UNFOLDED),
+  ])
   if (tab === null) return
   const prViews = openPrViews(view.prs.drawn)
-  const index = tabRowIds(view, prViews)[tab].indexOf(id)
+  const index = paneTabRowIds(view, prViews, unfolded)[tab].indexOf(id)
   if (index < 0 || isGuarded(selection[tab].openedAt, now)) return
   await select($, tab, id, index)
 }
@@ -1488,7 +1489,7 @@ async function selectClicked($: EngineInterface, id: string) {
 async function showAsk($: EngineInterface, askId: string) {
   const { view } = await drawnState($)
   const prViews = openPrViews(view.prs.drawn)
-  const index = Math.max(0, tabRowIds(view, prViews).needsYou.indexOf(askId))
+  const index = Math.max(0, paneTabRowIds(view, prViews, []).needsYou.indexOf(askId))
   await select($, 'needsYou', askId, index, false)
   await showTab($, 'needsYou')
   await scrollToRow($, askId)
@@ -1508,9 +1509,9 @@ async function setFoldHover($: EngineInterface, key: string, isHover: boolean) {
 }
 
 async function openLeftRows($: EngineInterface) {
-  const { view, now } = await drawnState($)
+  const [{ view, now }, unfolded] = await Promise.all([drawnState($), read($, UNFOLDED)])
   const prViews = openPrViews(view.prs.drawn)
-  const ids = tabRowIds(view, prViews)
+  const ids = paneTabRowIds(view, prViews, unfolded)
   const settled = new Set(settledRowIds(allRows(view)))
   let isMoved = false
   await update($, SELECTION, s => {
@@ -1566,7 +1567,7 @@ async function followNewRows($: EngineInterface, isOpening = false) {
   const { prViews: prState, lastActions, stop, isDemo, isUnread, view } = drawn
   const prs = view.prs.drawn
   const prViews = openPrViews(prs)
-  const ids = tabRowIds(view, prViews)
+  const ids = paneTabRowIds(view, prViews, unfolded)
   if (isOpening) paneState.recordedRows = null
   const added = newRows(isDemo, {
     ...listedRowIds(view),
@@ -1574,7 +1575,7 @@ async function followNewRows($: EngineInterface, isOpening = false) {
   })
   if (!isShown) return
   const keeps = (['needsYou', 'findings'] as const).flatMap(t => {
-    const id = added[t].length > 0 ? keptOpen(tabWaits(t, view, prViews, lastActions), added[t]) : null
+    const id = added[t].length > 0 ? keptOpen(paneTabWaits(t, view, prViews, lastActions, unfolded), added[t]) : null
     return id === null ? [] : [{ t, cursor: { id, index: ids[t].indexOf(id), openedAt: 0 } }]
   })
   if (keeps.length > 0) {
@@ -1590,7 +1591,14 @@ async function followNewRows($: EngineInterface, isOpening = false) {
     tab === 'prs'
       ? isPrsTabEmpty(prs.length, prState.isFetching)
       : isTabEmpty({
-          rows: tab === 'needsYou' ? [...view.needsYou.questions, ...view.needsYou.tasks] : view.findings.rows,
+          rows:
+            tab === 'needsYou'
+              ? [
+                  ...view.needsYou.questions,
+                  ...view.needsYou.tasks,
+                  ...(paneState.paneLook === 'terminal' ? view.needsYou.legacyFindings : []),
+                ]
+              : view.findings.rows,
           settled,
           closed: closedGroups(view, tab, kind => unfolded.includes(kind)),
           hasBlocker: tab === 'needsYou' && (!!stop || isUnread),
@@ -1801,14 +1809,14 @@ async function undoKeyAfterPress(
 }
 
 async function shownWaits($: EngineInterface) {
-  const [{ lastActions, view }, tab] = await Promise.all([drawnState($), readRowTab($)])
+  const [{ lastActions, view }, tab, unfolded] = await Promise.all([drawnState($), readRowTab($), read($, UNFOLDED)])
   const prViews = openPrViews(view.prs.drawn)
   if (tab === null) return { tab, rows: [], ids: [] }
 
   return {
     tab,
-    rows: tabWaits(tab, view, prViews, lastActions),
-    ids: tabRowIds(view, prViews)[tab],
+    rows: paneTabWaits(tab, view, prViews, lastActions, unfolded),
+    ids: paneTabRowIds(view, prViews, unfolded)[tab],
   }
 }
 
@@ -1844,7 +1852,8 @@ async function reopenPressed($: EngineInterface, id: string) {
 }
 
 async function selectRestored($: EngineInterface, id: string) {
-  const ids = tabRowIds((await drawnState($)).view, [])
+  const [drawn, unfolded] = await Promise.all([drawnState($), read($, UNFOLDED)])
+  const ids = paneTabRowIds(drawn.view, [], unfolded)
   const tab: Tab = ids.findings.includes(id) ? 'findings' : 'needsYou'
   const index = ids[tab].indexOf(id)
   if (index >= 0) await select($, tab, id, index)
@@ -3196,13 +3205,14 @@ export const register: Register = on => {
 
     // The Status and Help draw no rows, so none are built while either shows.
     const isListShown = !isPageShown && !isHelpShown
-    const lists = drawnLists(
+    const { lists, needsYouGroups, findingEntries } = paneListRows(
       view,
-      () => true,
-      r => (!isListShown ? null : r.item ? itemRow(r) : r.finding ? findingRow(r) : null),
+      isListShown,
+      look,
+      unfolded,
+      itemRow,
+      findingRow,
     )
-    const needsYouGroups = NEEDS_YOU_GROUPS.map(g => ({ ...g, entries: lists[g.list], rows: rowsIn(lists[g.list]) }))
-    const findingEntries = lists.findings
     const prGroups = (isListShown ? shownPrs : []).map(d => ({
       ...d,
       ...prBlockRows(d.pr, d.state.is === 'settled', {
@@ -3213,12 +3223,11 @@ export const register: Register = on => {
     const prOrderKeys = (view.prs.order?.changed?.actions ?? []).map(a => prKeyAction(a, 'order'))
     const prRefreshKeys = (view.prs.refresh?.actions ?? []).map(a => prKeyAction(a, 'prs'))
     const prClearKeys = view.prs.clear.map(a => prKeyAction(a, 'prs'))
-    const rows: Record<Tab, Row[]> = {
-      needsYou: lists.byTab.needsYou,
-      findings: lists.byTab.findings,
-      prs: prGroups.flatMap(g => g.rows),
-    }
-    const counts = {
+    const rows = paneRowsByTab(
+      lists,
+      prGroups.flatMap(g => g.rows),
+    )
+    const counts: Record<Tab, number> & { timeline: number } = {
       needsYou: view.needsYou.count,
       findings: view.findings.count,
       prs: shownPrs.filter(x => x.state.is === 'open' && prNeedsYou(x.pr, isThreadSent)).length,
@@ -3234,7 +3243,7 @@ export const register: Register = on => {
     const indexOf = new Map(ids.map((id, n) => [id, n]))
     const cursor = selection[tab]
     const settledIds = new Set(isListShown ? settledRowIds(allRows(view)) : [])
-    const top = isListShown ? firstWaiting(tabWaits(tab, view, openPrViews(shownPrs), lastActions)) : null
+    const top = isListShown ? firstPaneWait(tab, view, openPrViews(shownPrs), lastActions, unfolded) : null
     const at = selectedIndex(ids, cursor, top, id => settledIds.has(id))
     const isOpenGuarded = !isStatusShown && isGuarded(cursor.openedAt, now)
     const statusKeyRow = isStatusShown ? statusSelected(view.statusPage, statusSelection) : null
@@ -3468,11 +3477,14 @@ export const register: Register = on => {
         glued,
         now,
         findingEntries,
+        legacyEntries: lists.legacyFindings,
+        legacyUnfolded: unfolded.includes('legacy'),
         lists,
         divided,
         listRow,
         settledRow,
         closedFold,
+        foldRow,
         section,
         groupTitle,
         titleGap,
@@ -3482,6 +3494,7 @@ export const register: Register = on => {
       },
       {
         ...handlers,
+        setLegacyFold: isUnfolded => void setFold($, 'legacy', isUnfolded),
         document,
         closeDocument: () => {
           void reader.close()

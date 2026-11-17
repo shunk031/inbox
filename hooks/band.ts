@@ -4,7 +4,7 @@ import type { SessionView } from './session-view'
 import { ROW_TABS } from './tabs'
 
 /**
- * Whether the asks and findings may be missing some: an update failed or is being retried, or the host could not
+ * Whether asks may be missing some: an update failed or is being retried, or the host could not
  * read the inbox's saved rows.
  */
 export function isMaybeStale(view: Pick<SessionView, 'status'>, isReadFailed = false): boolean {

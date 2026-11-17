@@ -160,7 +160,7 @@ test('after the replies to two presses, the row handed off reads Still open, the
   expect(out).toMatch(/Calibrate eye tracking for the new lenses\s+Still open/)
   expect(out).toMatch(/Dismiss a glance with a pinch, or a flick of the wrist\?\s+✓ Explained/)
   expect(out).toMatch(/Run the gesture tests and send back the failures\s+✓ Run gesture tests/)
-  expect(out).toContain('Asks 7')
+  expect(out).toContain('Asks 11')
 })
 
 test('an opened handed-off row whose reply is on its way starts the status under its buttons with the running mark', () => {

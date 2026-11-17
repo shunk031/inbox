@@ -56,6 +56,7 @@ export type InboxView = {
     count: number
     questions: RowView[]
     tasks: RowView[]
+    legacyFindings: RowView[]
     closed: { questions: ClosedView<Closed>[]; tasks: ClosedView<Closed>[] }
     /** When the oldest press still under way on a row of the tab began, or null. A settled row there that was in place then waits for it. */
     pressOutSince: number | null
@@ -307,6 +308,9 @@ export function inboxView({
         steps: [],
       }),
     )
+  const legacyFindings = findingRows.filter(
+    r => r.finding && !r.finding.feedOwned && !r.finding.sourceManaged && r.finding.kind !== 'progress',
+  )
   const held = new Set([...questionRows, ...taskRows, ...findingRows].filter(r => r.state.is === 'held').map(r => r.id))
   const closed: ClosedView<Closed>[] = [...ledger.closed]
     .filter(d => !held.has(d.id))
@@ -343,9 +347,10 @@ export function inboxView({
   return {
     untrackedWork: ledger.untrackedWork ?? [],
     needsYou: {
-      count: counted.length,
+      count: counted.length + legacyFindings.filter(isWaitingRow).length,
       questions: questionRows,
       tasks: taskRows,
+      legacyFindings,
       closed: { questions: closed.filter(d => d.kind === 'question'), tasks: closed.filter(d => d.kind === 'task') },
       pressOutSince: placingFor.needsYou.pressOutSince,
     },

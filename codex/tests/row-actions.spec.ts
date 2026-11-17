@@ -228,7 +228,7 @@ test('the actual Codex tab replaces actions and shortcuts while replying, restor
       await pause(PRESS_GUARD_MS + 50)
       named(root, 'Done').click()
       await until(() => root.querySelector('.row.settled') !== null)
-      tabNamed('Finds').click()
+      tabNamed('PRs').click()
       tabNamed('Asks').click()
       assert.ok(root.querySelector('.row.settled') === null, 'a settled row is still drawn after a tab switch')
       await pause(POLL_MS + 100)

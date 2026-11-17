@@ -22,7 +22,7 @@ test('tools the engine refuses show an error banner on every tab, and the mod st
   expect(await isRedLead()).toBe(true)
   expect(await pane.find({ text: body })).toBeDefined()
   expect(await pane.find({ text: /Use Node or Python\?/ })).toBeDefined()
-  await pane.press({ key: 'tab-findings' })
+  await pane.press({ key: 'tab-key-needsYou' })
   expect(await isRedLead()).toBe(true)
   expect(await pane.find({ text: body })).toBeDefined()
 })

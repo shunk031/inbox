@@ -3,8 +3,9 @@ import type { Closed, Cursor, FoldKind, LastAction, PrView, RowNote, Tab } from 
 import type { SessionView } from './session-view'
 import { prRowWaits } from './pr-rows'
 import type { DrawnPr } from './pr-views'
-import { allRows, NEEDS_YOU_GROUPS, type ResultMark, type settledLabel } from './rows'
-import { drawnLists, listWaits, type RowWait } from './action-plan'
+import { allRows, NEEDS_YOU_GROUPS, type ModLook, type ResultMark, type RowView, type settledLabel } from './rows'
+import { drawnLists, firstWaiting, listWaits, rowsIn, type DrawnLists, type RowWait } from './action-plan'
+import type { Row } from './pane-context'
 import { type InboxView } from './view'
 import { SETTLED_MS } from './timing'
 import { type ShownTab } from './tabs'
@@ -15,10 +16,25 @@ import { paneState } from './mod-state'
 export type Shown = { tab: ShownTab; isDemo: boolean; since: number }
 export const NO_CURSOR: Cursor = { id: null, index: 0, openedAt: 0 }
 export const NO_SELECTION: Record<Tab, Cursor> = { needsYou: NO_CURSOR, findings: NO_CURSOR, prs: NO_CURSOR }
+
+/** Moves a row tab cursor saved by an older build from its retired Finds tab into Asks. */
+export function upgradeSelection(saved: Record<string, Cursor | undefined>): Record<Tab, Cursor> {
+  const { waiting, findings, ...rest } = saved
+  const cursors: Record<Tab, Cursor> = {
+    ...NO_SELECTION,
+    ...(findings ? { needsYou: findings } : {}),
+    ...(waiting ? { needsYou: waiting } : {}),
+    ...(rest as Partial<Record<Tab, Cursor>>),
+  }
+
+  return Object.fromEntries(
+    Object.entries(cursors).map(([t, c]) => [t, { ...c!, openedAt: c!.openedAt ?? 0 }]),
+  ) as Record<Tab, Cursor>
+}
 /** How many times the terminal pane redraws while Undo's fill drains, two for each cell of the fill. */
 export const UNDO_REDRAW_STEPS = 24
 export const RESIZE_SCROLL_MS = 100
-export const FOLD_KINDS: FoldKind[] = [...NEEDS_YOU_GROUPS.map(g => g.kind), 'issue', 'opportunity']
+export const FOLD_KINDS: FoldKind[] = [...NEEDS_YOU_GROUPS.map(g => g.kind), 'issue', 'opportunity', 'legacy']
 export type PendingUndoScroll = {
   key: string
   tab: Tab
@@ -94,23 +110,80 @@ export function selectedIndex(
   return cursor.openedAt === 0 && top !== null ? ids.indexOf(top) : -1
 }
 
-export function tabWaits(
+function tabWaits(
   tab: Tab,
   view: InboxView,
   prViews: PrView[],
   lastActions: Record<string, LastAction>,
+  includeLegacy = false,
 ): RowWait[] {
-  return tab === 'prs' ? prRowWaits(prViews, lastActions) : listWaits(view)[tab]
+  return tab === 'prs' ? prRowWaits(prViews, lastActions) : listWaits(view, includeLegacy)[tab]
 }
 
-export function tabRowIds(view: InboxView, prViews: PrView[]): Record<Tab, string[]> {
+function tabRowIds(view: InboxView, prViews: PrView[], includeLegacy = false): Record<Tab, string[]> {
   const listed = drawnLists(
     view,
     () => false,
     r => r.id,
+    includeLegacy,
   ).byTab
 
   return { ...listed, prs: prRowWaits(prViews, {}).map(r => r.id) }
+}
+
+function showsLegacy(unfolded: FoldKind[]) {
+  return paneState.paneLook === 'terminal' && unfolded.includes('legacy')
+}
+
+export function paneTabWaits(
+  tab: Tab,
+  view: InboxView,
+  prViews: PrView[],
+  lastActions: Record<string, LastAction>,
+  unfolded: FoldKind[],
+): RowWait[] {
+  return tabWaits(tab, view, prViews, lastActions, showsLegacy(unfolded))
+}
+
+export function firstPaneWait(
+  tab: Tab,
+  view: InboxView,
+  prViews: PrView[],
+  lastActions: Record<string, LastAction>,
+  unfolded: FoldKind[],
+): string | null {
+  return firstWaiting(paneTabWaits(tab, view, prViews, lastActions, unfolded))
+}
+
+export function paneTabRowIds(view: InboxView, prViews: PrView[], unfolded: FoldKind[]): Record<Tab, string[]> {
+  return tabRowIds(view, prViews, showsLegacy(unfolded))
+}
+
+export function paneListRows(
+  view: InboxView,
+  isListShown: boolean,
+  look: ModLook,
+  unfolded: FoldKind[],
+  itemRow: (row: RowView) => Row,
+  findingRow: (row: RowView) => Row,
+) {
+  const lists = drawnLists(
+    view,
+    () => true,
+    row => (!isListShown ? null : row.item ? itemRow(row) : row.finding ? findingRow(row) : null),
+    look === 'terminal' && unfolded.includes('legacy'),
+  )
+  const needsYouGroups = NEEDS_YOU_GROUPS.map(group => ({
+    ...group,
+    entries: lists[group.list],
+    rows: rowsIn(lists[group.list]),
+  }))
+
+  return { lists, needsYouGroups, findingEntries: lists.findings }
+}
+
+export function paneRowsByTab<R>(lists: DrawnLists<R>, prRows: R[]): Record<Tab, R[]> {
+  return { needsYou: lists.byTab.needsYou, findings: lists.byTab.findings, prs: prRows }
 }
 
 export type ClosedLine = Pick<Closed, 'id' | 'ask' | 'at' | 'how'> & {

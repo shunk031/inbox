@@ -3,7 +3,7 @@ import { TAB_HEIGHT, tabLines, type TabsProps } from '../hooks/tabs-client'
 import { cellWidth } from '../hooks/text'
 import { shownTabs, tabBadge } from '../hooks/tabs'
 import { w, world } from './hooks-world'
-import { PANE, seedTasks } from './hooks-helpers'
+import { PANE, SAVED_SESSION, seedTasks } from './hooks-helpers'
 
 test('Timeline draws its open-task count even when it is zero', () => {
   expect(tabBadge('timeline', { needsYou: 0, findings: 0, prs: 0, timeline: 0 })).toBe('0')
@@ -36,20 +36,28 @@ test('/inbox opens on the tab that has rows when the tab it would show is empty'
   const clock = mock.clock(on, { now: 1_000_000 })
   world($, on, [])
   w.paneState = { isShown: false, isFocused: false }
+  w.stored.set(
+    's:session-1',
+    JSON.stringify({
+      ...SAVED_SESSION,
+      ledger: {
+        ...SAVED_SESSION.ledger,
+        items: [],
+        findings: [
+          { id: 'f1', kind: 'issue', title: 'No lint script', detail: 'Only tests run.', path: null, at: 900_000 },
+        ],
+        nextId: 2,
+      },
+    }),
+  )
 
   await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
-  await $.tool.call({
-    tool: 'mcp__inbox__record',
-    kind: 'finding',
-    finding_kind: 'issue',
-    title: 'No lint script',
-    detail: 'Only tests run.',
-  })
   await clock.settle()
   w.paneState = { isShown: true, isFocused: true }
   await $.command.run({ command: 'inbox', args: '' } as never)
   const pane = await $.ui.mount(PANE)
-  expect(await pane.find({ key: 'address-f1' })).toBeDefined()
+  expect((await pane.find({ key: 'fold-legacy' }))?.props.label).toBe('▸ Legacy findings · 1')
+  expect(await pane.find({ text: /No lint script/ })).toBeUndefined()
 })
 
 test('on a next build, at 20 desktop columns the tabs show their symbols with their counts, at 69 their words, and the Status page draws there', async ($, on) => {
@@ -67,22 +75,10 @@ test('on a next build, at 20 desktop columns the tabs show their symbols with th
   ])
   await $.turn.complete({ answer: 'Plan ready.', durationMs: 5, isAborted: false, turnId: 't1', reason: 'answer' })
   await clock.settle()
-  await $.tool.call({
-    tool: 'mcp__inbox__record',
-    kind: 'finding',
-    finding_kind: 'issue',
-    title: 'No lint script',
-    detail: 'Only tests run.',
-  })
-  await clock.settle()
   const pane = await $.ui.mount({ ...PANE, surface: 'desktop', props: { ...PANE.props, bodyColumns: 20 } })
   const tabBar = async () => (await pane.find({ key: 'tabs' }))?.props.props as TabsProps
   expect((await tabBar()).tabs.map(t => [t.id, t.label, t.badge])).toEqual(
-    shownTabs(true, true).map(t => [
-      t.id,
-      t.symbol,
-      t.id === 'needsYou' ? '2' : t.id === 'findings' ? '1' : t.id === 'timeline' ? '1' : null,
-    ]),
+    shownTabs(true, true).map(t => [t.id, t.symbol, t.id === 'needsYou' ? '2' : t.id === 'timeline' ? '1' : null]),
   )
   await pane.redraw({ ...PANE.props, bodyColumns: 69 })
   expect((await tabBar()).tabs.map(t => t.label)).toEqual(shownTabs(true, true).map(t => t.label))
@@ -105,7 +101,7 @@ test('on a next build, at 20 desktop columns the tabs show their symbols with th
 for (const isNextBuild of [false, true])
   test(`on a ${isNextBuild ? 'next' : 'release'} build, the terminal tabs show their words down to the narrowest pane they fit, docked and inline, and their symbols below it`, async ($, on) => {
     const tabs = shownTabs(isNextBuild, true)
-    expect(['✅', '👩‍💻', ...shownTabs(true, true).map(t => t.symbol)].map(cellWidth)).toEqual([2, 2, 2, 2, 2, 1, 2])
+    expect(['✅', '👩‍💻', ...shownTabs(true, true).map(t => t.symbol)].map(cellWidth)).toEqual([2, 2, 2, 2, 1, 2])
     mock.clock(on, { now: 1_000_000 })
     world($, on, [])
     w.files = isNextBuild ? ['/.next-build'] : []

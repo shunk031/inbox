@@ -122,7 +122,7 @@ test('after a failed update, the next reply catches up over the whole conversati
   on('model.fork', () => ({
     value: {
       isAnswered: true,
-      text: 'CLOSED: i1 | Node\nFIXED: f3 | fixed\nNEW: do | - | Review the welcome copy | - | -',
+      text: 'CLOSED: i1 | Node\nNEW: do | - | Review the welcome copy | - | -',
       usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
     },
   }))
@@ -131,14 +131,6 @@ test('after a failed update, the next reply catches up over the whole conversati
   await $.prompt.submit({ text: 'add a greeting cli', wait: false, origin: { kind: 'composer' } })
   await $.turn.complete({ answer: 'Plan ready.', durationMs: 5, isAborted: false, turnId: 't1', reason: 'answer' })
   await clock.settle()
-  await $.tool.call({
-    tool: 'mcp__inbox__record',
-    kind: 'finding',
-    finding_kind: 'issue',
-    title: 'README is stale',
-    detail: 'It names the old command.',
-  })
-
   const pane = await $.ui.mount(PANE)
   expect(await pane.find({ text: /Use Node or Python\?/ })).toBeDefined()
   expect(await pane.find({ text: 'now' })).toBeDefined()
@@ -175,11 +167,7 @@ test('after a failed update, the next reply catches up over the whole conversati
   expect(await pane.find({ text: /Review the welcome copy/ })).toBeDefined()
   expect(await pane.find({ text: /couldn't update/ })).toBeUndefined()
   await clock.advance(1)
-  await pane.press({ key: 'tab-findings' })
-  await clock.settle()
-  expect(await pane.find({ key: 'row-f3' })).toBeUndefined()
-  expect(await pane.find({ key: 'settled-f3' })).toBeUndefined()
-  expect((await pane.find({ key: 'fold-issue' }))?.props.label).toBe('▸ 1 closed')
+  expect(await pane.find({ text: /Review the welcome copy/ })).toBeDefined()
 })
 
 test('a reload that cuts off the end-of-turn hook catches up on load, and a subagent’s turn leaves nothing to catch up', async ($, on) => {

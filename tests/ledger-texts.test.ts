@@ -182,7 +182,7 @@ describe('record link descriptions', () => {
     const record = agentTools(CLAUDE_CODE).find(t => t.name === 'record')!
     const properties = record.inputSchema.properties as Record<string, { description: string }>
 
-    for (const key of ['ask', 'title']) {
+    for (const key of ['ask']) {
       expect(properties[key]!.description).toContain('Links as [label](https://…);')
       expect(properties[key]!.description).toContain('a link counts as its label')
     }
@@ -190,15 +190,13 @@ describe('record link descriptions', () => {
 
     expect(properties.ask!.description).toContain('at most 12 words')
     expect(properties.ask!.description).toContain('a link counts as its label')
-    expect(properties.title!.description).toContain('at most 12 words')
-    expect(properties.title!.description).toContain('a link counts as its label')
     expect(properties.options!.description).toContain(
       'A link here shows only its label; put the page behind an option in detail or steps.',
     )
     expect(properties.options!.description).not.toContain('[label](https://…)')
     expect(properties.steps!.description).toContain('a [label](https://…) link')
 
-    for (const key of ['ask', 'detail', 'title', 'steps']) {
+    for (const key of ['ask', 'detail', 'steps']) {
       const description = properties[key]!.description
       expect(description).toContain('[label](https://…)')
       expect(description).not.toContain('clickable where the look allows')

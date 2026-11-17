@@ -24,7 +24,7 @@ export function probeTools(host: Host, tools: CaseTools | null | undefined) {
 
   const offered = agentTools(host).map(t => ({
     ...t,
-    ...(t.name === 'record' && { description: v0_3RecordDescription(host) }),
+    ...(t.name === 'record' && { description: v0_3RecordDescription({ ...host, findingsIn: 'the Finds tab' }) }),
     inputSchema: only(t.inputSchema, fields[t.name]),
   }))
 
@@ -32,7 +32,7 @@ export function probeTools(host: Host, tools: CaseTools | null | undefined) {
 }
 
 /** The record tool's description in 0.3.0, from `recordDescription` in v0.3.0's `hooks/tools.ts`. */
-function v0_3RecordDescription(host: Host): string {
+function v0_3RecordDescription(host: Host & { findingsIn: string }): string {
   return `Record something the user must see in ${host.surface}, and still say it in your reply. Use it in the turn you raise it, once for each thing.
 - question: a decision, approval or piece of information only the user has, which you need before you go on. Give options, and rec when you recommend one. This includes an act you hold until they say so, such as "say when you want those committed".
 - task: a step only the user can do, such as signing in or running a command with their password. Put the commands, files and links in steps. A step your own tools can take is not a task: take it, or ask for their OK as a question when it changes something other people see.

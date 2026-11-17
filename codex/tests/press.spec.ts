@@ -4,7 +4,7 @@ import { test } from 'node:test'
 import { withArrival } from '../../hooks/press-reducer'
 import { applyPrPress, withFinishedPrsSettled } from '../../hooks/pr-tab'
 import { demoView } from '../../hooks/demo'
-import { recordClose, recordItem } from '../../hooks/tools'
+import { recordClose } from '../../hooks/tools'
 import { feedbackText } from '../../hooks/feedback'
 import { firstWaiting, listWaits } from '../../hooks/action-plan'
 import { QUEUED_AFTER_MS } from '../../hooks/timing'
@@ -17,8 +17,7 @@ import type { PrView } from '../../types'
 import { SETTLE_WINDOW_MS } from '../src/settle'
 import type { SessionState } from '../src/state'
 import { CODEX } from '../src/texts'
-import { after, pressed, released, SHOWN, withItems } from './press-fixtures'
-import { TOOL_FIELDS } from '../../hooks/tool-schemas'
+import { after, pressed, released, SHOWN, withItems, withLegacyFinding } from './press-fixtures'
 
 test('a fetch that finds tab PRs merged settles each but the branch’s own as Merged, and Undo keeps one on the tab', () => {
   const d = demoView(100, 'Codex')
@@ -142,17 +141,7 @@ test('Clear merged and closed dismisses every merged and closed PR but the branc
 })
 
 test('Fix hands a finding off and settles it as the choice made, each press with no ✓ until its message arrives, then lists it in the Closed fold though an applied turn leaves it open; File issue folds it until the reply, which leaves it Still open or closes it with the issue; Discuss keeps it open; a close moves it to Closed', () => {
-  const w = withItems()
-  const s = {
-    ...w,
-    ledger: recordItem(
-      CODEX,
-      w.ledger,
-      { kind: 'finding', finding_kind: 'issue', title: 'No lint script', detail: 'Only tests run.' },
-      10,
-      TOOL_FIELDS,
-    ).ledger,
-  }
+  const s = withLegacyFinding(withItems())
   const r = pressed(s, { action: 'address', id: 'f3' })
   assert.ok(!('stale' in r))
   assert.deepEqual(r.effects, [])
@@ -343,16 +332,7 @@ test('Dismiss settles a row in place with Undo, and Undo puts it back open where
     },
   }
   assert.ok('stale' in pressed(expired, { action: 'undo', id: 'i1' }))
-  const withFinding = {
-    ...s,
-    ledger: recordItem(
-      CODEX,
-      s.ledger,
-      { kind: 'finding', finding_kind: 'issue', title: 'No lint script', detail: 'Only tests run.' },
-      10,
-      TOOL_FIELDS,
-    ).ledger,
-  }
+  const withFinding = withLegacyFinding(s)
   const restored = after(after(withFinding, { action: 'dismiss', id: 'f3' }), { action: 'undo', id: 'f3' })
   assert.deepEqual(
     viewOf(restored, 70).findings.rows.map(r => [r.id, r.state.is]),

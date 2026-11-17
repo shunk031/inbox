@@ -127,7 +127,7 @@ The PRs tab needs the GitHub CLI, `gh`, signed in.
 ## Using it
 
 Type `/inbox` in Claude Code or omp, or open the Inbox tab in the ChatGPT app. The
-inbox has four tabs: Asks, Finds, Timeline and PRs. A build that follows the `next`
+inbox has three tabs: Asks, Timeline and PRs. A build that follows the `next`
 branch also shows a Status tab before them: what the session is focused on now, each part
 of the work with how long ago it changed, the subagents and other work running
 under each part, and a line where you last looked. You can set a goal there, and
@@ -171,15 +171,10 @@ buttons for its steps, such as copying a command or opening a file. In Claude
 Code, running the command with `!` closes the task once it succeeds. Dismiss
 drops a task you won't do, without a message to the agent.
 
-### Finds
-
-Bugs, risks and ideas the agent noticed outside the task it's working on. The
-agent records them and carries on with its task, and you decide later which
-ones to act on. Fix on an issue, or Do it on an idea, hands it to the agent.
-File issue has the agent file it in your issue tracker, such as Linear or
-GitHub, or link the issue that already covers it. Reply sends your own words
-about it. Explain has the agent say why it matters and what fixing it would
-involve, without acting. Discuss talks it through, and Dismiss drops it.
+Older saved issues and opportunities appear in a collapsed `Legacy findings · N`
+section under Asks in the Claude Code terminal pane. Expand it to discuss or close
+each one. Other looks keep them in the agent's `inbox:` text, where the agent can
+move one into a task or question, or close it.
 
 ### PRs
 
@@ -199,7 +194,7 @@ a ranked PR changes, the tab says so and offers Rank again.
 ### It keeps itself up to date
 
 When you answer a question in your own message, a task gets done, or the
-agent fixes a finding, the inbox closes the item. Closed items fold away under
+agent fixes a legacy finding, the inbox closes the item. Closed items fold away under
 the open ones, each with how it ended. One you dismissed keeps Reopen there for
 the rest of the session.
 
@@ -226,8 +221,8 @@ Help lists the keys and what each mark means.
   between rows and between a row's buttons, and enter presses the focused
   button. Tab, or the number keys, switch tabs.
 
-In Claude Code, a line above your prompt counts what needs you and the
-findings waiting, with a button that opens the panel. When Claude stops on an
+In Claude Code, a line above your prompt counts what needs you, with a button
+that opens the panel. When Claude stops on an
 error, a second line says why, with a Resume button after an API error. The
 ChatGPT app has no such line. omp has a line with the same counts. It says
 `/inbox` opens the panel, and it has no stop line.
@@ -238,7 +233,7 @@ sidebar, as pane tokens:
 | Token | Holds |
 |---|---|
 | `inbox` | What waits on you, in one line |
-| `inbox-needs-you`, `inbox-findings`, `inbox-prs` | The tab's count alone, such as `2`. `inbox-needs-you` is the Asks tab's, and `inbox-findings` the Finds tab's. Empty when the tab has nothing waiting. |
+| `inbox-needs-you`, `inbox-prs` | The tab's count alone, such as `2`. `inbox-needs-you` is the Asks tab's. Empty when the tab has nothing waiting. |
 | `inbox-stop` | Why the agent stopped. The count tokens stay empty until the stop clears, so the sidebar has room for it. |
 | `inbox-focus` | What the session is focused on, from its Status. A session that started this one as a Herdr delegate shows it as the delegate's row. No sidebar row needs it. |
 
@@ -249,7 +244,6 @@ To tell the counts apart by each tab's color, add this row to `rows` under
 [
   { token = "$inbox-stop", fg = "#ffa3b0" },
   { token = "$inbox-needs-you", fg = "#ffc107" },
-  { token = "$inbox-findings", fg = "#cab0ff" },
   { token = "$inbox-prs", fg = "#8cc8c0" },
 ],
 ```

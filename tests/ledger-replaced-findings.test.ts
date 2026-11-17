@@ -2,9 +2,10 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import { EMPTY, upgradeLedger } from '../hooks/ledger'
 import { closeItem, closedState, reopenFinding } from '../hooks/ledger-close'
-import { addAgentItem, addFinding, applyUpdate } from '../hooks/ledger-update'
+import { addAgentItem, applyUpdate } from '../hooks/ledger-update'
 import { parseReply } from '../hooks/reply-parse'
 import { applyPress } from '../hooks/press-reducer'
+import { addLegacyFinding } from './seed-findings'
 
 describe('a finding replaced by a question', () => {
   const finding = (title: string, detail = 'd') => ({
@@ -23,21 +24,21 @@ describe('a finding replaced by a question', () => {
     compareInBackground: true,
   }
   const asked = () => {
-    const open = addFinding(EMPTY, finding('Dismissed findings come back when recorded again')).ledger
+    const open = addLegacyFinding(EMPTY, finding('Dismissed findings come back when recorded again')).ledger
     const reply =
       'NEW: decide | - | Fix dismissed findings coming back when recorded again? | Yes / Not now | -\nASKED: f1 | new 1'
     return applyUpdate(open, parseReply(reply)!, 6, 1)
   }
 
   test('an ASKED line for an unrelated item leaves the finding open', () => {
-    const open = addFinding(EMPTY, finding('Tabs unreadable in light theme')).ledger
+    const open = addLegacyFinding(EMPTY, finding('Tabs unreadable in light theme')).ledger
     const reply = 'NEW: decide | - | Merge the release branch? | Yes / No | -\nASKED: f1 | new 1'
     const updated = applyUpdate(open, parseReply(reply)!, 6, 1)
     expect([updated.findings.map(f => f.id), updated.closedFindings]).toEqual([['f1'], []])
   })
 
   test('an item labelled with the finding id, or asking from its detail, or naming its PR, takes its place', () => {
-    const open = addFinding(
+    const open = addLegacyFinding(
       EMPTY,
       finding('Tabs unreadable', 'The Findings tab text vanishes in the light theme'),
     ).ledger
@@ -47,7 +48,7 @@ describe('a finding replaced by a question', () => {
     ]
     for (const reply of replies)
       expect(applyUpdate(open, parseReply(`${reply}\nASKED: f1 | new 1`)!, 6, 1).findings).toEqual([])
-    const withPr = addFinding(EMPTY, finding('Review thread open on PR #42')).ledger
+    const withPr = addLegacyFinding(EMPTY, finding('Review thread open on PR #42')).ledger
     const named = addAgentItem(
       withPr,
       { kind: 'question', ask: 'Reply to the reviewer on #42?', options: [], rec: null, helps: [] },
@@ -63,7 +64,7 @@ describe('a finding replaced by a question', () => {
   })
 
   test('an unrelated question sharing common words with a finding does not replace it', () => {
-    const open = addFinding(
+    const open = addLegacyFinding(
       EMPTY,
       finding('Row flickers when idle', 'The inbox tab redraws the row on every tick'),
     ).ledger

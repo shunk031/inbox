@@ -201,13 +201,13 @@ test('the PRs tab shows a linked PR only when the viewer wrote it and a fetch fo
   expect(await pane.find({ text: /Mine merged/ })).toBeUndefined()
 
   states['12'] = 'MERGED'
-  await pane.press({ key: 'tab-needsYou' })
+  await pane.press({ key: 'tab-key-needsYou' })
   await pane.press({ key: 'tab-prs' })
   await clock.settle()
 
   expect(await pane.find({ text: /Mine open/ })).toBeDefined()
   expect(await pane.find({ text: /Merged/ })).toBeDefined()
-  await pane.press({ key: 'tab-needsYou' })
+  await pane.press({ key: 'tab-key-needsYou' })
   expect((await pane.find({ key: 'help-i1-0-key' }))?.props.label).toBe('Open PR #20')
 })
 

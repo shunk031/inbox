@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { addLegacyFinding } from '../../tests/seed-findings'
 
 import { applyPress } from '../../hooks/press-reducer'
 import type { PressResult } from '../../hooks/press-reducer'
@@ -48,6 +49,19 @@ export function withItems(): SessionState {
       ],
     },
     presence: { ...s.presence, turnsStarted: 1, turnsApplied: 1 },
+  }
+}
+
+export function withLegacyFinding(s: SessionState, at = 10): SessionState {
+  return {
+    ...s,
+    ledger: addLegacyFinding(s.ledger, {
+      kind: 'issue',
+      title: 'No lint script',
+      detail: 'Only tests run.',
+      path: null,
+      at,
+    }).ledger,
   }
 }
 

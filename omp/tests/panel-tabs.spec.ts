@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 
-import { addFinding } from '../../hooks/ledger-update'
+import { addLegacyFinding } from '../../tests/seed-findings'
 import { CLOSED_SHOWN, earlierLabel, foldLabel, settledLabel, shortAgo } from '../../hooks/rows'
 import { SETTLED_MS, NO_HOLDS } from '../../hooks/timing'
 import { shownTabs } from '../../hooks/tabs'
@@ -16,10 +16,10 @@ import { drawn, ESC, firstQuestion, keys, NOW, onPage, screenOf, strip, style, t
 
 test('the selected tab draws inverse and the others draw their counts', () => {
   const screen = screenOf()
-  const bar = drawn(screen, keys(screen, INITIAL_UI, '2'))[1]!
-  expect(bar).toContain(`${ESC}7m${ESC}1m [2] Finds ${screen.view.findings.count} `)
-  expect(strip(bar)).toContain(`[1] Asks ${screen.view.needsYou.count}`)
-  expect(strip(bar)).toContain(`[4] PRs ${screen.view.prs.count}`)
+  const bar = drawn(screen, keys(screen, INITIAL_UI, '1'))[1]!
+  expect(bar).toContain(`${ESC}7m${ESC}1m [1] Asks ${screen.view.needsYou.count} `)
+  expect(strip(bar)).toContain(`[3] PRs ${screen.view.prs.count}`)
+  expect(strip(bar)).not.toContain('Finds')
   expect(strip(bar)).toContain('esc to close')
 })
 
@@ -27,9 +27,9 @@ test('the Timeline tab is highlighted while the Timeline page shows', () => {
   const screen = screenOf({ isNextBuild: true })
   const bar = drawn(screen, { ...INITIAL_UI, tab: 'timeline' })[1]!
 
-  expect(bar).toContain(`${ESC}7m${ESC}1m [4] Timeline ${screen.view.timeline.openTasks}`)
+  expect(bar).toContain(`${ESC}7m${ESC}1m [3] Timeline ${screen.view.timeline.openTasks}`)
   expect(strip(bar)).toContain(`Timeline ${screen.view.timeline.openTasks}`)
-  expect(bar).not.toContain(`${ESC}7m${ESC}1m [3] Finds`)
+  expect(bar).not.toContain('Finds')
 })
 
 test('an empty Asks tab explains itself', () => {
@@ -112,20 +112,20 @@ test('Closed lists every record and the group fold folds it back; j/k and arrows
   expect(text(screen, reopened, width)).toContain(closed[0]!.ask.slice(0, 10))
 })
 
-test('a finding closed as list full appears in the Finds Closed fold', () => {
+test('legacy findings do not draw in the omp Asks panel', () => {
   const state = emptyState('list-full')
   const finding = { kind: 'issue' as const, title: '', detail: 'detail', path: null, at: 1 }
   const ledger = Array.from({ length: 31 }, (_, n) => n).reduce(
-    (value, n) => addFinding(value, { ...finding, title: `Problem ${n + 1}`, at: n + 1 }).ledger,
+    (value, n) => addLegacyFinding(value, { ...finding, title: `Problem ${n + 1}`, at: n + 1 }).ledger,
     state.ledger,
   )
   const view = sessionView({ ...state, ledger }, NOW, SETTLED_MS, NO_HOLDS)
   const screen = screenOf({ view })
-  const ui: PanelUi = { ...INITIAL_UI, tab: 'findings', unfolded: ['issue'], selectedId: 'fold issue' }
+  const ui: PanelUi = INITIAL_UI
   const shown = text(screen, ui)
 
-  expect(shown).toContain('Problem 1')
-  expect(shown).toContain('List full')
+  expect(shown).not.toContain('Problem 1')
+  expect(shown).not.toContain('List full')
 })
 
 test('a closed row whose Done message was refused offers Undo, which presses undo for its row', () => {
@@ -143,19 +143,24 @@ const findingsOnly = () => {
   const s = demoState(NOW)
 
   return screenOf({
-    view: sessionView({ ...s, ledger: { ...s.ledger, items: [], closed: [] } }, NOW, SETTLED_MS, NO_HOLDS),
+    view: sessionView(
+      { ...s, ledger: { ...s.ledger, items: [], closed: [], prs: [] }, prViews: { ...s.prViews, views: {} } },
+      NOW,
+      SETTLED_MS,
+      NO_HOLDS,
+    ),
   })
 }
 
-test('a panel that opens on an empty Asks moves to the first tab with open rows', () => {
-  expect(followRows(findingsOnly(), INITIAL_UI, {}, true, NOW).ui.tab).toBe('findings')
+test('a panel that opens on an empty Asks stays there when only legacy findings are open', () => {
+  expect(followRows(findingsOnly(), INITIAL_UI, {}, true, NOW).ui.tab).toBe('needsYou')
 })
 
 test('rows that arrive while Asks shows only its empty text move the panel to their tab', () => {
   const empty = screenOf({ view: sessionView(emptyState('s1'), NOW, SETTLED_MS, NO_HOLDS) })
   const opened = followRows(empty, INITIAL_UI, {}, true, NOW)
   expect(opened.ui.tab).toBe('needsYou')
-  expect(followRows(findingsOnly(), opened.ui, opened.seen, false, NOW).ui.tab).toBe('findings')
+  expect(followRows(findingsOnly(), opened.ui, opened.seen, false, NOW).ui.tab).toBe('needsYou')
 })
 
 test('a PR that arrives while Asks shows only its empty text moves the panel to PRs', () => {

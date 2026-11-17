@@ -1,6 +1,6 @@
 import { isQuestionBack, matchOpen, recommendedOption } from './ask-match'
 import { closeByAgent, reopenItem } from './ledger-close'
-import { addAgentItem, addFinding, isPersonsAnswer } from './ledger-update'
+import { addAgentItem, isPersonsAnswer } from './ledger-update'
 import { candidateItem, stepHelp } from './reply-parse'
 import { cutInline } from './inline'
 import type { Host } from './model-text'
@@ -19,6 +19,8 @@ const MAX_ITEM_DETAIL = 1200
 const AGENT_TOOLS = ['record', 'close', 'order_prs', 'tasks'] as const
 
 export type AgentTool = (typeof AGENT_TOOLS)[number]
+export const RETIRED_FINDING_ANSWER =
+  'Not recorded: findings are retired. Add it as a task with `tasks` if it is work to track, or record a question or task if the person must decide or act.'
 
 /** Shared tool definitions registered and answered by every host. */
 export function agentTools(
@@ -53,6 +55,7 @@ export function toolAnswer(
   const goalId = ledger.overview?.goal ? goalTaskId(ledger.overview.goal) : undefined
   switch (tool) {
     case 'record':
+      if (input.kind === 'finding') return unchanged(ledger, RETIRED_FINDING_ANSWER)
       return (
         recordAfterCompare(host, ledger, input, now, presses, fields) ?? recordItem(host, ledger, input, now, fields)
       )
@@ -70,8 +73,6 @@ function cut(value: unknown, max: number): string {
 }
 
 const MAX_ASK = 200
-const MAX_FINDING_TITLE = 120
-const MAX_FINDING_DETAIL = 600
 const MAX_OPTION = 60
 const MAX_OPTIONS = 8
 const MAX_STEPS = 3
@@ -112,9 +113,9 @@ export function recordItem(
   now: number,
   fields: ToolFields = V0_3_TOOL_FIELDS,
 ): ToolAnswer {
-  if (input.kind === 'finding') return recordFinding(host, ledger, input, now)
+  if (input.kind === 'finding') return unchanged(ledger, RETIRED_FINDING_ANSWER)
   if (input.kind !== 'question' && input.kind !== 'task')
-    return unchanged(ledger, 'Not recorded: kind must be question, task or finding.')
+    return unchanged(ledger, 'Not recorded: kind must be question or task.')
   const ask = cutInline(typeof input.ask === 'string' ? input.ask.trim() : '', MAX_ASK)
   if (ask === '') return unchanged(ledger, `Not recorded: a ${input.kind} needs an ask.`)
   const options = input.kind === 'question' ? list(input.options, MAX_OPTIONS, MAX_OPTION, true) : []
@@ -139,12 +140,13 @@ export function recordItem(
       : ''
 
   const isDesignChoice = input.kind === 'question' && input.design_choice === true
-  const detail = cutInline(typeof input.detail === 'string' ? input.detail.trim() : '', MAX_ITEM_DETAIL)
+  const maxDetail = MAX_ITEM_DETAIL
+  const detail = cutInline(typeof input.detail === 'string' ? input.detail.trim() : '', maxDetail)
   const linkSteps = helps.flatMap(h => (h.kind === 'link' ? [h.url] : []))
   const linkProblem = recordLinksAnswer(
     [
       { field: 'ask', text: raw(input.ask), max: MAX_ASK },
-      { field: 'detail', text: raw(input.detail), max: MAX_ITEM_DETAIL },
+      { field: 'detail', text: raw(input.detail), max: maxDetail },
       ...rawList(input.kind === 'question' ? input.options : [])
         .slice(0, MAX_OPTIONS)
         .map(text => ({
@@ -233,68 +235,6 @@ export function recordItem(
       (r.expired ? ` The list was full, so the oldest item closed: ${r.expired.ask}.` : '') +
       documentNote,
     personLine: `${input.kind === 'question' ? 'Question' : 'Task'}: ${ask}`,
-  }
-}
-
-function recordFinding(host: Host, ledger: Ledger, input: Record<string, unknown>, now: number): ToolAnswer {
-  const title = cutInline(raw(input.title), MAX_FINDING_TITLE)
-  const detail = cutInline(raw(input.detail), MAX_FINDING_DETAIL)
-  if (title === '' || detail === '') return unchanged(ledger, 'Not recorded: a finding needs a title and a detail.')
-  const linkProblem = recordLinksAnswer([
-    { field: 'title', text: raw(input.title), max: MAX_FINDING_TITLE },
-    { field: 'detail', text: raw(input.detail), max: MAX_FINDING_DETAIL },
-  ])
-  if (linkProblem) return unchanged(ledger, linkProblem)
-  const path = input.path === undefined ? undefined : cut(input.path, 300) || null
-  const document = cut(input.document, 4096) || undefined
-  const documentPreview = document ? cut(input.document_preview, 180) || undefined : undefined
-  const documentError = cut(input.document_error, 160)
-  const documentNote = documentError ? ` The Markdown report was not attached: ${documentError}` : ''
-  const kind = input.finding_kind === 'opportunity' ? 'opportunity' : 'issue'
-  const r = addFinding(ledger, {
-    kind,
-    title,
-    detail,
-    ...(path === undefined ? {} : { path }),
-    document,
-    documentPreview,
-    at: now,
-  })
-
-  if (r.dismissed)
-    return unchanged(
-      ledger,
-      `Not recorded: it matches closed item ${r.dismissed.id} (the user already closed it: ${r.dismissed.outcome}); nothing changed. Record it again only if the user brings it up.${documentNote}`,
-    )
-  if (!r.isAdded) {
-    if (r.matched === 'finding') {
-      const before = ledger.findings.find(f => f.id === r.id)!
-      const matched = r.ledger.findings.find(f => f.id === r.id)!
-      const changed = before !== matched
-      const sameText =
-        !changed &&
-        before.title === title &&
-        before.detail === detail &&
-        (path === undefined || before.path === path) &&
-        before.kind === kind &&
-        (document === undefined || (before.document === document && before.documentPreview === documentPreview))
-      return unchanged(r.ledger, `${alreadyOpenAnswer(r.id, [], sameText, changed)}${documentNote}`)
-    }
-    return unchanged(
-      r.ledger,
-      r.matched === 'item'
-        ? `Already open as ${r.id} as a matching ask; nothing changed.${documentNote}`
-        : `Not recorded: already open as ${r.id} in the active work source; nothing changed.${documentNote}`,
-    )
-  }
-
-  return {
-    ledger: r.ledger,
-    result:
-      `Recorded. The user sees it in ${host.findingsIn}.` +
-      (r.expired ? ` The list was full, so the oldest finding closed: ${r.expired.title}.` : '') +
-      documentNote,
-    personLine: `${kind === 'opportunity' ? 'Opportunity' : 'Issue'}: ${title}`,
   }
 }
 

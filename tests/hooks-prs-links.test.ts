@@ -211,7 +211,7 @@ test(
     expect(await pane.find({ text: /^\u2007·\s✓\sOpened\sthe\scomment$/ })).toBeDefined()
     expect(await pane.find({ text: /^ 1$/ })).toBeDefined()
     hasReply = true
-    await pane.press({ key: 'tab-findings' })
+    await pane.press({ key: 'tab-key-needsYou' })
     await pane.press({ key: 'tab-prs' })
     await clock.settle()
     expect(await pane.find({ text: /Still unquoted/ })).toBeDefined()

@@ -25,7 +25,7 @@ Part of [the look map](../looks.md#files).
 | `omp/src/texts.ts` | omp host. The `OMP` host names the shared guidance uses. |
 | `omp/src/panel.ts` | omp adapter. The panel's ui state, the screen it draws, and the calls the controller makes: `render`, `drawPanel`, the band, and whether the view animates. It and the `panel-*.ts` files import no omp package. |
 | `omp/src/panel-lines.ts` | omp adapter. The `Line` and `Entry` types, and the lines for rows, buttons and Closed groups, including document previews. |
-| `omp/src/panel-entries.ts` | omp adapter. Each tab's entries: the Asks and Finds groups, the stop line, the PRs tab, the Status page, the Timeline tree and Help. |
+| `omp/src/panel-entries.ts` | omp adapter. Each tab's entries: the Asks groups, the stop line, the PRs tab, the Status page, the Timeline tree and Help. |
 | `omp/src/panel-keys.ts` | omp adapter. Selection, button focus and `handleKey`, which maps each key to a ui change or a press. Up and down scroll a tall selected detail; j and k move between rows or visible Timeline tasks, and h and l fold or unfold a Timeline branch. |
 | `omp/src/panel-text.ts` | omp adapter. Measures, cuts and wraps text that holds ANSI and OSC 8 styles, preserving linked labels and paragraph breaks. |
 | `omp/src/panel-draw.ts` | omp adapter. Draws a line with its marks, linked detail and buttons, and a banner in its box. |
