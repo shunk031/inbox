@@ -182,6 +182,10 @@ export const CODEX_SUPPORT: ClientSupport['support'] = {
     reason:
       'The Codex MCP server serves every chat, so it cannot safely enable a file projection for only the meta root chat.',
   },
+  'task-tree-export': {
+    kind: 'unsupported',
+    reason: 'The external Stop gate reads the Claude Code meta session, so Codex does not export task trees.',
+  },
   'task-status-mismatch': { kind: 'full' },
   timeline: { kind: 'full' },
   'agents-tab': { kind: 'different', reason: 'Agents is not drawn in this look yet.' },

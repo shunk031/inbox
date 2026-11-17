@@ -8142,6 +8142,18 @@ function withoutStaleResult(last, now) {
 function withoutStalePending(lastActions, now) {
   return Object.fromEntries(Object.entries(lastActions).map(([id, last]) => [id, withoutStaleResult(last, now)]));
 }
+function taskTimelineWarnings(s, tree, now) {
+  const ownerFacts = {};
+  for (const finding of s.ledger.findings) {
+    if (!finding.owner || !finding.ownerFact)
+      continue;
+    const key = taskOwnerKey(finding.owner);
+    if (!ownerFacts[key] || ownerFacts[key].since < finding.ownerFact.since)
+      ownerFacts[key] = finding.ownerFact;
+  }
+  Object.assign(ownerFacts, s.taskOwnerFacts);
+  return [...s.taskFactWarnings, ...applyTaskOwnerFacts(tree, ownerFacts, now).warnings];
+}
 function updateRecovery(s) {
   const { presence } = s;
   if (presence.ledgerState !== "failed")
@@ -8189,7 +8201,7 @@ function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timel
     turns: { turnsStarted: s.presence.turnsStarted, turnsApplied: s.presence.turnsApplied },
     prs: prTabOf(s, lastActions, now, holds, settleWindowMs),
     statusPage: statusPage(s, now, new Set(Object.keys(taskOwnerView.stalledSince))),
-    timeline: timelineData(timelineTaskTree, timelineOwnerView.segments, timelineOwnerView.stalledSince, [...s.taskFactWarnings, ...timelineOwnerView.warnings], now, s.taskStatusMismatches),
+    timeline: timelineData(timelineTaskTree, timelineOwnerView.segments, timelineOwnerView.stalledSince, taskTimelineWarnings(s, timelineTaskTree, now), now, s.taskStatusMismatches),
     agents: {
       feedRows: agentOverrides.feedRows ?? l.findings,
       taskTree: timelineTaskTree,
@@ -8202,7 +8214,7 @@ function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timel
     taskProgressSegments: taskOwnerView.segments,
     taskStalledSince: taskOwnerView.stalledSince,
     feedStalledSince,
-    taskFactWarnings: [...s.taskFactWarnings, ...taskOwnerView.warnings]
+    taskFactWarnings: taskTimelineWarnings(s, s.taskTree, now)
   };
 }
 function showsRunningMark(v, shown, isHelpShown, isUnfolded) {
@@ -11537,6 +11549,7 @@ var CLAUDE_CODE_SUPPORT = {
   "task-reminder": { kind: "full" },
   "task-tree-currentness": { kind: "full" },
   "task-tree-projection": { kind: "full" },
+  "task-tree-export": { kind: "full" },
   "task-status-mismatch": { kind: "full" },
   timeline: { kind: "full" },
   "agents-tab": {
@@ -11706,6 +11719,10 @@ var CODEX_SUPPORT = {
     kind: "unsupported",
     reason: "The Codex MCP server serves every chat, so it cannot safely enable a file projection for only the meta root chat."
   },
+  "task-tree-export": {
+    kind: "unsupported",
+    reason: "The external Stop gate reads the Claude Code meta session, so Codex does not export task trees."
+  },
   "task-status-mismatch": { kind: "full" },
   timeline: { kind: "full" },
   "agents-tab": { kind: "different", reason: "Agents is not drawn in this look yet." }
@@ -11832,6 +11849,10 @@ var OMP_SUPPORT = {
   "task-tree-projection": {
     kind: "unsupported",
     reason: "Only the meta root session on Claude Code writes the task-tree projection; omp keeps its task tree and continues reading configured feeds."
+  },
+  "task-tree-export": {
+    kind: "unsupported",
+    reason: "The external Stop gate reads the Claude Code meta session, so only Claude Code exports task trees."
   },
   "task-status-mismatch": { kind: "full" },
   timeline: { kind: "full" },

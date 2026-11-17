@@ -127,6 +127,10 @@ export const OMP_SUPPORT: ClientSupport['support'] = {
     reason:
       'Only the meta root session on Claude Code writes the task-tree projection; omp keeps its task tree and continues reading configured feeds.',
   },
+  'task-tree-export': {
+    kind: 'unsupported',
+    reason: 'The external Stop gate reads the Claude Code meta session, so only Claude Code exports task trees.',
+  },
   'task-status-mismatch': { kind: 'full' },
   timeline: { kind: 'full' },
   'agents-tab': { kind: 'different', reason: 'Agents is not drawn in this look yet.' },
