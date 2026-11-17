@@ -32,6 +32,22 @@ test('terminal Timeline aligns every status chip with its title and keeps warnin
   })
 
   await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  for (const [task_id, parent_id, title] of [
+    ['done-parent', undefined, 'Completed parent'],
+    ['done-child-a', 'done-parent', 'First completed child'],
+    ['done-child-b', 'done-parent', 'Second completed child'],
+    ['done-child-c', 'done-parent', 'Third completed child'],
+    ['done-child-d', 'done-parent', 'Fourth completed child'],
+  ] as const) {
+    await $.tool.call({
+      tool: 'mcp__inbox__tasks',
+      operation: 'add',
+      task_id,
+      ...(parent_id ? { parent_id } : {}),
+      title,
+      status: 'done',
+    })
+  }
   for (const [task_id, parent_id, status] of [
     ['root', undefined, 'working'],
     ['stalled-task', 'root', 'working'],
@@ -47,12 +63,17 @@ test('terminal Timeline aligns every status chip with its title and keeps warnin
       operation: 'add',
       task_id,
       ...(parent_id ? { parent_id } : {}),
-      title: task_id,
+      title:
+        task_id === 'stalled-sibling'
+          ? '長い日本語タイトルの切り詰めを確認する'.repeat(5)
+          : task_id === 'pr-sibling'
+            ? '折り返しを含む日本語タスク\n二行目も確認する'
+            : task_id,
       status,
     })
   }
 
-  const pane = await $.ui.mount(PANE)
+  const pane = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 200 } })
   await pane.press({ key: 'tab-key-timeline' })
   await clock.settle()
 
@@ -63,6 +84,11 @@ test('terminal Timeline aligns every status chip with its title and keeps warnin
     'the stalled mark stays on the title line',
   ).toBe(true)
   const taskIds = [
+    'done-parent',
+    'done-child-a',
+    'done-child-b',
+    'done-child-c',
+    'done-child-d',
     'root',
     'stalled-task',
     'stalled-child',
@@ -77,25 +103,38 @@ test('terminal Timeline aligns every status chip with its title and keeps warnin
     const statusLine = await pane.find({ key: `timeline-status-line-${id}` })
     const chipLead = await pane.find({ key: `timeline-chip-lead-${id}` })
     const statusChip = await pane.find({ key: `timeline-chip-${id}` })
-    expect(
-      (chipLead?.props.width as number) + (statusChip?.props.paddingX as number),
-      `${id} chip label starts at the title's first column`,
-    ).toBe(titleLead?.props.width)
-    expect(
-      cellWidth(chipLead?.text ?? '') + (statusChip?.props.paddingX as number),
-      `${id} guide and chip padding fill the measured title lead`,
-    ).toBe(titleLead?.props.width)
+    expect(chipLead?.props.width, `${id} chip's left edge starts at the title's first column`).toBe(
+      titleLead?.props.width,
+    )
+    expect(cellWidth(titleLead?.text ?? ''), `${id} title begins after its measured lead`).toBe(titleLead?.props.width)
+    expect(cellWidth(chipLead?.text ?? ''), `${id} guide lead fills the measured title lead`).toBe(
+      titleLead?.props.width,
+    )
     expect(statusLine?.props.gap, `${id} chip follows the title-column lead without a gap`).toBeUndefined()
     expect(statusChip?.props.paddingX, `${id} chip padding is included in alignment`).toBe(1)
     expect(statusChip, `${id} chip is rendered`).toBeTruthy()
+    expect(chipLead?.text).not.toContain('|')
+    for (const match of (chipLead?.text ?? '').matchAll(/│/g))
+      expect(Number(match.index) % 3, `${id} tree guides stay in guide columns`).toBe(2)
   }
 
   const rootChipLead = (await pane.find({ key: 'timeline-chip-lead-root' }))?.text ?? ''
+  const completedParentLead = (await pane.find({ key: 'timeline-chip-lead-done-parent' }))?.text ?? ''
+  const completedChildLead = (await pane.find({ key: 'timeline-chip-lead-done-child-a' }))?.text ?? ''
+  const completedChildTitleLead = (await pane.find({ key: 'timeline-title-lead-done-child-a' }))?.text ?? ''
   const stalledChipLead = (await pane.find({ key: 'timeline-chip-lead-stalled-task' }))?.text ?? ''
   const prChipLead = (await pane.find({ key: 'timeline-chip-lead-pr-task' }))?.text ?? ''
   expect(rootChipLead.indexOf('│'), 'normal root chip guide column').toBe(2)
+  expect(completedParentLead.indexOf('│'), 'completed parent child guide is kept').toBe(2)
+  expect(completedParentLead.slice(3), 'the child guide has a space before the chip').toMatch(/^ +$/)
+  expect(completedParentLead.indexOf('│'), 'parent guide aligns with child connector').toBe(
+    completedChildTitleLead.indexOf('├'),
+  )
+  expect(completedChildLead, 'completed child chip lead contains no stray branch glyph').not.toContain('│')
   expect(stalledChipLead.indexOf('│'), 'stalled chip uses the normal guide column').toBe(rootChipLead.indexOf('│'))
   expect(prChipLead.indexOf('│'), 'merged-PR chip uses the normal guide column').toBe(rootChipLead.indexOf('│'))
+  expect((await pane.find({ key: 'timeline-title-stalled-sibling' }))?.text.endsWith('…')).toBe(true)
+  expect((await pane.find({ key: 'timeline-title-pr-sibling' }))?.text).toContain('\n')
   const warnings = rows.filter(line => line.includes('⚠'))
   expect(warnings.some(line => line.includes('Owner idle 15m+'))).toBe(true)
   expect(warnings.some(line => line.includes('Owner finished, task open'))).toBe(true)
@@ -108,4 +147,52 @@ test('terminal Timeline aligns every status chip with its title and keeps warnin
     expect(warningColumn, 'warning text starts in its title column').toBe(titleLead?.props.width)
     expect([...warning.matchAll(/│/g)], 'warning keeps only its ancestor guide').toHaveLength(1)
   }
+
+  expect((await pane.find({ key: 'timeline-title-lead-done-parent' }))?.text.startsWith('> ')).toBe(true)
+  await pane.press({ key: 'timeline-title-root' })
+  await clock.settle()
+  await pane.press({ key: 'timeline-back' })
+  await clock.settle()
+  expect((await pane.find({ key: 'timeline-title-lead-done-parent' }))?.text.startsWith('  ')).toBe(true)
+  expect((await pane.find({ key: 'timeline-chip-lead-done-parent' }))?.props.width).toBe(
+    (await pane.find({ key: 'timeline-title-lead-done-parent' }))?.props.width,
+  )
 })
+
+for (const bodyColumns of [48, 49] as const) {
+  test(`terminal Timeline leaves two cells after a truncated CJK title at ${bodyColumns} columns`, async ($, on) => {
+    const clock = mock.clock(on, { now: 1_000_000 })
+    world($, on, [])
+    w.files = ['/.next-build']
+    const longTitle = '境界確認用の長い日本語タイトル'.repeat(6)
+
+    await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+    await $.tool.call({
+      tool: 'mcp__inbox__tasks',
+      operation: 'add',
+      task_id: 'cjk-boundary',
+      title: longTitle,
+      status: 'working',
+    })
+    const pane = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns } })
+    await pane.press({ key: 'tab-key-timeline' })
+    await clock.settle()
+
+    const title = (await pane.findAll({ type: 'Text' })).find(line => line.text.startsWith('境界'))
+    const titleArea = await pane.find({ key: 'timeline-title-area-cjk-boundary' })
+    const titleLead = await pane.find({ key: 'timeline-title-lead-cjk-boundary' })
+    const chipLead = await pane.find({ key: 'timeline-chip-lead-cjk-boundary' })
+    const gap = await pane.find({ key: 'timeline-row-bar-gap-cjk-boundary' })
+    const bar = await pane.find({ key: 'timeline-row-bar-cjk-boundary' })
+    expect(title?.text.endsWith('…'), 'the CJK title is truncated at the cell budget').toBe(true)
+    expect(titleArea?.props.width).toBe(bodyColumns === 48 ? 20 : 21)
+    expect((titleArea?.props.width as number) % 2).toBe(bodyColumns === 48 ? 0 : 1)
+    expect(gap?.props.width).toBe(2)
+    expect(bar).toBeTruthy()
+    expect(chipLead?.props.width).toBe(titleLead?.props.width)
+    expect(
+      (titleArea?.props.width as number) - cellWidth(title?.text ?? '') + (gap?.props.width as number),
+      'the rendered ellipsis and fixed gap leave at least two cells before the bar',
+    ).toBeGreaterThanOrEqual(2)
+  })
+}

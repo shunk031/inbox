@@ -246,6 +246,7 @@ test('terminal Timeline keeps Japanese titles, row metadata and detail guides at
     detail: longDetail,
     status: 'working',
   })
+  await $.tool.call({ tool: 'mcp__inbox__tasks', operation: 'note', task_id: 'child-a', note: 'A newer Japanese note' })
   await $.tool.call({
     tool: 'mcp__inbox__tasks',
     operation: 'add',
@@ -284,13 +285,21 @@ test('terminal Timeline keeps Japanese titles, row metadata and detail guides at
   await clock.settle()
   const detailRow = await pane.find({ key: 'timeline-detail-row-0' })
   const lead = await pane.find({ key: 'timeline-detail-lead-0' })
-  expect(lead?.text.includes('│')).toBe(true)
+  expect(lead?.text.includes('│')).toBe(false)
+  expect(lead?.text.includes('|')).toBe(false)
   expect(lead?.props.flexShrink).toBe(0)
   expect(typeof lead?.props.width).toBe('number')
+  expect((await pane.find({ key: 'timeline-back-gap' }))?.props.width).toBe(1)
   expect(
     detailRow?.children.some(child => typeof child === 'object' && (child as { type?: string }).type === 'Box'),
   ).toBe(true)
-  expect((await pane.findAll({ type: 'Text' })).some(line => line.text === longDetail)).toBe(true)
+  const detailText = (await pane.findAll({ type: 'Text' })).map(line => line.text)
+  expect(detailText.some(text => text.includes('子タスク'))).toBe(true)
+  expect(detailText).toContain(longDetail)
+  expect(detailText).toContain('Current')
+  expect(detailText).toContain('Detail')
+  expect(detailText).toContain('History')
+  expect(detailText).toContain('A newer Japanese note')
 })
 
 test('terminal Timeline aligns percentages, strips rows, and separates only top-level trees', async ($, on) => {
