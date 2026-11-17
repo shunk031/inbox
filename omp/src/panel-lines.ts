@@ -25,6 +25,11 @@ import type { Feedback } from '../../hooks/feedback'
 import type { StatusRow } from '../../hooks/status-page'
 import type { HelpKey, LegendEntry } from '../../hooks/help'
 import type { PanelPress, PanelScreen, PanelUi, Tone } from './panel'
+import type { TimelinePage } from '../../hooks/timeline-page'
+
+export type TimelineLinePlan =
+  | { kind: 'tree'; row: TimelinePage['rows'][number] }
+  | { kind: 'detail'; selected: NonNullable<TimelinePage['selected']> }
 
 export const AGENT = 'omp'
 export const INDENT = 7
@@ -98,6 +103,8 @@ export type Line = {
   body: string | null
   /** Shared prefix for Timeline detail lines. */
   timelineDetailLead?: string
+  /** The shared Timeline row or task detail to draw in the panel. */
+  timeline?: TimelineLinePlan
   /** A line the selection skips: a closed row with nothing to press, or a stop with no Resume. */
   isStatic: boolean
   /** Whether the line waits on the person, so a default selection may land on it. */
@@ -117,7 +124,15 @@ export type Entry =
   /** A Finds group's heading leads with its kind's mark, since its rows draw none. */
   | { kind: 'heading'; text: string; count?: number; mark?: Lead }
   /** A note stops at 3 lines. One with `isWhole`, such as an empty page's hint, is the page's content and wraps in full. */
-  | { kind: 'note'; text: string; isStrong?: boolean; isPlain?: boolean; indent?: number; isWhole?: boolean }
+  | {
+      kind: 'note'
+      text: string
+      isStrong?: boolean
+      isPlain?: boolean
+      indent?: number
+      isWhole?: boolean
+      timelineProgress?: TimelinePage['progressCard']
+    }
   | { kind: 'row'; line: Line }
   | { kind: 'page'; row: StatusRow }
   | { kind: 'goal'; part: GoalPart }

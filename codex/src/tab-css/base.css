@@ -101,6 +101,12 @@ button {
 .tone-error {
   color: var(--error);
 }
+.tone-key {
+  color: var(--key);
+}
+.tone-muted {
+  color: var(--muted);
+}
 .notice {
   padding: 10px 16px;
   overflow-wrap: anywhere;

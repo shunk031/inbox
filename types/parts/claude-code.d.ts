@@ -18,6 +18,8 @@ declare module 'claude-code' {
       statusSelection: string | null
       /** The selected Timeline task, by id. Null until j or k moves it. */
       timelineSelection: string | null
+      /** Whether the selected Timeline task's detail page is open. */
+      timelineDetailOpen: boolean
       dialogs: Dialog[]
       /** The row whose free-text field is open, if any. */
       typing: string | null

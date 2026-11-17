@@ -19,6 +19,8 @@ export const style: Style = {
   inverse: s => `${ESC}7m${s}${ESC}27m`,
   underline: s => `${ESC}4m${s}${ESC}24m`,
   tone: (_name, s) => `${ESC}35m${s}${ESC}39m`,
+  timelineChip: (_tone, s) => `${ESC}42m${s}${ESC}49m`,
+  timelineRow: (s, alternate) => (alternate ? `${ESC}47m${s}${ESC}49m` : s),
   banner: (_tone, _part, s) => s,
 }
 export const strip = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '').replace(OSC8, '')

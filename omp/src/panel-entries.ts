@@ -57,8 +57,6 @@ import {
 import type { Button, Entry, Group, Lead } from './panel-lines'
 import type { PanelScreen, PanelUi } from './panel'
 
-const TIMELINE_MARKS: Record<string, string> = { done: '✓', working: '●', stalled: '!', 'waits-on-other': '◌' }
-
 /** The question before omp installs the inbox's Herdr mod, as a row its buttons can focus, while it shows. */
 function herdrAskEntries(screen: PanelScreen): Entry[] {
   const banner = herdrAskBanner(screen.herdrAsk ?? null)
@@ -408,20 +406,46 @@ function helpEntries(screen: PanelScreen, tab: ShownTab): Entry[] {
 }
 
 function timelineEntries(screen: PanelScreen, ui: PanelUi): Entry[] {
-  const page = timelinePage(screen.view.timeline, ui.timelineSelection, ui.timelineFolded, screen.view.lastActions)
-  const [taskPlanBar, ...streamBars] = page.bars
-  const taskPlan = taskPlanBar?.parts.map(part => part.mark.repeat(part.count)).join('') ?? ''
-  const out: Entry[] = [
-    {
-      kind: 'note' as const,
-      text: `Task plan · ${page.summary}${taskPlan ? ` · ${taskPlan}` : ''}`,
-      isPlain: true,
-    },
-    ...streamBars.map(bar => ({
-      kind: 'note' as const,
-      text: `${bar.label}: ${bar.parts.map(part => part.mark.repeat(part.count)).join('')}`,
-    })),
-  ]
+  const page = timelinePage(
+    screen.view.timeline,
+    ui.timelineSelection,
+    ui.timelineFolded,
+    screen.view.lastActions,
+    ui.timelineDetailOpen,
+  )
+  if (page.mode === 'detail' && page.selected) {
+    const buttons: Button[] = page.selected.row.actions.map(action => ({
+      label: action.label,
+      key: action.hotkey ?? null,
+      press: { action: 'timeline-back' },
+      isRecommended: false,
+      isFollowUp: false,
+    }))
+    for (const link of page.selected.links)
+      buttons.push({
+        label: link.result?.state === 'pending' ? 'Opening…' : link.label,
+        key: null,
+        press: link.press,
+        isRecommended: false,
+        isFollowUp: false,
+        isOut: link.isOut,
+        result: link.result,
+      })
+    return [
+      {
+        kind: 'row',
+        line: {
+          ...blankLine(page.selected.row.task.id),
+          lead: null,
+          title: page.selected.row.task.title,
+          buttons,
+          timeline: { kind: 'detail', selected: page.selected },
+          isWaiting: false,
+        },
+      },
+    ]
+  }
+  const out: Entry[] = [{ kind: 'note', text: '', timelineProgress: page.progressCard }]
   if (page.isEmpty)
     return [
       ...out,
@@ -430,65 +454,35 @@ function timelineEntries(screen: PanelScreen, ui: PanelUi): Entry[] {
     ]
 
   for (const row of page.rows) {
-    const selected = page.selected?.row.task.id === row.task.id ? page.selected : null
     const buttons: Button[] = row.actions.map(action => ({
       label: action.label,
       key: action.hotkey ?? null,
-      press: { action: action.action === 'select' ? 'timeline-select' : 'timeline-toggle', id: action.id },
+      press: {
+        action:
+          action.action === 'select'
+            ? 'timeline-select'
+            : action.action === 'detail'
+              ? 'timeline-detail'
+              : 'timeline-toggle',
+        id: action.id,
+      },
       isRecommended: false,
       isFollowUp: false,
       isQuiet: action.emphasis === 'quiet',
     }))
-    const detailLines = selected?.details ?? []
-    const body = detailLines
-      .map(line => (line.label === 'Links' ? 'Links ·' : `${line.label} · ${line.text}`))
-      .join('\n')
-    for (const line of detailLines)
-      if (line.label === 'Links')
-        buttons.push(
-          ...line.actions.map(link => ({
-            label: link.result?.state === 'pending' ? 'Opening…' : link.label,
-            key: null,
-            press: link.press,
-            isRecommended: false,
-            isFollowUp: false,
-            isOut: link.isOut,
-            result: link.result,
-          })),
-        )
-    const marker = TIMELINE_MARKS[row.status] ?? '·'
     out.push({
       kind: 'row',
       line: {
         ...blankLine(row.task.id),
         depth: 0,
         selectionMark: '>',
-        lead: {
-          text: `${row.prefix}${marker}`,
-          tone: row.status === 'stalled' ? 'error' : row.status === 'done' ? 'done' : 'needsYou',
-          padMark: false,
-        },
-        // omp's row title starts one cell after the shared detail prefix: panel cursor and spacing occupy three cells.
-        timelineDetailLead: ` ${row.detailLead}`,
+        lead: null,
         title: row.task.title,
-        status: { text: `${row.statusLabel} · ${row.measure}`, tone: null, rest: '', separator: ' · ' },
-        body: body || null,
+        timeline: { kind: 'tree', row },
         buttons,
         isWaiting: false,
       },
     })
-    out.push(
-      ...row.warnings.map((warning, index): Entry => ({
-        kind: 'row',
-        line: {
-          ...blankLine(`${row.task.id}:warning:${index}`),
-          depth: 0,
-          lead: { text: `${row.detailLead}⚠`, tone: 'error', padMark: false },
-          title: warning,
-          isStatic: true,
-        },
-      })),
-    )
   }
   return out
 }

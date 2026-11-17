@@ -18,12 +18,18 @@ const task = (id: string, change: Partial<TaskNode> = {}): TaskNode => ({
 })
 const segments: TaskProgressSegments = { total: 4, done: 1, working: 1, stalled: 1, waiting: 0, queued: 1 }
 
-test('Timeline has an empty state and empty progress bar without tasks', () => {
+test('Timeline has an empty state and a not-started progress card without tasks', () => {
   const page = timelineData([], { total: 0, done: 0, working: 0, stalled: 0, waiting: 0, queued: 0 }, {}, [], now)
   expect(page.isEmpty).toBe(true)
   expect(page.empty.title).toBe('Timeline')
-  expect(page.summary).toBe('no tasks yet')
-  expect(page.bars).toEqual([{ id: 'tree', label: 'Task plan', parts: [] }])
+  expect(page.progressCard).toMatchObject({
+    statusLabel: 'Not started',
+    percentLabel: '0.00%',
+    leavesDone: 0,
+    leavesTotal: 0,
+    elapsed: '—',
+    bar: [],
+  })
 })
 
 test('Timeline keeps tree order and derives progress, stall age and warnings', () => {
@@ -37,24 +43,25 @@ test('Timeline keeps tree order and derives progress, stall age and warnings', (
   const page = timelineData([root, child], segments, { [child.id]: now - 15 * 60_000 }, [warning], now)
 
   expect(page.rows.map(row => row.task.id)).toEqual(['root', 'child'])
-  expect(page.rows[0]?.measure).toBe('0%')
+  expect(page.rows[0]).toMatchObject({ percent: '0.00%', statusLabel: 'In progress' })
   expect(page.rows[1]).toMatchObject({
     depth: 1,
     status: 'stalled',
-    statusLabel: 'stalled 15m',
-    measure: 'w1',
-    stalledAge: '15m',
+    statusLabel: 'Stalled',
+    percent: '0.00%',
+    tone: 'error',
+    mark: '✕',
     warnings: [warning.message],
   })
-  expect(page.bars[0]?.parts.map(part => [part.state, part.count])).toEqual([
-    ['done', 4],
-    ['working', 4],
-    ['stalled', 4],
-    ['queued', 4],
+  expect(page.progressCard.bar.map(part => [part.state, part.count, part.tone])).toEqual([
+    ['done', 7, 'done'],
+    ['working', 7, 'key'],
+    ['stalled', 7, 'error'],
+    ['queued', 7, 'muted'],
   ])
 })
 
-test('Timeline summarizes weighted completion and labels waiting work', () => {
+test('Timeline summarizes weighted completion and counts completed leaf tasks', () => {
   const tree: TaskTree = [
     task('plan', { status: 'working', weight: 14 }),
     task('done-a', { parentId: 'plan', status: 'done', weight: 2 }),
@@ -65,13 +72,27 @@ test('Timeline summarizes weighted completion and labels waiting work', () => {
   ]
   const page = timelineData(tree, { total: 14, done: 3, working: 5, stalled: 0, waiting: 2, queued: 4 }, {}, [], now)
 
-  expect(page.summary).toBe('21% complete · 3/14 weight')
-  expect(page.rows[0]?.measure).toBe('21%')
-  expect(page.rows.find(row => row.task.id === 'done-a')?.measure).toBe('w2')
-  expect(page.rows.find(row => row.task.id === 'waiting')?.statusLabel).toBe('waiting on others')
+  expect(page.progressCard).toMatchObject({
+    statusLabel: 'In progress',
+    percentLabel: '21.43%',
+    leavesDone: 2,
+    leavesTotal: 5,
+    elapsed: '1m',
+  })
+  expect(page.rows[0]?.percent).toBe('21.43%')
+  expect(page.rows.find(row => row.task.id === 'done-a')).toMatchObject({
+    percent: '100.00%',
+    statusLabel: 'Completed',
+    tone: 'done',
+  })
+  expect(page.rows.find(row => row.task.id === 'waiting')).toMatchObject({
+    statusLabel: 'Waiting',
+    tone: 'error',
+    mark: '✕',
+  })
 })
 
-test('Timeline formats task and history times in the shared plan', () => {
+test('Timeline formats history times in the shared plan', () => {
   const updatedAt = now - 15 * 60_000
   const page = timelineData(
     [
@@ -87,7 +108,6 @@ test('Timeline formats task and history times in the shared plan', () => {
   )
   const displayedTask = page.rows[0]!.task
 
-  expect(displayedTask.updatedAgo).toBe('15m')
   expect(displayedTask.history).toEqual([
     { source: 'claude', kind: 'updated', detail: 'Started implementation', time: '15m' },
   ])
@@ -118,6 +138,8 @@ test('the selected task plan orders labeled details and link actions', () => {
     ),
     'plan',
     [],
+    {},
+    true,
   ).selected?.details
 
   expect(detail?.map(line => line.label)).toEqual([
@@ -154,7 +176,6 @@ test('Timeline rows show the newest task text, while selected details retain the
   })
   const page = timelinePage(timelineData([current], segments, {}, [], now), 'plan', [])
 
-  expect(page.rows[0]?.measure).toContain('Latest update')
   expect(page.selected?.details).toContainEqual({ label: 'Current', text: 'Latest update · now' })
   expect(page.selected?.details).toContainEqual({ label: 'Detail', text: 'The original plan' })
   expect(page.selected?.details.filter(line => line.label === 'Note')).toEqual([
@@ -163,7 +184,7 @@ test('Timeline rows show the newest task text, while selected details retain the
   ])
 })
 
-test('meta sessions show separate top-level stream bars and selection follows visible branches', () => {
+test('Timeline keeps the whole tree, selection and branch folding in the shared plan', () => {
   const roots: TaskTree = [
     task('one', { status: 'done', streamId: 's1' }),
     task('two', { status: 'working', streamId: 's2' }),
@@ -171,8 +192,8 @@ test('meta sessions show separate top-level stream bars and selection follows vi
   ]
   const page = timelinePage(timelineData(roots, segments, {}, [], now), 'missing', [])
 
-  expect(page.summary).toBe('3 streams')
-  expect(page.bars.map(bar => bar.id)).toEqual(['tree', 'one', 'two', 'three'])
+  expect(page.mode).toBe('tree')
+  expect(page.rows.map(row => row.task.id)).toEqual(['one', 'two', 'three'])
   expect(page.selected?.row.task.id).toBe('one')
   expect(moveTimelineSelection(page.rows, 'three', 1)).toBe('one')
   expect(toggleTimelineBranch([], 'one')).toEqual(['one'])
@@ -204,6 +225,31 @@ test('top-level Timeline tasks do not add guide columns to each other or their c
     ['last-child', 1, [], '└─ '],
     ['second-root', 0, [], ''],
   ])
+  const rootDetail = timelinePage(timelineData(tree, segments, {}, [], now), 'second-root', [], {}, true).selected
+  expect(rootDetail?.row.detailLead).not.toMatch(/[│├└]/)
+})
+
+test('Timeline preserves long Japanese titles and guide paths across deep, wide trees', () => {
+  const title = '日本語の長いタイトルを狭い画面で折り返して状態表示とツリーガイドを保つ確認用タスク'
+  const tree: TaskTree = [
+    task('root'),
+    ...Array.from({ length: 7 }, (_, index) =>
+      task(`sibling-${index}`, { parentId: 'root', title: `兄弟タスク ${index}` }),
+    ),
+    task('deep-one', { parentId: 'sibling-0' }),
+    task('deep-two', { parentId: 'deep-one' }),
+    task('deep-three', { parentId: 'deep-two', title }),
+  ]
+  const page = timelinePage(timelineData(tree, segments, {}, [], now), 'deep-three', [])
+  const row = page.rows.find(item => item.task.id === 'deep-three')!
+
+  expect(page.rows).toHaveLength(11)
+  expect(row.task.title).toBe(title)
+  expect(row.depth).toBe(4)
+  expect(row.guides).toHaveLength(3)
+  expect(row.prefix).toContain('│')
+  expect(row.prefix.endsWith('└─ ')).toBe(true)
+  expect(page.selected?.row.task.id).toBe('deep-three')
 })
 
 test('Timeline plans joined guides through deep branches and aligns both detail examples', () => {
@@ -239,11 +285,18 @@ test('Timeline plans joined guides through deep branches and aligns both detail 
   ])
 })
 
-test('Timeline offers Select only for unselected rows and keeps planned action order', () => {
+test('Timeline plans detail and branch actions in tree order and a back action in detail', () => {
   const tree = [task('root'), task('branch', { parentId: 'root' }), task('leaf', { parentId: 'branch' })]
   const page = timelinePage(timelineData(tree, segments, {}, [], now), 'root', [])
 
-  expect(page.rows.find(row => row.task.id === 'root')?.actions.map(action => action.action)).toEqual(['toggle-branch'])
+  expect(page.rows.find(row => row.task.id === 'root')?.actions.map(action => action.action)).toEqual([
+    'detail',
+    'toggle-branch',
+  ])
   expect(page.rows.find(row => row.task.id === 'branch')?.actions.map(action => action.action)).toEqual(['select'])
   expect(page.rows.find(row => row.task.id === 'leaf')?.actions.map(action => action.action)).toEqual(['select'])
+  const detail = timelinePage(timelineData(tree, segments, {}, [], now), 'root', [], {}, true)
+  expect(detail.mode).toBe('detail')
+  expect(detail.selected?.row.actions.map(action => action.action)).toEqual(['back'])
+  expect(detail.selected?.stats).toEqual({ progress: '0.00%', weight: '1', completedUnits: '0 / 1' })
 })

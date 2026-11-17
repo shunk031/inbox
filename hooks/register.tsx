@@ -68,7 +68,7 @@ import { tabPrs } from './pr-fetch'
 import type { FetchAsk } from './pr-fetch'
 import { prSharedStore } from './mod-pr-shared'
 import { refreshStatus, type StatusCall, type StatusRecords, type RecordFiles } from './status-records'
-import { upgradedTimelineFolded, upgradedTimelineSelection } from './timeline-state'
+import { upgradedTimelineDetailOpen, upgradedTimelineFolded, upgradedTimelineSelection } from './timeline-state'
 import { startPress, wakeAfterSettle as wakeSessionAfterSettle } from './host-press'
 import type { Ask, CatchUpReply, SessionHost } from './session-host'
 import { callReport, MODEL } from './inbox-model'
@@ -313,8 +313,9 @@ const PAGE = atom({ plugin: 'inbox', key: 'page' } as const, null as PageTab | n
 const SELECTION = atom({ plugin: 'inbox', key: 'selection' } as const, NO_SELECTION)
 /** The Status row whose keys work, by id, as `statusSelected` resolves it. */
 const STATUS_SELECTION = atom({ plugin: 'inbox', key: 'statusSelection' } as const, null as string | null)
-/** The Timeline task whose keys work, by id. */
+/** The selected Timeline task. */
 const TIMELINE_SELECTION = atom({ plugin: 'inbox', key: 'timelineSelection' } as const, null as string | null)
+const TIMELINE_DETAIL_OPEN = atom({ plugin: 'inbox', key: 'timelineDetailOpen' } as const, false)
 const THEME = atom({ plugin: 'inbox', key: 'theme' } as const, '')
 const DIALOGS = atom({ plugin: 'inbox', key: 'dialogs' } as const, [] as Dialog[])
 const TYPING = atom({ plugin: 'inbox', key: 'typing' } as const, null as string | null)
@@ -1030,10 +1031,7 @@ async function appendContext($: EngineInterface, context: string[]) {
   await $.session.append({ message: { type: 'user', content } }).catch(() => undefined)
 }
 
-/**
- * Records a prompt's words for the turn and returns what Claude reads beside it. `match` finds the press that sent a
- * message of the mod's own, when its row is stored. `isTyped` says the person typed the prompt.
- */
+/** Saves prompt context; `match` marks a mod press and `isTyped` a typed prompt. */
 async function notePrompt(
   $: EngineInterface,
   text: string,
@@ -1055,10 +1053,7 @@ async function notePrompt(
   return notes
 }
 
-/**
- * A reload keeps $.state, so a running session can still hold its parts in the separate fields of an older build,
- * `notes` as its tab, and the Asks tab as `waiting`, and drafts saved as bare text.
- */
+/** Normalize legacy tabs, cursors and drafts; state survives reloads. */
 async function upgradeState($: EngineInterface): Promise<Ledger> {
   const now = await $.clock.now()
   const [session] = await Promise.all([
@@ -1079,6 +1074,7 @@ async function upgradeState($: EngineInterface): Promise<Ledger> {
     update($, UNFOLDED, upgradedUnfolded),
     update($, TIMELINE_SELECTION, upgradedTimelineSelection),
     update($, TIMELINE_FOLDED, upgradedTimelineFolded),
+    update($, TIMELINE_DETAIL_OPEN, upgradedTimelineDetailOpen),
     // A demo an earlier build seeded may lack a field this one draws, so it ends; /inbox demo seeds a new one.
     update($, DEMO, d => (d === null || isDemoCopy(d) ? d : null)),
     // A draft saved as bare text began before now, so a row that closed before this load stays closed.
@@ -1120,10 +1116,7 @@ async function runTool(
   return answer.reminder ? `${result}\n\n${answer.reminder}` : result
 }
 
-/**
- * Opens or raises the pane, taking keys only when the prompt holds them over an empty composer. With a reply open,
- * `closeOnEscape` is off, so Escape returns the keys and the pane closes the field.
- */
+/** Opens the pane; Escape closes it unless its reply field is open. */
 function openPane($: EngineInterface, isFieldOpen = false) {
   paneState.paneClosesOnEscape = !isFieldOpen
   const opened = $.ui.open({
@@ -1715,10 +1708,7 @@ async function wakeAfterSettle($: EngineInterface) {
   await wakeSessionAfterSettle(hostOf($, currentOwner()))
 }
 
-/**
- * Sends the held messages that are due, and wakes again when the next one falls due. A load or a pane opening calls
- * it, since the timer a press started does not survive a reload.
- */
+/** Sends due held messages; reschedule after reload or pane open. */
 async function wakeForHeldSends($: EngineInterface) {
   await wakeAfterSettle($)
   const [{ lastActions }, now] = await Promise.all([read($, SESSION), $.clock.now()])
@@ -3046,6 +3036,7 @@ export const register: Register = on => {
       statusUnfolded,
       timelineSelection,
       timelineFolded,
+      timelineDetailOpen,
       closedAll,
     ] = await Promise.all([
       drawnState($),
@@ -3064,6 +3055,7 @@ export const register: Register = on => {
       read($, STATUS_UNFOLDED),
       read($, TIMELINE_SELECTION),
       read($, TIMELINE_FOLDED),
+      read($, TIMELINE_DETAIL_OPEN),
       read($, CLOSED_ALL),
       // A redraw loop on desktop blocks clicks, as `redrawWhileUndoLasts` says.
       look === 'terminal' ? read($, RUNNING_FRAME) : null,
@@ -3169,6 +3161,11 @@ export const register: Register = on => {
       startTyping: (id, seed) => startTyping($, id, seed),
       selectStatusRow: (id, focusKey) => selectStatusRow($, id, focusKey),
       selectTimelineRow: id => update($, TIMELINE_SELECTION, () => id),
+      openTimelineDetail: async id => {
+        if (timelineSelection !== id) await update($, TIMELINE_SELECTION, () => id)
+        return update($, TIMELINE_DETAIL_OPEN, () => true)
+      },
+      closeTimelineDetail: () => update($, TIMELINE_DETAIL_OPEN, () => false),
       updateTyping: fn => update($, TYPING, fn),
       updateDrafts: fn => update($, DRAFTS, fn),
       sendTyped: (id, text, surface) => sendTyped($, id, text, surface),
@@ -3351,7 +3348,21 @@ export const register: Register = on => {
       view: timelineView,
       move: moveTimeline,
       footer: timelineFooter,
-    } = paneTimeline({ Box, Button, Text, pal, view, now, timelineSelection, timelineFolded }, handlers)
+    } = paneTimeline(
+      {
+        bodyColumns: listColumns,
+        Box,
+        Button,
+        Text,
+        pal,
+        look,
+        view,
+        timelineSelection,
+        timelineFolded,
+        timelineDetailOpen,
+      },
+      handlers,
+    )
 
     const openIds = openRowIds(view)
     const drawnIds = new Set([...openIds.needsYou, ...openIds.findings, ...prRowIds(shownPrs)])

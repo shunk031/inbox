@@ -244,27 +244,15 @@ test('the Codex tab draws the Status page from a next build’s view, and new ro
     await afterPoll()
     key('4')
     assert.equal(shownTab(), 'Timeline')
-    assert.equal(root.querySelectorAll('.timeline-bars > div').length, 1)
-    assert.match(root.querySelector('.timeline-bars > div')?.textContent ?? '', /^Task plan · .* weight · .+/)
-    assert.equal(root.querySelectorAll('.timeline-bars').length, 1)
-    assert.match(root.querySelector('.timeline-node .content > div')?.textContent ?? '', /^  ● omp panel · working · /)
-    assert.equal(
-      [...root.querySelectorAll('.timeline-node .content > div')][1]?.textContent,
-      '  ├─ ● Label · working · w1 · pick one',
-    )
-    assert.equal(
-      [...root.querySelectorAll('.timeline-node .content > div')][2]?.textContent,
-      '  └─ ✓ Page · done · w1 · built',
-    )
-    assert.equal(
-      [...root.querySelectorAll('.timeline-detail > div')].every(line => line.textContent?.startsWith('     ')),
-      true,
-    )
+    assert.equal(root.querySelectorAll('.timeline-progress-card').length, 1)
+    assert.match(root.querySelector('.timeline-progress-card')?.textContent ?? '', /Progress.*In progress/s)
+    assert.equal(root.querySelectorAll('.timeline-row-bar').length, 3)
+    assert.equal(root.querySelectorAll('.timeline-chip').length, 4)
+    assert.equal(root.querySelector('.timeline-task-line .timeline-title')?.textContent, 'omp panel')
+    assert.equal([...root.querySelectorAll('.timeline-task-line .timeline-title')][1]?.textContent, 'Label')
+    assert.equal([...root.querySelectorAll('.timeline-task-line .timeline-title')][2]?.textContent, 'Page')
     assert.equal(root.querySelectorAll('.timeline-child-guide').length, 1)
-    assert.deepEqual(
-      [...root.querySelectorAll('.timeline-detail-label')].map(label => label.textContent?.replace(' · ', '')),
-      ['Current', 'Detail', 'Updated', 'Note', 'History', 'Links'],
-    )
+    assert.equal(root.querySelector('.timeline-detail-content'), null, 'task details are a separate view')
     const { drawnRows } = await import('../src/tab-state')
     key('j')
     assert.match(root.querySelector('.row.selected .timeline-title')?.textContent ?? '', /Label/)

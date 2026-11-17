@@ -13,8 +13,151 @@ import { AGENT, INDENT, UNLED_INDENT, isShut } from './panel-lines'
 import type { ButtonFace, Lead, Line } from './panel-lines'
 import { cutTitle, fit, indentedLinks, linkedText, spread, visibleLength, wrapText } from './panel-text'
 import type { PanelScreen, PanelUi, Style, Tone } from './panel'
+import type { TimelineLinePlan } from './panel-lines'
+import type { TimelinePage } from '../../hooks/timeline-page'
 
 export type Draw = { screen: PanelScreen; ui: PanelUi; width: number; now: number; style: Style }
+
+function takeTimelineCells(text: string, width: number): { shown: string; rest: string } {
+  const chars = Array.from(text)
+  let used = 0
+  let count = 0
+  while (count < chars.length) {
+    const cells = visibleLength(chars[count]!)
+    if (count > 0 && used + cells > width) break
+    if (used + cells > width) return { shown: chars[count]!, rest: chars.slice(count + 1).join('') }
+    used += cells
+    count++
+  }
+  return { shown: chars.slice(0, count).join(''), rest: chars.slice(count).join('') }
+}
+
+function wrapTimelineText(text: string, width: number): string[] {
+  const lines: string[] = []
+  for (const paragraph of text.split('\n')) {
+    let rest = paragraph
+    while (visibleLength(rest) > width) {
+      const { shown, rest: tail } = takeTimelineCells(rest, width)
+      const split = shown.lastIndexOf(' ')
+      if (split > 0) {
+        lines.push(shown.slice(0, split))
+        rest = `${shown.slice(split + 1)}${tail}`
+      } else {
+        lines.push(shown)
+        rest = tail
+      }
+    }
+    lines.push(rest)
+  }
+  return lines
+}
+
+function timelineBox(lines: string[], width: number, s: Style): string[] {
+  const room = Math.max(1, width - 4)
+  const border = (text: string) => s.tone('muted', text)
+  const line = (text: string) => {
+    const fitted = fit(text, room)
+    return `${border('│')} ${fitted}${' '.repeat(Math.max(0, room - visibleLength(fitted)))} ${border('│')}`
+  }
+  return [
+    border(`╭${'─'.repeat(Math.max(0, width - 2))}╮`),
+    ...lines.map(line),
+    border(`╰${'─'.repeat(Math.max(0, width - 2))}╯`),
+  ]
+}
+
+export function timelineProgressLines(progress: TimelinePage['progressCard'], width: number, s: Style): string[] {
+  const room = Math.max(1, width - 6)
+  const bar =
+    progress.bar.map(part => s.tone(part.tone, part.mark.repeat(part.count))).join('') ||
+    s.tone('muted', '─'.repeat(10))
+  const head = `${s.bold('Progress')}  ${s.timelineChip(progress.tone, progress.statusLabel)}`
+  const percent = s.bold(progress.percentLabel)
+  const barLine =
+    visibleLength(bar) + visibleLength(percent) + 2 <= room ? [spread(bar, percent, room)] : [bar, percent]
+  const meta = `${progress.leavesDone}/${progress.leavesTotal} leaf tasks completed   Elapsed: ${progress.elapsed}`
+  return timelineBox([head, ...barLine, s.dim(meta)], width, s)
+}
+
+function timelineStatsLines(
+  stats: { progress: string; weight: string; completedUnits: string },
+  width: number,
+  s: Style,
+): string[] {
+  const values: [string, string][] = [
+    ['Progress', stats.progress],
+    ['Weight', stats.weight],
+    ['Completed units', stats.completedUnits],
+  ]
+  const cardWidth = Math.floor((width - 6) / values.length)
+  if (cardWidth < 14) return values.flatMap(([label, value]) => timelineBox([s.dim(label), s.bold(value)], width, s))
+  const cards = values.map(([label, value]) => timelineBox([s.dim(label), s.bold(value)], cardWidth, s))
+  return cards[0]!.map((_, row) => cards.map(card => card[row]).join('  '))
+}
+
+function timelineLine(line: Line, plan: TimelineLinePlan, isSelected: boolean, d: Draw): string[] {
+  const { ui, width, style: s } = d
+  if (plan.kind === 'tree') {
+    const row = plan.row
+    const bar =
+      row.progressBar.map(part => s.tone(part.tone, part.mark.repeat(part.count))).join('') ||
+      s.tone('muted', '─'.repeat(10))
+    const lead = ` ${isSelected ? s.tone('accent', '❯') : ' '} ${row.prefix}${s.tone(row.tone, row.mark)} `
+    const metrics = `${bar} ${s.tone(row.tone, row.percent)}`
+    const firstRoom = Math.max(1, width - visibleLength(lead) - visibleLength(metrics) - 2)
+    const firstTitle = takeTimelineCells(row.task.title, firstRoom)
+    const continuationRoom = Math.max(1, width - visibleLength(lead))
+    const titleLines = [firstTitle.shown]
+    let remaining = firstTitle.rest
+    while (remaining) {
+      const next = takeTimelineCells(remaining, continuationRoom)
+      titleLines.push(next.shown)
+      remaining = next.rest
+    }
+    const first = spread(`${lead}${s.tone(row.tone, s.bold(titleLines[0]!))}`, metrics, width)
+    const toggle = line.buttons.find(button => button.press.action === 'timeline-toggle')
+    const second = `     ${s.timelineChip(row.tone, row.statusLabel)}${toggle ? `  ${s.dim(`${toggle.key ?? ''} ${toggle.label}`)}` : ''}`
+    const titleRest = titleLines
+      .slice(1)
+      .map(text => `${' '.repeat(visibleLength(lead))}${s.tone(row.tone, s.bold(text))}`)
+    const warnings = row.warnings.flatMap(warning =>
+      wrapTimelineText(warning, Math.max(1, width - 8)).map(
+        (text, index) => `${' '.repeat(index === 0 ? 5 : 8)}${index === 0 ? `${s.tone('error', '⚠')} ` : ''}${text}`,
+      ),
+    )
+    return [first, ...titleRest, second, ...warnings].map(text => s.timelineRow(fit(text, width), row.alternate))
+  }
+
+  const { selected } = plan
+  const row = selected.row
+  const back = line.buttons[0]
+  const backText = back ? buttonCell(back, isSelected && focusOf(line, ui) === 0, s) : ''
+  const status = s.timelineChip(row.tone, row.statusLabel)
+  const detailIndent = visibleLength(row.detailLead)
+  const titleWidth = Math.max(1, width - visibleLength(backText) - visibleLength(status) - 2)
+  const title = wrapTimelineText(row.task.title, titleWidth)
+  const head = `${backText} ${s.bold(title[0] ?? '')} ${status}`
+  const out = [
+    fit(head, width),
+    ...title.slice(1).map(text => `${' '.repeat(visibleLength(backText) + 1)}${s.bold(text)}`),
+    ...timelineStatsLines(selected.stats, width, s),
+  ]
+  for (const detail of selected.details) {
+    if (detail.label === 'Links') {
+      out.push(`${row.detailLead}${s.dim('Links')}`)
+      const start = line.buttons.findIndex(button => button.press.action === 'pr-open')
+      for (let index = start; index >= 0 && index < line.buttons.length; index++)
+        out.push(`${row.detailLead}${buttonCell(line.buttons[index]!, isSelected && focusOf(line, ui) === index, s)}`)
+    } else {
+      out.push(`${row.detailLead}${s.dim(detail.label)}`)
+      const indent = detailIndent + 2
+      out.push(
+        ...wrapTimelineText(detail.text, Math.max(1, width - indent)).map(text => `${' '.repeat(indent)}${text}`),
+      )
+    }
+  }
+  return out
+}
 
 /** `inner` in a rounded box in the tone, filled with its tint. Each inner line fits `width - 4` cells. */
 export function boxed(inner: string[], tone: BannerTone, width: number, s: Style): string[] {
@@ -149,6 +292,7 @@ export function paintMark(m: { mark: string; tone: Tone | null; isRunning: boole
 
 export function drawLine(line: Line, isSelected: boolean, d: Draw): string[] {
   const { ui, width, now, style: s } = d
+  if (line.timeline) return timelineLine(line, line.timeline, isSelected, d)
   if (line.isTabButtons) {
     const cursor = isSelected ? s.tone('accent', '❯') : ' '
     const cells = line.buttons.map((b, i) => buttonCell(b, isSelected && i === focusOf(line, ui), s))

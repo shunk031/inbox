@@ -91,6 +91,29 @@ function activate(screen: PanelScreen, ui: PanelUi, line: Line, button: Button, 
         focus: null,
       },
     }
+  if (press.action === 'timeline-detail')
+    return {
+      ui: {
+        ...ui,
+        selectedId: press.id,
+        timelineSelection: press.id,
+        timelineDetailOpen: true,
+        timelineTreeTop: ui.pageTop,
+        pageTop: 0,
+        detailTop: 0,
+        focus: null,
+      },
+    }
+  if (press.action === 'timeline-back')
+    return {
+      ui: {
+        ...ui,
+        timelineDetailOpen: false,
+        pageTop: ui.timelineTreeTop,
+        detailTop: 0,
+        focus: null,
+      },
+    }
   if (press.action === 'timeline-toggle')
     return {
       ui: {
@@ -234,9 +257,27 @@ export function handleKey(screen: PanelScreen, ui: PanelUi, key: string, now: nu
  */
 function pageKey(screen: PanelScreen, ui: PanelUi, key: string, now: number): KeyResult | null {
   if (ui.tab === 'timeline') {
-    const page = timelinePage(screen.view.timeline, ui.timelineSelection, ui.timelineFolded, screen.view.lastActions)
+    const page = timelinePage(
+      screen.view.timeline,
+      ui.timelineSelection,
+      ui.timelineFolded,
+      screen.view.lastActions,
+      ui.timelineDetailOpen,
+    )
     const row = page.selected?.row
     if (!row) return null
+    if (page.mode === 'detail') {
+      const line = linesOf(entriesOf(screen, ui, ui.tab, now)).find(item => item.id === row.task.id)
+      if (!line) return null
+      const back = line.buttons.find(button => button.press.action === 'timeline-back')
+      if ((key === 'b' || key === 'escape') && back) return activate(screen, ui, line, back, now)
+      if (key === 'left' || key === 'right') {
+        const index = steppedIndex(focusOf(line, ui), key === 'left' ? -1 : 1, line.buttons.length)
+        return { ui: { ...ui, focus: { rowId: line.id, index } } }
+      }
+      const button = key === 'enter' ? line.buttons[focusOf(line, ui)] : line.buttons.find(item => item.key === key)
+      return button ? activate(screen, ui, line, button, now) : null
+    }
     if (key === 'j' || key === 'k') {
       const id = moveTimelineSelection(page.rows, ui.timelineSelection, key === 'k' ? -1 : 1)
       const target = linesOf(entriesOf(screen, ui, ui.tab, now)).find(item => item.id === id)

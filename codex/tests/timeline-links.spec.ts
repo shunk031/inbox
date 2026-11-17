@@ -15,6 +15,7 @@ test('a Timeline Local open stays disabled while pending and draws its done or f
   context.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() })
   const now = Date.now()
   const ref = 'https://git.example.org/acme/inbox/pull/12'
+  const longTitle = '日本語の長いタイトルを狭い画面でも状態と進捗を保ちながら読みやすく折り返す確認用のタスク'
   const state = emptyState('timeline-links')
   state.heard.startAt = 1
   state.taskTree = [
@@ -23,8 +24,8 @@ test('a Timeline Local open stays disabled while pending and draws its done or f
       parentId: null,
       status: 'working',
       weight: 1,
-      title: 'Review the linked work',
-      detail: 'Open the tracked pull request.',
+      title: longTitle,
+      detail: 'この詳細は狭い画面でも行頭のインデントを保ちながら読みやすく折り返されます。'.repeat(3),
       links: { pr: ref },
       notes: [],
       createdAt: now,
@@ -113,7 +114,7 @@ test('a Timeline Local open stays disabled while pending and draws its done or f
   }
 
   const root = document.getElementById('app')!
-  const openButton = () => root.querySelector<HTMLButtonElement>('.timeline-detail button')
+  const openButton = () => root.querySelector<HTMLButtonElement>('.timeline-detail-page .timeline-link button')
   const until = async (ready: () => boolean) => {
     for (let n = 0; n < 50 && !ready(); n++) await new Promise<void>(resolve => setImmediate(resolve))
     assert.ok(ready())
@@ -134,7 +135,21 @@ test('a Timeline Local open stays disabled while pending and draws its done or f
   }
   try {
     await import('../src/tab')
-    await until(() => root.querySelector('.timeline-node') !== null && openButton() !== null)
+    await until(() => root.querySelector('.timeline-node') !== null)
+    root.querySelector<HTMLButtonElement>('.timeline-title')!.click()
+    await until(() => root.querySelector('.timeline-detail-page') !== null && openButton() !== null)
+    assert.equal(root.querySelector('.timeline-detail-page h1')?.textContent, longTitle)
+    assert.ok(root.querySelector('.timeline-detail-copy .timeline-detail-prefix'))
+    assert.doesNotMatch(root.querySelector('.timeline-detail-copy .timeline-detail-prefix')?.textContent ?? '', /[│├└]/)
+    assert.equal(root.querySelector('.timeline-detail-copy p')?.textContent, state.taskTree[0]?.detail)
+    assert.deepEqual(
+      [...root.querySelectorAll('.timeline-stat')].map(stat => stat.textContent?.replace(/\s+/g, ' ').trim()),
+      ['Progress0.00%', 'Weight1', 'Completed units0 / 1'],
+    )
+    assert.deepEqual(
+      [...root.querySelectorAll('.timeline-detail-section strong')].map(label => label.textContent),
+      ['Detail', 'Links'],
+    )
 
     openButton()!.click()
     await until(() => openButton()?.textContent === 'Opening…')
@@ -145,18 +160,21 @@ test('a Timeline Local open stays disabled while pending and draws its done or f
 
     setOpenResult('done', null)
     heldOpenReplies.shift()?.()
-    await until(() => root.querySelector('.timeline-detail .tone-done')?.textContent === '✓ Opened')
+    await until(() => root.querySelector('.timeline-detail-page .tone-done')?.textContent === '✓ Opened')
     assert.equal(openButton()?.disabled, false)
 
     openButton()!.click()
     await until(() => openButton()?.textContent === 'Opening…')
     assert.equal(openButton()?.disabled, true)
-    assert.equal(root.querySelector('.timeline-detail .tone-done'), null)
+    assert.equal(root.querySelector('.timeline-detail-page .tone-done'), null)
     assert.equal(openPresses.length, 2)
     setOpenResult('failed', 'Browser unavailable')
     heldOpenReplies.shift()?.()
-    await until(() => root.querySelector('.timeline-detail .tone-error')?.textContent === 'Browser unavailable')
-    assert.match(root.querySelector('.timeline-detail .tone-error')?.className ?? '', /tone-error/)
+    await until(() => root.querySelector('.timeline-detail-page .tone-error')?.textContent === 'Browser unavailable')
+    assert.match(root.querySelector('.timeline-detail-page .tone-error')?.className ?? '', /tone-error/)
+    root.querySelector<HTMLButtonElement>('.timeline-detail-head button')!.click()
+    await until(() => root.querySelector('.timeline-detail-page') === null)
+    assert.equal(root.querySelector('.row.selected .timeline-title')?.textContent, longTitle)
   } finally {
     const { dispose } = await import('../src/tab-host')
     dispose()

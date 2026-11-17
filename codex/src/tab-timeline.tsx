@@ -1,43 +1,30 @@
 import type { JSX } from 'preact'
-import { SUBJECT_MARKS } from '../../hooks/help'
 import { prMarkId } from '../../hooks/pr-rows'
 import { timelinePage } from '../../hooks/timeline-page'
 import type { TabView } from './core'
 import { pendingLocal, act } from './tab-rows'
 import { closingFolds, drawnRows, timelineFolded } from './tab-state'
 import { outPending } from './tab-press'
-import { selectTimelineRow, timelinePageOf, timelineRowForm, toggleTimelineFold } from './rows'
+import { closeTimelineDetail, openTimelineDetail, timelinePageOf, timelineRowForm, toggleTimelineFold } from './rows'
 
 export function TimelineTab({ view }: { view: TabView }) {
   const page = timelinePageOf(view)
+  const detail = page.selected
   const all = timelinePage(view.timeline, null, [], view.lastActions).rows
   const visible = new Map(page.rows.map(row => [row.task.id, row]))
   const hidden = new Set([...timelineFolded].filter(id => !closingFolds.has(`timeline-${id}`)))
-  const barParts = (id: string, parts: (typeof page.bars)[number]['parts']) =>
-    parts.map((part, index) => (
-      <span
-        class={`tone-${part.state === 'stalled' ? 'error' : part.state === 'working' ? 'needsYou' : part.state === 'done' ? 'done' : 'muted'}`}
-        key={`${id}-${index}`}
-      >
-        {part.mark.repeat(part.count)}
-      </span>
-    ))
-
   const children = (parentId: string | null) =>
     all.filter(row => row.task.parentId === parentId && !hidden.has(parentId ?? ''))
   const drawRow = (row: (typeof all)[number]): JSX.Element => {
     const id = `timeline:${row.task.id}`
     const track = drawnRows.get(id)?.track
     const selected = page.selected?.row.task.id === row.task.id
-    const selection = selected ? page.selected : track?.hasPanel ? (drawnRows.get(id)?.openTimeline ?? null) : null
-    const selectAction = visible.get(row.task.id)?.actions.find(action => action.action === 'select')
-    const branchAction = selection?.row.actions.find(action => action.action === 'toggle-branch')
+    const branchAction = visible.get(row.task.id)?.actions.find(action => action.action === 'toggle-branch')
     const form = timelineRowForm(row, visible.get(row.task.id))
     const isClosing = track?.state === 'closing' || track?.state === 'leaving'
-    const mark = row.status === 'stalled' ? '!' : (SUBJECT_MARKS[row.status as keyof typeof SUBJECT_MARKS]?.mark ?? '·')
 
     return (
-      <section class="timeline-tree-item" key={row.task.id}>
+      <section class={`timeline-tree-item${row.alternate ? ' alternate' : ''}`} key={row.task.id}>
         {form.ancestorGuides.map(depth => (
           <span
             key={`ancestor-${depth}`}
@@ -56,26 +43,40 @@ export function TimelineTab({ view }: { view: TabView }) {
         ) : null}
         <div class={`row timeline-node${selected ? ' selected' : ''}${isClosing ? ' closing' : ''}`} data-motion={id}>
           <div class="content tight">
-            <div>
-              <span class="muted timeline-tree-prefix">{`  ${form.prefix}`}</span>
-              <span
-                class={`timeline-task-mark tone-${row.status === 'done' ? 'done' : row.status === 'stalled' ? 'error' : 'needsYou'}`}
-              >
-                {mark}{' '}
-              </span>
-              {selectAction && !isClosing ? (
+            <div class="timeline-task-line">
+              <div class="timeline-task-title">
+                <span class="muted timeline-tree-prefix">{`  ${form.prefix}`}</span>
+                <span class={`timeline-task-mark tone-${row.tone}`}>{row.mark} </span>
                 <button
                   type="button"
-                  class="timeline-title-link"
-                  style={{ textDecoration: 'underline' }}
-                  onClick={() => selectTimelineRow(selectAction.id)}
+                  class={`timeline-title tone-${row.tone}${isClosing ? '' : ' timeline-title-link'}`}
+                  disabled={isClosing}
+                  onClick={() => openTimelineDetail(row.task.id)}
                 >
                   {row.task.title}
                 </button>
-              ) : (
-                <span class="timeline-title">{row.task.title}</span>
-              )}
-              <span class="muted">{` · ${row.statusLabel} · ${row.measure}`}</span>
+              </div>
+              <div class="timeline-row-progress" aria-label={`${row.percent} complete`}>
+                <span class="timeline-row-bar">
+                  {(row.progressBar.length
+                    ? row.progressBar
+                    : [{ tone: 'muted' as const, mark: '─', count: 10, state: 'queued' as const }]
+                  ).map((part, index) => (
+                    <span class={`tone-${part.tone}`} key={`${row.task.id}-bar-${index}`}>
+                      {part.mark.repeat(part.count)}
+                    </span>
+                  ))}
+                </span>
+                <span class={`timeline-percent tone-${row.tone}`}>{row.percent}</span>
+              </div>
+            </div>
+            <div class="timeline-status-line">
+              <span class={`timeline-chip tone-${row.tone}`}>{row.statusLabel}</span>
+              {branchAction && !isClosing ? (
+                <button type="button" class="key quiet" onClick={() => toggleTimelineFold(view, branchAction.id)}>
+                  {hidden.has(branchAction.id) ? '▸' : '▾'}
+                </button>
+              ) : null}
             </div>
             {row.warnings.map((warning, index) => (
               <div class="warning" key={`${row.task.id}-warning-${index}`}>
@@ -84,57 +85,6 @@ export function TimelineTab({ view }: { view: TabView }) {
               </div>
             ))}
           </div>
-          {selection ? (
-            <div class={`timeline-detail${isClosing ? ' closing' : ''}`} {...(isClosing ? { inert: true } : {})}>
-              {branchAction ? (
-                <button type="button" class="key quiet" onClick={() => toggleTimelineFold(view, branchAction.id)}>
-                  {branchAction.label}
-                </button>
-              ) : null}
-              {selection.details.map((line, index) => (
-                <div key={`${row.task.id}-detail-${index}`}>
-                  <span class="muted timeline-tree-prefix">{form.detailLead}</span>
-                  <strong class="timeline-detail-label">{line.label} · </strong>
-                  {line.label === 'Links'
-                    ? line.actions.map(link => {
-                        const press = link.press
-                        if (press.action !== 'pr-open') return null
-                        const ref = press.ref
-                        const pending = outPending(view, prMarkId(ref))
-                        const isOpening =
-                          link.result?.state === 'pending' ||
-                          (pending?.is === 'local' && pending.result.state === 'pending')
-                        return (
-                          <span key={`${row.task.id}-${link.label}`}>
-                            <button
-                              type="button"
-                              class="key"
-                              disabled={link.isOut || isOpening}
-                              onClick={() =>
-                                void act(
-                                  prMarkId(ref),
-                                  press,
-                                  undefined,
-                                  pendingLocal({ kind: 'open', target: ref, name: link.label }),
-                                )
-                              }
-                            >
-                              {isOpening ? 'Opening…' : link.label}
-                            </button>
-                            {!isOpening && link.result?.state === 'done' ? (
-                              <span class="tone-done">✓ Opened</span>
-                            ) : null}
-                            {!isOpening && link.result?.state === 'failed' ? (
-                              <span class="tone-error">{link.result.parts.find(part => part.error)?.error}</span>
-                            ) : null}
-                          </span>
-                        )
-                      })
-                    : line.text}
-                </div>
-              ))}
-            </div>
-          ) : null}
         </div>
         {row.hasChildren && !hidden.has(row.task.id) ? (
           <div class="timeline-children" data-motion={`closed-timeline-${row.task.id}`}>
@@ -145,21 +95,110 @@ export function TimelineTab({ view }: { view: TabView }) {
     )
   }
 
+  const progressCard = (
+    <section class="timeline-progress-card">
+      <div class="timeline-progress-head">
+        <strong>Progress</strong>
+        <span class={`timeline-chip tone-${page.progressCard.tone}`}>{page.progressCard.statusLabel}</span>
+      </div>
+      <div class="timeline-progress-line">
+        <div class="timeline-progress-bar">
+          {(page.progressCard.bar.length
+            ? page.progressCard.bar
+            : [{ tone: 'muted' as const, mark: '─', count: 28, state: 'queued' as const }]
+          ).map((part, index) => (
+            <span class={`tone-${part.tone}`} key={`progress-${index}`}>
+              {part.mark.repeat(part.count)}
+            </span>
+          ))}
+        </div>
+        <strong>{page.progressCard.percentLabel}</strong>
+      </div>
+      <div class="timeline-progress-meta">
+        <span>{`${page.progressCard.leavesDone}/${page.progressCard.leavesTotal} leaf tasks completed`}</span>
+        <span>{`Elapsed: ${page.progressCard.elapsed}`}</span>
+      </div>
+    </section>
+  )
+
+  if (page.mode === 'detail' && detail) {
+    return (
+      <main class="status-page timeline-page timeline-detail-page">
+        <header class="timeline-detail-head">
+          <button type="button" class="key quiet" onClick={closeTimelineDetail}>
+            ‹ Back
+          </button>
+          <h1>{detail.row.task.title}</h1>
+          <span class={`timeline-chip tone-${detail.row.tone}`}>{detail.row.statusLabel}</span>
+        </header>
+        <div class="timeline-stat-grid">
+          {(
+            [
+              ['Progress', detail.stats.progress],
+              ['Weight', detail.stats.weight],
+              ['Completed units', detail.stats.completedUnits],
+            ] as const
+          ).map(([label, value]) => (
+            <section class="timeline-stat" key={label}>
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </section>
+          ))}
+        </div>
+        <div class="timeline-detail-content">
+          {detail.details.map((line, index) => (
+            <section class="timeline-detail-section" key={`${line.label}-${index}`}>
+              <strong>{line.label}</strong>
+              {line.label === 'Links' ? (
+                line.actions.map(link => {
+                  const press = link.press
+                  if (press.action !== 'pr-open') return null
+                  const ref = press.ref
+                  const pending = outPending(view, prMarkId(ref))
+                  const isOpening =
+                    link.result?.state === 'pending' || (pending?.is === 'local' && pending.result.state === 'pending')
+                  return (
+                    <span class="timeline-link" key={`${line.label}-${link.label}`}>
+                      <button
+                        type="button"
+                        class="key"
+                        disabled={link.isOut || isOpening}
+                        onClick={() =>
+                          void act(
+                            prMarkId(ref),
+                            press,
+                            undefined,
+                            pendingLocal({ kind: 'open', target: ref, name: link.label }),
+                          )
+                        }
+                      >
+                        {isOpening ? 'Opening…' : link.label}
+                      </button>
+                      {!isOpening && link.result?.state === 'done' ? <span class="tone-done">✓ Opened</span> : null}
+                      {!isOpening && link.result?.state === 'failed' ? (
+                        <span class="tone-error">{link.result.parts.find(part => part.error)?.error}</span>
+                      ) : null}
+                    </span>
+                  )
+                })
+              ) : (
+                <div class="timeline-detail-copy">
+                  <span class="timeline-detail-prefix" aria-hidden="true">
+                    {detail.row.detailLead}
+                  </span>
+                  <p>{line.text}</p>
+                </div>
+              )}
+            </section>
+          ))}
+        </div>
+      </main>
+    )
+  }
+
   return (
     <main class="status-page timeline-page">
-      <div class="timeline-bars" style={{ padding: '0 14px 8px var(--text-x)' }}>
-        <div class="muted">
-          Task plan · {page.summary}
-          {page.bars[0]?.parts.length ? ' · ' : null}
-          {page.bars[0] ? barParts(page.bars[0].id, page.bars[0].parts) : null}
-        </div>
-        {page.bars.slice(1).map(bar => (
-          <div class="timeline-bar" key={bar.id}>
-            <span class="muted">{bar.label}: </span>
-            {barParts(bar.id, bar.parts)}
-          </div>
-        ))}
-      </div>
+      {progressCard}
       {page.isEmpty ? (
         <div class="empty">
           <h1>{page.empty.title}</h1>

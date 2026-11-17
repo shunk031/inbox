@@ -23,7 +23,15 @@ import { NeedsYou, Findings } from './tab-groups'
 import { prClearKeys, prOrderKeys, Prs } from './tab-prs'
 import { StatusTab } from './tab-status'
 import { TimelineTab } from './tab-timeline'
-import { forgetTimelineRows, selectTimelineRow, stepTimelineRows, timelinePageOf, toggleTimelineFold } from './rows'
+import {
+  closeTimelineDetail,
+  forgetTimelineRows,
+  openTimelineDetail,
+  selectTimelineRow,
+  stepTimelineRows,
+  timelinePageOf,
+  toggleTimelineFold,
+} from './rows'
 import { pressUndoKey } from './undo-key'
 import { HelpPage, Status, TabBar, toggleDemo } from './tab-chrome'
 
@@ -210,6 +218,13 @@ document.addEventListener(
     if (t === 'timeline') {
       const page = timelinePageOf(tabState.view)
       const selected = page.selected?.row
+      if (page.mode === 'detail') {
+        if (e.key === 'b' || e.key === 'Escape') {
+          e.preventDefault()
+          closeTimelineDetail()
+        }
+        return
+      }
       if (move) {
         e.preventDefault()
         const id = moveTimelineSelection(page.rows, selected?.task.id ?? null, move)
@@ -217,11 +232,16 @@ document.addEventListener(
           selectTimelineRow(id)
           revealSelected()
         }
+      } else if (selected && e.key === 'Enter') {
+        e.preventDefault()
+        openTimelineDetail(selected.task.id)
       } else if (selected) {
         const action = selected.actions.find(item => item.hotkey === e.key)
         if (action) {
           e.preventDefault()
           if (action.action === 'toggle-branch') toggleTimelineFold(tabState.view, action.id)
+          else if (action.action === 'detail') openTimelineDetail(action.id)
+          else if (action.action === 'back') closeTimelineDetail()
           else selectTimelineRow(action.id)
         }
       }
