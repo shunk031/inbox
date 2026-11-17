@@ -716,266 +716,6 @@ function outcomeText(d) {
   }
 }
 
-// ../hooks/inbox-text.ts
-var START_TITLE = 'inbox: where this session stands, as of the last reply. An "inbox:" text beside a later prompt replaces this.';
-function surfaceAtStart(host) {
-  return host.surface.charAt(0).toUpperCase() + host.surface.slice(1);
-}
-function screenText(host, isOpen2, tab) {
-  if (!isOpen2) return `${surfaceAtStart(host)} is closed.`;
-  if (tab?.isPage)
-    return `${surfaceAtStart(host)} is open beside the conversation, on its ${tab.label} tab, which shows a guide to the session's work, not rows.`;
-  return `${surfaceAtStart(host)} is open beside the conversation, ${tab ? `on its ${tab.label} tab, ` : ""}listing every open item.`;
-}
-function latestBatch(ledger) {
-  return ledger.batchTurn === 0 ? [] : ledger.items.filter((i) => !i.sourceManaged && i.turn === ledger.batchTurn);
-}
-var promptItems = (ledger) => ledger.items.filter((i) => !i.sourceManaged);
-function describe(item) {
-  const parts = [`"${item.ask}"`];
-  if (item.options.length > 0) parts.push(`options: ${item.options.join(" / ")}`);
-  if (item.rec) parts.push(`recommended: ${item.rec}${item.recReason ? `, because ${item.recReason}` : ""}`);
-  if (item.kind === "task") parts.push("an action for the user");
-  return parts.join("; ");
-}
-function numberOf(label) {
-  const m = label?.match(/(?:^|[^A-Za-z\d])(?:[QqDd#]\s?)?(\d{1,2})(?!\d)/);
-  return m ? Number(m[1]) : null;
-}
-function answerableBatch(ledger, promptTurn) {
-  return ledger.batchTurn === promptTurn - 1 ? latestBatch(ledger) : [];
-}
-function batchNumbers(batch) {
-  const hasLabels = batch.some((i) => numberOf(i.label) !== null);
-  const byNumber = /* @__PURE__ */ new Map();
-  batch.forEach((item, at) => {
-    const n = hasLabels ? numberOf(item.label) : at + 1;
-    if (n !== null && !byNumber.has(n)) byNumber.set(n, item);
-  });
-  return byNumber;
-}
-function questionNumbers(ledger, promptTurn) {
-  const numbers = /* @__PURE__ */ new Map();
-  for (const [n, item] of batchNumbers(answerableBatch(ledger, promptTurn)))
-    if (item.kind === "question") numbers.set(item.id, n);
-  return numbers;
-}
-var LINE_ANSWER = /(?:^|\n)\s*(?:[QqDd#]\s?)?(\d{1,2})\s*[.):\-–]\s*\S/g;
-var INLINE_ANSWER = /\s(?:[QqDd#]\s?)?(\d{1,2})\s*[.)]\s+\S/g;
-var ACCEPT_ALL = /^\s*(go|go ahead|yes|yep|yeah|sure|ok|okay|sgtm|lgtm|sounds good|do it|proceed|all good|ship it)\s*[.!]*\s*$/i;
-var ACCEPT_RECS = /\b(all|both|everything|your)\b[^.\n]{0,40}\b(recommend\w*|recs?|suggest\w*|picks?|calls?)\b/i;
-function answerNote(ledger, text2) {
-  const lines = [];
-  const batch = answerableBatch(ledger, ledger.turn);
-  if (batch.length > 0) {
-    const numbers = /* @__PURE__ */ new Set();
-    for (const m of text2.matchAll(LINE_ANSWER)) numbers.add(Number(m[1]));
-    if (/^\s*(?:[QqDd#]\s?)?\d{1,2}\s*[.):\-–]\s/.test(text2)) {
-      for (const m of text2.matchAll(INLINE_ANSWER)) numbers.add(Number(m[1]));
-    }
-    const byNumber = batchNumbers(batch);
-    for (const n of [...numbers].sort((a, b) => a - b)) {
-      const item = byNumber.get(n);
-      if (item) lines.push(`- ${n} \u2192 ${describe(item)}`);
-    }
-    if (lines.length === 0 && (ACCEPT_ALL.test(text2) || ACCEPT_RECS.test(text2))) {
-      const withRecs = batch.filter((i) => i.rec);
-      if (withRecs.length > 0) {
-        return [
-          "inbox: if the user is accepting your recommendations, these are the open ones:",
-          ...withRecs.map((i) => `- ${i.label ?? "\u2022"} \u2192 ${describe(i)}`)
-        ].join(NL2);
-      }
-    }
-  }
-  return lines.length === 0 ? null : ["inbox: the user's message answers these open items from your earlier replies:", ...lines].join(NL2);
-}
-function itemLine(item) {
-  return `- ${item.label ? `(${item.label}) ` : ""}${describe(item)} (close id: ${item.id})`;
-}
-function findingLine(finding) {
-  return `- ${finding.kind}: ${finding.title} (close id: ${finding.id})`;
-}
-function statusSummaryLines(ledger) {
-  const head = ledger.overview?.head ?? null;
-  const focus = head ? [head.title, head.description].filter(Boolean).join(": ") : "";
-  const open2 = (ledger.overview?.subjects ?? []).filter(isOpen);
-  return [
-    ...focus ? [`Working on: ${focus}`] : [],
-    ...open2.length > 0 ? ["Where it stands:", ...open2.map((s) => `- ${s.name}: ${s.text || "-"} (${s.status})`)] : []
-  ];
-}
-function carryText(ledger, title) {
-  const findings = ledger.findings.filter((f) => !f.feedOwned);
-  const lines = statusSummaryLines(ledger);
-  if (lines.length === 0 && promptItems(ledger).length === 0 && findings.length === 0) return null;
-  const out = [title, ...lines];
-  if (promptItems(ledger).length > 0) {
-    out.push("Waiting on the user:");
-    for (const item of promptItems(ledger)) out.push(itemLine(item));
-  }
-  if (findings.length > 0) {
-    out.push("Findings you recorded, still open:");
-    for (const f of findings) out.push(findingLine(f));
-  }
-  if (ledger.closed.length > 0) {
-    out.push("Recently closed:");
-    for (const d of ledger.closed.slice(-CLOSED_CONTEXT_LIMIT)) out.push(`- "${d.ask}" \u2192 ${outcomeText(d)}`);
-  }
-  return out.join(NL2);
-}
-var CLOSE_ID_RULE = "A close id is only for the close tool. Never write one in a reply.";
-function inboxText(host, ledger, isOpen2) {
-  const findings = ledger.findings.filter((f) => !f.feedOwned);
-  const out = [
-    `inbox: what waits on the user, as of your last reply. Anything not listed here is closed. ${CLOSE_ID_RULE}`
-  ];
-  if (promptItems(ledger).length > 0) {
-    out.push("Waiting on the user:");
-    for (const item of promptItems(ledger)) out.push(itemLine(item));
-  } else {
-    out.push("Nothing is waiting on the user.");
-  }
-  if (findings.length > 0) {
-    out.push("Findings you recorded, still open:");
-    for (const f of findings) out.push(findingLine(f));
-  }
-  if (ledger.unrecordedDecisions.length > 0) {
-    out.push(
-      "Possibly unrecorded decisions in your last reply:",
-      ...ledger.unrecordedDecisions.map(
-        (candidate) => `- ${candidate.kind}: ${JSON.stringify(candidate.ask)} \u2014 reply quote: ${JSON.stringify(candidate.quote)}`
-      ),
-      "Record each candidate that waits on the user with `record`, and ignore the rest."
-    );
-  }
-  out.push(isOpen2 ? `The user has ${host.surface} open beside the conversation.` : `${surfaceAtStart(host)} is closed.`);
-  return out.join(NL2);
-}
-function closedText(closed) {
-  if (closed.length === 0) return null;
-  const advice = (d) => d.how === "dismissed" ? ". Ask it again only if the user brings it up." : d.how === "expired" ? ". Ask it again if it still matters." : "";
-  return [
-    "Closed since you last read the inbox:",
-    ...closed.map((d) => `- "${d.ask}" \u2192 ${outcomeText(d)}${advice(d)}`)
-  ].join(NL2);
-}
-var TOLD_NOTHING = { inbox: null, closed: [] };
-function promptNotes(host, ledger, prompt, told) {
-  const notes = [];
-  const answer = prompt.isPress ? null : answerNote(ledger, prompt.text);
-  if (answer) notes.push(answer);
-  const inbox = inboxText(host, ledger, prompt.isOpen);
-  const toldClosed = new Set(told.closed);
-  const closed = closedText(ledger.closed.filter((d) => !toldClosed.has(d.id)));
-  const hasUnrecorded = ledger.unrecordedDecisions.length > 0;
-  const isEmpty = promptItems(ledger).length === 0 && ledger.findings.every((f) => f.feedOwned);
-  if (!closed && !hasUnrecorded && (inbox === told.inbox || isEmpty && told.inbox === null))
-    return { notes, told, shownUnrecorded: false };
-  notes.push(closed ? `${inbox}${NL2}${closed}` : inbox);
-  return { notes, told: { inbox, closed: ledger.closed.map((d) => d.id) }, shownUnrecorded: hasUnrecorded };
-}
-
-// ../hooks/last-actions.ts
-function isAwaitingReply(last, turns) {
-  const pressed2 = last?.delivery?.state !== "failed" ? last?.turnsStarted : void 0;
-  return pressed2 !== void 0 && pressed2 <= turns.turnsStarted && turns.turnsApplied <= pressed2;
-}
-function isHandedOff(last, turns) {
-  return last?.kind === "handoff" && isAwaitingReply(last, turns);
-}
-function isFoldingPress(id, last) {
-  return !id.startsWith("pr:") && last?.kind === "handoff" && last.action !== "address";
-}
-function isFixSent(last) {
-  return last?.action === "address" && !last.isKept && last.delivery?.state !== "failed";
-}
-var HANDOFF_IDS = /^(address|type|step-\d+|thread-address|pr-conflicts|pr-address-all)$/;
-var PR_RENAMES = [
-  [/^address-all-/, "pr-address-all"],
-  [/^resolve-/, "pr-conflicts"]
-];
-var THREAD_RENAMES = [
-  [/^address-/, "thread-address"],
-  [/^draft-/, "thread-draft"],
-  [/^discuss-/, "thread-discuss"]
-];
-var ROW_RENAMES = [
-  [/^explain(-|$)/, "explain"],
-  [/^(help-.+-|step-)\d+$/, (old) => `step-${old.split("-").pop()}`],
-  [/^typed$/, "type"],
-  [/^address(-|$)/, "address"],
-  [/^discuss(-|$)/, "discuss"]
-];
-function upgradedLastAction(key, old) {
-  const renames = key.startsWith("pr:") ? PR_RENAMES : key.includes(" thread ") ? THREAD_RENAMES : ROW_RENAMES;
-  const found = renames.find(([pattern]) => pattern.test(old.action));
-  const action = found ? typeof found[1] === "function" ? found[1](old.action) : found[1] : null;
-  if (action === null) return null;
-  const { isHandoff, ...kept } = old;
-  const isHandedOff2 = isHandoff ?? HANDOFF_IDS.test(action);
-  return {
-    ...kept,
-    kind: isHandedOff2 ? "handoff" : "talk",
-    action,
-    // Earlier builds saved "Explain sent" or "Sent to Claude to fix"; a last action is now the label pressed.
-    text: /^Sent to (Claude|Codex) to /.test(old.text) ? "Address" : old.text.replace(/ sent$/, "")
-  };
-}
-function upgradeLastActions(saved) {
-  return Object.fromEntries(
-    Object.entries(saved).flatMap(([key, entry]) => {
-      const {
-        tab: _tab,
-        title: _title,
-        index: _index,
-        ...last
-      } = entry;
-      if ("kind" in last && last.kind) return [[key, last]];
-      const upgraded2 = upgradedLastAction(key, last);
-      return upgraded2 ? [[key, upgraded2]] : [];
-    })
-  );
-}
-
-// ../hooks/host-tasks.ts
-var STATUSES2 = {
-  pending: "pending",
-  in_progress: "in-progress",
-  "in-progress": "in-progress",
-  completed: "done",
-  done: "done",
-  abandoned: "dropped",
-  blocked: "blocked"
-};
-var statusOf = (raw) => STATUSES2[String(raw)] ?? "pending";
-var textOf = (raw) => typeof raw === "string" ? raw.trim() : "";
-var recordOf = (raw) => typeof raw === "object" && raw !== null && !Array.isArray(raw) ? raw : {};
-function numberedTasks(rows, textKey) {
-  return rows.map(recordOf).map((row, n) => ({ id: String(n + 1), text: textOf(row[textKey]), status: statusOf(row.status) })).filter((t) => t.text !== "");
-}
-function codexPlanOf(args) {
-  const parsed = typeof args === "string" ? safeJson(args) : args;
-  const plan = recordOf(parsed).plan;
-  if (!Array.isArray(plan)) return null;
-  return numberedTasks(plan, "step");
-}
-function safeJson(text2) {
-  try {
-    return JSON.parse(text2);
-  } catch {
-    return null;
-  }
-}
-function upgradeHostTasks(saved) {
-  if (!Array.isArray(saved)) return [];
-  return saved.flatMap((raw) => {
-    const t = recordOf(raw);
-    const status = STATUSES2[String(t.status)];
-    return typeof t.id === "string" && typeof t.text === "string" && t.text !== "" && status ? [{ id: t.id, text: t.text, status }] : [];
-  });
-}
-
 // ../hooks/task-tree.ts
 var TASK_NOTES_LIMIT = 40;
 var TASK_NOTE_LENGTH = 2e3;
@@ -1104,6 +844,287 @@ function taskTreeFromStatus(status) {
     return node;
   });
   return [...milestones, ...subjects];
+}
+
+// ../hooks/task-text.ts
+function currentTaskText(task) {
+  const detailIndex = task.history.findLastIndex((event) => event.kind === "detail");
+  const detailAt = task.history[detailIndex]?.at ?? task.createdAt;
+  const noteEvent = task.history.map((event, index) => ({ event, index })).filter(({ event }) => event.kind === "note" && event.detail !== void 0 && task.notes.includes(event.detail)).toSorted((a, b) => b.event.at - a.event.at || b.index - a.index)[0];
+  const latestNote = noteEvent ? { text: noteEvent.event.detail, at: noteEvent.event.at, index: noteEvent.index } : task.notes.length > 0 ? { text: task.notes.at(-1), at: task.createdAt, index: -1 } : null;
+  if (latestNote && (latestNote.at > detailAt || latestNote.at === detailAt && latestNote.index > detailIndex))
+    return { text: latestNote.text, at: latestNote.at };
+  return task.detail ? { text: task.detail, at: detailAt } : latestNote;
+}
+
+// ../hooks/inbox-text.ts
+var START_TITLE = 'inbox: where this session stands, as of the last reply. An "inbox:" text beside a later prompt replaces this.';
+function surfaceAtStart(host) {
+  return host.surface.charAt(0).toUpperCase() + host.surface.slice(1);
+}
+function screenText(host, isOpen2, tab) {
+  if (!isOpen2) return `${surfaceAtStart(host)} is closed.`;
+  if (tab?.isPage)
+    return `${surfaceAtStart(host)} is open beside the conversation, on its ${tab.label} tab, which shows a guide to the session's work, not rows.`;
+  return `${surfaceAtStart(host)} is open beside the conversation, ${tab ? `on its ${tab.label} tab, ` : ""}listing every open item.`;
+}
+function latestBatch(ledger) {
+  return ledger.batchTurn === 0 ? [] : ledger.items.filter((i) => !i.sourceManaged && i.turn === ledger.batchTurn);
+}
+var promptItems = (ledger) => ledger.items.filter((i) => !i.sourceManaged);
+function describe(item) {
+  const parts = [`"${item.ask}"`];
+  if (item.options.length > 0) parts.push(`options: ${item.options.join(" / ")}`);
+  if (item.rec) parts.push(`recommended: ${item.rec}${item.recReason ? `, because ${item.recReason}` : ""}`);
+  if (item.kind === "task") parts.push("an action for the user");
+  return parts.join("; ");
+}
+function numberOf(label) {
+  const m = label?.match(/(?:^|[^A-Za-z\d])(?:[QqDd#]\s?)?(\d{1,2})(?!\d)/);
+  return m ? Number(m[1]) : null;
+}
+function answerableBatch(ledger, promptTurn) {
+  return ledger.batchTurn === promptTurn - 1 ? latestBatch(ledger) : [];
+}
+function batchNumbers(batch) {
+  const hasLabels = batch.some((i) => numberOf(i.label) !== null);
+  const byNumber = /* @__PURE__ */ new Map();
+  batch.forEach((item, at) => {
+    const n = hasLabels ? numberOf(item.label) : at + 1;
+    if (n !== null && !byNumber.has(n)) byNumber.set(n, item);
+  });
+  return byNumber;
+}
+function questionNumbers(ledger, promptTurn) {
+  const numbers = /* @__PURE__ */ new Map();
+  for (const [n, item] of batchNumbers(answerableBatch(ledger, promptTurn)))
+    if (item.kind === "question") numbers.set(item.id, n);
+  return numbers;
+}
+var LINE_ANSWER = /(?:^|\n)\s*(?:[QqDd#]\s?)?(\d{1,2})\s*[.):\-–]\s*\S/g;
+var INLINE_ANSWER = /\s(?:[QqDd#]\s?)?(\d{1,2})\s*[.)]\s+\S/g;
+var ACCEPT_ALL = /^\s*(go|go ahead|yes|yep|yeah|sure|ok|okay|sgtm|lgtm|sounds good|do it|proceed|all good|ship it)\s*[.!]*\s*$/i;
+var ACCEPT_RECS = /\b(all|both|everything|your)\b[^.\n]{0,40}\b(recommend\w*|recs?|suggest\w*|picks?|calls?)\b/i;
+function answerNote(ledger, text2) {
+  const lines = [];
+  const batch = answerableBatch(ledger, ledger.turn);
+  if (batch.length > 0) {
+    const numbers = /* @__PURE__ */ new Set();
+    for (const m of text2.matchAll(LINE_ANSWER)) numbers.add(Number(m[1]));
+    if (/^\s*(?:[QqDd#]\s?)?\d{1,2}\s*[.):\-–]\s/.test(text2)) {
+      for (const m of text2.matchAll(INLINE_ANSWER)) numbers.add(Number(m[1]));
+    }
+    const byNumber = batchNumbers(batch);
+    for (const n of [...numbers].sort((a, b) => a - b)) {
+      const item = byNumber.get(n);
+      if (item) lines.push(`- ${n} \u2192 ${describe(item)}`);
+    }
+    if (lines.length === 0 && (ACCEPT_ALL.test(text2) || ACCEPT_RECS.test(text2))) {
+      const withRecs = batch.filter((i) => i.rec);
+      if (withRecs.length > 0) {
+        return [
+          "inbox: if the user is accepting your recommendations, these are the open ones:",
+          ...withRecs.map((i) => `- ${i.label ?? "\u2022"} \u2192 ${describe(i)}`)
+        ].join(NL2);
+      }
+    }
+  }
+  return lines.length === 0 ? null : ["inbox: the user's message answers these open items from your earlier replies:", ...lines].join(NL2);
+}
+function itemLine(item) {
+  return `- ${item.label ? `(${item.label}) ` : ""}${describe(item)} (close id: ${item.id})`;
+}
+function findingLine(finding) {
+  return `- ${finding.kind}: ${finding.title} (close id: ${finding.id})`;
+}
+function statusSummaryLines(ledger, taskTree = []) {
+  const head = ledger.overview?.head ?? null;
+  const focus = head ? [head.title, head.description].filter(Boolean).join(": ") : "";
+  const open2 = (ledger.overview?.subjects ?? []).filter(isOpen);
+  const groups = taskRootGroups(taskTree).filter(
+    ({ roots }) => roots.some((task) => task.status !== "done" && task.status !== "dropped")
+  );
+  const taskLines = groups.map(({ roots }) => {
+    const name = roots.map((task) => task.title).join(", ");
+    const current = roots.map((task) => currentTaskText(task)?.text).filter(Boolean).join("; ");
+    const status = roots.some((task) => task.status === "working") ? "working" : roots.some((task) => task.status === "waits-on-other") ? "waiting on others" : "queued";
+    return `- ${name}: ${current || "-"} (${status})`;
+  });
+  return [
+    ...focus ? [`Working on: ${focus}`] : [],
+    ...taskLines.length > 0 ? ["Where it stands:", ...taskLines] : open2.length > 0 ? ["Where it stands:", ...open2.map((s) => `- ${s.name}: ${s.text || "-"} (${s.status})`)] : []
+  ];
+}
+function carryText(ledger, title, taskTree = []) {
+  const findings = ledger.findings.filter((f) => !f.feedOwned);
+  const lines = statusSummaryLines(ledger, taskTree);
+  if (lines.length === 0 && promptItems(ledger).length === 0 && findings.length === 0) return null;
+  const out = [title, ...lines];
+  if (promptItems(ledger).length > 0) {
+    out.push("Waiting on the user:");
+    for (const item of promptItems(ledger)) out.push(itemLine(item));
+  }
+  if (findings.length > 0) {
+    out.push("Findings you recorded, still open:");
+    for (const f of findings) out.push(findingLine(f));
+  }
+  if (ledger.closed.length > 0) {
+    out.push("Recently closed:");
+    for (const d of ledger.closed.slice(-CLOSED_CONTEXT_LIMIT)) out.push(`- "${d.ask}" \u2192 ${outcomeText(d)}`);
+  }
+  return out.join(NL2);
+}
+var CLOSE_ID_RULE = "A close id is only for the close tool. Never write one in a reply.";
+function inboxText(host, ledger, isOpen2, taskTree = []) {
+  const findings = ledger.findings.filter((f) => !f.feedOwned);
+  const out = [
+    `inbox: what waits on the user, as of your last reply. Anything not listed here is closed. ${CLOSE_ID_RULE}`
+  ];
+  out.push(...statusSummaryLines(ledger, taskTree));
+  if (promptItems(ledger).length > 0) {
+    out.push("Waiting on the user:");
+    for (const item of promptItems(ledger)) out.push(itemLine(item));
+  } else {
+    out.push("Nothing is waiting on the user.");
+  }
+  if (findings.length > 0) {
+    out.push("Findings you recorded, still open:");
+    for (const f of findings) out.push(findingLine(f));
+  }
+  if (ledger.unrecordedDecisions.length > 0) {
+    out.push(
+      "Possibly unrecorded decisions in your last reply:",
+      ...ledger.unrecordedDecisions.map(
+        (candidate) => `- ${candidate.kind}: ${JSON.stringify(candidate.ask)} \u2014 reply quote: ${JSON.stringify(candidate.quote)}`
+      ),
+      "Record each candidate that waits on the user with `record`, and ignore the rest."
+    );
+  }
+  out.push(isOpen2 ? `The user has ${host.surface} open beside the conversation.` : `${surfaceAtStart(host)} is closed.`);
+  return out.join(NL2);
+}
+function closedText(closed) {
+  if (closed.length === 0) return null;
+  const advice = (d) => d.how === "dismissed" ? ". Ask it again only if the user brings it up." : d.how === "expired" ? ". Ask it again if it still matters." : "";
+  return [
+    "Closed since you last read the inbox:",
+    ...closed.map((d) => `- "${d.ask}" \u2192 ${outcomeText(d)}${advice(d)}`)
+  ].join(NL2);
+}
+var TOLD_NOTHING = { inbox: null, closed: [] };
+function promptNotes(host, ledger, prompt, told, taskTree = []) {
+  const notes = [];
+  const answer = prompt.isPress ? null : answerNote(ledger, prompt.text);
+  if (answer) notes.push(answer);
+  const inbox = inboxText(host, ledger, prompt.isOpen, taskTree);
+  const toldClosed = new Set(told.closed);
+  const closed = closedText(ledger.closed.filter((d) => !toldClosed.has(d.id)));
+  const hasUnrecorded = ledger.unrecordedDecisions.length > 0;
+  const isEmpty = promptItems(ledger).length === 0 && ledger.findings.every((f) => f.feedOwned);
+  if (!closed && !hasUnrecorded && (inbox === told.inbox || isEmpty && told.inbox === null))
+    return { notes, told, shownUnrecorded: false };
+  notes.push(closed ? `${inbox}${NL2}${closed}` : inbox);
+  return { notes, told: { inbox, closed: ledger.closed.map((d) => d.id) }, shownUnrecorded: hasUnrecorded };
+}
+
+// ../hooks/last-actions.ts
+function isAwaitingReply(last, turns) {
+  const pressed2 = last?.delivery?.state !== "failed" ? last?.turnsStarted : void 0;
+  return pressed2 !== void 0 && pressed2 <= turns.turnsStarted && turns.turnsApplied <= pressed2;
+}
+function isHandedOff(last, turns) {
+  return last?.kind === "handoff" && isAwaitingReply(last, turns);
+}
+function isFoldingPress(id, last) {
+  return !id.startsWith("pr:") && last?.kind === "handoff" && last.action !== "address";
+}
+function isFixSent(last) {
+  return last?.action === "address" && !last.isKept && last.delivery?.state !== "failed";
+}
+var HANDOFF_IDS = /^(address|type|step-\d+|thread-address|pr-conflicts|pr-address-all)$/;
+var PR_RENAMES = [
+  [/^address-all-/, "pr-address-all"],
+  [/^resolve-/, "pr-conflicts"]
+];
+var THREAD_RENAMES = [
+  [/^address-/, "thread-address"],
+  [/^draft-/, "thread-draft"],
+  [/^discuss-/, "thread-discuss"]
+];
+var ROW_RENAMES = [
+  [/^explain(-|$)/, "explain"],
+  [/^(help-.+-|step-)\d+$/, (old) => `step-${old.split("-").pop()}`],
+  [/^typed$/, "type"],
+  [/^address(-|$)/, "address"],
+  [/^discuss(-|$)/, "discuss"]
+];
+function upgradedLastAction(key, old) {
+  const renames = key.startsWith("pr:") ? PR_RENAMES : key.includes(" thread ") ? THREAD_RENAMES : ROW_RENAMES;
+  const found = renames.find(([pattern]) => pattern.test(old.action));
+  const action = found ? typeof found[1] === "function" ? found[1](old.action) : found[1] : null;
+  if (action === null) return null;
+  const { isHandoff, ...kept } = old;
+  const isHandedOff2 = isHandoff ?? HANDOFF_IDS.test(action);
+  return {
+    ...kept,
+    kind: isHandedOff2 ? "handoff" : "talk",
+    action,
+    // Earlier builds saved "Explain sent" or "Sent to Claude to fix"; a last action is now the label pressed.
+    text: /^Sent to (Claude|Codex) to /.test(old.text) ? "Address" : old.text.replace(/ sent$/, "")
+  };
+}
+function upgradeLastActions(saved) {
+  return Object.fromEntries(
+    Object.entries(saved).flatMap(([key, entry]) => {
+      const {
+        tab: _tab,
+        title: _title,
+        index: _index,
+        ...last
+      } = entry;
+      if ("kind" in last && last.kind) return [[key, last]];
+      const upgraded2 = upgradedLastAction(key, last);
+      return upgraded2 ? [[key, upgraded2]] : [];
+    })
+  );
+}
+
+// ../hooks/host-tasks.ts
+var STATUSES2 = {
+  pending: "pending",
+  in_progress: "in-progress",
+  "in-progress": "in-progress",
+  completed: "done",
+  done: "done",
+  abandoned: "dropped",
+  blocked: "blocked"
+};
+var statusOf = (raw) => STATUSES2[String(raw)] ?? "pending";
+var textOf = (raw) => typeof raw === "string" ? raw.trim() : "";
+var recordOf = (raw) => typeof raw === "object" && raw !== null && !Array.isArray(raw) ? raw : {};
+function numberedTasks(rows, textKey) {
+  return rows.map(recordOf).map((row, n) => ({ id: String(n + 1), text: textOf(row[textKey]), status: statusOf(row.status) })).filter((t) => t.text !== "");
+}
+function codexPlanOf(args) {
+  const parsed = typeof args === "string" ? safeJson(args) : args;
+  const plan = recordOf(parsed).plan;
+  if (!Array.isArray(plan)) return null;
+  return numberedTasks(plan, "step");
+}
+function safeJson(text2) {
+  try {
+    return JSON.parse(text2);
+  } catch {
+    return null;
+  }
+}
+function upgradeHostTasks(saved) {
+  if (!Array.isArray(saved)) return [];
+  return saved.flatMap((raw) => {
+    const t = recordOf(raw);
+    const status = STATUSES2[String(t.status)];
+    return typeof t.id === "string" && typeof t.text === "string" && t.text !== "" && status ? [{ id: t.id, text: t.text, status }] : [];
+  });
 }
 
 // ../hooks/pr-checks.ts
@@ -1629,7 +1650,10 @@ function statusPage(s, now, stalledTasks = /* @__PURE__ */ new Set()) {
   const missed = o?.missedInLastLook ?? {};
   const runningChildren = (o?.children ?? []).filter((child) => isChildRunning(child, now) || isFinishedUnseen(child, lastLookAt)).map((child) => ({ ...child, subjectId: rootIdOf(child.subjectId) })).sort((a, b) => (b.lastActivityAt ?? b.startedAt) - (a.lastActivityAt ?? a.startedAt));
   const taskRows = groups.map(({ id, roots }) => {
-    const detail = roots.map((task) => task.detail).filter(Boolean).join("; ");
+    const detail = roots.map((task) => {
+      const current = currentTaskText(task);
+      return current?.text ?? "";
+    }).filter(Boolean).join("; ");
     const progress = Math.round(weightedTaskProgress(tree, roots.map((task) => task.id)) * 100);
     const changedAt = Math.max(...roots.map((task) => task.updatedAt));
     const closed = roots.every((task) => task.status === "done" || task.status === "dropped");
@@ -3065,9 +3089,11 @@ var BAR_MARKS = {
 var BAR_STATES = Object.keys(BAR_MARKS);
 function timelineTask(task, now) {
   const { createdAt: _createdAt, updatedAt, history, ...details } = task;
+  const current = currentTaskText(task);
   return {
     ...details,
     updatedAgo: shortAgo(now - updatedAt),
+    currentText: current ? { ...current, ago: shortAgo(now - current.at) } : null,
     history: history.map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) }))
   };
 }
@@ -3097,6 +3123,7 @@ function timelineData(tree, segments, stalledSince, warnings, now) {
       const stalledAt = stalledSince[task.id];
       const status = stalledAt === void 0 ? task.status : "stalled";
       const progress = Math.round(weightedTaskProgress(tree, task.id) * 100);
+      const current = currentTaskText(task);
       rows.push({
         task: timelineTask(task, now),
         depth,
@@ -3105,7 +3132,7 @@ function timelineData(tree, segments, stalledSince, warnings, now) {
         hasLaterSibling,
         hasChildren: childrenOfTask.length > 0,
         progress,
-        measure: childrenOfTask.length ? `${progress}%` : `w${task.weight}`,
+        measure: `${childrenOfTask.length ? `${progress}%` : `w${task.weight}`}${current ? ` \xB7 ${current.text}` : ""}`,
         status,
         statusLabel: stalledAt !== void 0 ? `stalled ${shortAgo(now - stalledAt)}` : status === "waits-on-other" ? "waiting on others" : status,
         stalledAge: stalledAt === void 0 ? null : shortAgo(now - stalledAt),
@@ -3565,7 +3592,7 @@ The answer to a question is the user's to give. Close a question with their answ
 
 // ../hooks/session-turns.ts
 function startContext(host, s, source) {
-  const carried = carryText(s.ledger, START_TITLE);
+  const carried = carryText(s.ledger, START_TITLE, s.taskTree);
   const parts = [source === "resume" ? null : guidanceText(host), carried].filter((x) => x !== null);
   return parts.length > 0 ? parts.join("\n\n") : null;
 }
@@ -3645,7 +3672,7 @@ function startTurn(s) {
 }
 function recordPrompt(host, s, text2, isOpen2, sentBy) {
   const ledger = { ...s.ledger, turn: s.ledger.turn + 1 };
-  const r = promptNotes(host, ledger, { text: text2, isPress: sentBy !== null, isOpen: isOpen2 }, s.told);
+  const r = promptNotes(host, ledger, { text: text2, isPress: sentBy !== null, isOpen: isOpen2 }, s.told, s.taskTree);
   const person = s.turn.person === null ? text2 : `${s.turn.person}
 
 ${text2}`;

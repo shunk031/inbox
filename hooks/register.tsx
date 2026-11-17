@@ -2462,7 +2462,8 @@ export const register: Register = on => {
     const notes = await notePrompt($, e.text, { isTyped })
     if (sessionState.carriedFor !== conversation.id) {
       sessionState.carriedFor = conversation.id
-      const carry = statusCarryText((await read($, SESSION)).ledger)
+      const carrySession = await read($, SESSION)
+      const carry = statusCarryText(carrySession.ledger, carrySession.taskTree)
       if (carry) notes.unshift(carry)
     }
 

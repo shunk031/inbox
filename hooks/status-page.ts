@@ -8,6 +8,7 @@ import type { GoalParts } from './status-goal-page'
 import { isFinishedUnseen, looseChildRows, partRows } from './status-page-parts'
 import type { ListContext } from './status-page-parts'
 import { taskRootGroups, weightedTaskProgress, weightedTaskProgressSegments } from './task-tree'
+import { currentTaskText } from './task-text'
 
 const STATUS_FAILED =
   "The inbox couldn't update this page from one of the agent's replies. What changed in that reply may be missing. It reads the conversation again after the next reply."
@@ -118,7 +119,13 @@ export function statusPage(
     .map(child => ({ ...child, subjectId: rootIdOf(child.subjectId) }))
     .sort((a, b) => (b.lastActivityAt ?? b.startedAt) - (a.lastActivityAt ?? a.startedAt))
   const taskRows = groups.map(({ id, roots }) => {
-    const detail = roots.map(task => task.detail).filter(Boolean).join('; ')
+    const detail = roots
+      .map(task => {
+        const current = currentTaskText(task)
+        return current?.text ?? ''
+      })
+      .filter(Boolean)
+      .join('; ')
     const progress = Math.round(weightedTaskProgress(tree, roots.map(task => task.id)) * 100)
     const changedAt = Math.max(...roots.map(task => task.updatedAt))
     const closed = roots.every(task => task.status === 'done' || task.status === 'dropped')

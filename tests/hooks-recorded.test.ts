@@ -1,6 +1,8 @@
 import { expect, mock, test } from 'claude-code/testing'
 import { w, world } from './hooks-world'
 import { BAND, PANE, SAVED_SESSION } from './hooks-helpers'
+import { CLAUDE_CODE } from '../hooks/model-text'
+import { recordDescription } from '../hooks/tool-descriptions'
 import { TOOL_FIELDS } from '../hooks/tool-schemas'
 
 test('the guidance reaches Claude in the close tool’s description and nowhere else, and every inbox tool loads with the session', async ($, on) => {
@@ -17,12 +19,62 @@ test('the guidance reaches Claude in the close tool’s description and nowhere 
     'Write the text of questions, tasks and findings in the language the person writes to you in.',
   )
   expect(record.description).toBe('Record an item.')
+  expect(recordDescription(CLAUDE_CODE)).toContain(
+    'Before recording a finding, check each fact against its live source; for a pull request, check its current state and whether it was reopened or replaced.',
+  )
   const order = await $.tool.describe({ tool: 'mcp__inbox__order_prs', description: 'Order PRs.', provider })
   const tasks = await $.tool.describe({ tool: 'mcp__inbox__tasks', description: 'Maintain tasks.', provider })
   expect([close, record, order, tasks].map(d => d.isDeferred)).toEqual([false, false, false, false])
   expect(tasks.description).toContain('when you make a plan')
   expect(tasks.description).toContain('finished or stalled work can be noticed')
   for (const field of ['pr', 'issue', 'owner_agent', 'owner_machine']) expect(TOOL_FIELDS.tasks).toContain(field)
+})
+
+test('record updates a matching finding, names its id, and reports an identical repeat as unchanged', async ($, on) => {
+  mock.clock(on, { now: 1_000_000 })
+  world($, on, [])
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  const first = await $.tool.call({
+    tool: 'mcp__inbox__record',
+    kind: 'finding',
+    finding_kind: 'issue',
+    title: 'The pull request is closed',
+    detail: 'The linked pull request is closed.',
+    path: '/repo/src/old.ts',
+  })
+  expect(first.result).toBe('Recorded. The user sees it in the Finds tab of the /inbox pane.')
+
+  const updated = await $.tool.call({
+    tool: 'mcp__inbox__record',
+    kind: 'finding',
+    finding_kind: 'opportunity',
+    title: 'The pull request is closed',
+    detail: 'The replacement pull request is open under a new number.',
+    path: '/repo/src/new.ts',
+  })
+  expect(updated.result).toBe(
+    'Already open as f1, so this record updated it. f1 is the only copy and stays open; do not close it to replace it.',
+  )
+  const saved = JSON.parse(w.stored.get('s:session-1') ?? '{}')
+  expect(saved.ledger.findings).toMatchObject([
+    {
+      id: 'f1',
+      kind: 'opportunity',
+      title: 'The pull request is closed',
+      detail: 'The replacement pull request is open under a new number.',
+      path: '/repo/src/new.ts',
+    },
+  ])
+
+  const repeated = await $.tool.call({
+    tool: 'mcp__inbox__record',
+    kind: 'finding',
+    finding_kind: 'opportunity',
+    title: 'The pull request is closed',
+    detail: 'The replacement pull request is open under a new number.',
+    path: '/repo/src/new.ts',
+  })
+  expect(repeated.result).toBe('Already open as f1 with the same text; nothing changed.')
 })
 
 test('Claude saves the task-tree tool change through its session store and returns the normalized node', async ($, on) => {
@@ -236,7 +288,7 @@ test('a question Claude records waits in the pane with its recommendation, a rep
   await clock.settle()
   expect(await pane.find({ text: /Which cache should the API use\?/ })).toBeDefined()
   expect((await $.tool.call({ ...question, ask: 'Which cache should the API use?' })).result).toBe(
-    'Already open as i1, so this record updated it. i1 is the only copy and stays open; do not close it to replace it.',
+    'Already open as i1 with the same text; nothing changed.',
   )
   expect((await $.tool.call({ ...question, ask: 'Which cache should it use?', rec: 'Memcached' })).result).toBe(
     'Not recorded: rec must be one of the options.',
@@ -251,10 +303,22 @@ test('a question Claude records waits in the pane with its recommendation, a rep
   expect(task.result).toBe(
     'Recorded. The user sees it in the /inbox pane. Some steps were not a command, a file path or a link, so they are left out.',
   )
+  expect(
+    (
+      await $.tool.call({
+        tool: 'mcp__inbox__record',
+        kind: 'task',
+        ask: 'Sign in to the registry',
+        steps: ['npm login', 'Then tell me when it is done.'],
+      })
+    ).result,
+  ).toBe(
+    'Already open as i2 with the same text; nothing changed. Some steps were not a command, a file path or a link, so they are left out.',
+  )
 
   await $.tool.call({ tool: 'mcp__inbox__close', id: 'i1', answer: 'Redis' })
   expect((await $.tool.call(question)).result).toBe(
-    'Not recorded: the user answered it (Redis). Ask it again only if they bring it up.',
+    'Not recorded: it matches closed item i1 (the user answered it (Redis)); nothing changed. Ask again only if the user brings it up.',
   )
 
   const placement = { tool: 'mcp__inbox__record', kind: 'question', ask: 'Where should the job run?' } as const

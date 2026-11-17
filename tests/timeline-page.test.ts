@@ -120,8 +120,18 @@ test('the selected task plan orders labeled details and link actions', () => {
     [],
   ).selected?.details
 
-  expect(detail?.map(line => line.label)).toEqual(['Detail', 'Updated', 'Note', 'Note', 'History', 'History', 'Links'])
-  expect(detail?.slice(0, 6)).toEqual([
+  expect(detail?.map(line => line.label)).toEqual([
+    'Current',
+    'Detail',
+    'Updated',
+    'Note',
+    'Note',
+    'History',
+    'History',
+    'Links',
+  ])
+  expect(detail?.slice(0, 7)).toEqual([
+    { label: 'Current', text: 'Build the review flow · 1m' },
     { label: 'Detail', text: 'Build the review flow' },
     { label: 'Updated', text: '19m' },
     { label: 'Note', text: 'Keep the row short' },
@@ -130,6 +140,27 @@ test('the selected task plan orders labeled details and link actions', () => {
     { label: 'History', text: '2m · status · Task created' },
   ])
   expect(detail?.at(-1)).toMatchObject({ label: 'Links', actions: [{ label: 'Open PR' }] })
+})
+
+test('Timeline rows show the newest task text, while selected details retain the full detail and every note', () => {
+  const current = task('plan', {
+    detail: 'The original plan',
+    notes: ['First update', 'Latest update'],
+    history: [
+      { at: now - 30_000, source: 'agent', kind: 'created' },
+      { at: now - 20_000, source: 'agent', kind: 'note', detail: 'First update' },
+      { at: now - 10_000, source: 'agent', kind: 'note', detail: 'Latest update' },
+    ],
+  })
+  const page = timelinePage(timelineData([current], segments, {}, [], now), 'plan', [])
+
+  expect(page.rows[0]?.measure).toContain('Latest update')
+  expect(page.selected?.details).toContainEqual({ label: 'Current', text: 'Latest update · now' })
+  expect(page.selected?.details).toContainEqual({ label: 'Detail', text: 'The original plan' })
+  expect(page.selected?.details.filter(line => line.label === 'Note')).toEqual([
+    { label: 'Note', text: 'First update' },
+    { label: 'Note', text: 'Latest update' },
+  ])
 })
 
 test('meta sessions show separate top-level stream bars and selection follows visible branches', () => {

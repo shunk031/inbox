@@ -51,6 +51,22 @@ export function bodyChanges(before: Item, after: Item): string[] {
   ]
 }
 
+/** One shared answer for a duplicate that updated an open record or changed nothing. */
+export function alreadyOpenAnswer(
+  id: string,
+  changes: string[] = [],
+  sameText = false,
+  changed = changes.length > 0,
+): string {
+  if (!changed) {
+    return sameText
+      ? `Already open as ${id} with the same text; nothing changed.`
+      : `Already open as ${id}; this record made no changes. ${id} is the only copy and stays open; do not close it to replace it.`
+  }
+  const updated = changes.length > 0 ? ` and ${changes.join(' and ')}` : ''
+  return `Already open as ${id}, so this record updated it${updated}. ${id} is the only copy and stays open; do not close it to replace it.`
+}
+
 const APPROVAL_ASK = /^\s*(?:approve|ok(?:ay)? to|go ahead|ship|sign off)\b/i
 
 /** Whether a question asks the user to approve something: its ask starts as an approval, or its options are yes and no. */

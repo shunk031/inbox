@@ -57,6 +57,7 @@ test('tasks adds, updates, moves, completes and notes, returning the normalized 
     notes: ['Verified the host wiring'],
     history: [
       { kind: 'created', source: 'agent' },
+      { kind: 'detail', source: 'agent' },
       { kind: 'updated', source: 'agent' },
       { kind: 'moved', source: 'agent' },
       { kind: 'completed', source: 'agent' },

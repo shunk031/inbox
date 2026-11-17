@@ -20,7 +20,7 @@ import { NO_TURN } from './session-files'
  * its start, so it gets only where the session stands. Null when that is empty.
  */
 export function startContext(host: Host, s: Session, source: string | undefined): string | null {
-  const carried = carryText(s.ledger, START_TITLE)
+  const carried = carryText(s.ledger, START_TITLE, s.taskTree)
   const parts = [source === 'resume' ? null : guidanceText(host), carried].filter((x): x is string => x !== null)
 
   return parts.length > 0 ? parts.join('\n\n') : null
@@ -181,7 +181,7 @@ export function recordPrompt<S extends Session>(
   sentBy: SentBy | null,
 ): { state: S; notes: string[] } {
   const ledger = { ...s.ledger, turn: s.ledger.turn + 1 }
-  const r = promptNotes(host, ledger, { text, isPress: sentBy !== null, isOpen }, s.told)
+  const r = promptNotes(host, ledger, { text, isPress: sentBy !== null, isOpen }, s.told, s.taskTree)
   const person = s.turn.person === null ? text : `${s.turn.person}\n\n${text}`
 
   return {

@@ -265,14 +265,10 @@ describe('items the agent recorded', () => {
         'Already open as i1, so this record updated it and changed its recommendation to Memcached. i1 is the only copy and stays open; do not close it to replace it.',
         null,
       ],
+      [['Memcached'], 'Already open as i1 with the same text; nothing changed.', null],
       [
         ['Memcached'],
-        'Already open as i1, so this record updated it. i1 is the only copy and stays open; do not close it to replace it.',
-        null,
-      ],
-      [
-        ['Memcached'],
-        'Already open as i1, so this record updated it. i1 is the only copy and stays open; do not close it to replace it.',
+        'Already open as i1; this record made no changes. i1 is the only copy and stays open; do not close it to replace it.',
         null,
       ],
     ])
@@ -398,10 +394,22 @@ describe('items the agent recorded', () => {
     }
 
     const refusals = [
-      [{ how: 'answered', outcome: 'Redis' }, 'Not recorded: the user answered it (Redis).'],
-      [{ how: 'update', outcome: 'はい' }, 'Not recorded: the user answered it (はい).'],
-      [{ how: 'done', outcome: 'fixed' }, 'Not recorded: the user marked it done.'],
-      [{ how: 'dismissed', outcome: 'dismissed' }, 'Not recorded: the user dismissed it.'],
+      [
+        { how: 'answered', outcome: 'Redis' },
+        'Not recorded: it matches closed item i1 (the user answered it (Redis)); nothing changed.',
+      ],
+      [
+        { how: 'update', outcome: 'はい' },
+        'Not recorded: it matches closed item i1 (the user answered it (はい)); nothing changed.',
+      ],
+      [
+        { how: 'done', outcome: 'fixed' },
+        'Not recorded: it matches closed item i1 (the user marked it done); nothing changed.',
+      ],
+      [
+        { how: 'dismissed', outcome: 'dismissed' },
+        'Not recorded: it matches closed item i1 (the user dismissed it); nothing changed.',
+      ],
     ] as const
     for (const [closing, result] of refusals)
       expect(

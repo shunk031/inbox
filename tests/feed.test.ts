@@ -130,7 +130,7 @@ describe('progress feed', () => {
       { kind: 'task', ask: 'Check the milestone', steps: ['Review again'], detail: 'Changed detail' },
       200,
     )
-    expect(recorded.result).toContain('managed by the active work source')
+    expect(recorded.result).toBe('Not recorded: already open as i1 in the active work source; nothing changed.')
     expect(recorded.ledger.items).toEqual(loaded.items)
     const relatedTask = addAgentItem(
       loaded,

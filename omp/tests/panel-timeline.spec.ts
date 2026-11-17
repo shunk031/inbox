@@ -20,7 +20,10 @@ test('Timeline draws the shared empty state, task details and planned buttons, a
     issue: 'https://git.example.org/example/project/issues/7',
   }
   root.notes = ['Preserve the title.']
-  root.history = [{ at: NOW - 60_000, source: 'agent', kind: 'updated', detail: 'Added the panel view.' }]
+  root.history = [
+    { at: NOW - 60_000, source: 'agent', kind: 'updated', detail: 'Added the panel view.' },
+    { at: NOW, source: 'agent', kind: 'note', detail: 'Preserve the title.' },
+  ]
   const first = taskNode('first', 'Read the design', 'done', NOW - 60_000, { parentId: 'root' })
   const second = taskNode('second', 'Draw the panel', 'queued', NOW, { parentId: 'root' })
   const screen = taskScreen([root, first, second])
@@ -41,14 +44,15 @@ test('Timeline draws the shared empty state, task details and planned buttons, a
   const detailed = text(screen, ui, 100)
   const planLines = detailed.split('\n').filter(line => line.includes('Task plan'))
   expect(planLines).toHaveLength(1)
-  const detailLabels = ['Detail ·', 'Updated ·', 'Note ·', 'History ·', 'Links ·', 'Open PR', 'Open issue']
+  const detailLabels = ['Current ·', 'Detail ·', 'Updated ·', 'Note ·', 'History ·', 'Links ·', 'Open PR', 'Open issue']
   const detailPositions = detailLabels.map(label => detailed.indexOf(label))
   expect(detailPositions.every(position => position >= 0)).toBe(true)
   expect(detailPositions).toEqual([...detailPositions].sort((left, right) => left - right))
   expect(detailed).not.toContain('Updated 1m')
   const drawnRows = strip(detailed)
-  const detailRows = drawnRows.split('\n').filter(line => /│  (Detail|Updated|Note|History|Links) ·/.test(line))
-  expect(detailRows.slice(0, 4).map(line => line.trimStart())).toEqual([
+  const detailRows = drawnRows.split('\n').filter(line => /│  (Current|Detail|Updated|Note|History|Links) ·/.test(line))
+  expect(detailRows.slice(0, 5).map(line => line.trimStart())).toEqual([
+    '│  Current · Preserve the title. · now',
     '│  Detail · Keep the task-tree view compact.',
     '│  Updated · 1m',
     '│  Note · Preserve the title.',
@@ -62,6 +66,7 @@ test('Timeline draws the shared empty state, task details and planned buttons, a
   expect(drawnRows).toContain('> ● Build the view · working ·')
   expect(drawnRows).toContain('├─ ✓ Read the design · done · w1')
   expect(drawnRows).toContain('└─ · Draw the panel · queued · w1')
+  expect(drawnRows).toContain('Build the view · working · 50% · Preserve the title.')
   expect(drawnRows).toContain('  │  ⚠ PR merged, task still open')
   expect(drawnRows).not.toContain('! PR merged, task still open')
   const selectedChild = strip(text(screen, { ...ui, timelineSelection: 'first', selectedId: 'first' }, 100))
