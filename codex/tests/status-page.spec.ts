@@ -190,7 +190,7 @@ test('the Codex tab draws the Status page from a next build’s view, and new ro
   try {
     await import('../src/tab')
     await until(() => root.querySelector('.status-head') !== null)
-    assert.deepEqual(tabLabels(), ['Status', 'Asks1', 'Finds', 'Timeline', 'PRs'])
+    assert.deepEqual(tabLabels(), ['Status', 'Asks1', 'Finds', 'Timeline2', 'PRs'])
     assert.deepEqual(
       [...root.querySelectorAll('.tab')].map(b => [
         b.getAttribute('title'),
@@ -234,7 +234,7 @@ test('the Codex tab draws the Status page from a next build’s view, and new ro
     await afterPoll()
     assert.equal(shownTab(), 'Status')
     assert.ok(root.querySelector('.row.selected') === null, 'a row is open')
-    assert.deepEqual(tabLabels(), ['Status', 'Asks1', 'Finds1', 'Timeline', 'PRs'])
+    assert.deepEqual(tabLabels(), ['Status', 'Asks1', 'Finds1', 'Timeline2', 'PRs'])
 
     state.taskTree = [
       taskTree[0]!,
@@ -243,7 +243,7 @@ test('the Codex tab draws the Status page from a next build’s view, and new ro
     ]
     await afterPoll()
     key('4')
-    assert.equal(shownTab(), 'Timeline')
+    assert.equal(shownTab(), 'Timeline2')
     assert.equal(root.querySelectorAll('.timeline-progress-card').length, 1)
     assert.match(root.querySelector('.timeline-progress-card')?.textContent ?? '', /Progress.*In progress/s)
     assert.equal(root.querySelectorAll('.timeline-row-bar').length, 3)
@@ -297,7 +297,7 @@ test('the Codex tab draws the Status page from a next build’s view, and new ro
 
     isNextBuild = false
     await afterPoll()
-    assert.deepEqual(tabLabels(), ['Asks1', 'Finds1', 'Timeline', 'PRs'])
+    assert.deepEqual(tabLabels(), ['Asks1', 'Finds1', 'Timeline2', 'PRs'])
     assert.deepEqual(
       [...root.querySelectorAll('.tab')].map(b => b.getAttribute('title')),
       shownTabs(false, true).map(t => t.label),

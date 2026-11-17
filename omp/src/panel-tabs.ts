@@ -107,10 +107,11 @@ function tabCell(t: TabCell, name: string, form: TabForm, s: Style): string {
  */
 export function tabBar(d: Draw): string {
   const { screen, ui, width, style: s } = d
-  const counts: Record<Tab, number> = {
+  const counts = {
     needsYou: screen.view.needsYou.count,
     findings: screen.view.findings.count,
     prs: screen.view.prs.count,
+    timeline: screen.view.timeline.openTasks,
   }
   const tabs: TabCell[] = shownTabs(screen.isNextBuild === true, true).map(t => ({
     ...t,

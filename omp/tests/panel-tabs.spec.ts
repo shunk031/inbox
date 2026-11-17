@@ -27,7 +27,8 @@ test('the Timeline tab is highlighted while the Timeline page shows', () => {
   const screen = screenOf({ isNextBuild: true })
   const bar = drawn(screen, { ...INITIAL_UI, tab: 'timeline' })[1]!
 
-  expect(bar).toContain(`${ESC}7m${ESC}1m [4] Timeline`)
+  expect(bar).toContain(`${ESC}7m${ESC}1m [4] Timeline ${screen.view.timeline.openTasks}`)
+  expect(strip(bar)).toContain(`Timeline ${screen.view.timeline.openTasks}`)
   expect(bar).not.toContain(`${ESC}7m${ESC}1m [3] Finds`)
 })
 
@@ -195,7 +196,7 @@ test('rows that arrive while the Status page shows leave the panel on the page',
 })
 
 for (const isNextBuild of [false, true])
-  test(`on a ${isNextBuild ? 'next' : 'release'} build, a narrowing tab line drops the brackets, then names every tab by its symbol, and draws no zero count`, () => {
+  test(`on a ${isNextBuild ? 'next' : 'release'} build, a narrowing tab line drops the brackets, names every tab by its symbol, and counts open Timeline tasks`, () => {
     const tabs = shownTabs(isNextBuild, true)
     const zeros = screenOf({ view: sessionView(emptyState('s1'), NOW, SETTLED_MS, NO_HOLDS), isNextBuild })
     for (const screen of [screenOf({ isNextBuild }), zeros])
@@ -210,7 +211,10 @@ for (const isNextBuild of [false, true])
         const symbols = tabLine(screen, ui, symbolsAt)
         expect(symbols.replace(/[[\]]/g, '')).toContain(`${shown.hotkey} ${shown.symbol}`)
         if (isNextBuild) expect(symbols).toContain(`[${shown.hotkey}] ${shown.symbol}`)
-        if (screen === zeros) expect(tabLine(screen, ui, 200)).not.toMatch(/ 0 /)
+        if (screen === zeros) {
+          expect(tabLine(screen, ui, 200)).toContain('Timeline 0')
+          expect(tabLine(screen, ui, 200)).not.toMatch(/(?:Asks|Finds|PRs) 0/)
+        }
         for (const width of isNextBuild ? [42, symbolsAt] : [symbolsAt]) {
           const line = tabLine(screen, ui, width).replace(/[[\]]/g, '')
           expect(cellWidth(line)).toBeLessThanOrEqual(width)

@@ -1,9 +1,13 @@
 import { expect, mock, test } from 'claude-code/testing'
 import { TAB_HEIGHT, tabLines, type TabsProps } from '../hooks/tabs-client'
 import { cellWidth } from '../hooks/text'
-import { shownTabs } from '../hooks/tabs'
+import { shownTabs, tabBadge } from '../hooks/tabs'
 import { w, world } from './hooks-world'
 import { PANE, seedTasks } from './hooks-helpers'
+
+test('Timeline draws its open-task count even when it is zero', () => {
+  expect(tabBadge('timeline', { needsYou: 0, findings: 0, prs: 0, timeline: 0 })).toBe('0')
+})
 
 test('the pane footer shows the version from the plugin manifest', async ($, on) => {
   mock.clock(on, { now: 1_000_000 })
@@ -74,7 +78,11 @@ test('on a next build, at 20 desktop columns the tabs show their symbols with th
   const pane = await $.ui.mount({ ...PANE, surface: 'desktop', props: { ...PANE.props, bodyColumns: 20 } })
   const tabBar = async () => (await pane.find({ key: 'tabs' }))?.props.props as TabsProps
   expect((await tabBar()).tabs.map(t => [t.id, t.label, t.badge])).toEqual(
-    shownTabs(true, true).map(t => [t.id, t.symbol, t.id === 'needsYou' ? '2' : t.id === 'findings' ? '1' : null]),
+    shownTabs(true, true).map(t => [
+      t.id,
+      t.symbol,
+      t.id === 'needsYou' ? '2' : t.id === 'findings' ? '1' : t.id === 'timeline' ? '1' : null,
+    ]),
   )
   await pane.redraw({ ...PANE.props, bodyColumns: 69 })
   expect((await tabBar()).tabs.map(t => t.label)).toEqual(shownTabs(true, true).map(t => t.label))

@@ -18,7 +18,7 @@ type TimelineRowForm = {
 export function timelineRowForm(row: TimelineRow, visibleRow: TimelineRow = row): TimelineRowForm {
   return {
     prefix: row.prefix.replaceAll('│', ' '),
-    detailLead: row.detailLead.replaceAll('│', ' '),
+    detailLead: row.treeLead.replaceAll('│', ' '),
     ancestorGuides: row.guides.flatMap((guide, depth) => (guide.includes('│') ? [depth] : [])),
     childGuide: visibleRow.hasVisibleChildren ? row.depth : null,
   }
