@@ -207,7 +207,10 @@ export function recordItem(
     ]
     const updated = changes.length > 0 ? ` and ${changes.join(' and ')}` : ''
 
-    return unchanged(recorded, `Already open, so this record updated it${updated}.${leftOut}${documentNote}`)
+    return unchanged(
+      recorded,
+      `Already open as ${r.id}, so this record updated it${updated}. ${r.id} stays open; do not close it.${leftOut}${documentNote}`,
+    )
   }
 
   return {

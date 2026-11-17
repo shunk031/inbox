@@ -3207,9 +3207,32 @@ function notesOf(notes) {
 function hasValidWeight(weight) {
   return Number.isFinite(weight) && weight >= TASK_WEIGHT_MIN && weight <= TASK_WEIGHT_MAX;
 }
+function taskGitHubLink(value) {
+  const match = /^https:\/\/[^/?#]+\/([A-Za-z0-9](?:[A-Za-z0-9-]{0,38})?)\/([A-Za-z0-9_.-]{1,100})\/(pull|issues)\/([1-9]\d*)$/.exec(value);
+  if (!match || match[2] === "." || match[2] === "..")
+    return;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash)
+      return;
+    return {
+      host: url.host.toLowerCase(),
+      ref: `${match[1]}/${match[2]}#${match[4]}`,
+      kind: match[3]
+    };
+  } catch {
+    return;
+  }
+}
+function taskPrLink(value) {
+  const link = taskGitHubLink(value);
+  if (link?.kind !== "pull")
+    return;
+  const url = new URL(value);
+  return { host: link.host, ref: link.ref, queryable: url.port === "" };
+}
 function validGitHubLink(value, kind) {
-  const match = /^https:\/\/github\.com\/[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})?\/([A-Za-z0-9_.-]{1,100})\/(pull|issues)\/[1-9]\d*$/.exec(value);
-  return Boolean(match && match[1] !== "." && match[1] !== ".." && match[2] === (kind === "pull" ? "pull" : "issues"));
+  return taskGitHubLink(value)?.kind === (kind === "pull" ? "pull" : "issues");
 }
 function validAgentName(value) {
   return typeof value === "string" && /^[a-z][a-z0-9_-]{0,31}$/.test(value.trim());
@@ -3268,9 +3291,9 @@ function taskLinksFromInput(input, previous) {
 }
 function taskLinkProblemText(problem) {
   if (problem === "invalid-pr")
-    return "pr must be a GitHub pull request URL like https://github.com/owner/repo/pull/123.";
+    return "pr must be a GitHub or GitHub Enterprise pull request URL like https://<host>/owner/repo/pull/123.";
   if (problem === "invalid-issue")
-    return "issue must be a GitHub issue URL like https://github.com/owner/repo/issues/123.";
+    return "issue must be a GitHub or GitHub Enterprise issue URL like https://<host>/owner/repo/issues/123.";
   return `owner_agent must match the Herdr agent-name pattern [a-z][a-z0-9_-]{0,31}; owner_machine must be a non-empty alias up to ${TASK_MACHINE_ALIAS_LENGTH} characters. Provide both when adding an owner; on update, one can change an existing owner. Pass null alone to clear the owner.`;
 }
 function depthUnder(tree, parentId) {
@@ -6651,11 +6674,11 @@ var TASKS_SCHEMA = {
     weight: { type: "number", description: "For add or update: a sibling-relative weight from 0.1 to 100." },
     pr: {
       type: ["string", "null"],
-      description: "For add or update: a GitHub pull request URL, https://github.com/owner/repo/pull/123. Use null to clear."
+      description: "For add or update: a GitHub or GitHub Enterprise pull request URL, https://<host>/owner/repo/pull/123. Use null to clear."
     },
     issue: {
       type: ["string", "null"],
-      description: "For add or update: a GitHub issue URL, https://github.com/owner/repo/issues/123. Use null to clear."
+      description: "For add or update: a GitHub or GitHub Enterprise issue URL, https://<host>/owner/repo/issues/123. Use null to clear."
     },
     owner_agent: {
       type: ["string", "null"],
@@ -7036,7 +7059,7 @@ function recordItem(host, ledger, input, now, fields = V0_3_TOOL_FIELDS) {
       ...before && after ? bodyChanges(before, after) : []
     ];
     const updated = changes.length > 0 ? ` and ${changes.join(" and ")}` : "";
-    return unchanged(recorded, `Already open, so this record updated it${updated}.${leftOut}${documentNote}`);
+    return unchanged(recorded, `Already open as ${r.id}, so this record updated it${updated}. ${r.id} stays open; do not close it.${leftOut}${documentNote}`);
   }
   return {
     ledger: recorded,
@@ -8158,10 +8181,6 @@ var TASK_OWNER_FETCH_LIMIT = 5;
 function stateOf(value) {
   return value === "OPEN" || value === "CLOSED" || value === "MERGED" ? value : undefined;
 }
-function taskPrRef(url) {
-  const [ref] = prRefs(url);
-  return ref;
-}
 function taskPrUrls(s) {
   return [
     ...new Set(s.taskTree.flatMap((task) => task.status === "done" || task.status === "dropped" || !task.links?.pr ? [] : [task.links.pr]))
@@ -8222,29 +8241,48 @@ async function fetchTaskOwnerFacts(host) {
 }
 async function fetchUntrackedTaskPrStates(host, s, bin, tracked) {
   const urls = taskPrUrls(s).filter((url) => {
-    const ref = taskPrRef(url);
-    return ref !== undefined && !tracked.has(ref) && s.taskPrStates[url] !== "MERGED";
+    const link = taskPrLink(url);
+    return link?.queryable === true && !(link.host === "github.com" && tracked.has(link.ref)) && s.taskPrStates[url] !== "MERGED";
   });
   const selected = afterCursor(urls, s.taskPrFactCursor).slice(0, TASK_PR_FETCH_LIMIT);
   if (selected.length === 0)
     return { states: {}, cursor: s.taskPrFactCursor };
-  const refs = selected.map(taskPrRef);
-  if (refs.some((ref) => ref === undefined))
-    return null;
+  const byHost = new Map;
+  for (const url of selected) {
+    const link = taskPrLink(url);
+    if (!link)
+      return null;
+    const group = byHost.get(link.host) ?? { urls: [], refs: [] };
+    group.urls.push(url);
+    group.refs.push(link.ref);
+    byHost.set(link.host, group);
+  }
   const run = host.gh.run(s, bin, () => host.gh.forget());
-  const result = await run(["api", "graphql", "-f", `query=${prStatesQuery(refs)}`]);
-  if (result.exitCode !== 0)
-    return null;
-  const answer = readPrsAnswer(result.stdout, refs);
-  if (!answer)
-    return null;
   const states = {};
-  selected.forEach((url, index) => {
-    const node = answer.prs[refs[index]]?.node;
-    const state = stateOf(node?.state);
-    if (state)
-      states[url] = state;
-  });
+  const answers = await Promise.all([...byHost].map(async ([hostname, group]) => {
+    const args = [
+      "api",
+      ...hostname === "github.com" ? [] : ["--hostname", hostname],
+      "graphql",
+      "-f",
+      `query=${prStatesQuery(group.refs)}`
+    ];
+    const result = await run(args);
+    if (result.exitCode !== 0)
+      return null;
+    const answer = readPrsAnswer(result.stdout, group.refs);
+    return answer ? { group, answer } : null;
+  }));
+  for (const entry of answers) {
+    if (!entry)
+      return null;
+    const { group, answer } = entry;
+    group.urls.forEach((url, index) => {
+      const state = stateOf(answer.prs[group.refs[index]]?.node?.state);
+      if (state)
+        states[url] = state;
+    });
+  }
   return { states, cursor: selected.at(-1) ?? s.taskPrFactCursor };
 }
 function isPrFetchDue(s, lastFetchedAt, now, isTabShown) {
@@ -8335,10 +8373,10 @@ async function fetchPrs(host, findsBranchPr, isPress = false) {
     const taskPrStates = Object.fromEntries(Object.entries(cur.taskPrStates).filter(([url]) => linked.has(url)));
     for (const task of next.taskTree) {
       const url = task.links?.pr;
-      const ref = url ? taskPrRef(url) : undefined;
-      if (!url || !ref || !tracked.has(ref))
+      const link = url ? taskPrLink(url) : undefined;
+      if (!url || !link?.queryable || link.host !== "github.com" || !tracked.has(link.ref))
         continue;
-      const state = stateOf(fetched[ref]?.state ?? s.prViews.views[ref]?.state);
+      const state = stateOf(fetched[link.ref]?.state ?? s.prViews.views[link.ref]?.state);
       if (state)
         taskPrStates[url] = state;
     }
@@ -11453,9 +11491,11 @@ function guidanceText(host) {
   return `# Inbox
 ${host.intro}
 
+Write the text of questions, tasks and findings in the language the person writes to you in.
+
 When a choice can be inferred from the work or is easy to undo, make it and say what you chose. When you ask the user to decide something, say which option you recommend and why, in one clause ("I'd go with B: it keeps the old API"). If you cannot recommend one, say what would decide it.
 
-Before you hand the user a step, take it yourself when your tools reach it, such as running a command, reloading or checking a page, or reading a log. When the step changes something other people see, such as merging, releasing or messaging someone, ask for their OK as a question and take the step when they say yes. Record a task only for a step your tools cannot reach, and say in your reply why you cannot take it.
+Take each step yourself when your tools can, including running commands, checking or reloading pages, and reading logs. For changes others see, such as merging, releasing or messaging, ask for their OK as a question, then act on yes. Record a task only when your tools cannot take the step, and say in your reply why.
 
 When asking the user to act, give them the link, path or command, what to do, and how to return the result in your reply. If you cannot read it, such as in their browser, say how to send it.
 

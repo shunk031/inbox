@@ -15,7 +15,10 @@ test('Timeline draws the shared empty state, task details and planned buttons, a
   const root = taskNode('root', 'Build the view', 'working', NOW - 60_000, {
     detail: 'Keep the task-tree view compact.',
   })
-  root.links = { pr: 'https://github.com/example/project/pull/4', issue: 'https://github.com/example/project/issues/7' }
+  root.links = {
+    pr: 'https://git.example.org/example/project/pull/4',
+    issue: 'https://git.example.org/example/project/issues/7',
+  }
   root.notes = ['Preserve the title.']
   root.history = [{ at: NOW - 60_000, source: 'agent', kind: 'updated', detail: 'Added the panel view.' }]
   const first = taskNode('first', 'Read the design', 'done', NOW - 60_000, { parentId: 'root' })
@@ -83,7 +86,7 @@ test('Timeline draws the shared empty state, task details and planned buttons, a
   expect(handleKey(screen, { ...ui, timelineFolded: ['root'] }, 'l', NOW).ui.timelineFolded).toEqual([])
   expect(handleKey(screen, { ...ui, focus: { rowId: 'root', index: 1 } }, 'enter', NOW).press).toEqual({
     action: 'pr-open',
-    ref: 'https://github.com/example/project/pull/4',
+    ref: 'https://git.example.org/example/project/pull/4',
   })
 })
 
