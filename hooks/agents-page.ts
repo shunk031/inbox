@@ -19,7 +19,13 @@ export type AgentsPageInput = {
 export type AgentSourceOverrides = Partial<
   Pick<AgentsPageInput, 'feedRows' | 'ownerFacts' | 'localAgents' | 'localAgentsUnavailable'>
 >
-type AgentsPageRow = { kind: 'root' | 'task' | 'agent' | 'progress'; key: string; status: string | null; text: string }
+type AgentsPageRow = {
+  kind: 'root' | 'task' | 'agent' | 'progress'
+  key: string
+  status: string | null
+  prefix?: string
+  text: string
+}
 type AgentsPage = {
   notice: string | null
   empty: string | null
@@ -76,12 +82,12 @@ export function agentsPage(input: AgentsPageInput, width: number): AgentsPage {
       const name = finding.owner?.agent ?? root[2]!
       const age = Math.max(0, input.now - finding.at)
       const status = age >= OWNER_STALLED_MS ? 'stale' : (finding.ownerFact?.state ?? 'unknown')
-      const label = status === 'stale' ? `stale ${shortAgo(age)}` : `${machine}/${name} · ${status}`
+      const label = status === 'stale' ? `stale ${shortAgo(age)} · ${machine}/${name}` : `${machine}/${name}`
       rows.push({
         kind: 'root',
         key: finding.feedKey!,
         status,
-        text: fitLine(`${label} · ${machine}/${name} · ${finding.title} · ${finding.detail} · ${shortAgo(age)}`, width),
+        text: fitLine(`${label} · ${finding.title} · ${finding.detail} · ${shortAgo(age)}`, width),
       })
     } else {
       rows.push({
@@ -114,7 +120,8 @@ export function agentsPage(input: AgentsPageInput, width: number): AgentsPage {
         kind: 'task',
         key: task.id,
         status,
-        text: fitLine(`${indent}- ${status} · ${percent}% · ${taskOwnerText(input, task)} · ${task.title}`, width),
+        prefix: indent,
+        text: fitLine(`${percent}% · ${taskOwnerText(input, task)} · ${task.title}`, width),
       })
     }
   }
@@ -128,7 +135,7 @@ export function agentsPage(input: AgentsPageInput, width: number): AgentsPage {
       kind: 'agent',
       key: agent.name,
       status: agent.status,
-      text: fitLine(`${agent.name} · ${agent.status} · ${assignment}`, width),
+      text: fitLine(`${agent.name} · ${assignment}`, width),
     })
   }
 

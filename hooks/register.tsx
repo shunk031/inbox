@@ -3377,17 +3377,6 @@ export const register: Register = on => {
       },
       handlers,
     )
-    const agentsView = paneAgents({
-      Box,
-      Text,
-      pal,
-      view,
-      e,
-      hasRail,
-      now,
-      isDemo,
-    })
-
     const openIds = openRowIds(view)
     const drawnIds = new Set([...openIds.needsYou, ...openIds.findings, ...prRowIds(shownPrs)])
     const lineNote = Object.entries(notes)
@@ -3469,6 +3458,21 @@ export const register: Register = on => {
       },
       handlers,
     )
+    const agentsView = paneAgents({
+      Box,
+      Text,
+      pal,
+      view,
+      e,
+      hasRail,
+      now,
+      isDemo,
+      groupEmpty,
+      groupTitle,
+      section,
+      sections,
+      titleGap,
+    })
     const { emptyState, needsYouView, findingsView, documentView } = paneAskTabs(
       {
         listColumns,

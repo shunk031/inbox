@@ -54,7 +54,8 @@ test('Agents plan covers each row kind, weighted progress, owner links, and stal
   expect(page.rows[2]?.text).toContain('This session · meta ·')
   expect(page.rows[3]).toMatchObject({ status: 'stalled' })
   expect(page.rows[3]?.text).toContain('idle 15m+')
-  expect(page.rows[4]?.text).toContain('reviewer · working · working')
+  expect(page.rows[4]).toMatchObject({ status: 'working' })
+  expect(page.rows[4]?.text).toContain('reviewer · working ·')
   expect(page.rows[5]?.text).toContain('No task linked')
 })
 
