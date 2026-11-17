@@ -1,10 +1,16 @@
+import { parseFeed } from './feed'
 import type { Feed, FeedEntry } from './feed'
 import { currentTaskText } from './task-text'
+import { TASK_HISTORY_LIMIT, TASK_NODE_LIMIT } from './task-tree'
 import type { Session, TaskFactWarning, TaskNode, TaskOwner, TaskStatusMismatch, TaskTree } from '../types'
+
+const TASK_PROJECTION_VERSION = 1
 
 export type ProjectionFiles = {
   acquireLock(path: string, sessionId: string): Promise<boolean>
   releaseLock(path: string, sessionId: string): Promise<void>
+  exists(path: string): Promise<boolean>
+  read(path: string): Promise<string | null>
   writeAtomic(path: string, text: string): Promise<void>
 }
 
@@ -99,7 +105,11 @@ export function taskTreeExport(
   }
 }
 
-type ProjectionResult = { kind: 'disabled' | 'written' | 'conflict' } | { kind: 'failed'; reason: string }
+type ProjectionResult<S extends Session> =
+  | { kind: 'disabled' }
+  | { kind: 'written'; session: S; invalidReportPath: string | null }
+  | { kind: 'conflict' }
+  | { kind: 'failed'; reason: string; session: S; invalidReportPath: string | null }
 
 const taskState = (status: TaskNode['status']): FeedEntry['state'] =>
   status === 'done' || status === 'dropped' ? 'done' : status === 'waits-on-other' ? 'blocked' : 'working'
@@ -130,6 +140,64 @@ const taskProjectionFeed = (tree: TaskTree, now: number): Feed => ({
   entries: projectedTaskEntries(tree),
   projected: true,
 })
+
+function importedStatus(state: FeedEntry['state']): TaskNode['status'] {
+  return state === 'blocked' ? 'waits-on-other' : state
+}
+
+/** Merges hand-written entries without replacing saved status or non-empty current text. */
+export function mergeProjectedTasks(tree: TaskTree, feed: Feed): TaskTree {
+  let next = tree
+  for (const entry of feed.entries) {
+    const current = next.find(task => task.id === entry.key)
+    if (current) {
+      const fillText = currentTaskText(current) === null && entry.detail !== ''
+      if ((!entry.owner || current.links?.owner) && !fillText) continue
+      next = next.map(task =>
+        task.id === current.id
+          ? {
+              ...task,
+              ...(fillText
+                ? {
+                    detail: entry.detail,
+                    updatedAt: Math.max(task.updatedAt, entry.at),
+                    history: [
+                      ...task.history.slice(-(TASK_HISTORY_LIMIT - 1)),
+                      { at: entry.at, source: 'meta-open-items', kind: 'detail', detail: entry.detail },
+                    ],
+                  }
+                : {}),
+              links: { ...task.links, ...(entry.owner && !task.links?.owner ? { owner: { ...entry.owner } } : {}) },
+            }
+          : task,
+      )
+      continue
+    }
+    if (next.length >= TASK_NODE_LIMIT) throw new Error('the task tree is full; the projection import was not saved')
+    next = [
+      ...next,
+      {
+        id: entry.key,
+        parentId: null,
+        status: importedStatus(entry.state),
+        weight: 1,
+        title: entry.title,
+        detail: entry.detail,
+        notes: [],
+        createdAt: entry.at,
+        updatedAt: entry.at,
+        history: [{ at: entry.at, source: 'meta-open-items', kind: 'imported', detail: entry.detail }],
+        ...(entry.owner ? { links: { owner: { ...entry.owner } } } : {}),
+      },
+    ]
+  }
+  return next
+}
+
+function importedFeed(text: string): Feed | null {
+  const parsed = parseFeed(text)
+  return parsed?.source === 'meta-open-items' ? parsed : null
+}
 
 /** Serializes writes by path and holds the exclusive lock until release. */
 export function createTaskProjection(files: ProjectionFiles, path: string | null) {
@@ -162,10 +230,17 @@ export function createTaskProjection(files: ProjectionFiles, path: string | null
   }
 
   return {
-    sync(sessionId: string, session: Session, now: number): Promise<ProjectionResult> {
+    sync<S extends Session>(
+      sessionId: string,
+      session: S,
+      now: number,
+      save: (change: (current: S) => S) => Promise<S>,
+    ): Promise<ProjectionResult<S>> {
       if (!path) return Promise.resolve({ kind: 'disabled' })
       if (session.taskTreeProjectionConflictReported) return Promise.resolve({ kind: 'conflict' })
       return ordered(path, async () => {
+        let current = session
+        let invalidReportPath: string | null = null
         const previous = bySession.get(sessionId)
         try {
           if (previous && previous !== path) await releaseNow(sessionId)
@@ -174,11 +249,45 @@ export function createTaskProjection(files: ProjectionFiles, path: string | null
             held.set(path, sessionId)
             bySession.set(sessionId, path)
           }
-          const feed = taskProjectionFeed(session.taskTree, now)
+          const preProjection = `${path}.pre-projection`
+          const preserveOriginal = !(await files.exists(preProjection))
+          const needsImport = current.taskTreeProjectionVersion < TASK_PROJECTION_VERSION
+          const original = needsImport || preserveOriginal ? await files.read(path) : null
+          const invalidFeed = original !== null && original.trim() !== '' && !importedFeed(original)
+
+          if (needsImport) {
+            const feed = original && original.trim() !== '' ? importedFeed(original) : null
+            current = await save(saved => ({
+              ...saved,
+              taskTree: feed ? mergeProjectedTasks(saved.taskTree, feed) : saved.taskTree,
+              taskTreeProjectionVersion: TASK_PROJECTION_VERSION,
+              taskTreeProjectionInvalidAt: invalidFeed
+                ? (saved.taskTreeProjectionInvalidAt ?? now)
+                : saved.taskTreeProjectionInvalidAt,
+            }))
+          } else if (invalidFeed && current.taskTreeProjectionInvalidAt === null) {
+            current = await save(saved => ({ ...saved, taskTreeProjectionInvalidAt: now }))
+          }
+
+          const invalidAt = current.taskTreeProjectionInvalidAt
+          const invalidPath = invalidAt === null ? null : `${path}.invalid-${new Date(invalidAt).toISOString()}`
+          if (invalidFeed && original !== null && invalidPath && !(await files.exists(invalidPath)))
+            await files.writeAtomic(invalidPath, original)
+          if (preserveOriginal && original !== null) await files.writeAtomic(preProjection, original)
+          if (invalidPath && (await files.exists(invalidPath)) && !current.taskTreeProjectionInvalidReported) {
+            current = await save(saved => ({ ...saved, taskTreeProjectionInvalidReported: true }))
+            invalidReportPath = invalidPath
+          }
+          const feed = taskProjectionFeed(current.taskTree, now)
           await files.writeAtomic(path, `${JSON.stringify(feed, null, 2)}\n`)
-          return { kind: 'written' }
+          return { kind: 'written', session: current, invalidReportPath }
         } catch (error) {
-          return { kind: 'failed', reason: error instanceof Error ? error.message : String(error) }
+          return {
+            kind: 'failed',
+            reason: error instanceof Error ? error.message : String(error),
+            session: current,
+            invalidReportPath,
+          }
         }
       })
     },

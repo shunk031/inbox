@@ -2217,6 +2217,9 @@ function emptySession() {
   return {
     ledger: EMPTY,
     taskTree: [],
+    taskTreeProjectionVersion: 0,
+    taskTreeProjectionInvalidAt: null,
+    taskTreeProjectionInvalidReported: false,
     taskTreeProjectionConflictReported: false,
     taskStatusMismatches: [],
     taskPrStates: {},
@@ -2294,6 +2297,9 @@ function sessionFields(saved, views) {
   return {
     ledger,
     taskTree,
+    taskTreeProjectionVersion: Number.isSafeInteger(saved.taskTreeProjectionVersion) && saved.taskTreeProjectionVersion >= 0 ? saved.taskTreeProjectionVersion : 0,
+    taskTreeProjectionInvalidAt: Number.isSafeInteger(saved.taskTreeProjectionInvalidAt) && saved.taskTreeProjectionInvalidAt >= 0 ? saved.taskTreeProjectionInvalidAt : null,
+    taskTreeProjectionInvalidReported: saved.taskTreeProjectionInvalidReported === true,
     taskTreeProjectionConflictReported: saved.taskTreeProjectionConflictReported === true,
     taskStatusMismatches: upgradeTaskStatusMismatches(saved.taskStatusMismatches, taskTree),
     taskPrStates: Object.fromEntries(

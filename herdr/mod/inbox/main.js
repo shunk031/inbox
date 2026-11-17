@@ -1,5 +1,5 @@
 // Built by herdr/build.ts with Bun 1.4.4 from herdr/src and hooks/. Do not edit.
-// Built at 2026-11-17T17:26:11.799Z. 226195 characters follow.
+// Built at 2026-11-17T18:02:18.273Z. 226742 characters follow.
 
 // src/main.ts
 import { View, div as div5 } from "gpui-kit";
@@ -2694,6 +2694,9 @@ function emptySession() {
   return {
     ledger: EMPTY,
     taskTree: [],
+    taskTreeProjectionVersion: 0,
+    taskTreeProjectionInvalidAt: null,
+    taskTreeProjectionInvalidReported: false,
     taskTreeProjectionConflictReported: false,
     taskStatusMismatches: [],
     taskPrStates: {},
@@ -2768,6 +2771,9 @@ function sessionFields(saved, views) {
   return {
     ledger,
     taskTree,
+    taskTreeProjectionVersion: Number.isSafeInteger(saved.taskTreeProjectionVersion) && saved.taskTreeProjectionVersion >= 0 ? saved.taskTreeProjectionVersion : 0,
+    taskTreeProjectionInvalidAt: Number.isSafeInteger(saved.taskTreeProjectionInvalidAt) && saved.taskTreeProjectionInvalidAt >= 0 ? saved.taskTreeProjectionInvalidAt : null,
+    taskTreeProjectionInvalidReported: saved.taskTreeProjectionInvalidReported === true,
     taskTreeProjectionConflictReported: saved.taskTreeProjectionConflictReported === true,
     taskStatusMismatches: upgradeTaskStatusMismatches(saved.taskStatusMismatches, taskTree),
     taskPrStates: Object.fromEntries(Object.entries(saved.taskPrStates ?? {}).filter((entry) => entry[1] === "OPEN" || entry[1] === "CLOSED" || entry[1] === "MERGED")),

@@ -7,6 +7,7 @@ const COMMAND_TIMEOUT_MS = 10_000
 
 type ModProjectionFs = {
   exists(path: string): Promise<boolean>
+  read(path: string): Promise<string>
   write(path: string, text: string): Promise<void>
   home(): Promise<string | undefined>
   now(): Promise<number>
@@ -32,6 +33,8 @@ export function modTaskProjection(fs: ModProjectionFs, run: Run, nonce: () => st
       throw new Error(result.stderr.trim() || 'could not acquire the task projection lock')
     },
     releaseLock: path => command(['rmdir', '--', `${path}.lock`]).catch(() => undefined),
+    exists: path => fs.exists(path),
+    read: async path => ((await fs.exists(path)) ? fs.read(path) : null),
     writeAtomic: (path, text) =>
       writeProjectionAtomically(path, text, {
         write: (temporary, contents) => fs.write(temporary, contents),
