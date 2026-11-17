@@ -200,6 +200,7 @@ test('Timeline opens a selected task detail and returns to the selected tree row
     'the status is visible in the tree',
   ).toBe(true)
 
+  expect((await pane.find({ key: 'timeline-title-plan' }))?.props.autoFocus).toBe(true)
   await pane.press({ key: 'timeline-title-plan' })
   await clock.settle()
   let detail = (await pane.findAll({ type: 'Text' })).map(node => node.text)

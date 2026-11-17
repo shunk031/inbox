@@ -281,6 +281,7 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
                     <Button
                       plain
                       key={`timeline-title-${row.task.id}`}
+                      autoFocus={look === 'terminal' && selected ? true : undefined}
                       onPress={() => void openTimelineDetail(row.task.id)}
                     >
                       {look === 'terminal' ? (
