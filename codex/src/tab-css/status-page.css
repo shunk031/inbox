@@ -25,11 +25,13 @@
   position: relative;
 }
 .timeline-page .timeline-tree-guide {
+  /* The branch glyph begins after two prefix spaces; center the rail on its stem. */
+  --timeline-guide-stem-offset: 0.59em;
   position: absolute;
   z-index: 1;
   top: 0;
   bottom: 0;
-  left: calc(var(--tree-x) + var(--timeline-guide-depth, 0) * var(--step));
+  left: calc(var(--tree-x) + var(--timeline-guide-stem-offset) + var(--timeline-guide-depth, 0) * var(--step));
   border-left: 1px solid var(--tree-line);
   pointer-events: none;
 }
