@@ -131,7 +131,7 @@ test('the selected task plan orders labeled details and link actions', () => {
     'Links',
   ])
   expect(detail?.slice(0, 7)).toEqual([
-    { label: 'Current', text: 'Build the review flow · 1m' },
+    { label: 'Current', text: 'Use the shared view · 1m' },
     { label: 'Detail', text: 'Build the review flow' },
     { label: 'Updated', text: '19m' },
     { label: 'Note', text: 'Keep the row short' },

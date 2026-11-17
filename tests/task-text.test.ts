@@ -61,9 +61,9 @@ test('current task text uses newer detail when its recorded change time follows 
   })
 })
 
-test('legacy task detail uses its latest updated event when it follows a note', () => {
+test('legacy task text stays on its note after an untyped status update', () => {
   const legacy = task({
-    detail: 'The verified plan',
+    status: 'done',
     updatedAt: 3_000,
     history: [
       { at: 1_000, source: 'agent', kind: 'created' },
@@ -72,7 +72,21 @@ test('legacy task detail uses its latest updated event when it follows a note', 
     ],
   })
 
-  expect(currentTaskText(legacy)).toEqual({ text: 'The verified plan', at: 3_000 })
+  expect(currentTaskText(legacy)).toEqual({ text: 'The latest note', at: 2_000 })
+})
+
+test('legacy task text cannot tell whether an untyped update edited detail, so it stays on the note', () => {
+  const legacy = task({
+    detail: 'The possibly newer plan',
+    updatedAt: 3_000,
+    history: [
+      { at: 1_000, source: 'agent', kind: 'created' },
+      { at: 2_000, source: 'agent', kind: 'note', detail: 'The latest note' },
+      { at: 3_000, source: 'agent', kind: 'updated' },
+    ],
+  })
+
+  expect(currentTaskText(legacy)).toEqual({ text: 'The latest note', at: 2_000 })
 })
 
 test('prompt inbox and Status carry text use the current task note, and the Status prompt gives its time', () => {

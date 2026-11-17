@@ -209,7 +209,7 @@ test('the Codex tab draws the Status page from a next build’s view, and new ro
       ]),
       [
         ['mark tone-needsYou', '◆', ['Label · waiting', '0% complete · pick one', 'View question']],
-        ['mark running', '●', ['omp panel', '0% complete · reading the draw code']],
+        ['mark running', '●', ['omp panel', '0% complete · Keep the row selected while reviewing its details.']],
         ['mark done', '✓', ['Page', '100% complete · built']],
       ],
     )
