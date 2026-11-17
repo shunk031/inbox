@@ -30,7 +30,7 @@ const task = (change: Partial<TaskNode> = {}): TaskNode => ({
 
 const segments: TaskProgressSegments = { total: 1, done: 0, working: 1, stalled: 0, waiting: 0, queued: 0 }
 
-test('Status rows, Timeline rows and selected details use the newer note while retaining the full task history', () => {
+test('Status rows and Timeline details use the newer note while retaining the full task history', () => {
   const current = task()
   const session = emptySession()
   const status = statusPage({ ledger: session.ledger, taskTree: [current], presence: session.presence }, 2_000)
@@ -39,7 +39,6 @@ test('Status rows, Timeline rows and selected details use the newer note while r
 
   expect(row?.kind === 'subject' ? row.text : '').toContain('The latest note')
   expect(row?.kind === 'subject' ? row.text : '').not.toContain('The original plan')
-  expect(timeline.rows[0]?.measure).toContain('The latest note')
   expect(timeline.selected?.details).toContainEqual({ label: 'Current', text: 'The latest note · now' })
   expect(timeline.selected?.details).toContainEqual({ label: 'Detail', text: 'The original plan' })
   expect(timeline.selected?.details).toContainEqual({ label: 'Note', text: 'The latest note' })

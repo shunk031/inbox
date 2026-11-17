@@ -251,11 +251,10 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
           const selected = row.task.id === page.selected?.row.task.id
           const backgroundColor = row.alternate ? (pal.card ?? pal.line) : undefined
           const rowLead = `${selected ? '> ' : '  '}${row.prefix}${row.mark} `
-          const progressCells = row.progressBar.reduce((width, part) => width + part.count, 0) || 10
-          const titleCells = Math.max(
-            1,
-            bodyColumns - 2 - cellWidth(rowLead) - progressCells - cellWidth(` ${row.percent}`),
-          )
+          const percentCells = cellWidth(` ${row.percent}`)
+          const availableWithBar = bodyColumns - 2 - cellWidth(rowLead) - 10 - percentCells
+          const showTaskBar = availableWithBar >= 20
+          const titleCells = Math.max(1, bodyColumns - 2 - cellWidth(rowLead) - percentCells - (showTaskBar ? 10 : 0))
           const title =
             cellWidth(row.task.title) > titleCells
               ? `${cutToCells(row.task.title, Math.max(0, titleCells - 1))}…`
@@ -294,7 +293,7 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
                     </Button>
                   </Box>
                   <Box flexDirection="row" flexShrink={0}>
-                    {bar(row.progressBar)}
+                    {showTaskBar ? <Box key={`timeline-row-bar-${row.task.id}`}>{bar(row.progressBar)}</Box> : null}
                     <Box flexShrink={0}>
                       <Text color={color(row.tone)}>{` ${row.percent}`}</Text>
                     </Box>

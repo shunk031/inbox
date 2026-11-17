@@ -142,20 +142,10 @@ test('the selected task plan orders labeled details and link actions', () => {
     true,
   ).selected?.details
 
-  expect(detail?.map(line => line.label)).toEqual([
-    'Current',
-    'Detail',
-    'Updated',
-    'Note',
-    'Note',
-    'History',
-    'History',
-    'Links',
-  ])
-  expect(detail?.slice(0, 7)).toEqual([
+  expect(detail?.map(line => line.label)).toEqual(['Current', 'Detail', 'Note', 'Note', 'History', 'History', 'Links'])
+  expect(detail?.slice(0, 6)).toEqual([
     { label: 'Current', text: 'Use the shared view · 1m' },
     { label: 'Detail', text: 'Build the review flow' },
-    { label: 'Updated', text: '19m' },
     { label: 'Note', text: 'Keep the row short' },
     { label: 'Note', text: 'Use the shared view' },
     { label: 'History', text: '5m · claude · Added the pane' },

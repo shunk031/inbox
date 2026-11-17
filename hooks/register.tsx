@@ -313,7 +313,6 @@ const PAGE = atom({ plugin: 'inbox', key: 'page' } as const, null as PageTab | n
 const SELECTION = atom({ plugin: 'inbox', key: 'selection' } as const, NO_SELECTION)
 /** The Status row whose keys work, by id, as `statusSelected` resolves it. */
 const STATUS_SELECTION = atom({ plugin: 'inbox', key: 'statusSelection' } as const, null as string | null)
-/** The selected Timeline task. */
 const TIMELINE_SELECTION = atom({ plugin: 'inbox', key: 'timelineSelection' } as const, null as string | null)
 const TIMELINE_DETAIL_OPEN = atom({ plugin: 'inbox', key: 'timelineDetailOpen' } as const, false)
 const THEME = atom({ plugin: 'inbox', key: 'theme' } as const, '')

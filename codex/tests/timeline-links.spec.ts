@@ -32,6 +32,18 @@ test('a Timeline Local open stays disabled while pending and draws its done or f
       updatedAt: now,
       history: [],
     },
+    {
+      id: 'child-task',
+      parentId: 'linked-task',
+      status: 'queued',
+      weight: 1,
+      title: 'Child task',
+      detail: '',
+      notes: [],
+      createdAt: now,
+      updatedAt: now,
+      history: [],
+    },
   ]
   document.body.innerHTML = '<div id="app"></div>'
   Object.defineProperty(window, '__inboxPage', { value: 'timeline-links-page', configurable: true })
@@ -136,19 +148,38 @@ test('a Timeline Local open stays disabled while pending and draws its done or f
   try {
     await import('../src/tab')
     await until(() => root.querySelector('.timeline-node') !== null)
+    const branchToggle = root.querySelector<HTMLButtonElement>('.timeline-status-line button')!
+    branchToggle.focus()
+    const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+    branchToggle.dispatchEvent(enter)
+    assert.equal(enter.defaultPrevented, false, 'Enter is left to the focused branch button')
+    assert.equal(root.querySelector('.timeline-detail-page'), null, 'Enter does not open task details')
+    branchToggle.click()
+    assert.equal(root.querySelector('.timeline-detail-page'), null, 'the branch click does not open details')
     root.querySelector<HTMLButtonElement>('.timeline-title')!.click()
     await until(() => root.querySelector('.timeline-detail-page') !== null && openButton() !== null)
     assert.equal(root.querySelector('.timeline-detail-page h1')?.textContent, longTitle)
     assert.ok(root.querySelector('.timeline-detail-copy .timeline-detail-prefix'))
     assert.doesNotMatch(root.querySelector('.timeline-detail-copy .timeline-detail-prefix')?.textContent ?? '', /[│├└]/)
-    assert.equal(root.querySelector('.timeline-detail-copy p')?.textContent, state.taskTree[0]?.detail)
+    assert.equal(
+      [...root.querySelectorAll('.timeline-detail-section')]
+        .find(section => section.querySelector('strong')?.textContent === 'Current')
+        ?.querySelector('p')?.textContent,
+      `${state.taskTree[0]?.detail} · now`,
+    )
+    assert.equal(
+      [...root.querySelectorAll('.timeline-detail-section')]
+        .find(section => section.querySelector('strong')?.textContent === 'Detail')
+        ?.querySelector('p')?.textContent,
+      state.taskTree[0]?.detail,
+    )
     assert.deepEqual(
       [...root.querySelectorAll('.timeline-stat')].map(stat => stat.textContent?.replace(/\s+/g, ' ').trim()),
       ['Progress0.00%', 'Weight1', 'Completed units0 / 1'],
     )
     assert.deepEqual(
       [...root.querySelectorAll('.timeline-detail-section strong')].map(label => label.textContent),
-      ['Detail', 'Links'],
+      ['Current', 'Detail', 'Links'],
     )
 
     openButton()!.click()

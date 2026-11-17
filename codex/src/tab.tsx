@@ -232,7 +232,12 @@ document.addEventListener(
           selectTimelineRow(id)
           revealSelected()
         }
-      } else if (selected && e.key === 'Enter') {
+      } else if (
+        selected &&
+        e.key === 'Enter' &&
+        !isInteractiveTarget(e.target) &&
+        !isInteractiveTarget(document.activeElement)
+      ) {
         e.preventDefault()
         openTimelineDetail(selected.task.id)
       } else if (selected) {
@@ -288,6 +293,15 @@ function startConnected() {
   applyHost(tabState.stagedHostChanges)
   parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*')
   void poll()
+}
+
+function isInteractiveTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    target.closest(
+      'button, a[href], input, select, textarea, summary, [role="button"], [role="link"], [contenteditable]:not([contenteditable="false"])',
+    ) !== null
+  )
 }
 
 function initialize(): Promise<boolean> {

@@ -109,7 +109,7 @@ test('on the Status, a task tree stays the source of Working on while the goal k
   expect(await inline.find({ key: 'status-s2' })).toBeDefined()
 })
 
-test('a task note replaces older detail as the current text in terminal and desktop Status and Timeline', async ($, on) => {
+test('a task note replaces older detail on Status and stays visible in Timeline details', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   world($, on, [])
   w.files = ['/.next-build']
@@ -134,9 +134,12 @@ test('a task note replaces older detail as the current text in terminal and desk
   expect((await terminal.find({ key: 'status-t1-text' }))?.text).not.toContain('Design the first draft')
   await terminal.press({ key: 'tab-timeline' })
   await clock.settle()
-  expect(await terminal.find({ text: /Current · The command now passes its tests/ })).toBeDefined()
-  expect(await terminal.find({ text: /Detail · Design the first draft/ })).toBeDefined()
-  expect(await terminal.find({ text: /Note · The command now passes its tests/ })).toBeDefined()
+  await terminal.press({ key: 'timeline-title-t1' })
+  await clock.settle()
+  expect(await terminal.find({ text: 'Current' })).toBeDefined()
+  expect(await terminal.find({ text: 'The command now passes its tests · now' })).toBeDefined()
+  expect(await terminal.find({ text: 'Design the first draft' })).toBeDefined()
+  expect(await terminal.find({ text: 'The command now passes its tests' })).toBeDefined()
   await terminal.unmount()
 
   const desktop = await $.ui.mount({ ...PANE, surface: 'desktop' })

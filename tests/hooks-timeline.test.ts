@@ -4,6 +4,7 @@ import type { On } from 'claude-code'
 import type { TabsProps } from '../hooks/tabs-client'
 import { prMarkId } from '../hooks/pr-rows'
 import { applyPrPress } from '../hooks/pr-tab'
+import { taskOwnerKey } from '../hooks/task-facts'
 import { cellWidth } from '../hooks/text'
 import type { Session } from '../types'
 import { w, world } from './hooks-world'
@@ -258,7 +259,12 @@ test('terminal Timeline keeps Japanese titles, row metadata and detail guides at
   const title = await pane.find({ key: 'timeline-title-long-root' })
   expect(title?.text.endsWith('…'), 'the long title is truncated with an ellipsis').toBe(true)
   expect(title?.text).not.toContain(longTitle)
-  expect(cellWidth(title?.text ?? '')).toBeLessThanOrEqual(22)
+  expect(cellWidth(title?.text ?? '')).toBeGreaterThanOrEqual(20)
+  expect(cellWidth(title?.text ?? '')).toBeLessThanOrEqual(30)
+  expect(
+    await pane.find({ key: 'timeline-row-bar-long-root' }),
+    'the bar is dropped to preserve title width',
+  ).not.toBeTruthy()
   const lines = (await pane.findAll({ type: 'Text' })).map(line => line.text)
   expect(
     lines.some(line => line.startsWith('> ○ ')),
@@ -282,6 +288,71 @@ test('terminal Timeline keeps Japanese titles, row metadata and detail guides at
     detailRow?.children.some(child => typeof child === 'object' && (child as { type?: string }).type === 'Box'),
   ).toBe(true)
   expect((await pane.findAll({ type: 'Text' })).some(line => line.text === longDetail)).toBe(true)
+})
+
+test('terminal Timeline shows stalled and owner or PR warnings under their task rows', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  world($, on, [])
+  w.files = ['/.next-build']
+  const owner = { machine: 'local', agent: 'worker-1' }
+  const ownerKey = taskOwnerKey(owner)
+  const pr = 'https://github.com/example/project/pull/12'
+  on('state.set', { plugin: 'inbox', key: 'session' } as const, (_$, event, next) => {
+    const session = event.value as Session & { revision: number }
+    const taskTree = session.taskTree.map(task =>
+      task.id === 'owner-task' ? { ...task, links: { ...task.links, owner } } : task,
+    )
+    return next({
+      ...event,
+      value: {
+        ...session,
+        taskTree,
+        taskOwnerFacts: { ...session.taskOwnerFacts, [ownerKey]: { state: 'done', since: 940_000 } },
+        taskFactWarnings: [
+          ...session.taskFactWarnings,
+          { taskId: 'pr-task', pr, message: 'PR merged, task still open' as const },
+        ],
+      },
+    })
+  })
+
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  await $.tool.call({
+    tool: 'mcp__inbox__tasks',
+    operation: 'add',
+    task_id: 'owner-task',
+    title: 'Owner task',
+    status: 'working',
+  })
+  await $.tool.call({
+    tool: 'mcp__inbox__tasks',
+    operation: 'add',
+    task_id: 'pr-task',
+    title: 'Task with merged PR',
+    status: 'working',
+  })
+
+  const pane = await $.ui.mount(PANE)
+  await pane.press({ key: 'tab-key-timeline' })
+  await clock.settle()
+
+  const rows = await pane.findAll({ type: 'Text' })
+  expect(
+    rows.some(line => line.text === 'Stalled'),
+    'the stalled chip remains visible',
+  ).toBe(true)
+  expect(
+    rows.some(line => line.text.includes('✕')),
+    'the stalled mark remains on the task title line',
+  ).toBe(true)
+  expect(
+    rows.some(line => line.text.includes('⚠ Owner finished, task open')),
+    'the owner warning is under its task row',
+  ).toBe(true)
+  expect(
+    rows.some(line => line.text.includes('⚠ PR merged, task still open')),
+    'the PR warning is under its task row',
+  ).toBe(true)
 })
 
 test('the desktop Timeline keeps the existing inline tree while this look is pending', async ($, on) => {

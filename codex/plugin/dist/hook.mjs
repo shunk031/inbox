@@ -3106,11 +3106,18 @@ function applyTaskOwnerFacts(tree, facts, at) {
 
 // ../hooks/timeline-page.ts
 var BAR_MARKS = {
-  done: "\u25A0",
-  working: "\u25CF",
-  stalled: "!",
-  waiting: "\u25CC",
-  queued: "\xB7"
+  done: "\u2501",
+  working: "\u2501",
+  stalled: "\u2501",
+  waiting: "\u2501",
+  queued: "\u2500"
+};
+var BAR_TONES = {
+  done: "done",
+  working: "key",
+  stalled: "error",
+  waiting: "error",
+  queued: "muted"
 };
 var BAR_STATES = Object.keys(BAR_MARKS);
 function timelineTask(task, now) {
@@ -3123,18 +3130,68 @@ function timelineTask(task, now) {
     history: history.map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) }))
   };
 }
-function timelineBar(segments, id, label, width = 16) {
-  if (segments.total <= 0) return { id, label, parts: [] };
+function percent(value) {
+  const rounded = Math.round(value * 1e4) / 100;
+  return { value: rounded, label: `${rounded.toFixed(2)}%` };
+}
+function timelineBar(segments, width) {
+  if (segments.total <= 0) return [];
   let cumulative = 0;
   let drawn = 0;
-  const parts = BAR_STATES.flatMap((state) => {
+  return BAR_STATES.flatMap((state) => {
     cumulative += segments[state];
     const end = Math.round(cumulative / segments.total * width);
     const count = Math.max(0, end - drawn);
     drawn = end;
-    return count > 0 ? [{ state, mark: BAR_MARKS[state], count }] : [];
+    return count > 0 ? [{ state, mark: BAR_MARKS[state], count, tone: BAR_TONES[state] }] : [];
   });
-  return { id, label, parts };
+}
+function taskStatus(task, stalled) {
+  if (stalled.has(task.id)) return "stalled";
+  if (task.status === "done" || task.status === "dropped") return task.status;
+  return task.status === "working" ? "working" : task.status === "waits-on-other" ? "waiting" : "queued";
+}
+function statusPresentation(status) {
+  switch (status) {
+    case "done":
+      return { label: "Completed", tone: "done", mark: "\u25CF" };
+    case "working":
+      return { label: "In progress", tone: "key", mark: "\u25D0" };
+    case "waiting":
+      return { label: "Waiting", tone: "error", mark: "\u2715" };
+    case "stalled":
+      return { label: "Stalled", tone: "error", mark: "\u2715" };
+    case "dropped":
+      return { label: "Dropped", tone: "muted", mark: "\u25CB" };
+    default:
+      return { label: "Not started", tone: "muted", mark: "\u25CB" };
+  }
+}
+function completedLeaves(tree, rootIds) {
+  const children = /* @__PURE__ */ new Map();
+  for (const task of tree) children.set(task.parentId, [...children.get(task.parentId) ?? [], task]);
+  const count = { done: 0, total: 0 };
+  const visit = (task, isDone) => {
+    if (task.status === "dropped") return;
+    const done = isDone || task.status === "done";
+    const activeChildren = (children.get(task.id) ?? []).filter((child) => child.status !== "dropped");
+    if (activeChildren.length === 0) {
+      count.total++;
+      if (done) count.done++;
+      return;
+    }
+    for (const child of activeChildren) visit(child, done);
+  };
+  const roots = rootIds === void 0 ? children.get(null) ?? [] : tree.filter((task) => Array.isArray(rootIds) ? rootIds.includes(task.id) : task.id === rootIds);
+  for (const root of roots) visit(root, false);
+  return count;
+}
+function progressStatus(segments) {
+  if (segments.stalled > 0) return "stalled";
+  if (segments.working > 0 || segments.done > 0 && segments.done < segments.total) return "working";
+  if (segments.waiting > 0) return "waiting";
+  if (segments.total > 0 && segments.done >= segments.total) return "done";
+  return "queued";
 }
 function timelineData(tree, segments, stalledSince, warnings, now) {
   const children = /* @__PURE__ */ new Map();
@@ -3146,10 +3203,10 @@ function timelineData(tree, segments, stalledSince, warnings, now) {
       const childrenOfTask = children.get(task.id) ?? [];
       const hasLaterSibling = index < siblings.length - 1;
       const connector = depth === 0 ? "" : hasLaterSibling ? "\u251C\u2500 " : "\u2514\u2500 ";
-      const stalledAt = stalledSince[task.id];
-      const status = stalledAt === void 0 ? task.status : "stalled";
-      const progress = Math.round(weightedTaskProgress(tree, task.id) * 100);
-      const current = currentTaskText(task);
+      const status = taskStatus(task, stalled);
+      const presentation2 = statusPresentation(status);
+      const progress = percent(weightedTaskProgress(tree, task.id));
+      const completedUnits = completedLeaves(tree, task.id);
       rows.push({
         task: timelineTask(task, now),
         depth,
@@ -3157,30 +3214,44 @@ function timelineData(tree, segments, stalledSince, warnings, now) {
         prefix: `${guides.join("")}${connector}`,
         hasLaterSibling,
         hasChildren: childrenOfTask.length > 0,
-        progress,
-        measure: `${childrenOfTask.length ? `${progress}%` : `w${task.weight}`}${current ? ` \xB7 ${current.text}` : ""}`,
+        progress: progress.value,
+        percent: progress.label,
+        progressBar: timelineBar(weightedTaskProgressSegments(tree, stalled, task.id), 10),
+        completedUnits,
         status,
-        statusLabel: stalledAt !== void 0 ? `stalled ${shortAgo(now - stalledAt)}` : status === "waits-on-other" ? "waiting on others" : status,
-        stalledAge: stalledAt === void 0 ? null : shortAgo(now - stalledAt),
+        statusLabel: presentation2.label,
+        tone: presentation2.tone,
+        mark: presentation2.mark,
+        alternate: rows.length % 2 === 1,
         warnings: warnings.filter((warning) => warning.taskId === task.id).map((warning) => warning.message)
       });
       visit(childrenOfTask, depth + 1, depth === 0 ? guides : [...guides, hasLaterSibling ? "\u2502  " : "   "]);
     });
   };
   visit(children.get(null) ?? [], 0, []);
-  const roots = children.get(null) ?? [];
-  const streams = new Set(roots.flatMap((task) => task.streamId ? [task.streamId] : []));
-  const summary = streams.size > 1 ? `${streams.size} streams` : segments.total > 0 ? `${Math.round(segments.done / segments.total * 100)}% complete \xB7 ${Number(segments.done.toFixed(1))}/${Number(segments.total.toFixed(1))} weight` : "no tasks yet";
-  const bars = [timelineBar(segments, "tree", "Task plan")];
-  if (streams.size > 1)
-    for (const root of roots)
-      bars.push(timelineBar(weightedTaskProgressSegments(tree, stalled, root.id), root.id, root.title));
+  const overall = percent(weightedTaskProgress(tree));
+  const state = progressStatus(segments);
+  const presentation = statusPresentation(state);
+  const leaves = completedLeaves(tree);
+  const firstCreated = tree.reduce(
+    (first, task) => first === null ? task.createdAt : Math.min(first, task.createdAt),
+    null
+  );
   return {
     isEmpty: tree.length === 0,
     empty: { title: "Timeline", hint: "No tasks have been recorded for this session." },
-    summary,
-    rows,
-    bars
+    progressCard: {
+      status: state,
+      statusLabel: presentation.label,
+      tone: presentation.tone,
+      percent: overall.value,
+      percentLabel: overall.label,
+      leavesDone: leaves.done,
+      leavesTotal: leaves.total,
+      elapsed: firstCreated === null ? "\u2014" : shortAgo(now - firstCreated),
+      bar: timelineBar(segments, 28)
+    },
+    rows
   };
 }
 
