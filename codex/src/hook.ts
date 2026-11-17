@@ -101,7 +101,13 @@ export async function handleHook(input: HookInput, deps: HookDeps): Promise<Reco
   const withHost = (s: SessionState): SessionState => withRollout(withCli(s))
   const withFeed = (s: SessionState): SessionState => {
     if (!feed) return s
-    const ledger = applyFeedFiles(s.ledger, feed.root, feed.files, now())
+    const ledger = applyFeedFiles(
+      s.ledger,
+      feed.root,
+      feed.files,
+      now(),
+      deps.env.INBOX_TASK_PROJECTION_PATH ? [deps.env.INBOX_TASK_PROJECTION_PATH] : [],
+    )
 
     return ledger === s.ledger ? s : { ...s, ledger }
   }

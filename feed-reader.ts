@@ -1,8 +1,10 @@
 /// <reference path="./codex/node_modules/@types/node/index.d.ts" />
-import { readdir, readFile, stat } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { randomUUID } from 'node:crypto'
+import { mkdir, readdir, readFile, rename, rmdir, stat, unlink, writeFile } from 'node:fs/promises'
+import { dirname, join, resolve } from 'node:path'
 
 import { MAX_FEED_FILE_BYTES, parseFeed, type FeedFile } from './hooks/feed'
+import { createTaskProjection } from './hooks/task-projection'
 
 type FeedReadIo = {
   resolve(path: string): string
@@ -47,3 +49,37 @@ export async function readFeedFiles(path: string | undefined, io = feedIo) {
 }
 
 const missing = (error: unknown) => !!error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT'
+
+/** The omp host's filesystem adapter for its session-scoped task projection. */
+export function nodeTaskProjection() {
+  return createTaskProjection({
+    acquireLock: async path => {
+      await mkdir(dirname(path), { recursive: true })
+      try {
+        await mkdir(`${path}.lock`)
+        return true
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false
+        throw error
+      }
+    },
+    releaseLock: async path => {
+      await rmdir(`${path}.lock`).catch(() => undefined)
+    },
+    read: async path =>
+      readFile(path, 'utf8').catch((error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') return null
+        throw error
+      }),
+    writeAtomic: async (path, text) => {
+      const temporary = `${path}.${process.pid}-${randomUUID()}.tmp`
+      try {
+        await writeFile(temporary, text, { flag: 'wx' })
+        await rename(temporary, path)
+      } catch (error) {
+        await unlink(temporary).catch(() => undefined)
+        throw error
+      }
+    },
+  })
+}

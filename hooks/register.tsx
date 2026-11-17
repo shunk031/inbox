@@ -41,6 +41,8 @@ import {
   type SentBy,
 } from './session-turns'
 import { emptySession, upgradeSession, type SavedSession } from './session-files'
+import { modTaskProjection, type ModTaskProjection } from './mod-task-projection'
+import { runModTool } from './mod-task-run'
 import { postToolReminder, toolCallReminder, withToolCallReminder } from './mod-task-reminder'
 import { pressOn, pruned, type SendOutcome } from './session-presses'
 import { isCompareInBackground } from './clients'
@@ -82,7 +84,8 @@ import { prBlockRows, threadSentIn } from './pr-rows'
 import { prNeedsYou } from './prs'
 import { EMPTY, isBlankLedger } from './ledger'
 import { closeItem } from './ledger-close'
-import { FEED_POLL_MS, startModFeed } from './mod-feed'
+import { FEED_POLL_MS } from './mod-feed'
+import { startModFeedForMod } from './mod-feed-start'
 import { tasksRunBy } from './reply-parse'
 import { CLAUDE_CODE, guidedCloseDescription } from './model-text'
 import { tasksDescription } from './tool-descriptions'
@@ -152,7 +155,7 @@ import {
   type Holds,
 } from './timing'
 import { helpKeys, UNDO_KEY } from './help'
-import { agentTools, NOT_SAVED } from './tools'
+import { agentTools } from './tools'
 import type { AgentTool } from './tools'
 import {
   ARRIVAL_TABS,
@@ -241,7 +244,6 @@ import {
 } from './mod-records'
 import {
   AWAY_MS,
-  answerToolCallWithReminder,
   broughtBack,
   type Changed,
   conversation,
@@ -276,8 +278,8 @@ import { paneRowFrame } from './pane-row-frame'
 import { paneRows } from './pane-rows'
 import { paneFrame } from './pane-frame'
 import { paneRowParts } from './pane-row-parts'
-import { documentBytes, withDocumentPreview } from './document'
-import type { DocumentFile } from './document'
+import { withDocumentPreview } from './document'
+import { modDocumentFile } from './mod-document-file'
 import type { PaneClient, PaneHandlers } from './pane-context'
 import { panePrBlocks, panePrRows } from './pane-prs'
 import { paneStatusLines } from './pane-status-lines'
@@ -288,22 +290,18 @@ import { paneHelp } from './pane-help'
 import { adjustScroll, clearDocument, documentActions, scrollBy } from './pane-document'
 import { foldOf, upgradedUnfolded, withFold } from './fold-keys'
 
-function documentFile($: EngineInterface): DocumentFile {
-  return {
-    stat: path =>
-      $.fs.stat(path, { resolve: true }).then(({ realPath, kind, size }) => ({
-        path: realPath ?? '',
-        isFile: kind === 'file',
-        size,
-      })),
-    read: (path, limit) => $.fs.read(path, { as: 'bytes' }).then(({ base64 }) => documentBytes(base64, limit)),
-  }
+function documentFile($: EngineInterface) {
+  return modDocumentFile(
+    path => $.fs.stat(path, { resolve: true }),
+    path => $.fs.read(path, { as: 'bytes' }),
+  )
 }
 
 const TAB = atom({ plugin: 'inbox', key: 'tab' } as const, 'needsYou' as Tab)
+/** Page tab when a page is open; separate so older builds still read row tabs. */
 const PAGE = atom({ plugin: 'inbox', key: 'page' } as const, null as PageTab | null)
 const SELECTION = atom({ plugin: 'inbox', key: 'selection' } as const, NO_SELECTION)
-/** The Status row whose keys work, by id, as `statusSelected` resolves it. */
+/** Selected Status row id; resolves to the row whose keys work. */
 const STATUS_SELECTION = atom({ plugin: 'inbox', key: 'statusSelection' } as const, null as string | null)
 const TIMELINE_SELECTION = atom({ plugin: 'inbox', key: 'timelineSelection' } as const, null as string | null)
 const TIMELINE_DETAIL_OPEN = atom({ plugin: 'inbox', key: 'timelineDetailOpen' } as const, false)
@@ -336,11 +334,10 @@ const RECORD_TOOL = 'mcp__inbox__record'
 const CLOSE_TOOL = 'mcp__inbox__close'
 const ORDER_TOOL = 'mcp__inbox__order_prs'
 const TASKS_TOOL = 'mcp__inbox__tasks'
-/**
- * The person's line for each `record` or `close` call that has one, by `tool_use_id`. It lives as long as the
- * process, so a call from before it draws nothing under its row.
- */
+/** Tool result lines by tool-use id, scoped to this process. */
 const PERSON_LINES = atom({ plugin: 'inbox', key: 'personLines' } as const, {} as Record<string, string>)
+
+let taskProjection: ModTaskProjection | null = null
 
 const PANE = 'inbox'
 
@@ -1069,24 +1066,25 @@ async function runTool(
   isMainAgent: boolean,
   isTasksCall: boolean,
 ): Promise<string> {
-  const now = await $.clock.now()
-  const owner = currentOwner()
-  const toolInput = tool === 'record' ? await withDocumentPreview(input, documentFile($)) : input
-  let answer!: ReturnType<typeof answerToolCallWithReminder>
-  await commit($, owner, s => {
-    answer = answerToolCallWithReminder(s, tool, toolInput, now, isMainAgent, isTasksCall)
-    return answer.state
-  })
-  const { personLine } = answer
-  if (personLine !== null && toolUseId)
-    await update($, PERSON_LINES, lines =>
-      Object.fromEntries([...Object.entries(lines), [toolUseId, personLine]].slice(-MAX_PERSON_LINES)),
-    )
-  const isChangeUnsaved = answer.changedSavedState && isLastSaveRefused(owner.id)
-
-  const result = isChangeUnsaved ? `${answer.result} ${NOT_SAVED}` : answer.result
-
-  return answer.reminder ? `${result}\n\n${answer.reminder}` : result
+  return runModTool(
+    {
+      now: () => $.clock.now(),
+      owner: currentOwner,
+      preview: input => withDocumentPreview(input, documentFile($)),
+      commit: (owner, change) => commit($, owner, change),
+      refused: isLastSaveRefused,
+      projection: taskProjection,
+      savePersonLine: (id, line) =>
+        update($, PERSON_LINES, lines =>
+          Object.fromEntries([...Object.entries(lines), [id, line]].slice(-MAX_PERSON_LINES)),
+        ),
+    },
+    tool,
+    input,
+    toolUseId,
+    isMainAgent,
+    isTasksCall,
+  )
 }
 
 /** Opens the pane; Escape closes it unless its reply field is open. */
@@ -2087,8 +2085,14 @@ async function readVersion($: EngineInterface) {
 }
 
 function startFeed($: EngineInterface) {
-  return startModFeed(
-    [$.env.get('INBOX_FEED'), $.env.get('HOME'), $.env.get('HERDR_PANE_ID'), $.env.get('HERDR_BIN_PATH')],
+  return startModFeedForMod(
+    [
+      $.env.get('INBOX_FEED'),
+      $.env.get('HOME'),
+      $.env.get('HERDR_PANE_ID'),
+      $.env.get('HERDR_BIN_PATH'),
+      $.env.get('INBOX_TASK_PROJECTION_PATH'),
+    ],
     processRun($),
     [p => $.fs.stat(p), p => $.fs.list(p), p => $.fs.exists(p), p => $.fs.read(p)],
     () => $.clock.now(),
@@ -2103,6 +2107,15 @@ async function initializeInbox($: EngineInterface) {
     readVersion($),
     $.env.get('INBOX_RECORDED_ITEMS_ONLY').then(v => void (mod.recordedItemsOnly = isRecordedItemsOnly(v))),
   ])
+  taskProjection = modTaskProjection(
+    {
+      exists: path => $.fs.exists(path),
+      read: path => $.fs.read(path),
+      write: (path, text) => $.fs.write(path, text),
+    },
+    processRun($),
+    () => `${Date.now()}-${Math.random()}`,
+  )
   const feed = await startFeed($)
   mod.isOn = true
   mod.toolsRefused = false
@@ -2153,7 +2166,11 @@ async function prepareConversation(
   forkedFrom?: string,
 ) {
   const writesAtRead = sessionState.savedWrites
-  const [sessionRoot, saved] = await Promise.all([$.session.root(), readSettled(saveEngine($), id)])
+  const [sessionRoot, saved, projectionPath] = await Promise.all([
+    $.session.root(),
+    readSettled(saveEngine($), id),
+    $.env.get('INBOX_TASK_PROJECTION_PATH'),
+  ])
   if (revision !== sessionState.loadRevision) return
   const applying = sessionState.applyingConversation.then(async () => {
     if (revision !== sessionState.loadRevision) return
@@ -2161,7 +2178,7 @@ async function prepareConversation(
     const latest = writesAtRead === sessionState.savedWrites ? saved : await readSettled(saveEngine($), id)
     // A fork continues its parent's inbox, so a new id with no saved state starts from the parent's.
     const parent = latest?.session || !forkedFrom ? null : await readSettled(saveEngine($), forkedFrom)
-    await applyConversation($, id, revision, by, sessionRoot, latest, parent?.session)
+    await applyConversation($, id, revision, by, sessionRoot, latest, parent?.session, projectionPath ?? null)
   })
   sessionState.applyingConversation = applying.catch(() => undefined)
   return applying
@@ -2214,9 +2231,11 @@ async function applyConversation(
   sessionRoot: string,
   saved: { session: SavedRecord | undefined } | null,
   parent?: SavedRecord,
+  projectionPath?: string | null,
 ) {
   if (revision !== sessionState.loadRevision) return
   const isLoading = () => revision === sessionState.loadRevision && conversation.id === id
+  if (conversation.id) await taskProjection?.release(conversation.id)
   cancelUndoScroll()
   sessionState.stopGeneration++
   sessionState.resuming = null
@@ -2234,7 +2253,10 @@ async function applyConversation(
   const turns = await $.session.turns().catch(() => null)
   const cutOff = (s: Session) => statusChanged(cutOffTurn(cutOffUpdate(s)), o => childrenCutOff(o, loadedAt))
   // Before notePlace's save, so this conversation is never saved with the previous one's tool fields.
-  await replaceDrawn($, s => withLoadedToolFields(cutOff(s), by, saved?.session, parent, turns))
+  await replaceDrawn($, s => ({
+    ...withLoadedToolFields(cutOff(s), by, saved?.session, parent, turns),
+    taskTreeProjectionPath: projectionPath || null,
+  }))
   if (revision !== sessionState.loadRevision) return
   void notePlace($)
   const isFresh = isBlankLedger(current)
@@ -2272,7 +2294,8 @@ async function bringBack(
     if (!isLoading() || !isBlankLedger(s.ledger)) return s
     isBrought = true
 
-    return isFork ? forkedFrom(s, loaded) : broughtBack(s, loaded)
+    const brought = isFork ? forkedFrom(s, loaded) : broughtBack(s, loaded)
+    return { ...brought, taskTreeProjectionPath: s.taskTreeProjectionPath }
   })
   if (isBrought && !isFork)
     await update($, AWAY, a => (isLoading() ? { ...a, lastActiveAt: saved.savedAt, isAway: true } : a))
@@ -2381,6 +2404,7 @@ export const register: Register = on => {
   })
 
   on('session.end', async ($, e, next) => {
+    await taskProjection?.release(conversation.id)
     sessionState.endReason = e.reason
     sessionState.loadRevision++
     sessionState.stopGeneration++

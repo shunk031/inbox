@@ -19,6 +19,7 @@ export async function startModFeed(
     Promise<string | null | undefined>,
     Promise<string | null | undefined>,
     Promise<string | null | undefined>,
+    Promise<string | null | undefined>,
   ],
   run: Run,
   fs: FeedFs,
@@ -26,7 +27,7 @@ export async function startModFeed(
   commit: (change: (ledger: Ledger) => Ledger) => Promise<unknown>,
   sessionId: () => Promise<string>,
 ) {
-  const [explicit, home, paneId, binPath] = await Promise.all(env)
+  const [explicit, home, paneId, binPath, projectionPath] = await Promise.all(env)
   const path = await resolveInboxFeedPath(
     explicit ?? undefined,
     home ?? undefined,
@@ -34,7 +35,7 @@ export async function startModFeed(
     run,
   )
   if (!path) return null
-  const poll = feedPoll(path, fs, now, commit)
+  const poll = feedPoll(path, fs, now, commit, projectionPath ? [projectionPath] : [])
 
   return () => sessionId().then(poll)
 }
@@ -44,11 +45,13 @@ export function feedPoll(
   [stat, list, exists, readFile]: FeedFs,
   now: () => Promise<number>,
   commit: (change: (ledger: Ledger) => Ledger) => Promise<unknown>,
+  skippedPaths: string[] = [],
 ): (sessionId: string) => Promise<void> {
   let mtimes = new Map<string, number>()
   let session: string | undefined
   let isRunning = false
-  const save = async (files: FeedFile[]) => now().then(at => commit(ledger => applyFeedFiles(ledger, path, files, at)))
+  const save = async (files: FeedFile[]) =>
+    now().then(at => commit(ledger => applyFeedFiles(ledger, path, files, at, skippedPaths)))
   const read = async (file: string, stat: FsStat) =>
     stat.size > MAX_FEED_FILE_BYTES
       ? null

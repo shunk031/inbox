@@ -122,6 +122,7 @@ export const OMP_SUPPORT: ClientSupport['support'] = {
   'task-owner-facts': { kind: 'full' },
   'task-reminder': { kind: 'full' },
   'task-tree-currentness': { kind: 'full' },
+  'task-tree-projection': { kind: 'full' },
   'task-status-mismatch': { kind: 'full' },
   timeline: { kind: 'full' },
   'agents-tab': { kind: 'different', reason: 'Agents is not drawn in this look yet.' },

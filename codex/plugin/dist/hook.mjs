@@ -1,7 +1,7 @@
 // Built by codex/build.mjs from codex/src and hooks/. Do not edit.
 
 // src/hook-main.ts
-import { dirname as dirname4, join as join6 } from "node:path";
+import { dirname as dirname5, join as join6 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/detached-update.ts
@@ -719,6 +719,7 @@ function outcomeText(d) {
 // ../hooks/task-tree.ts
 var TASK_NOTES_LIMIT = 40;
 var TASK_NOTE_LENGTH = 2e3;
+var TASK_NODE_LIMIT = 200;
 function notesOf(notes) {
   return notes.slice(0, TASK_NOTES_LIMIT).map((note) => note.slice(0, TASK_NOTE_LENGTH));
 }
@@ -2217,6 +2218,9 @@ function emptySession() {
   return {
     ledger: EMPTY,
     taskTree: [],
+    taskTreeProjectionPath: null,
+    taskTreeProjectionVersion: 0,
+    taskTreeProjectionConflictReported: false,
     taskStatusMismatches: [],
     taskPrStates: {},
     taskFactWarnings: [],
@@ -2293,6 +2297,9 @@ function sessionFields(saved, views) {
   return {
     ledger,
     taskTree,
+    taskTreeProjectionPath: typeof saved.taskTreeProjectionPath === "string" && saved.taskTreeProjectionPath.length <= 4096 ? saved.taskTreeProjectionPath : null,
+    taskTreeProjectionVersion: saved.taskTreeProjectionVersion === 1 ? 1 : 0,
+    taskTreeProjectionConflictReported: saved.taskTreeProjectionConflictReported === true,
     taskStatusMismatches: upgradeTaskStatusMismatches(saved.taskStatusMismatches, taskTree),
     taskPrStates: Object.fromEntries(
       Object.entries(saved.taskPrStates ?? {}).filter(
@@ -5169,15 +5176,16 @@ function parseFeed(text2) {
     const f = feed;
     if (f.version !== 1 || !validSource(f.source) || !validTime(f.writtenAt) || !Array.isArray(f.entries) || f.warnings !== void 0 && !Array.isArray(f.warnings))
       return null;
-    if (f.entries.length > 40) return null;
+    if (f.entries.length > (f.source === "meta-open-items" ? TASK_NODE_LIMIT : 40)) return null;
     const keys = /* @__PURE__ */ new Set();
     const entries = [];
     for (const value of f.entries) {
       if (!value || typeof value !== "object") return null;
       const e = value;
-      if (typeof e.key !== "string" || e.key.length === 0 || e.key.length > 100 || keys.has(e.key) || !["working", "blocked", "done"].includes(e.state) || typeof e.title !== "string" || e.title.length === 0 || typeof e.detail !== "string" || !validTime(e.at) || e.kind !== void 0 && !["work", "task"].includes(e.kind) || e.owner !== void 0 && !validOwner(e.owner) || e.signalKey !== void 0 && (typeof e.signalKey !== "string" || e.signalKey.length === 0 || e.signalKey.length > 100))
+      if (typeof e.key !== "string" || e.key.length === 0 || e.key.length > 100 || keys.has(e.key) || !["queued", "working", "blocked", "done"].includes(e.state) || typeof e.title !== "string" || e.title.length === 0 || typeof e.detail !== "string" || !validTime(e.at) || e.kind !== void 0 && !["work", "task"].includes(e.kind) || e.owner !== void 0 && !validOwner(e.owner) || e.signalKey !== void 0 && (typeof e.signalKey !== "string" || e.signalKey.length === 0 || e.signalKey.length > 100))
         return null;
-      if (f.source === "meta-open-items" && (e.kind === void 0 || e.owner === void 0)) return null;
+      if (f.source === "meta-open-items" && (e.kind === void 0 || e.kind === "work" && e.owner === void 0))
+        return null;
       keys.add(e.key);
       entries.push({ ...e, title: e.title.slice(0, 120), detail: e.detail.slice(0, 600) });
     }
@@ -5202,7 +5210,7 @@ var validSource = (s) => typeof s === "string" && s.length > 0;
 var validOwner = (value) => {
   if (!value || typeof value !== "object") return false;
   const owner = value;
-  return validSource(owner.machine) && validSource(owner.agent) && owner.machine.length <= 80 && owner.agent.length <= 80;
+  return validSource(owner.machine) && validSource(owner.agent) && owner.machine.length <= 100 && owner.agent.length <= 80;
 };
 function applyFeed(ledger, feed, now, source = "") {
   if (feed.source === "meta-open-items") return applyMetaOpenItems(ledger, feed, now, source);
@@ -5233,7 +5241,7 @@ function applyFeed(ledger, feed, now, source = "") {
       feedSource: source,
       feedOwned: true,
       ...owner ? { owner: { ...owner } } : {},
-      ...feed.source === "herdr-meta-patrol" && owner ? { ownerFact: { state: entry.state, since: entry.at } } : {}
+      ...feed.source === "herdr-meta-patrol" && owner ? { ownerFact: { state: entry.state === "queued" ? "working" : entry.state, since: entry.at } } : {}
     };
     if (!owner) {
       delete updated.owner;
@@ -5250,21 +5258,31 @@ function applyFeed(ledger, feed, now, source = "") {
       next = closeFinding(next, finding.id, { how: "update", outcome: "done: no longer reported" }, now);
   return next;
 }
-function applyFeedFiles(ledger, root, files, now) {
-  const present = new Set(files.map((f) => f.path));
-  const sources = new Set(
+function normalizedPath(path) {
+  return path.replace(/\\/g, "/").replace(/\/+$/, "");
+}
+function applyFeedFiles(ledger, root, files, now, skippedPaths = []) {
+  const skipped = new Set(skippedPaths.map(normalizedPath));
+  let next = ledger;
+  const priorSources = new Set(
     [...ledger.findings, ...ledger.closedFindings, ...ledger.items].map((f) => f.feedSource).filter(Boolean)
   );
-  let next = ledger;
+  for (const source of priorSources)
+    if (skipped.has(normalizedPath(source))) next = applyFeed(next, emptyMetaFeed, now, source);
+  const activeFiles = files.filter((file) => !skipped.has(normalizedPath(file.path)));
+  const present = new Set(activeFiles.map((f) => f.path));
+  const sources = new Set(
+    [...next.findings, ...next.closedFindings, ...next.items].map((f) => f.feedSource).filter(Boolean)
+  );
   for (const source of sources)
     if (sourceUnder(source, root) && !present.has(source) && !next.findings.some((f) => f.feedSource === source && f.sourceManaged) && !next.items.some((i) => i.feedSource === source && i.sourceManaged))
       next = applyFeed(next, emptyFeed, now, source);
-  for (const file of files) if (file.feed) next = applyFeed(next, file.feed, now, file.path);
-  const validPaths = new Set(files.filter((file) => file.feed).map((file) => file.path));
+  for (const file of activeFiles) if (file.feed) next = applyFeed(next, file.feed, now, file.path);
+  const validPaths = new Set(activeFiles.filter((file) => file.feed).map((file) => file.path));
   const carriedWarnings = (next.untrackedWork ?? []).filter(
     (w) => !sourceUnder(w.feedSource, root) || present.has(w.feedSource) && !validPaths.has(w.feedSource)
   );
-  const currentWarnings = files.flatMap(
+  const currentWarnings = activeFiles.flatMap(
     (file) => file.feed ? (file.feed.warnings ?? []).map((w) => ({ ...w, feedSource: file.path })) : []
   );
   const untrackedWork = [...carriedWarnings, ...currentWarnings];
@@ -5335,6 +5353,7 @@ function applyMetaOpenItems(ledger, feed, now, source) {
   return next;
 }
 var emptyFeed = { version: 1, source: "", writtenAt: 0, entries: [] };
+var emptyMetaFeed = { version: 1, source: "meta-open-items", writtenAt: 0, entries: [] };
 var sourceUnder = (source, root) => {
   const base = root.replace(/[\\/]+$/, "");
   return source === base || source.startsWith(`${base}/`) || source.startsWith(`${base}\\`);
@@ -5342,8 +5361,8 @@ var sourceUnder = (source, root) => {
 var detailOf = (entry) => entry.state === "blocked" ? `Blocked: ${entry.detail}` : entry.detail;
 
 // ../feed-reader.ts
-import { readdir as readdir3, readFile as readFile2, stat as stat5 } from "node:fs/promises";
-import { join as join4, resolve as resolve3 } from "node:path";
+import { mkdir as mkdir3, readdir as readdir3, readFile as readFile2, rename as rename3, rmdir as rmdir2, stat as stat5, unlink as unlink2, writeFile as writeFile3 } from "node:fs/promises";
+import { dirname as dirname4, join as join4, resolve as resolve3 } from "node:path";
 var feedIo = {
   resolve: resolve3,
   join: join4,
@@ -5436,7 +5455,13 @@ async function handleHook(input, deps) {
   const withHost = (s) => withRollout(withCli(s));
   const withFeed = (s) => {
     if (!feed) return s;
-    const ledger = applyFeedFiles(s.ledger, feed.root, feed.files, now());
+    const ledger = applyFeedFiles(
+      s.ledger,
+      feed.root,
+      feed.files,
+      now(),
+      deps.env.INBOX_TASK_PROJECTION_PATH ? [deps.env.INBOX_TASK_PROJECTION_PATH] : []
+    );
     return ledger === s.ledger ? s : { ...s, ledger };
   };
   const write = (change) => updateState2(async (s) => withFeed(await change(s)));
@@ -5653,8 +5678,8 @@ function exitCodeOf(err) {
 async function main() {
   let raw = "";
   for await (const chunk of process.stdin) raw += chunk;
-  const dist = dirname4(fileURLToPath(import.meta.url));
-  const dir = dataDir(process.env, dirname4(dist));
+  const dist = dirname5(fileURLToPath(import.meta.url));
+  const dir = dataDir(process.env, dirname5(dist));
   const startUpdate = detachedUpdate(dir, process.env, join6(dist, "update.mjs"));
   const out = await handleHook(JSON.parse(raw), {
     dir,

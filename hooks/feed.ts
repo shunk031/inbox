@@ -1,9 +1,10 @@
 import type { Finding, Ledger } from '../types'
 import { closeFinding } from './ledger-close'
+import { TASK_NODE_LIMIT } from './task-tree'
 
 export type FeedEntry = {
   key: string
-  state: 'working' | 'blocked' | 'done'
+  state: 'queued' | 'working' | 'blocked' | 'done'
   title: string
   detail: string
   at: number
@@ -32,7 +33,7 @@ export function parseFeed(text: string): Feed | null {
       (f.warnings !== undefined && !Array.isArray(f.warnings))
     )
       return null
-    if (f.entries.length > 40) return null
+    if (f.entries.length > (f.source === 'meta-open-items' ? TASK_NODE_LIMIT : 40)) return null
     const keys = new Set<string>()
     const entries: FeedEntry[] = []
     for (const value of f.entries) {
@@ -43,7 +44,7 @@ export function parseFeed(text: string): Feed | null {
         e.key.length === 0 ||
         e.key.length > 100 ||
         keys.has(e.key) ||
-        !['working', 'blocked', 'done'].includes(e.state as string) ||
+        !['queued', 'working', 'blocked', 'done'].includes(e.state as string) ||
         typeof e.title !== 'string' ||
         e.title.length === 0 ||
         typeof e.detail !== 'string' ||
@@ -54,7 +55,8 @@ export function parseFeed(text: string): Feed | null {
           (typeof e.signalKey !== 'string' || e.signalKey.length === 0 || e.signalKey.length > 100))
       )
         return null
-      if (f.source === 'meta-open-items' && (e.kind === undefined || e.owner === undefined)) return null
+      if (f.source === 'meta-open-items' && (e.kind === undefined || (e.kind === 'work' && e.owner === undefined)))
+        return null
       keys.add(e.key)
       entries.push({ ...e, title: e.title.slice(0, 120), detail: e.detail.slice(0, 600) } as FeedEntry)
     }
@@ -92,7 +94,7 @@ const validOwner = (value: unknown): value is { machine: string; agent: string }
   if (!value || typeof value !== 'object') return false
   const owner = value as Record<string, unknown>
   return (
-    validSource(owner.machine) && validSource(owner.agent) && owner.machine.length <= 80 && owner.agent.length <= 80
+    validSource(owner.machine) && validSource(owner.agent) && owner.machine.length <= 100 && owner.agent.length <= 80
   )
 }
 
@@ -130,7 +132,9 @@ export function applyFeed(ledger: Ledger, feed: Feed, now: number, source = ''):
       feedSource: source,
       feedOwned: true,
       ...(owner ? { owner: { ...owner } } : {}),
-      ...(feed.source === 'herdr-meta-patrol' && owner ? { ownerFact: { state: entry.state, since: entry.at } } : {}),
+      ...(feed.source === 'herdr-meta-patrol' && owner
+        ? { ownerFact: { state: entry.state === 'queued' ? 'working' : entry.state, since: entry.at } }
+        : {}),
     }
     if (!owner) {
       delete updated.owner
@@ -160,12 +164,29 @@ export function applyFeed(ledger: Ledger, feed: Feed, now: number, source = ''):
   return next
 }
 
-export function applyFeedFiles(ledger: Ledger, root: string, files: FeedFile[], now: number): Ledger {
-  const present = new Set(files.map(f => f.path))
-  const sources = new Set(
+function normalizedPath(path: string): string {
+  return path.replace(/\\/g, '/').replace(/\/+$/, '')
+}
+
+export function applyFeedFiles(
+  ledger: Ledger,
+  root: string,
+  files: FeedFile[],
+  now: number,
+  skippedPaths: string[] = [],
+): Ledger {
+  const skipped = new Set(skippedPaths.map(normalizedPath))
+  let next = ledger
+  const priorSources = new Set(
     [...ledger.findings, ...ledger.closedFindings, ...ledger.items].map(f => f.feedSource).filter(Boolean),
   )
-  let next = ledger
+  for (const source of priorSources)
+    if (skipped.has(normalizedPath(source!))) next = applyFeed(next, emptyMetaFeed, now, source!)
+  const activeFiles = files.filter(file => !skipped.has(normalizedPath(file.path)))
+  const present = new Set(activeFiles.map(f => f.path))
+  const sources = new Set(
+    [...next.findings, ...next.closedFindings, ...next.items].map(f => f.feedSource).filter(Boolean),
+  )
   for (const source of sources)
     if (
       sourceUnder(source!, root) &&
@@ -174,12 +195,12 @@ export function applyFeedFiles(ledger: Ledger, root: string, files: FeedFile[], 
       !next.items.some(i => i.feedSource === source && i.sourceManaged)
     )
       next = applyFeed(next, emptyFeed, now, source)
-  for (const file of files) if (file.feed) next = applyFeed(next, file.feed, now, file.path)
-  const validPaths = new Set(files.filter(file => file.feed).map(file => file.path))
+  for (const file of activeFiles) if (file.feed) next = applyFeed(next, file.feed, now, file.path)
+  const validPaths = new Set(activeFiles.filter(file => file.feed).map(file => file.path))
   const carriedWarnings = (next.untrackedWork ?? []).filter(
     w => !sourceUnder(w.feedSource, root) || (present.has(w.feedSource) && !validPaths.has(w.feedSource)),
   )
-  const currentWarnings = files.flatMap(file =>
+  const currentWarnings = activeFiles.flatMap(file =>
     file.feed ? (file.feed.warnings ?? []).map(w => ({ ...w, feedSource: file.path })) : [],
   )
   const untrackedWork = [...carriedWarnings, ...currentWarnings]
@@ -264,6 +285,7 @@ function applyMetaOpenItems(ledger: Ledger, feed: Feed, now: number, source: str
 }
 
 const emptyFeed: Feed = { version: 1, source: '', writtenAt: 0, entries: [] }
+const emptyMetaFeed: Feed = { version: 1, source: 'meta-open-items', writtenAt: 0, entries: [] }
 const sourceUnder = (source: string, root: string) => {
   const base = root.replace(/[\\/]+$/, '')
   return source === base || source.startsWith(`${base}/`) || source.startsWith(`${base}\\`)

@@ -62,6 +62,16 @@ describe('progress feed', () => {
     expect(
       parseFeed(JSON.stringify({ ...valid, entries: Array.from({ length: 41 }, (_, i) => entry({ key: `m/${i}` })) })),
     ).toBeNull()
+    expect(
+      parseFeed(
+        JSON.stringify({
+          version: 1,
+          source: 'meta-open-items',
+          writtenAt: 1,
+          entries: Array.from({ length: 41 }, (_, i) => entry({ key: `task/${i}`, kind: 'task', owner: undefined })),
+        }),
+      )?.entries,
+    ).toHaveLength(41)
   })
 
   test('reads durable Meta tasks without six-hour expiry and keeps live warnings separate', () => {
@@ -179,6 +189,21 @@ describe('progress feed', () => {
     expect(cleared.items).toEqual([])
     expect(cleared.findings).toEqual([])
     expect(cleared.untrackedWork).toEqual([])
+  })
+
+  test('skips the projected task file and clears rows it previously imported', () => {
+    const path = '/feed/meta-open-items.json'
+    const projection = {
+      version: 1 as const,
+      source: 'meta-open-items',
+      writtenAt: 100,
+      entries: [entry({ key: 'task-1', kind: 'task', title: 'Keep one task' })],
+    }
+    const previouslyImported = applyFeedFiles(EMPTY, '/feed', [{ path, feed: projection }], 100)
+    expect(previouslyImported.items).toHaveLength(1)
+
+    const skipped = applyFeedFiles(previouslyImported, '/feed', [{ path, feed: projection }], 101, [path])
+    expect(skipped.items).toEqual([])
   })
 
   test('retains untracked warnings while a machine snapshot is invalid and clears them on a valid snapshot', () => {

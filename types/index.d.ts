@@ -757,6 +757,12 @@ export type Session = {
   ledger: Ledger
   /** Durable work copied from Status subjects and milestones; order is the saved tree order. */
   taskTree: TaskTree
+  /** Optional transport target for this session's task tree, read from its host setting at start. */
+  taskTreeProjectionPath: string | null
+  /** The one-time import version for hand-written entries at the projection target. */
+  taskTreeProjectionVersion: number
+  /** Whether this session has already reported that another session owns its projection target. */
+  taskTreeProjectionConflictReported: boolean
   /** Explicit reply claims that conflict with a task's saved status. */
   taskStatusMismatches: TaskStatusMismatch[]
   /** Last known GitHub state for each linked task PR; warnings are derived from these states and the task tree. */
