@@ -84,7 +84,8 @@ import { prBlockRows, threadSentIn } from './pr-rows'
 import { prNeedsYou } from './prs'
 import { EMPTY, isBlankLedger } from './ledger'
 import { closeItem } from './ledger-close'
-import { FEED_POLL_MS, startModFeed } from './mod-feed'
+import { FEED_POLL_MS } from './mod-feed'
+import { startModFeedForMod } from './mod-feed-start'
 import { tasksRunBy } from './reply-parse'
 import { CLAUDE_CODE, guidedCloseDescription } from './model-text'
 import { tasksDescription } from './tool-descriptions'
@@ -1044,7 +1045,7 @@ async function upgradeState($: EngineInterface): Promise<Ledger> {
     update($, TIMELINE_SELECTION, upgradedTimelineSelection),
     update($, TIMELINE_FOLDED, upgradedTimelineFolded),
     update($, TIMELINE_DETAIL_OPEN, upgradedTimelineDetailOpen),
-    // A demo an earlier build seeded may lack a field this one draws, so it ends; /inbox demo seeds a new one.
+    // Drop demo state an older build does not understand; /inbox demo seeds a fresh copy.
     update($, DEMO, d => (d === null || isDemoCopy(d) ? d : null)),
     // Migrate legacy string drafts to the current shape.
     update($, DRAFTS, (d: Record<string, Draft | string>) =>
@@ -1285,6 +1286,7 @@ async function writeRowTab($: EngineInterface, tab: Tab) {
   await syncShown($)
 }
 
+/** Current page tab, or null; an unknown saved page stays saved. */
 async function readPage($: EngineInterface): Promise<PageTab | null> {
   const page = await read($, PAGE)
   return page !== null && drawnTabOf(page, mod.isNextBuild, true, paneState.paneLook === 'terminal') === page
@@ -1292,6 +1294,7 @@ async function readPage($: EngineInterface): Promise<PageTab | null> {
     : null
 }
 
+/** Current row tab, or null while a page is open. */
 async function readRowTab($: EngineInterface): Promise<Tab | null> {
   const [page, tab] = await Promise.all([readPage($), read($, TAB)])
   return page === null ? tab : null
@@ -1493,7 +1496,7 @@ async function showAsk($: EngineInterface, askId: string) {
   await scrollToRow($, askId)
 }
 
-/** A set, not a toggle: a second click before the redraw posts the same state, so a double-click leaves it unfolded. */
+/** A repeated click before redraw uses the same state, so double-clicking leaves the row unfolded. */
 async function setFold($: EngineInterface, key: string, isUnfolded: unknown) {
   const fold = foldOf(key)
   if (!fold || typeof isUnfolded !== 'boolean') return
@@ -1699,7 +1702,7 @@ async function pollPrs($: EngineInterface) {
 }
 
 /** Takes a dismissed PR off the tab once its row settles, unless it is still tracked or the Dismiss was undone. */
-/** Sends the answers and Fixes held for Undo, and tells Claude about rows closed with Done, once their settle window has passed. */
+/** Sends held answers and Fixes after Undo's settle window, then tells Claude about Done rows. */
 async function wakeAfterSettle($: EngineInterface) {
   await wakeSessionAfterSettle(hostOf($, currentOwner()))
 }
@@ -1772,7 +1775,7 @@ async function runPress($: EngineInterface, p: RowPress | PrPress, surface: UiPr
   if (canRevealUndo) await keepUndoVisible($, undoKey, undoBlock, now, undoRevision)
   if (!isPrPress(p) && p.action === 'compare') void redrawAtCompareEnd($).catch(() => undefined)
   if (!isPrPress(p) && p.action === 'undo') await selectRestored($, p.id)
-  // Success notes clear after effects finish; a queued message starts its age at QUEUED_AFTER_MS.
+  // Success notes clear after their effects settle; queued messages start their age at QUEUED_AFTER_MS and show Queued then.
   if (sends) later($, QUEUED_AFTER_MS, () => redraw($))
   const outcome = await started.finish()
   if (outcome.wakesAfterSettle) later($, SETTLED_MS, () => wakeAfterSettle($))
@@ -2084,26 +2087,26 @@ async function readVersion($: EngineInterface) {
 }
 
 function startFeed($: EngineInterface) {
-  return startModFeed(
-    [
+  return startModFeedForMod({
+    env: [
       $.env.get('INBOX_FEED'),
       $.env.get('HOME'),
       $.env.get('HERDR_PANE_ID'),
       $.env.get('HERDR_BIN_PATH'),
       $.env.get('INBOX_TASK_PROJECTION_PATH'),
     ],
-    processRun($),
-    [
-      p => $.fs.stat(p),
-      p => $.fs.list(p),
-      p => $.fs.exists(p),
-      p => $.fs.read(p),
-      p => $.fs.stat(p, { resolve: true }),
-    ],
-    () => $.clock.now(),
-    update => commitLedger($, update, currentOwner()),
-    () => $.session.id(),
-  )
+    run: processRun($),
+    fs: {
+      stat: p => $.fs.stat(p),
+      list: p => $.fs.list(p),
+      exists: p => $.fs.exists(p),
+      read: p => $.fs.read(p),
+      resolve: p => $.fs.stat(p, { resolve: true }),
+    },
+    now: () => $.clock.now(),
+    commit: update => commitLedger($, update, currentOwner()),
+    sessionId: () => $.session.id(),
+  })
 }
 
 async function initializeInbox($: EngineInterface) {

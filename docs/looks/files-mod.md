@@ -9,6 +9,7 @@ Part of [the look map](../looks.md#files).
 | `hooks/mod-instructions.ts` | Mod only. Reads the person's inbox instructions through the environment and filesystem functions supplied by `hooks/register.tsx`. |
 | `hooks/mod-task-projection.ts` | Mod only. Adapts Claude Code's filesystem and process runner to the shared task projection's lock, read and atomic write operations. |
 | `hooks/mod-task-run.ts` | Mod only. Runs the Claude Code tool answer and task projection through injected host effects. |
+| `hooks/mod-feed-start.ts` | Mod only. Connects Claude Code's feed settings and filesystem callbacks to the shared feed poller. |
 | `hooks/task-projection-host.ts` | Mod only. Saves the imported task tree and migration marker through Claude Code and reports projection failures. |
 | `hooks/mod-document-file.ts` | Mod only. Adapts the mod filesystem to document preview reads without passing the engine object across modules. |
 | `hooks/pane-context.ts` | Mod only. The types the Pane render hands its drawing files: `PaneBase` for the values the render computed, `PaneClient` for whether the surface draws Clients, `PaneHandlers` for the calls that need `$`, and `Row`, the shape every list row is drawn from. |

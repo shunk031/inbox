@@ -2641,9 +2641,6 @@ function emptySession() {
   return {
     ledger: EMPTY,
     taskTree: [],
-    taskTreeProjectionPath: null,
-    taskTreeProjectionVersion: 0,
-    taskTreeProjectionConflictReported: false,
     taskStatusMismatches: [],
     taskPrStates: {},
     taskFactWarnings: [],
@@ -2720,9 +2717,6 @@ function sessionFields(saved, views) {
   return {
     ledger,
     taskTree,
-    taskTreeProjectionPath: typeof saved.taskTreeProjectionPath === "string" && saved.taskTreeProjectionPath.length <= 4096 ? saved.taskTreeProjectionPath : null,
-    taskTreeProjectionVersion: saved.taskTreeProjectionVersion === 1 ? 1 : 0,
-    taskTreeProjectionConflictReported: saved.taskTreeProjectionConflictReported === true,
     taskStatusMismatches: upgradeTaskStatusMismatches(saved.taskStatusMismatches, taskTree),
     taskPrStates: Object.fromEntries(
       Object.entries(saved.taskPrStates ?? {}).filter(
