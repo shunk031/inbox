@@ -3313,6 +3313,16 @@ function withoutStaleResult(last, now) {
 function withoutStalePending(lastActions, now) {
   return Object.fromEntries(Object.entries(lastActions).map(([id, last]) => [id, withoutStaleResult(last, now)]));
 }
+function taskTimelineWarnings(s, tree, now) {
+  const ownerFacts = {};
+  for (const finding of s.ledger.findings) {
+    if (!finding.owner || !finding.ownerFact) continue;
+    const key = taskOwnerKey(finding.owner);
+    if (!ownerFacts[key] || ownerFacts[key].since < finding.ownerFact.since) ownerFacts[key] = finding.ownerFact;
+  }
+  Object.assign(ownerFacts, s.taskOwnerFacts);
+  return [...s.taskFactWarnings, ...applyTaskOwnerFacts(tree, ownerFacts, now).warnings];
+}
 function updateRecovery(s) {
   const { presence } = s;
   if (presence.ledgerState !== "failed") return "none";
@@ -3361,7 +3371,7 @@ function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timel
       timelineTaskTree,
       timelineOwnerView.segments,
       timelineOwnerView.stalledSince,
-      [...s.taskFactWarnings, ...timelineOwnerView.warnings],
+      taskTimelineWarnings(s, timelineTaskTree, now),
       now,
       s.taskStatusMismatches
     ),
@@ -3377,7 +3387,7 @@ function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timel
     taskProgressSegments: taskOwnerView.segments,
     taskStalledSince: taskOwnerView.stalledSince,
     feedStalledSince,
-    taskFactWarnings: [...s.taskFactWarnings, ...taskOwnerView.warnings]
+    taskFactWarnings: taskTimelineWarnings(s, s.taskTree, now)
   };
 }
 function prTabOf(s, lastActions, now, { shownSince, listInput, undoShown }, settleWindowMs) {

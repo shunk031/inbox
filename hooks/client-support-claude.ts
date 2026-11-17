@@ -98,6 +98,7 @@ export const CLAUDE_CODE_SUPPORT: ClientSupport['support'] = {
   'task-reminder': { kind: 'full' },
   'task-tree-currentness': { kind: 'full' },
   'task-tree-projection': { kind: 'full' },
+  'task-tree-export': { kind: 'full' },
   'task-status-mismatch': { kind: 'full' },
   timeline: { kind: 'full' },
   'agents-tab': {

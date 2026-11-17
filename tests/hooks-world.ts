@@ -443,7 +443,7 @@ export function world($: Engine, on: On, prompts: string[], vars: Record<string,
       return {
         value: { exitCode: 0, stdout: `${branch}\n`, stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
       }
-    if (e.argv[0] === 'mv' || e.argv[0] === 'rm') return { value: fileCommand(e.argv) }
+    if (e.argv[0] === 'mv' || e.argv[0] === 'rm' || e.argv[0] === 'mkdir') return { value: fileCommand(e.argv) }
     if (w.isGhMissing && e.argv[0] === 'gh') throw new Error('spawn gh ENOENT')
     if (w.slowGhClock && e.argv[0] === 'gh') {
       await w.slowGhClock.sleep(GH_TIMEOUT_MS)

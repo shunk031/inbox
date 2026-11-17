@@ -297,7 +297,7 @@ function documentFile($: EngineInterface) {
 }
 
 const TAB = atom({ plugin: 'inbox', key: 'tab' } as const, 'needsYou' as Tab)
-/** Page state stays separate: unknown pages remain saved, and row tabs hide while a page is open. */
+/** Keep page state separate; row tabs are hidden while a page is open. */
 const PAGE = atom({ plugin: 'inbox', key: 'page' } as const, null as PageTab | null)
 const SELECTION = atom({ plugin: 'inbox', key: 'selection' } as const, NO_SELECTION)
 /** Status row id whose keys work. */
@@ -436,10 +436,7 @@ async function setStopFromLastReply($: EngineInterface) {
   await setStop($, { ...stopOfMessage(message), at: await $.clock.now() })
 }
 
-/**
- * Shows an unresolved permission ask after the delay, giving auto mode time to settle it first. Queries skip PreToolUse
- * hooks, so asks raised only there have no row.
- */
+/** Waits for auto mode to settle before showing an ask; PreToolUse-only asks have no row. */
 async function waitForPermission($: EngineInterface, id: string, tool: string, rawInput: unknown) {
   const input = (rawInput ?? {}) as Record<string, unknown>
   const key = callKey(tool, input)
@@ -563,7 +560,7 @@ async function replaceDrawn($: EngineInterface, change: (s: ModSession) => Sessi
   return update($, SESSION, s => ({ ...change(s), revision: s.revision + 1 }))
 }
 
-/** Updates drawn state with retries, or saved state after the pane moves on. Writes save holds and the pane's showing. */
+/** Updates drawn or saved state, retaining writes held by a save or visible pane. */
 async function changeSession(
   $: EngineInterface,
   owner: Owner,
@@ -822,6 +819,7 @@ async function commit(
     change,
     new Set(Object.keys(heldReplies(typing, drafts))),
   )
+  await taskProjection?.exportTree(owner.id, before, after)
   if (!isDrawn || after === before) return after
   void publishStatus($)
   void followNewRows($).catch(() => undefined)
@@ -942,10 +940,7 @@ async function transcriptReply(
     : { kind: 'reply', text: heard.text, source: transcript, statusCall, heard }
 }
 
-/**
- * Marks the ledger `behind` so the next update catches up over the whole conversation, then runs it. A load calls
- * this when the ledger may have missed turns.
- */
+/** Marks the ledger behind, then catches up after a load may have missed turns. */
 async function catchUpNow($: EngineInterface) {
   await commit($, currentOwner(), s =>
     s.presence.ledgerState === 'current' ? { ...s, presence: { ...s.presence, ledgerState: 'behind' } } : s,
@@ -1323,10 +1318,7 @@ async function showTab($: EngineInterface, tab: ShownTab) {
   await scrollToOpenRow($, tab)
 }
 
-/**
- * Call it before the tab draws: it marks the fetch first, so the tab opens on
- * "Checking for PRs…" and not on "No PRs".
- */
+/** Marks the fetch before the tab draws, so it can show "Checking for PRs…". */
 async function findPrs($: EngineInterface) {
   if (await read($, DEMO)) return
   await markFetching($, true)
@@ -1648,10 +1640,7 @@ function markFetching($: EngineInterface, isFetching: boolean) {
   )
 }
 
-/**
- * Fetches the session's PRs, one fetch at a time. A fetch asked for while one runs follows it, and finds the
- * branch's PR when any of the asks wanted it.
- */
+/** Serializes session PR fetches; queued requests retain whether any needs a branch PR. */
 function fetchPrs($: EngineInterface, findsBranchPr: boolean, isPress = false): Promise<void> {
   const waiting = mod.nextFetch
   if (waiting) {
@@ -2117,6 +2106,9 @@ async function initializeInbox($: EngineInterface) {
     {
       exists: path => $.fs.exists(path),
       write: (path, text) => $.fs.write(path, text),
+      home: () => $.env.get('HOME'),
+      now: () => $.clock.now(),
+      log: text => $.ui.log(text, { to: 'debug' }),
     },
     processRun($),
     () => `${Date.now()}-${Math.random()}`,
@@ -2256,6 +2248,7 @@ async function applyConversation(
   // Before notePlace's save, so this conversation is never saved with the previous one's tool fields.
   await replaceDrawn($, s => withLoadedToolFields(cutOff(s), by, saved?.session, parent, turns))
   if (revision !== sessionState.loadRevision) return
+  await taskProjection?.exportSnapshot(id, await read($, SESSION))
   void notePlace($)
   const isFresh = isBlankLedger(current)
   const isUnread =
@@ -2296,6 +2289,7 @@ async function bringBack(
   })
   if (isBrought && !isFork)
     await update($, AWAY, a => (isLoading() ? { ...a, lastActiveAt: saved.savedAt, isAway: true } : a))
+  if (isBrought) await taskProjection?.exportTree(currentOwner().id, emptySession(), await read($, SESSION))
 }
 
 /** Brings back a saved ledger once the store reads it again, under the turns the session ran meanwhile. */

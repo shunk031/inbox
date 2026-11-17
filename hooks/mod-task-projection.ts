@@ -1,4 +1,5 @@
 import { createTaskProjection, writeProjectionAtomically } from './task-projection'
+import { modTaskTreeExport } from './mod-task-tree-export'
 import type { ProjectionFiles } from './task-projection'
 import type { Run } from './gh'
 
@@ -7,6 +8,9 @@ const COMMAND_TIMEOUT_MS = 10_000
 type ModProjectionFs = {
   exists(path: string): Promise<boolean>
   write(path: string, text: string): Promise<void>
+  home(): Promise<string | undefined>
+  now(): Promise<number>
+  log(text: string): void
 }
 
 /** Claude Code's engine has no rename or exclusive-create operation, so use its process runner for both. */
@@ -36,7 +40,13 @@ export function modTaskProjection(fs: ModProjectionFs, run: Run, nonce: () => st
         nonce,
       }),
   }
-  return createTaskProjection(files, path)
+  const exportTree = modTaskTreeExport({ home: fs.home, now: fs.now, write: fs.write, run, nonce, log: fs.log })
+  return {
+    ...createTaskProjection(files, path),
+    exportTree,
+    exportSnapshot: (sessionId: string, session: Parameters<typeof exportTree>[2]) =>
+      exportTree(sessionId, session, session),
+  }
 }
 
 export type ModTaskProjection = ReturnType<typeof modTaskProjection>

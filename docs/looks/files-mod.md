@@ -8,6 +8,7 @@ Part of [the look map](../looks.md#files).
 | `hooks/register.tsx` | Mod adapter and host. Runs the Pane render. It reads the drawn state, builds the handlers for the calls that need `$`, and calls the `pane-*.tsx` files, which draw every tab. It also runs the band, the per-reply update, the bounded task-owner poll and the press runner. It keeps the drawn session in an engine atom, saves each conversation's session in the engine store, and builds the mod's `SessionHost`. The plugin directory refuses `$` passed to a function another of the mod's files declares, so every function that takes `$` lives in this file. |
 | `hooks/mod-instructions.ts` | Mod only. Reads the person's inbox instructions through the environment and filesystem functions supplied by `hooks/register.tsx`. |
 | `hooks/mod-task-projection.ts` | Mod only. Adapts Claude Code's filesystem and process runner to the shared task projection's lock and atomic write operations. |
+| `hooks/mod-task-tree-export.ts` | Mod only. Writes each saved task tree to its per-session state file through the shared atomic writer, and logs a failed export once per session. |
 | `hooks/mod-task-run.ts` | Mod only. Runs Claude Code tool answers and publishes changed task trees through injected host effects. |
 | `hooks/task-projection-host.ts` | Mod only. Reports task projection lock conflicts and failures through Claude Code. |
 | `hooks/mod-document-file.ts` | Mod only. Adapts the mod filesystem to document previews without passing the engine object across modules. |

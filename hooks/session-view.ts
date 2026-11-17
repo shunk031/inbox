@@ -97,6 +97,18 @@ function withoutStalePending(lastActions: Record<string, LastAction>, now: numbe
   return Object.fromEntries(Object.entries(lastActions).map(([id, last]) => [id, withoutStaleResult(last, now)]))
 }
 
+export function taskTimelineWarnings(s: Session, tree: TaskTree, now: number): TaskFactWarning[] {
+  const ownerFacts: TaskOwnerFacts = {}
+  for (const finding of s.ledger.findings) {
+    if (!finding.owner || !finding.ownerFact) continue
+    const key = taskOwnerKey(finding.owner)
+    if (!ownerFacts[key] || ownerFacts[key]!.since < finding.ownerFact.since) ownerFacts[key] = finding.ownerFact
+  }
+  Object.assign(ownerFacts, s.taskOwnerFacts)
+
+  return [...s.taskFactWarnings, ...applyTaskOwnerFacts(tree, ownerFacts, now).warnings]
+}
+
 /**
  * Where the session's failed ledger update stands. Every host retries after the agent's next reply: a pending exchange
  * on its own, otherwise by catching up. A Codex chat saved with no rollout path gets one from that reply's Stop hook,
@@ -163,7 +175,7 @@ export function sessionView(
       timelineTaskTree,
       timelineOwnerView.segments,
       timelineOwnerView.stalledSince,
-      [...s.taskFactWarnings, ...timelineOwnerView.warnings],
+      taskTimelineWarnings(s, timelineTaskTree, now),
       now,
       s.taskStatusMismatches,
     ),
@@ -179,7 +191,7 @@ export function sessionView(
     taskProgressSegments: taskOwnerView.segments,
     taskStalledSince: taskOwnerView.stalledSince,
     feedStalledSince,
-    taskFactWarnings: [...s.taskFactWarnings, ...taskOwnerView.warnings],
+    taskFactWarnings: taskTimelineWarnings(s, s.taskTree, now),
   }
 }
 

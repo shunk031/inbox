@@ -92,6 +92,29 @@ test('the Claude mod keeps a task tree already present in its saved session', as
   expect(session!.taskTree[0]?.links).toEqual(migratedTree[0]?.links)
 })
 
+test('a restored session exports its existing task tree as soon as it loads, without a task change', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  world($, on, [], { HOME: '/home/test' })
+  const tree = taskTreeFromStatus(savedTaskSession().ledger.overview)
+  const restored = { ...SAVED_SESSION, ...savedTaskSession(tree) }
+  let firstRead = true
+  on('state.get', { plugin: 'inbox', key: 'session' } as const, (_$, event, next) => {
+    if (firstRead) {
+      firstRead = false
+      return { value: restored as never }
+    }
+    return next(event)
+  })
+  w.stored.set('s:session-1', JSON.stringify(restored))
+
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+
+  const exported = w.written['/home/test/.local/state/inbox/task-tree/session-1.json']
+  expect(exported).toBeDefined()
+  expect(JSON.parse(exported!).tasks.map((task: { id: string }) => task.id)).toEqual(tree.map(task => task.id))
+})
+
 test('resuming a session waits for its in-flight save before loading it', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   world($, on, [])

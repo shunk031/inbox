@@ -90,6 +90,7 @@ export type FeatureId =
   | 'task-reminder'
   | 'task-tree-currentness'
   | 'task-tree-projection'
+  | 'task-tree-export'
   | 'task-status-mismatch'
   | 'timeline'
   | 'agents-tab'

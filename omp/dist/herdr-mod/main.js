@@ -1,5 +1,5 @@
 // Built by herdr/build.ts with Bun 1.4.4 from herdr/src and hooks/. Do not edit.
-// Built at 2026-11-17T16:43:52.517Z. 225727 characters follow.
+// Built at 2026-11-17T17:26:11.799Z. 226195 characters follow.
 
 // src/main.ts
 import { View, div as div5 } from "gpui-kit";
@@ -3712,6 +3712,18 @@ function withoutStaleResult(last, now) {
 function withoutStalePending(lastActions, now) {
   return Object.fromEntries(Object.entries(lastActions).map(([id, last]) => [id, withoutStaleResult(last, now)]));
 }
+function taskTimelineWarnings(s, tree, now) {
+  const ownerFacts = {};
+  for (const finding of s.ledger.findings) {
+    if (!finding.owner || !finding.ownerFact)
+      continue;
+    const key = taskOwnerKey(finding.owner);
+    if (!ownerFacts[key] || ownerFacts[key].since < finding.ownerFact.since)
+      ownerFacts[key] = finding.ownerFact;
+  }
+  Object.assign(ownerFacts, s.taskOwnerFacts);
+  return [...s.taskFactWarnings, ...applyTaskOwnerFacts(tree, ownerFacts, now).warnings];
+}
 function updateRecovery(s) {
   const { presence } = s;
   if (presence.ledgerState !== "failed")
@@ -3759,7 +3771,7 @@ function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timel
     turns: { turnsStarted: s.presence.turnsStarted, turnsApplied: s.presence.turnsApplied },
     prs: prTabOf(s, lastActions, now, holds, settleWindowMs),
     statusPage: statusPage(s, now, new Set(Object.keys(taskOwnerView.stalledSince))),
-    timeline: timelineData(timelineTaskTree, timelineOwnerView.segments, timelineOwnerView.stalledSince, [...s.taskFactWarnings, ...timelineOwnerView.warnings], now, s.taskStatusMismatches),
+    timeline: timelineData(timelineTaskTree, timelineOwnerView.segments, timelineOwnerView.stalledSince, taskTimelineWarnings(s, timelineTaskTree, now), now, s.taskStatusMismatches),
     agents: {
       feedRows: agentOverrides.feedRows ?? l.findings,
       taskTree: timelineTaskTree,
@@ -3772,7 +3784,7 @@ function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timel
     taskProgressSegments: taskOwnerView.segments,
     taskStalledSince: taskOwnerView.stalledSince,
     feedStalledSince,
-    taskFactWarnings: [...s.taskFactWarnings, ...taskOwnerView.warnings]
+    taskFactWarnings: taskTimelineWarnings(s, s.taskTree, now)
   };
 }
 function prTabOf(s, lastActions, now, { shownSince, listInput, undoShown }, settleWindowMs) {
