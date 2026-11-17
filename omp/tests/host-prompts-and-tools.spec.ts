@@ -3,7 +3,9 @@ import { symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { guidanceText } from '../../hooks/model-text'
+import { addLegacyFinding } from '../../tests/seed-findings'
 import { TASK_REMINDER_TEXT } from '../../hooks/task-reminder'
+import { EMPTY } from '../../hooks/ledger'
 import { createInbox } from '../src/host'
 import { readState } from '../src/state'
 import { OMP } from '../src/texts'
@@ -233,6 +235,25 @@ test('the guidance names the tools as omp registers them', () => {
   expect(guidanceText(OMP)).toContain('with record,')
   expect(guidanceText(OMP)).toContain('Close with close:')
   expect(guidanceText(OMP)).not.toContain('mcp__')
+  expect(guidanceText(OMP)).not.toMatch(/legacy findings in Asks/i)
+})
+
+test('omp guidance leaves legacy findings out of the panel and its inbox text lists them until closed', async () => {
+  createInbox(pi(), deps())
+  await prompt('hello')
+  const saved = state()
+  const { ledger } = addLegacyFinding(saved.ledger ?? EMPTY, {
+    kind: 'issue',
+    title: 'Old issue',
+    detail: 'Still matters.',
+    path: null,
+    at: w.clock,
+  })
+  writeFileSync(join(w.dir, 'sessions', 's1.json'), JSON.stringify({ ...saved, ledger }))
+
+  const next = await prompt('What remains?')
+
+  expect(next.message.content).toContain('Legacy findings you recorded, still open:\n- issue: Old issue (close id: f1)')
 })
 
 test('an activity note or an ask result still settles when the session file cannot be written', async () => {

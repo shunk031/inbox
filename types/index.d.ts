@@ -372,7 +372,7 @@ export type Finding = {
   ownerFact?: TaskOwnerFact
 }
 
-export type FoldKind = Item['kind'] | Finding['kind'] | 'legacy'
+export type FoldKind = Item['kind'] | Finding['kind']
 
 export type ClosedFinding = Finding & Pick<Closed, 'how' | 'outcome'> & { closedAt: number }
 
@@ -952,7 +952,7 @@ declare module 'claude-code' {
   /** The arguments of the agent's tools, as their schemas in `hooks/tools.ts` give them. */
   interface McpToolInputs {
     mcp__inbox__record: {
-      kind: 'question' | 'task'
+      kind: 'question' | 'task' | 'finding'
       ask?: string
       context?: string
       options?: string[]
@@ -961,7 +961,10 @@ declare module 'claude-code' {
       why?: string
       steps?: string[]
       design_choice?: boolean
+      finding_kind?: 'issue' | 'opportunity'
+      title?: string
       detail?: string
+      path?: string
       document?: string
     }
     mcp__inbox__close: {

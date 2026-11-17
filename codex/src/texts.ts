@@ -14,7 +14,7 @@ export const CODEX: Host = {
   taskTool: 'tasks',
   splitsPlanIntoSubjects: true,
   intro:
-    'The inbox plugin shows the user what waits on them: your open questions, the tasks only they can do, and legacy findings in Asks, in the Inbox tab beside the conversation.',
+    'The inbox plugin shows the user what waits on them: your open questions and the tasks only they can do, in the Inbox tab beside the conversation. Open legacy findings remain in the `inbox:` text until closed.',
 }
 
 export const INBOX_DESCRIPTION =

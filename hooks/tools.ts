@@ -140,7 +140,7 @@ export function recordItem(
       : ''
 
   const isDesignChoice = input.kind === 'question' && input.design_choice === true
-  const maxDetail = input.kind === 'question' ? 600 : MAX_ITEM_DETAIL
+  const maxDetail = MAX_ITEM_DETAIL
   const detail = cutInline(typeof input.detail === 'string' ? input.detail.trim() : '', maxDetail)
   const linkSteps = helps.flatMap(h => (h.kind === 'link' ? [h.url] : []))
   const linkProblem = recordLinksAnswer(

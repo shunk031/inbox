@@ -156,8 +156,8 @@ describe('record', () => {
     for (const [input, answer] of [
       [{ kind: 'task', ask: 'Sign in', detail: `${link} ${'x'.repeat(1250)}` }, overLimit('detail', 1200)],
       [
-        { kind: 'question', ask: 'Is this ready?', options: ['Yes', 'No'], detail: `${link} ${'x'.repeat(650)}` },
-        overLimit('detail', 600),
+        { kind: 'question', ask: 'Is this ready?', options: ['Yes', 'No'], detail: `${link} ${'x'.repeat(1250)}` },
+        overLimit('detail', 1200),
       ],
       [{ ...question, ask: `${link} ${'x'.repeat(250)}` }, overLimit('ask', 200)],
     ] as [Record<string, unknown>, string][]) {
@@ -165,6 +165,13 @@ describe('record', () => {
       expect(r.result).toBe(answer)
       expect(r.ledger).toBe(EMPTY)
     }
+  })
+
+  test('keeps a linked question detail longer than the old 600-character limit', () => {
+    const detail = `${'x'.repeat(610)} ${link}`
+    const r = recordItem(CLAUDE_CODE, EMPTY, { ...question, ask: 'Is this ready?', detail }, 1000)
+    expect(r.result).toStartWith('Recorded. The user sees it in the /inbox pane.')
+    expect(r.ledger.items[0]?.detail).toBe(detail)
   })
 
   test('still cuts a field over its limit that holds no link', () => {
