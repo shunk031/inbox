@@ -80,6 +80,15 @@ describe('progress feed', () => {
         JSON.stringify({
           ...valid,
           source: 'meta-open-items',
+          entries: [entry({ kind: 'task', owner: { machine: 'm'.repeat(81), agent: 'meta' } })],
+        }),
+      ),
+    ).toBeNull()
+    expect(
+      parseFeed(
+        JSON.stringify({
+          ...valid,
+          source: 'meta-open-items',
           entries: Array.from({ length: 41 }, (_, i) =>
             entry({ key: `task/${i}`, kind: 'task', owner: { machine: 'local', agent: 'meta' } }),
           ),

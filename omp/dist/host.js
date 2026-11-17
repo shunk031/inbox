@@ -1452,7 +1452,7 @@ var validOwner = (value) => {
   if (!value || typeof value !== "object")
     return false;
   const owner = value;
-  return validSource(owner.machine) && validSource(owner.agent) && owner.machine.length <= 100 && owner.agent.length <= 80;
+  return validSource(owner.machine) && validSource(owner.agent) && owner.machine.length <= 80 && owner.agent.length <= 80;
 };
 function applyFeed(ledger, feed, now, source = "") {
   if (feed.source === "meta-open-items")

@@ -98,7 +98,7 @@ const validOwner = (value: unknown): value is { machine: string; agent: string }
   if (!value || typeof value !== 'object') return false
   const owner = value as Record<string, unknown>
   return (
-    validSource(owner.machine) && validSource(owner.agent) && owner.machine.length <= 100 && owner.agent.length <= 80
+    validSource(owner.machine) && validSource(owner.agent) && owner.machine.length <= 80 && owner.agent.length <= 80
   )
 }
 
