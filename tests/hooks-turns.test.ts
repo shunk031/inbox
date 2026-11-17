@@ -83,30 +83,80 @@ test('once a call from its source raised a Post hook, a call that raised none ad
   expect(activity).toEqual(['ran: echo probe-ok', 'ran: false', 'called othermod__ping'])
 })
 
-test('PostToolUse reminds across prompts without a task tree', async ($, on) => {
+for (const isNextBuild of [false, true])
+  test(`tool.call reminds when classic PostToolUse hooks are skipped in a ${isNextBuild ? 'next' : 'release'} build`, async ($, on) => {
+    mock.clock(on, { now: 1_000_000 })
+    world($, on, [])
+    w.files = isNextBuild ? ['/.next-build'] : []
+    await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+    w.raisesPostHooks = false
+    const reminderCalls: number[] = []
+
+    for (let prompt = 0; prompt < 12; prompt++) {
+      await $.prompt.submit({ text: `continue the work ${prompt}`, wait: false, origin: { kind: 'composer' } })
+      await $.turn.start({ text: `continue the work ${prompt}`, turnId: `t${prompt}` })
+      for (let call = 0; call < 2; call++) {
+        const callNumber = prompt * 2 + call + 1
+        const result = await $.tool.call({
+          tool: 'Read',
+          file_path: `/tmp/project/${callNumber}`,
+          tool_use_id: `read-${callNumber}`,
+        } as never)
+        const text = (result as { text?: string } | null)?.text ?? ''
+        if (text.includes(TASK_REMINDER_TEXT)) reminderCalls.push(callNumber)
+        expect(text.includes(TASK_REMINDER_TEXT)).toBe(callNumber === 24)
+      }
+    }
+
+    expect(reminderCalls).toEqual([24])
+  })
+
+test('tool.call does not double count when classic PostToolUse runs', async ($, on) => {
   mock.clock(on, { now: 1_000_000 })
   world($, on, [])
+  w.raisesPostHooks = true
   await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
-  const reminderCalls: number[] = []
+  await $.tool.call({ tool: 'Read', file_path: '/tmp/project/file', tool_use_id: 'read-1' } as never)
 
-  for (let prompt = 0; prompt < 12; prompt++) {
-    await $.prompt.submit({ text: `continue the work ${prompt}`, wait: false, origin: { kind: 'composer' } })
-    await $.turn.start({ text: `continue the work ${prompt}`, turnId: `t${prompt}` })
-    for (let call = 0; call < 2; call++) {
-      const callNumber = prompt * 2 + call + 1
-      const result = await $.classic.PostToolUse({
-        tool_use_id: `read-${callNumber}`,
-        tool_name: 'Read',
-        tool_input: {},
-        tool_response: 'ok',
-      } as never)
-      const contexts = (result as { additionalContext?: string[] } | null)?.additionalContext ?? []
-      if (contexts.includes(TASK_REMINDER_TEXT)) reminderCalls.push(callNumber)
-      if (callNumber < 24) expect(contexts).not.toContain(TASK_REMINDER_TEXT)
-    }
-  }
+  const saved = JSON.parse(w.stored.get('s:session-1')!) as Session
+  expect(saved.taskReminder.callsSinceTasks).toBe(1)
+})
 
-  expect(reminderCalls).toEqual([24])
+for (const isNextBuild of [false, true])
+  test(`tool.call counts a skipped same-source hook after a classic hook in a ${isNextBuild ? 'next' : 'release'} build`, async ($, on) => {
+    mock.clock(on, { now: 1_000_000 })
+    world($, on, [])
+    w.files = isNextBuild ? ['/.next-build'] : []
+    await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+
+    w.raisesPostHooks = true
+    await $.tool.call({
+      tool: 'Read',
+      file_path: '/tmp/project/with-hook',
+      tool_use_id: 'read-with-hook',
+    } as never)
+
+    w.raisesPostHooks = false
+    await $.tool.call({
+      tool: 'Read',
+      file_path: '/tmp/project/without-hook',
+      tool_use_id: 'read-without-hook',
+    } as never)
+
+    const saved = JSON.parse(w.stored.get('s:session-1')!) as Session
+    expect(saved.taskReminder.callsSinceTasks).toBe(2)
+  })
+
+test('a denied tool.call does not count when classic PostToolUse hooks are skipped', async ($, on) => {
+  mock.clock(on, { now: 1_000_000 })
+  world($, on, [])
+  w.raisesPostHooks = false
+  w.otherToolAnswer = { result: '', text: 'Permission to use Read has been denied.', isError: true }
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'Read', file_path: '/tmp/project/file', tool_use_id: 'read-denied' } as never)
+
+  const saved = JSON.parse(w.stored.get('s:session-1')!) as Session
+  expect(saved.taskReminder.callsSinceTasks).toBe(0)
 })
 
 test('where no Post hook runs, as under the guard, every call adds its activity line', async ($, on) => {

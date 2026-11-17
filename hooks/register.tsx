@@ -41,7 +41,7 @@ import {
   type SentBy,
 } from './session-turns'
 import { emptySession, upgradeSession, type SavedSession } from './session-files'
-import { noteTaskReminderAfterCall, withHookReminder } from './mod-task-reminder'
+import { postToolReminder, toolCallReminder, withToolCallReminder } from './mod-task-reminder'
 import { pressOn, pruned, type SendOutcome } from './session-presses'
 import { isCompareInBackground } from './clients'
 import { showsRunningMark, type SessionView } from './session-view'
@@ -234,10 +234,10 @@ import {
   delegateWaits,
   endedAgentOf,
   endedCallRan,
+  sawPostToolCall,
   HOST_TASK_TOOLS,
   isActivityWorthSaving,
   MAX_PERSON_LINES,
-  noteRanCall,
   permissionText,
   spawnedBy,
   startedWorkflowOf,
@@ -757,14 +757,6 @@ async function deliver($: EngineInterface, owner: Owner, text: string, deliveryI
 /** The shipped comparison template. */
 function comparePagePath($: EngineInterface): string {
   return `${$.plugin.root}/hooks/${COMPARE_PAGE_FILE}`
-}
-
-async function noteReminderAfterCall(
-  $: EngineInterface,
-  isMainAgent: boolean,
-  isTasksCall = false,
-): Promise<string | null> {
-  return noteTaskReminderAfterCall(change => commit($, currentOwner(), change), isMainAgent, isTasksCall)
 }
 
 /** The mod host for one conversation. */
@@ -2538,19 +2530,31 @@ export const register: Register = on => {
     const { tool: _tool, tool_use_id: _id, agentId: _agent, ...input } = e as unknown as Record<string, unknown>
     const key = callKey(String(e.tool), input)
     const activity = e.agentId ? null : toolActivity(String(e.tool), input)
-    const call = { didRun: true }
+    const call = { didRun: true, sawPostHook: false }
+    let reminder: string | null = null
     const run = async () => {
+      let result: Awaited<ReturnType<typeof next>>
       try {
-        return await clearingDialog($, key, () => next(e))
+        result = await clearingDialog($, key, () => next(e))
       } finally {
         if (e.tool_use_id) askedCalls.delete(e.tool_use_id)
+        call.sawPostHook = sawPostToolCall(e.tool_use_id)
         call.didRun = endedCallRan(e.tool_use_id, String(e.tool))
         if (call.didRun && activity) await noteActivity($, activity)
       }
+      reminder = await toolCallReminder(
+        change => commit($, currentOwner(), change),
+        e.tool_use_id,
+        !e.agentId,
+        call.sawPostHook,
+        result,
+      )
+
+      return result
     }
     if (e.agentId) {
       await noteAgentWork($, e.agentId)
-      return run()
+      return withToolCallReminder(await run(), reminder)
     }
     if (String(e.tool) === TURN_BOX_TOOL) sessionState.turnBox = turnBoxText(input) ?? sessionState.turnBox
     if (e.tool === 'Bash') {
@@ -2561,7 +2565,7 @@ export const register: Register = on => {
       const ran = await run()
       if (!call.didRun) {
         if (started) await noteChild($, o => delegatesTakenBack(o, e.command, started.before, started.at))
-        return ran
+        return withToolCallReminder(ran, reminder)
       }
       if (isDelegateCommand && !isWait) await noteChild($, (o, at) => delegatesStarted(o, e.command, at))
       const found = commandFindings(e.command, ran.text ?? '')
@@ -2575,14 +2579,14 @@ export const register: Register = on => {
         await noteChild($, (o, at) => delegateWaitsEnded(o, e.command, at))
       }
 
-      return ran
+      return withToolCallReminder(ran, reminder)
     }
     if (e.tool === 'Agent') {
       const ran = await run()
       const agentId = endedAgentOf(ran.result)
       if (agentId) await noteChild($, (o, at) => childEnded(o, agentId, at))
 
-      return ran
+      return withToolCallReminder(ran, reminder)
     }
     if (e.tool === 'Workflow') {
       const ran = await run()
@@ -2592,7 +2596,7 @@ export const register: Register = on => {
         await noteChild($, (o, at) => childStarted(o, child, at))
       }
 
-      return ran
+      return withToolCallReminder(ran, reminder)
     }
     if (e.tool === 'AskUserQuestion') {
       const questions = (Array.isArray(input.questions) ? input.questions : []) as { question?: unknown }[]
@@ -2612,7 +2616,7 @@ export const register: Register = on => {
         return outcome.kind === 'answered' ? noteAnsweredDialog(noted, asked, outcome.answer, endedAt) : noted
       }).catch(() => undefined)
 
-      return ran
+      return withToolCallReminder(ran, reminder)
     }
     if (HOST_TASK_TOOLS.has(String(e.tool))) {
       const ran = await run()
@@ -2624,29 +2628,29 @@ export const register: Register = on => {
           hostTasks: claudeTasksAfter(s.hostTasks, tool, input, ran.text ?? null),
         })).catch(() => undefined)
 
-      return ran
+      return withToolCallReminder(ran, reminder)
     }
-    return run()
+    return withToolCallReminder(await run(), reminder)
   })
 
-  on('classic.PostToolUse', async ($, e, next) => {
-    if (mod.isOn) noteRanCall(e.tool_use_id, e.tool_name)
-    const result = await next(e)
-    const agentId = (e as typeof e & { agent_id?: string }).agent_id
-    const isInboxTool = [RECORD_TOOL, CLOSE_TOOL, ORDER_TOOL, TASKS_TOOL].includes(e.tool_name)
-    const reminder = mod.isOn && !isInboxTool ? await noteReminderAfterCall($, !agentId) : null
-    return withHookReminder(result, reminder)
-  })
-  on('classic.PostToolUseFailure', async ($, e, next) => {
-    if (mod.isOn) noteRanCall(e.tool_use_id, e.tool_name)
-    const result = await next(e)
-    const agentId = (e as typeof e & { agent_id?: string }).agent_id
-    const isInboxTool = [RECORD_TOOL, CLOSE_TOOL, ORDER_TOOL, TASKS_TOOL].includes(e.tool_name)
-    const reminder = mod.isOn && !isInboxTool ? await noteReminderAfterCall($, !agentId) : null
-    return withHookReminder(result, reminder)
-  })
+  on('classic.PostToolUse', async ($, e, next) =>
+    postToolReminder(
+      e as typeof e & { agent_id?: string },
+      next,
+      change => commit($, currentOwner(), change),
+      mod.isOn,
+    ),
+  )
+  on('classic.PostToolUseFailure', async ($, e, next) =>
+    postToolReminder(
+      e as typeof e & { agent_id?: string },
+      next,
+      change => commit($, currentOwner(), change),
+      mod.isOn,
+    ),
+  )
 
-  // A question dialog opens from its own tool call, which also raises a permission request.
+  // AskUserQuestion also raises PermissionRequest.
   on('classic.PermissionRequest', async ($, e, next) => {
     mod.hasPermissionRequestHook = true
     if (mod.isOn && e.tool_name !== 'AskUserQuestion') {
@@ -2661,8 +2665,7 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // If the guard skips PermissionRequest, waitForPermission draws the row and asks for its verdict;
-  // Claude requires permission hooks to call next(e).
+  // Falls back when PermissionRequest is skipped. Permission hooks must call next(e).
   on('tool.check', async ($, e, next) => {
     const mayShowRow = mod.isOn && !mod.hasPermissionRequestHook && !e.agentId && e.tool !== 'AskUserQuestion'
     if (mayShowRow && e.tool_use_id) void waitForPermission($, e.tool_use_id, e.tool, e.input)
