@@ -3227,7 +3227,7 @@ export const register: Register = on => {
       lists,
       prGroups.flatMap(g => g.rows),
     )
-    const counts: Record<Tab, number> = {
+    const counts: Record<Tab, number> & { timeline: number } = {
       needsYou: view.needsYou.count,
       findings: view.findings.count,
       prs: shownPrs.filter(x => x.state.is === 'open' && prNeedsYou(x.pr, isThreadSent)).length,

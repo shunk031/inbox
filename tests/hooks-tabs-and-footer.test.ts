@@ -78,11 +78,7 @@ test('on a next build, at 20 desktop columns the tabs show their symbols with th
   const pane = await $.ui.mount({ ...PANE, surface: 'desktop', props: { ...PANE.props, bodyColumns: 20 } })
   const tabBar = async () => (await pane.find({ key: 'tabs' }))?.props.props as TabsProps
   expect((await tabBar()).tabs.map(t => [t.id, t.label, t.badge])).toEqual(
-    shownTabs(true, true).map(t => [
-      t.id,
-      t.symbol,
-      t.id === 'needsYou' ? '2' : t.id === 'timeline' ? '1' : null,
-    ]),
+    shownTabs(true, true).map(t => [t.id, t.symbol, t.id === 'needsYou' ? '2' : t.id === 'timeline' ? '1' : null]),
   )
   await pane.redraw({ ...PANE.props, bodyColumns: 69 })
   expect((await tabBar()).tabs.map(t => t.label)).toEqual(shownTabs(true, true).map(t => t.label))

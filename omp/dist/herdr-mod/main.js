@@ -1,5 +1,5 @@
 // Built by herdr/build.ts with Bun 1.4.4 from herdr/src and hooks/. Do not edit.
-// Built at 2026-11-17T14:17:14.954Z. 224739 characters follow.
+// Built at 2026-11-17T15:12:19.302Z. 225244 characters follow.
 
 // src/main.ts
 import { View, div as div5 } from "gpui-kit";
@@ -81,7 +81,6 @@ function emptyText(tab, agent, isStale = false) {
 var TAB_NAMES = [
   { id: "overview", label: "Status", symbol: "\uD83E\uDDED" },
   { id: "needsYou", label: "Asks", symbol: "\uD83D\uDE4B" },
-  { id: "findings", label: "Finds", symbol: "\uD83D\uDD0D" },
   { id: "timeline", label: "Timeline", symbol: "◷" },
   { id: "prs", label: "PRs", symbol: "\uD83D\uDD00" }
 ];
@@ -99,10 +98,10 @@ function tabBadge(id, counts) {
   return isRowTab(id) && counts[id] > 0 ? String(counts[id]) : null;
 }
 function isListedTab(tab) {
-  return tab === "needsYou" || tab === "findings";
+  return tab === "needsYou";
 }
 function isRowTab(tab) {
-  return tab !== "overview" && tab !== "timeline";
+  return tab === "needsYou" || tab === "prs";
 }
 var ROW_TABS = TAB_NAMES.filter((t) => isRowTab(t.id));
 var LISTED_TABS = TAB_NAMES.filter((t) => isListedTab(t.id));
@@ -1481,7 +1480,7 @@ function helpKeys(look, isNextBuild, tab, hasStatusButtons, includeTimeline = fa
   const tabKeys = shownTabs(isNextBuild, includeTimeline).map((t) => t.hotkey).join(" ");
   const hasRows = isRowTab(tab);
   const selectsTimelineRows = tab === "timeline";
-  const hasDocumentRows = tab === "needsYou" || tab === "findings";
+  const hasDocumentRows = tab === "needsYou";
   const selectsStatusRows = tab === "overview" && hasStatusButtons;
   const switchTabs = { keys: tabKeys, does: "Switch tabs" };
   const prTabKeys = tab === "prs" ? PR_TAB_HELP_KEYS : [];
@@ -2830,7 +2829,6 @@ var STOP_TOKEN = "inbox-stop";
 var FOCUS_TOKEN = "inbox-focus";
 var COUNT_TOKENS = {
   needsYou: "inbox-needs-you",
-  findings: "inbox-findings",
   prs: "inbox-prs"
 };
 var CLEARED_TOKENS = Object.fromEntries([STATUS_TOKEN, STOP_TOKEN, FOCUS_TOKEN, ...Object.values(COUNT_TOKENS)].map((name) => [name, null]));
@@ -3120,7 +3118,7 @@ function latestUndo(undos) {
   return undos.reduce((latest, u) => latest === null || u.at >= latest.at ? u : latest, null);
 }
 function tabUndos(tab, lists, prs) {
-  return tab === "prs" ? prUndos(prs) : listUndos(tab === "needsYou" ? [...lists.questions, ...lists.tasks] : lists.findings);
+  return tab === "prs" ? prUndos(prs) : listUndos(tab === "needsYou" ? [...lists.questions, ...lists.tasks, ...lists.legacyFindings] : lists.findings);
 }
 function listUndos(entries) {
   return entries.flatMap((x) => {
@@ -3162,6 +3160,8 @@ function actionsOf(row, last, state, feedback) {
       action({ action: "discard", id }, ROW_COPY.discard, "view")
     ];
   const stepActions = steps.map((s, n) => action({ action: "step", id, step: n, label: s.label }, s.label, stepKind(s)));
+  if (!item && row.finding && !row.finding.feedOwned && !row.finding.sourceManaged && row.finding.kind !== "progress")
+    return [action({ action: "discuss", id }, "Discuss", "talk"), action({ action: "dismiss", id }, "Close", "mark")];
   if (!item)
     return [
       action({ action: "address", id }, row.finding ? fixLabel(row.finding) : "Fix", "handoff"),
@@ -3196,7 +3196,7 @@ function actionsOf(row, last, state, feedback) {
     action({ action: "dismiss", id }, "Dismiss", "mark")
   ];
 }
-function drawnLists(v, isSettledDrawn, toRow) {
+function drawnLists(v, isSettledDrawn, toRow, includeLegacy = false) {
   const entries = (rows) => rows.flatMap((r) => {
     if (r.state.is === "settled")
       return isSettledDrawn(r.id) ? [{ settled: r, state: r.state }] : [];
@@ -3205,6 +3205,7 @@ function drawnLists(v, isSettledDrawn, toRow) {
   });
   const questions = entries(v.needsYou.questions);
   const tasks = entries(v.needsYou.tasks);
+  const legacyFindings = entries(v.needsYou.legacyFindings);
   const findingGroups = Object.keys(FINDING_GROUPS).map((kind) => ({
     kind,
     title: FINDING_GROUPS[kind].title,
@@ -3215,8 +3216,12 @@ function drawnLists(v, isSettledDrawn, toRow) {
     questions,
     tasks,
     findings,
+    legacyFindings,
     findingGroups,
-    byTab: { needsYou: [...rowsIn(questions), ...rowsIn(tasks)], findings: rowsIn(findings) }
+    byTab: {
+      needsYou: [...rowsIn(questions), ...rowsIn(tasks), ...includeLegacy ? rowsIn(legacyFindings) : []],
+      findings: rowsIn(findings)
+    }
   };
 }
 function firstWaiting(rows) {
@@ -3435,6 +3440,7 @@ function inboxView({
     finding,
     steps: []
   }));
+  const legacyFindings = findingRows.filter((r) => r.finding && !r.finding.feedOwned && !r.finding.sourceManaged && r.finding.kind !== "progress");
   const held = new Set([...questionRows, ...taskRows, ...findingRows].filter((r) => r.state.is === "held").map((r) => r.id));
   const closed = [...ledger.closed].filter((d) => !held.has(d.id)).reverse().map((d) => {
     const delivery = d.doneNotification?.error !== undefined ? { error: d.doneNotification.error, canUndo: isUndoable(d) } : (d.how === "answered" || d.how === "done") && lastActions[d.id]?.kind === "mark" && lastActions[d.id]?.at === d.at ? pendingDeliveryAt(lastActions[d.id], now) : null;
@@ -3456,9 +3462,10 @@ function inboxView({
   return {
     untrackedWork: ledger.untrackedWork ?? [],
     needsYou: {
-      count: counted.length,
+      count: counted.length + legacyFindings.filter(isWaitingRow).length,
       questions: questionRows,
       tasks: taskRows,
+      legacyFindings,
       closed: { questions: closed.filter((d) => d.kind === "question"), tasks: closed.filter((d) => d.kind === "task") },
       pressOutSince: placingFor.needsYou.pressOutSince
     },

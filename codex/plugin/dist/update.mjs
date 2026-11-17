@@ -761,7 +761,7 @@ function isPersonsAnswer(outcome) {
   return outcome.trim() !== "" && !NOT_AN_ANSWER.test(outcome);
 }
 function applyUpdate(ledger, u, now, turn, promptAt = now) {
-  const feedIds = new Set(ledger.findings.filter((f) => f.feedOwned).map((f) => f.id));
+  const feedIds = new Set(ledger.findings.filter((f) => f.feedOwned || f.kind === "progress").map((f) => f.id));
   const sourceItemIds = new Set(ledger.items.filter((i) => i.sourceManaged).map((i) => i.id));
   const stillAsked = new Set(u.updated.filter((c) => c.options || c.rec).map((c) => c.id));
   const isPutOffFinding = (c) => ledger.findings.some((f) => f.id === c.id) && PUT_OFF2.test(c.outcome);
@@ -830,7 +830,7 @@ function applyUpdate(ledger, u, now, turn, promptAt = now) {
       options: ["Proceed", "Not yet"],
       rec: null
     };
-    const isKnown = items.some((i) => restates(i.ask, work)) || ledger.findings.some((f) => !f.feedOwned && restates(f.title, work)) || repeatsClosed(ledger.closed, { ...todo, helps: [] }, promptAt, isPersonsAnswer);
+    const isKnown = items.some((i) => restates(i.ask, work)) || ledger.findings.some((f) => !f.feedOwned && f.kind !== "progress" && restates(f.title, work)) || repeatsClosed(ledger.closed, { ...todo, helps: [] }, promptAt, isPersonsAnswer);
     if (isKnown) continue;
     items.push({ ...todo, helps: [], id: `i${nextId}`, turn, at: now, from: "update" });
     nextId += 1;
@@ -845,7 +845,8 @@ function applyUpdate(ledger, u, now, turn, promptAt = now) {
   }
   for (const i of items.filter((i2) => created.has(i2.id)))
     for (const f of ledger.findings)
-      if (!f.sourceManaged && !f.feedOwned && !askedBy.has(f.id) && asksAbout(i, f)) askedBy.set(f.id, i.id);
+      if (!f.sourceManaged && !f.feedOwned && f.kind !== "progress" && !askedBy.has(f.id) && asksAbout(i, f))
+        askedBy.set(f.id, i.id);
   const { findings, closedFindings } = ledger.findings.reduce((l, f) => {
     const asker = askedBy.get(f.id);
     const outcome = closing.get(f.id);
@@ -1223,12 +1224,12 @@ ${content}`;
 var NL4 = "\n";
 var MODEL_KIND = { question: "decide", task: "do" };
 function systemText(host, instructions = null) {
-  const band = host.band ? ` They always see how many items are in <open> and <findings> in ${host.band}.` : "";
+  const band = host.band ? ` They always see how many items are in <open> in ${host.band}.` : "";
   const system = `You keep a short ledger for a person who works with a coding agent across many parallel sessions. They glance at your ledger between tasks, or after time away, to see where this session stands. You read one exchange and update the ledger.
 
 Input:
 - <open>: items still waiting on the person, as id | kind | label | ask | options | rec | design | origin
-- <findings>: findings the agent recorded for the person to review later, outside the current task, each with an id
+- <findings>: legacy findings saved before findings were retired, each with an id. Never create new findings.
 - <decided>: items and findings the person already settled, and how. Never add one of these again as NEW, even when the reply asks it again in other words.
 - <person>: what the person just sent, and the commands they ran themselves: "$ cmd" for a shell command, with its output, and "/name" for a slash command
 - <activity>: what the agent did this turn (files edited, commands, URLs)
@@ -1239,11 +1240,11 @@ Answer with lines only, each starting with one of these keys. No other text. Whe
 
 NONE: nothing in the exchange changes the ledger. Write it alone.
 CLOSED: <id> | the outcome, at most 8 words, in one of three forms. Use CLOSED only for an item whose origin is update. Never write CLOSED for an agent-recorded item, even when the person answered it; the agent's close tool closes it when appropriate. When the person answered an update-origin item in <person>, write their answer. Otherwise write "done: <what the agent did>" when its work is done, or "no longer applies: <what in the reply or <activity> made it moot>". An option the agent picked on its own, or an option the work made moot, is not the person's answer: write it in the "done:" or "no longer applies:" form. One line for each update-origin item in <open> the reply or <activity> shows is done or no longer applies, or the person answered in <person> (including "all recommended", "go", "yes to all", numbered answers). A person asking what an item means has not answered it, and a reply explaining it does not close it. When <person> asks to run an item's command and the reply says it ran, that item is done. So is an item whose command the person ran themselves, per <person>, when its output shows it worked. An item that has nothing to do with this exchange stays open: being outside the current work, or not being mentioned, does not make it no longer apply.
-FIXED: <id> | the change that fixed it, at most 8 words. One line for each finding in <findings> whose problem the reply, <activity> or <person> shows was fixed by a change to the work. Only a change fixes a finding. When the person puts a finding off, sets it aside or says it does not matter, write no FIXED line: it stays open until they dismiss it.
+FIXED: <id> | the change that fixed it, at most 8 words. One line for each legacy finding in <findings> whose problem the reply, <activity> or <person> shows was fixed by a change to the work. Only a change fixes a finding. When the person puts a finding off, sets it aside or says it does not matter, write no FIXED line: it stays open until they dismiss it.
 ASKED: <id> | <item>
-  For a finding in <findings> that a NEW line or an item in <open> asks the person about. item: "new N" for the Nth NEW line in your answer, or an id from <open>. The item takes the finding's place, so the person sees it once.
+  For a legacy finding in <findings> that a NEW line or an item in <open> asks the person about. item: "new N" for the Nth NEW line in your answer, or an id from <open>. The item takes the finding's place, so the person sees it once.
 NEW: <kind> | <label> | <ask> | <options> | <rec> | <design> | <quote>
-  One line per thing in <reply> that waits on the person and is not already in <open> or <findings>. A finding the agent recorded is not NEW unless the reply asks the person to decide or do something about it now; then also write an ASKED line for it. Also one line per dialog in <activity> that the person dismissed or left unanswered, with an ASKED line when the dialog asks about a finding. When the reply restates, rewords or narrows an item in <open>, it is not new: add HELP lines to that item's id instead.
+  One line per thing in <reply> that waits on the person and is not already in <open> or <findings>. A legacy finding is not NEW unless the reply asks the person to decide or do something about it now; then also write an ASKED line for it. Also one line per dialog in <activity> that the person dismissed or left unanswered, with an ASKED line when the dialog asks about a legacy finding. When the reply restates, rewords or narrows an item in <open>, it is not new: add HELP lines to that item's id instead.
   kind: "decide" (a choice, approval, or information only the person has, explicitly put to them, without which the agent cannot go on with its task) or "do" (an action only the person can take, without which the agent cannot continue or finish: sign in, run a command needing their password, test on their device, reply to a teammate).
   label: the reply's own number or id for it ("1", "D3"), or "-".
   ask: plain words, readable without the reply, at most 12 words, or up to 16 when 12 would lose meaning. Keep the question's meaning and every alternative it names. Replace any term the reply coined with what it means. Name an item or finding by what it says, never by its id: the person does not see ids.
@@ -1277,7 +1278,7 @@ function ledgerBlocks(ledger) {
   const open2 = ledger.items.filter((i) => !i.sourceManaged).map(
     (i) => `${i.id} | ${MODEL_KIND[i.kind]} | ${i.label ?? "-"} | ${i.ask} | ${i.options.join(" / ") || "-"} | ${i.rec ?? "-"} | ${i.isDesignChoice ? "design" : "-"} | ${i.from === "record" ? "record" : "update"}`
   ).join(NL4);
-  const findings = ledger.findings.filter((f) => !f.feedOwned).map((f) => `${f.id} | ${f.kind}: ${f.title}`).join(NL4);
+  const findings = ledger.findings.filter((f) => !f.feedOwned && !f.sourceManaged && f.kind !== "progress").map((f) => `${f.id} | ${f.kind}: ${f.title}`).join(NL4);
   const closed = ledger.closed.slice(-CLOSED_CONTEXT_LIMIT).filter((d) => d.how !== "expired" && !isAskedForChoices(d)).slice(-MAX_CLOSED).map((d) => `${d.ask} \u2192 ${outcomeText(d)}`);
   const dismissedFindings = ledger.closedFindings.filter((f) => f.how === "dismissed").slice(-MAX_CLOSED).map((f) => `${f.kind}: ${f.title} \u2192 ${outcomeText(f)}`);
   const decided = [...closed, ...dismissedFindings].join(NL4);
@@ -1875,7 +1876,6 @@ function settleGoal(saved, tree, now) {
 var TAB_NAMES = [
   { id: "overview", label: "Status", symbol: "\u{1F9ED}" },
   { id: "needsYou", label: "Asks", symbol: "\u{1F64B}" },
-  { id: "findings", label: "Finds", symbol: "\u{1F50D}" },
   { id: "timeline", label: "Timeline", symbol: "\u25F7" },
   { id: "prs", label: "PRs", symbol: "\u{1F500}" }
 ];
@@ -1885,10 +1885,10 @@ var NEXT_BUILD_TIMELINE_TABS = numbered(TAB_NAMES);
 var RELEASE_TABS = numbered(TAB_NAMES.filter((t) => t.id !== "overview" && t.id !== "timeline"));
 var RELEASE_TIMELINE_TABS = numbered(TAB_NAMES.filter((t) => t.id !== "overview"));
 function isListedTab(tab) {
-  return tab === "needsYou" || tab === "findings";
+  return tab === "needsYou";
 }
 function isRowTab(tab) {
-  return tab !== "overview" && tab !== "timeline";
+  return tab === "needsYou" || tab === "prs";
 }
 function isShownTab(raw) {
   return TAB_NAMES.some((t) => t.id === raw);
@@ -3057,8 +3057,8 @@ var RECORD_SCHEMA = {
   properties: {
     kind: {
       type: "string",
-      enum: ["question", "task", "finding"],
-      description: "question: a decision only the user can make. task: a step only the user can do. finding: something outside the current task that deserves their attention."
+      enum: ["question", "task"],
+      description: "question: a decision only the user can make. task: a step only the user can do."
     },
     ask: {
       type: "string",
@@ -3095,20 +3095,10 @@ var RECORD_SCHEMA = {
       type: "boolean",
       description: "For a question: true when its options are designs or approaches you could try and show side by side, such as two layouts or two ways to build a feature. The user can then ask you to compare them. Leave it out for a fact, an approval or a preference."
     },
-    finding_kind: {
-      type: "string",
-      enum: ["issue", "opportunity"],
-      description: "For a finding. issue: something wrong or risky. opportunity: something that could be better."
-    },
-    title: {
-      type: "string",
-      description: "For a finding: what it is, in at most 12 words. Links as [label](https://\u2026); a link counts as its label."
-    },
     detail: {
       type: "string",
-      description: "For a question or task: why you ask and what it holds up; for a question, what each option leads to. For a finding: why it matters and what you would do. Use short paragraphs. Links as [label](https://\u2026)."
+      description: "For a question or task: why you ask and what it holds up; for a question, what each option leads to. Use short paragraphs. Links as [label](https://\u2026)."
     },
-    path: { type: "string", description: "For a finding: the file it is about, if one." },
     document: {
       type: "string",
       description: "For a Markdown report the user should read in the inbox: its absolute local file path."
@@ -3267,6 +3257,8 @@ function actionsOf(row, last, state, feedback) {
       action({ action: "discard", id }, ROW_COPY.discard, "view")
     ];
   const stepActions = steps2.map((s, n) => action({ action: "step", id, step: n, label: s.label }, s.label, stepKind(s)));
+  if (!item && row.finding && !row.finding.feedOwned && !row.finding.sourceManaged && row.finding.kind !== "progress")
+    return [action({ action: "discuss", id }, "Discuss", "talk"), action({ action: "dismiss", id }, "Close", "mark")];
   if (!item)
     return [
       action({ action: "address", id }, row.finding ? fixLabel(row.finding) : "Fix", "handoff"),
@@ -3493,6 +3485,9 @@ function inboxView({
       steps: []
     })
   );
+  const legacyFindings = findingRows.filter(
+    (r) => r.finding && !r.finding.feedOwned && !r.finding.sourceManaged && r.finding.kind !== "progress"
+  );
   const held = new Set([...questionRows, ...taskRows, ...findingRows].filter((r) => r.state.is === "held").map((r) => r.id));
   const closed = [...ledger.closed].filter((d) => !held.has(d.id)).reverse().map((d) => {
     const delivery = d.doneNotification?.error !== void 0 ? { error: d.doneNotification.error, canUndo: isUndoable(d) } : (d.how === "answered" || d.how === "done") && lastActions[d.id]?.kind === "mark" && lastActions[d.id]?.at === d.at ? pendingDeliveryAt(lastActions[d.id], now) : null;
@@ -3514,9 +3509,10 @@ function inboxView({
   return {
     untrackedWork: ledger.untrackedWork ?? [],
     needsYou: {
-      count: counted.length,
+      count: counted.length + legacyFindings.filter(isWaitingRow).length,
       questions: questionRows,
       tasks: taskRows,
+      legacyFindings,
       closed: { questions: closed.filter((d) => d.kind === "question"), tasks: closed.filter((d) => d.kind === "task") },
       pressOutSince: placingFor.needsYou.pressOutSince
     },
@@ -3961,7 +3957,7 @@ function upgraded(saved, sessionId) {
       turn,
       pending: (saved.pending ?? []).map(({ ex: { checks: _exChecks, ...ex }, ...p }) => ({ ...p, ex }))
     }),
-    shownTab: isShownTab(saved.shownTab) ? saved.shownTab : base.shownTab,
+    shownTab: saved.shownTab === "findings" ? "needsYou" : isShownTab(saved.shownTab) ? saved.shownTab : base.shownTab,
     heard,
     ...saved.callFailures ? {} : { callFailures: withSavedFailure(saved) },
     coveredTurn: saved.coveredTurn !== void 0 ? saved.coveredTurn : coveredBefore(heard, turn.person ?? null)
@@ -4274,13 +4270,12 @@ var CODEX = {
   agent: "Codex",
   surface: "the Inbox tab",
   band: null,
-  findingsIn: "the Finds section of the Inbox tab",
   prsIn: "the PRs section of the Inbox tab",
   recordTool: "mcp__inbox__record",
   closeTool: "mcp__inbox__close",
   taskTool: "tasks",
   splitsPlanIntoSubjects: true,
-  intro: "The inbox plugin shows the user what waits on them: your open questions and the tasks only they can do, and your findings, in the Inbox tab beside the conversation."
+  intro: "The inbox plugin shows the user what waits on them: your open questions and the tasks only they can do, in the Inbox tab beside the conversation. Open legacy findings remain in the `inbox:` text until closed."
 };
 
 // src/core.ts
@@ -4334,7 +4329,6 @@ var FOCUS_TOKEN = "inbox-focus";
 var HERDR_VALUE_CHARS = 80;
 var COUNT_TOKENS = {
   needsYou: "inbox-needs-you",
-  findings: "inbox-findings",
   prs: "inbox-prs"
 };
 var CLEARED_TOKENS = Object.fromEntries(
@@ -4360,10 +4354,9 @@ function statusLine(stop, dialogs, input) {
   if (stop) return stopLine(stop);
   const dialog = dialogs[0];
   if (dialog) return dialogText(dialog);
-  const { firstAsk, asks, findings, focus, stale } = input;
+  const { firstAsk, asks, focus, stale } = input;
   if (firstAsk !== null) return asks > 1 ? `${asks} \xB7 ${firstAsk}` : firstAsk;
-  const findingsText = findings === 0 ? null : `${findings} finding${findings === 1 ? "" : "s"}`;
-  return [stale, focus, findingsText].filter(Boolean).join(" \xB7 ");
+  return [stale, focus].filter(Boolean).join(" \xB7 ");
 }
 function focusOf(head) {
   return head ? head.description || head.title : null;
@@ -4372,14 +4365,14 @@ function herdrTokens(ledger, stop, view, dialogs, isReadFailed = false) {
   const input = {
     firstAsk: [...view.needsYou.questions, ...view.needsYou.tasks].find(isWaitingRow)?.title ?? null,
     asks: view.needsYou.count,
-    findings: view.findings.count,
     focus: focusOf(ledger.overview?.head ?? null),
     stale: bandCounts(view).length === 0 && isMaybeStale(view, isReadFailed) ? MAYBE_STALE_TEXT : null
   };
   const focus = input.focus ? clipLabel(input.focus, HERDR_VALUE_CHARS) : null;
-  const counts = ROW_TABS.map((t) => {
+  const counts = ROW_TABS.flatMap((t) => {
     const count = view[t.id].count;
-    return [COUNT_TOKENS[t.id], stop || count === 0 ? null : String(count)];
+    const token = COUNT_TOKENS[t.id];
+    return token ? [[token, stop || count === 0 ? null : String(count)]] : [];
   });
   return {
     [STATUS_TOKEN]: statusLine(stop, dialogs, input) || null,
