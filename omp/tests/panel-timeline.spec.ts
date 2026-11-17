@@ -90,6 +90,21 @@ test('Timeline draws the shared empty state, task details and planned buttons, a
   })
 })
 
+test('a selected child detail guide shares the connector column', () => {
+  const root = taskNode('root', 'Root', 'working')
+  const child = taskNode('child', 'Child', 'queued', NOW, { parentId: 'root', detail: 'Child detail.' })
+  const sibling = taskNode('sibling', 'Sibling', 'queued', NOW, { parentId: 'root' })
+  const screen = taskScreen([root, child, sibling])
+  const ui: PanelUi = { ...INITIAL_UI, tab: 'timeline', timelineSelection: 'child', selectedId: 'child' }
+  const lines = strip(text(screen, ui, 120)).split('\n')
+  const childLine = lines.find(line => line.includes('> ├─ · Child · queued'))!
+  const detailLine = lines.find(line => line.includes('Detail · Child detail.'))!
+  const connectorColumn = childLine.indexOf('├')
+
+  expect(connectorColumn).toBe(3)
+  expect(detailLine.indexOf('│')).toBe(connectorColumn)
+})
+
 test('Timeline j and k run the planned Select action for the task they land on', () => {
   const screen = taskScreen([taskNode('root', 'Root', 'working'), taskNode('child', 'Child', 'queued')])
   let ui: PanelUi = { ...INITIAL_UI, tab: 'timeline', selectedId: 'root', timelineSelection: 'root' }

@@ -6,7 +6,7 @@ import type { TabView } from './core'
 import { pendingLocal, act } from './tab-rows'
 import { closingFolds, drawnRows, timelineFolded } from './tab-state'
 import { outPending } from './tab-press'
-import { selectTimelineRow, timelinePageOf, toggleTimelineFold } from './rows'
+import { selectTimelineRow, timelinePageOf, timelineRowForm, toggleTimelineFold } from './rows'
 
 export function TimelineTab({ view }: { view: TabView }) {
   const page = timelinePageOf(view)
@@ -32,16 +32,32 @@ export function TimelineTab({ view }: { view: TabView }) {
     const selection = selected ? page.selected : track?.hasPanel ? (drawnRows.get(id)?.openTimeline ?? null) : null
     const selectAction = visible.get(row.task.id)?.actions.find(action => action.action === 'select')
     const branchAction = selection?.row.actions.find(action => action.action === 'toggle-branch')
-    const detailLead = selection?.row.detailLead ?? visible.get(row.task.id)?.detailLead ?? row.detailLead
+    const form = timelineRowForm(row)
     const isClosing = track?.state === 'closing' || track?.state === 'leaving'
     const mark = row.status === 'stalled' ? '!' : (SUBJECT_MARKS[row.status as keyof typeof SUBJECT_MARKS]?.mark ?? '·')
 
     return (
       <section class="timeline-tree-item" key={row.task.id}>
+        {form.ancestorGuides.map(depth => (
+          <span
+            key={`ancestor-${depth}`}
+            class="timeline-tree-guide"
+            style={{ '--timeline-guide-depth': depth } as JSX.CSSProperties}
+            aria-hidden="true"
+          />
+        ))}
+        {form.childGuide !== null ? (
+          <span
+            key="children"
+            class="timeline-tree-guide timeline-child-guide"
+            style={{ '--timeline-guide-depth': form.childGuide } as JSX.CSSProperties}
+            aria-hidden="true"
+          />
+        ) : null}
         <div class={`row timeline-node${selected ? ' selected' : ''}${isClosing ? ' closing' : ''}`} data-motion={id}>
           <div class="content tight">
             <div>
-              <span class="muted timeline-tree-prefix">{`  ${row.prefix}`}</span>
+              <span class="muted timeline-tree-prefix">{`  ${form.prefix}`}</span>
               <span
                 class={`timeline-task-mark tone-${row.status === 'done' ? 'done' : row.status === 'stalled' ? 'error' : 'needsYou'}`}
               >
@@ -63,7 +79,7 @@ export function TimelineTab({ view }: { view: TabView }) {
             </div>
             {row.warnings.map((warning, index) => (
               <div class="warning" key={`${row.task.id}-warning-${index}`}>
-                <span class="muted timeline-tree-prefix">{`${detailLead}⚠ `}</span>
+                <span class="muted timeline-tree-prefix">{`${form.detailLead}⚠ `}</span>
                 {warning}
               </div>
             ))}
@@ -77,7 +93,7 @@ export function TimelineTab({ view }: { view: TabView }) {
               ) : null}
               {selection.details.map((line, index) => (
                 <div key={`${row.task.id}-detail-${index}`}>
-                  <span class="muted timeline-tree-prefix">{detailLead}</span>
+                  <span class="muted timeline-tree-prefix">{form.detailLead}</span>
                   <strong class="timeline-detail-label">{line.label} · </strong>
                   {line.label === 'Links'
                     ? line.actions.map(link => {

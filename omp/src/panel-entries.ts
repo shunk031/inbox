@@ -468,7 +468,8 @@ function timelineEntries(screen: PanelScreen, ui: PanelUi): Entry[] {
           tone: row.status === 'stalled' ? 'error' : row.status === 'done' ? 'done' : 'needsYou',
           padMark: false,
         },
-        timelineDetailLead: row.detailLead,
+        // omp's row title starts one cell after the shared detail prefix: panel cursor and spacing occupy three cells.
+        timelineDetailLead: ` ${row.detailLead}`,
         title: row.task.title,
         status: { text: `${row.statusLabel} · ${row.measure}`, tone: null, rest: '', separator: ' · ' },
         body: body || null,

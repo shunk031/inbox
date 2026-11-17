@@ -21,6 +21,21 @@
 .timeline-page .timeline-tree-prefix {
   white-space: pre;
 }
+.timeline-page .timeline-tree-item {
+  position: relative;
+}
+.timeline-page .timeline-tree-guide {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--tree-x) + var(--timeline-guide-depth, 0) * var(--step));
+  border-left: 1px solid var(--tree-line);
+  pointer-events: none;
+}
+.timeline-page .timeline-child-guide {
+  top: calc(var(--status-row-pad) + 0.5lh);
+}
 .status-page .mark {
   text-align: left;
 }

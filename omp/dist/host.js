@@ -9498,7 +9498,7 @@ function timelineEntries(screen, ui) {
           tone: row.status === "stalled" ? "error" : row.status === "done" ? "done" : "needsYou",
           padMark: false
         },
-        timelineDetailLead: row.detailLead,
+        timelineDetailLead: ` ${row.detailLead}`,
         title: row.task.title,
         status: { text: `${row.statusLabel} \xB7 ${row.measure}`, tone: null, rest: "", separator: " \xB7 " },
         body: body || null,

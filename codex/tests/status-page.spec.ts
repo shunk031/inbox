@@ -254,9 +254,10 @@ test('the Codex tab draws the Status page from a next build’s view, and new ro
     )
     assert.equal([...root.querySelectorAll('.timeline-node .content > div')][2]?.textContent, '  └─ ✓ Page · done · w1')
     assert.equal(
-      [...root.querySelectorAll('.timeline-detail > div')].every(line => line.textContent?.startsWith('  │  ')),
+      [...root.querySelectorAll('.timeline-detail > div')].every(line => line.textContent?.startsWith('     ')),
       true,
     )
+    assert.equal(root.querySelectorAll('.timeline-child-guide').length, 1)
     assert.deepEqual(
       [...root.querySelectorAll('.timeline-detail-label')].map(label => label.textContent?.replace(' · ', '')),
       ['Detail', 'Updated', 'Note', 'History', 'Links'],
