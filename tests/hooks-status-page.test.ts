@@ -123,7 +123,7 @@ test('on a next build, a Status call that lands after a look does not change its
   expect(session!.taskTree?.map(task => task.title)).toEqual(['Plan', 'Command'])
 })
 
-test('a release build keys Asks, Timeline and PRs 1 to 3, and a saved Status page shows Asks, tells Claude so, starts no look, stays saved, and names no subject an ask holds up', async ($, on) => {
+test('a release build keys Asks, Timeline, Agents and PRs 1 to 4, and a saved Status page shows Asks, tells Claude so, starts no look, stays saved, and names no subject an ask holds up', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   const prompts: string[] = []
   world($, on, prompts)
@@ -152,7 +152,8 @@ test('a release build keys Asks, Timeline and PRs 1 to 3, and a saved Status pag
   expect(tabKeys).toEqual([
     ['tab-key-needsYou', '1'],
     ['tab-key-timeline', '2'],
-    ['tab-key-prs', '3'],
+    ['tab-key-agents', '3'],
+    ['tab-key-prs', '4'],
   ])
   const saved = [...w.stored].find(([k]) => k.startsWith('s:'))
   expect(saved && JSON.parse(saved[1]).ledger.overview.look).toBeNull()

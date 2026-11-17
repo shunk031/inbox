@@ -10,6 +10,7 @@ import { sessionView, type SessionView } from './session-view'
 import type { Holds } from './timing'
 import { taskReminderSession } from './task-reminder'
 import { taskTreeFromStatus } from './task-tree'
+import type { AgentSourceOverrides } from './agents-page'
 
 /** The drawn conversation's session. `revision` counts its writes, so a write computed from an older one is retried. */
 export type ModSession = Session & { revision: number }
@@ -107,6 +108,9 @@ export function drawnState(
     holds,
     drawn.notes,
     demo?.timelineTaskTree,
+    demo
+      ? { feedRows: demo.agentFeedRows ?? [], ownerFacts: {}, localAgents: demo.localAgents ?? [] }
+      : ({} satisfies AgentSourceOverrides),
   )
 
   return {

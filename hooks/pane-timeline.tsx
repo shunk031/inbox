@@ -2,6 +2,28 @@ import type { PaneBase, PaneHandlers } from './pane-context'
 import { cellWidth, cutToCells } from './text'
 import { moveTimelineSelection, timelinePage, toggleTimelineBranch } from './timeline-page'
 
+type TimelineStyle = Pick<PaneBase, 'Box' | 'Text' | 'pal'>
+
+export function timelineToneColor(pal: PaneBase['pal'], tone: string) {
+  return tone === 'key' ? pal.key : tone === 'muted' ? pal.muted : (pal.tone[tone as 'done' | 'error'] ?? pal.muted)
+}
+
+export function timelineChip({ Box, Text, pal }: TimelineStyle, label: string, tone: string, key?: string) {
+  return (
+    <Box key={key} backgroundColor={timelineToneColor(pal, tone)} paddingX={1}>
+      <Text color="inverseText">{label}</Text>
+    </Box>
+  )
+}
+
+export function timelineRowLead(row: { prefix: string; mark: string }, selected: boolean) {
+  return `${selected ? '> ' : '  '}${row.prefix}${row.mark} `
+}
+
+export function timelineRowBackground(pal: PaneBase['pal'], alternate: boolean) {
+  return alternate ? (pal.card ?? pal.line) : undefined
+}
+
 type TimelinePaneBase = Pick<
   PaneBase,
   'Box' | 'Button' | 'Text' | 'pal' | 'look' | 'view' | 'timelineSelection' | 'timelineFolded' | 'timelineDetailOpen'
@@ -122,13 +144,8 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
   const widthForCells = (text: string) => cellWidth(text)
   const bodyColumns = context.bodyColumns
   const paneWidth = widthForCells(' '.repeat(bodyColumns))
-  const color = (tone: string) =>
-    tone === 'key' ? pal.key : tone === 'muted' ? pal.muted : (pal.tone[tone as 'done' | 'error'] ?? pal.muted)
-  const chip = (label: string, tone: string, key?: string) => (
-    <Box key={key} backgroundColor={color(tone)} paddingX={1}>
-      <Text color="inverseText">{label}</Text>
-    </Box>
-  )
+  const color = (tone: string) => timelineToneColor(pal, tone)
+  const chip = (label: string, tone: string, key?: string) => timelineChip({ Box, Text, pal }, label, tone, key)
   const bar = (parts: typeof page.progressCard.bar, emptyWidth = 10) =>
     parts.length ? (
       parts.map(part => <Text color={color(part.tone)}>{part.mark.repeat(part.count)}</Text>)
@@ -250,7 +267,7 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
         <Box flexDirection="column">
           {page.rows.map((row, rowIndex) => {
             const selected = row.task.id === page.selected?.row.task.id
-            const rowLead = `${selected ? '> ' : '  '}${row.prefix}${row.mark} `
+            const rowLead = timelineRowLead(row, selected)
             const titleLeadWidth = cellWidth(rowLead)
             const chipLeadWidth = Math.max(0, titleLeadWidth - 1)
             const chipLead = cutToCells(row.treeLead, chipLeadWidth).padEnd(chipLeadWidth)

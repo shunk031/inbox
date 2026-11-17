@@ -43,6 +43,7 @@ export function demoTaskTree(now: number): TaskTree {
       createdAt,
       updatedAt: now - 5 * MIN,
       history: [{ at: now - 5 * MIN, source: 'demo', kind: 'updated', detail: '保存処理を追加' }],
+      links: { owner: { machine: 'workstation', agent: 'reviewer' } },
     },
     {
       id: 'timeline-capture',
@@ -67,6 +68,7 @@ export function demoTaskTree(now: number): TaskTree {
       createdAt,
       updatedAt: now - 15 * MIN,
       history: [{ at: now - 15 * MIN, source: 'demo', kind: 'created' }],
+      links: { owner: { machine: 'workstation', agent: 'builder' } },
     },
   ]
 }

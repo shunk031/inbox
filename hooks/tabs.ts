@@ -15,26 +15,23 @@ const TAB_NAMES: readonly TabName[] = [
   { id: 'overview', label: 'Status', symbol: '\u{1F9ED}' },
   { id: 'needsYou', label: 'Asks', symbol: '\u{1F64B}' },
   { id: 'timeline', label: 'Timeline', symbol: '◷' },
+  { id: 'agents', label: 'Agents', symbol: '♟' },
   { id: 'prs', label: 'PRs', symbol: '\u{1F500}' },
 ]
 
 const numbered = (tabs: readonly TabName[]): readonly DrawnTab[] =>
   tabs.map((t, n) => ({ ...t, hotkey: String(n + 1) }))
 
-const NEXT_BUILD_TABS = numbered(TAB_NAMES.filter(t => t.id !== 'timeline'))
-const NEXT_BUILD_TIMELINE_TABS = numbered(TAB_NAMES)
-const RELEASE_TABS = numbered(TAB_NAMES.filter(t => t.id !== 'overview' && t.id !== 'timeline'))
-const RELEASE_TIMELINE_TABS = numbered(TAB_NAMES.filter(t => t.id !== 'overview'))
-
 /** The tabs a look draws, in order, each keyed by its place. Status needs a next build; supported looks opt into Timeline. */
-export function shownTabs(isNextBuild: boolean, includeTimeline = false): readonly DrawnTab[] {
-  return isNextBuild
-    ? includeTimeline
-      ? NEXT_BUILD_TIMELINE_TABS
-      : NEXT_BUILD_TABS
-    : includeTimeline
-      ? RELEASE_TIMELINE_TABS
-      : RELEASE_TABS
+export function shownTabs(isNextBuild: boolean, includeTimeline = false, includeAgents = false): readonly DrawnTab[] {
+  return numbered(
+    TAB_NAMES.filter(
+      tab =>
+        (isNextBuild || tab.id !== 'overview') &&
+        (includeTimeline || tab.id !== 'timeline') &&
+        (includeAgents || tab.id !== 'agents'),
+    ),
+  )
 }
 
 /** The `/inbox` command's description: what the build's tabs show. */
@@ -45,8 +42,13 @@ export function inboxCommandText(isNextBuild: boolean): string {
 }
 
 /** The tab a build draws for a saved or sent one: that tab when the build draws it, else the build's first tab. */
-export function drawnTabOf(tab: ShownTab, isNextBuild: boolean, includeTimeline = false): ShownTab {
-  const tabs = shownTabs(isNextBuild, includeTimeline)
+export function drawnTabOf(
+  tab: ShownTab,
+  isNextBuild: boolean,
+  includeTimeline = false,
+  includeAgents = false,
+): ShownTab {
+  const tabs = shownTabs(isNextBuild, includeTimeline, includeAgents)
 
   return tabs.some(t => t.id === tab) ? tab : tabs[0]!.id
 }
@@ -77,8 +79,13 @@ export function fitTabs<L>(
 
   return { naming: 'symbols', layout: layouts.at(-1)! }
 }
-/** What a tab draws after its name: waiting rows, or open Timeline tasks. Null draws nothing. */
-export function tabBadge(id: ShownTab, counts: Readonly<Record<Tab, number> & { timeline?: number }>): string | null {
+/** What a tab draws after its name: its row count, Timeline tasks, or Agents attention. Null draws nothing. */
+export function tabBadge(
+  id: ShownTab,
+  counts: Readonly<Record<Tab, number> & { timeline?: number }>,
+  agentsAttentionCount = 0,
+): string | null {
+  if (id === 'agents') return agentsAttentionCount > 0 ? String(agentsAttentionCount) : null
   if (id === 'timeline' && counts.timeline !== undefined) return String(counts.timeline)
   return isRowTab(id) && counts[id] > 0 ? String(counts[id]) : null
 }

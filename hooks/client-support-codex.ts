@@ -179,4 +179,5 @@ export const CODEX_SUPPORT: ClientSupport['support'] = {
   'task-tree-currentness': { kind: 'full' },
   'task-status-mismatch': { kind: 'full' },
   timeline: { kind: 'full' },
+  'agents-tab': { kind: 'different', reason: 'Agents is not drawn in this look yet.' },
 }

@@ -1754,15 +1754,12 @@ var TAB_NAMES = [
   { id: "overview", label: "Status", symbol: "\uD83E\uDDED" },
   { id: "needsYou", label: "Asks", symbol: "\uD83D\uDE4B" },
   { id: "timeline", label: "Timeline", symbol: "\u25F7" },
+  { id: "agents", label: "Agents", symbol: "\u265F" },
   { id: "prs", label: "PRs", symbol: "\uD83D\uDD00" }
 ];
 var numbered = (tabs) => tabs.map((t, n) => ({ ...t, hotkey: String(n + 1) }));
-var NEXT_BUILD_TABS = numbered(TAB_NAMES.filter((t) => t.id !== "timeline"));
-var NEXT_BUILD_TIMELINE_TABS = numbered(TAB_NAMES);
-var RELEASE_TABS = numbered(TAB_NAMES.filter((t) => t.id !== "overview" && t.id !== "timeline"));
-var RELEASE_TIMELINE_TABS = numbered(TAB_NAMES.filter((t) => t.id !== "overview"));
-function shownTabs(isNextBuild, includeTimeline = false) {
-  return isNextBuild ? includeTimeline ? NEXT_BUILD_TIMELINE_TABS : NEXT_BUILD_TABS : includeTimeline ? RELEASE_TIMELINE_TABS : RELEASE_TABS;
+function shownTabs(isNextBuild, includeTimeline = false, includeAgents = false) {
+  return numbered(TAB_NAMES.filter((tab) => (isNextBuild || tab.id !== "overview") && (includeTimeline || tab.id !== "timeline") && (includeAgents || tab.id !== "agents")));
 }
 function inboxCommandText(isNextBuild) {
   return isNextBuild ? "Show where this session stands and what waits on you" : "Show this session's questions, task plan and PRs";
@@ -1778,7 +1775,9 @@ function fitTabs(layouts, fits) {
         return { naming, layout };
   return { naming: "symbols", layout: layouts.at(-1) };
 }
-function tabBadge(id, counts) {
+function tabBadge(id, counts, agentsAttentionCount = 0) {
+  if (id === "agents")
+    return agentsAttentionCount > 0 ? String(agentsAttentionCount) : null;
   if (id === "timeline" && counts.timeline !== undefined)
     return String(counts.timeline);
   return isRowTab(id) && counts[id] > 0 ? String(counts[id]) : null;
@@ -3848,8 +3847,8 @@ function markLegend(isNextBuild) {
   return isNextBuild ? MARK_LEGEND : MARK_LEGEND.filter((m) => !STATUS_ONLY_MARKS.has(m.mark));
 }
 var HELP_COPY = { open: "Help", close: "\u2715 Close help", keys: "Keys", marks: "Marks", tabs: "Tabs" };
-function tabLegend(isNextBuild, includeTimeline = false) {
-  return shownTabs(isNextBuild, includeTimeline).map((t) => ({ keys: t.symbol, does: t.label }));
+function tabLegend(isNextBuild, includeTimeline = false, includeAgents = false) {
+  return shownTabs(isNextBuild, includeTimeline, includeAgents).map((t) => ({ keys: t.symbol, does: t.label }));
 }
 var UNDO_KEY = "u";
 var PR_TAB_HELP_KEYS = [
@@ -3860,8 +3859,8 @@ var DOCUMENT_KEYS = [
   { keys: "v", does: "Read the selected report, if available" },
   { keys: "b", does: "Return to the inbox from a report" }
 ];
-function helpKeys(look, isNextBuild, tab, hasStatusButtons, includeTimeline = false) {
-  const tabKeys = shownTabs(isNextBuild, includeTimeline).map((t) => t.hotkey).join(" ");
+function helpKeys(look, isNextBuild, tab, hasStatusButtons, includeTimeline = false, includeAgents = false) {
+  const tabKeys = shownTabs(isNextBuild, includeTimeline, includeAgents).map((t) => t.hotkey).join(" ");
   const hasRows = isRowTab(tab);
   const selectsTimelineRows = tab === "timeline";
   const hasDocumentRows = tab === "needsYou";
@@ -7845,7 +7844,7 @@ function taskStatus(task, stalled) {
     return task.status;
   return task.status === "working" ? "working" : task.status === "waits-on-other" ? "waiting" : "queued";
 }
-function statusPresentation(status) {
+function timelineStatusPresentation(status) {
   switch (status) {
     case "done":
       return { label: "Completed", tone: "done", mark: "\u25CF" };
@@ -7912,7 +7911,7 @@ function timelineData(tree, segments, stalledSince, warnings, now, taskStatusMis
       const hasLaterSibling = index < siblings.length - 1;
       const connector = depth === 0 ? "" : hasLaterSibling ? "\u251C\u2500 " : "\u2514\u2500 ";
       const status = taskStatus(task, stalled);
-      const presentation = statusPresentation(status);
+      const presentation = timelineStatusPresentation(status);
       const progress = percent(weightedTaskProgress(tree, task.id));
       const completedUnits = completedLeaves(tree, task.id);
       rows.push({
@@ -7942,7 +7941,7 @@ function timelineData(tree, segments, stalledSince, warnings, now, taskStatusMis
   visit(children.get(null) ?? [], 0, []);
   const overall = percent(weightedTaskProgress(tree));
   const state = progressStatus(segments);
-  const presentation = statusPresentation(state);
+  const presentation = timelineStatusPresentation(state);
   const leaves = completedLeaves(tree);
   const firstCreated = tree.reduce((first, task) => first === null ? task.createdAt : Math.min(first, task.createdAt), null);
   return {
@@ -8123,7 +8122,7 @@ function updateRecovery(s) {
     return "unreadable";
   return presence.failedAttempts > 1 ? "failed-again" : "waiting";
 }
-function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timelineTaskTree = s.taskTree) {
+function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timelineTaskTree = s.taskTree, agentOverrides = {}) {
   const l = s.ledger;
   const lastActions = withoutStalePending(s.lastActions, now);
   const inbox = inboxView({
@@ -8161,6 +8160,15 @@ function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timel
     prs: prTabOf(s, lastActions, now, holds, settleWindowMs),
     statusPage: statusPage(s, now, new Set(Object.keys(taskOwnerView.stalledSince))),
     timeline: timelineData(timelineTaskTree, timelineOwnerView.segments, timelineOwnerView.stalledSince, [...s.taskFactWarnings, ...timelineOwnerView.warnings], now, s.taskStatusMismatches),
+    agents: {
+      feedRows: agentOverrides.feedRows ?? l.findings,
+      taskTree: timelineTaskTree,
+      ownerFacts: agentOverrides.ownerFacts ?? ownerFacts,
+      progress: timelineOwnerView.segments,
+      localAgents: agentOverrides.localAgents ?? [],
+      localAgentsUnavailable: agentOverrides.localAgentsUnavailable,
+      now
+    },
     taskProgressSegments: taskOwnerView.segments,
     taskStalledSince: taskOwnerView.stalledSince,
     feedStalledSince,
@@ -10794,7 +10802,8 @@ function demoTaskTree(now) {
       notes: ["\u6298\u308A\u305F\u305F\u307F\u72B6\u614B\u3082\u4FDD\u5B58\u3059\u308B\u3002"],
       createdAt,
       updatedAt: now - 5 * MIN,
-      history: [{ at: now - 5 * MIN, source: "demo", kind: "updated", detail: "\u4FDD\u5B58\u51E6\u7406\u3092\u8FFD\u52A0" }]
+      history: [{ at: now - 5 * MIN, source: "demo", kind: "updated", detail: "\u4FDD\u5B58\u51E6\u7406\u3092\u8FFD\u52A0" }],
+      links: { owner: { machine: "workstation", agent: "reviewer" } }
     },
     {
       id: "timeline-capture",
@@ -10818,7 +10827,8 @@ function demoTaskTree(now) {
       notes: [],
       createdAt,
       updatedAt: now - 15 * MIN,
-      history: [{ at: now - 15 * MIN, source: "demo", kind: "created" }]
+      history: [{ at: now - 15 * MIN, source: "demo", kind: "created" }],
+      links: { owner: { machine: "workstation", agent: "builder" } }
     }
   ];
 }
@@ -10863,8 +10873,39 @@ function subject(id, status, name, text, at, more = {}) {
   };
 }
 function demoView(now, agent) {
+  const agentFeedRows = [
+    {
+      id: "demo-root-feed",
+      kind: "progress",
+      title: "Root status",
+      detail: "Working on the saved view.",
+      path: null,
+      at: now - 3 * MIN2,
+      feedKey: "herdr/workstation/meta",
+      feedSource: "demo",
+      feedOwned: true,
+      owner: { machine: "workstation", agent: "meta" },
+      ownerFact: { state: "working", since: now - 3 * MIN2 }
+    },
+    {
+      id: "demo-feed-progress",
+      kind: "progress",
+      title: "Review the Japanese copy",
+      detail: "Blocked: waiting for the copy review.",
+      path: null,
+      at: now - 8 * MIN2,
+      feedKey: "subagent/demo/copy-review",
+      feedSource: "demo",
+      feedOwned: true
+    }
+  ];
   return {
     timelineTaskTree: demoTaskTree(now),
+    agentFeedRows,
+    localAgents: [
+      { machine: "workstation", name: "reviewer", status: "working" },
+      { machine: "workstation", name: "builder", status: "blocked" }
+    ],
     ledger: {
       overview: {
         head: { title: "Pinch to dismiss", description: "Adding a pinch that dismisses glances" },
@@ -11466,7 +11507,11 @@ var CLAUDE_CODE_SUPPORT = {
   "task-reminder": { kind: "full" },
   "task-tree-currentness": { kind: "full" },
   "task-status-mismatch": { kind: "full" },
-  timeline: { kind: "full" }
+  timeline: { kind: "full" },
+  "agents-tab": {
+    kind: "different",
+    reason: "The terminal draws Agents; the desktop pane does not draw this look yet."
+  }
 };
 
 // ../hooks/client-support-codex.ts
@@ -11627,7 +11672,8 @@ var CODEX_SUPPORT = {
   "task-reminder": { kind: "full" },
   "task-tree-currentness": { kind: "full" },
   "task-status-mismatch": { kind: "full" },
-  timeline: { kind: "full" }
+  timeline: { kind: "full" },
+  "agents-tab": { kind: "different", reason: "Agents is not drawn in this look yet." }
 };
 
 // ../hooks/client-support-omp.ts
@@ -11749,7 +11795,8 @@ var OMP_SUPPORT = {
   "task-reminder": { kind: "full" },
   "task-tree-currentness": { kind: "full" },
   "task-status-mismatch": { kind: "full" },
-  timeline: { kind: "full" }
+  timeline: { kind: "full" },
+  "agents-tab": { kind: "different", reason: "Agents is not drawn in this look yet." }
 };
 
 // ../hooks/client-support.ts

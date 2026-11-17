@@ -1,5 +1,5 @@
 // Built by herdr/build.ts with Bun 1.4.4 from herdr/src and hooks/. Do not edit.
-// Built at 2026-11-17T15:12:19.302Z. 225244 characters follow.
+// Built at 2026-11-17T15:47:48.331Z. 225589 characters follow.
 
 // src/main.ts
 import { View, div as div5 } from "gpui-kit";
@@ -82,17 +82,16 @@ var TAB_NAMES = [
   { id: "overview", label: "Status", symbol: "\uD83E\uDDED" },
   { id: "needsYou", label: "Asks", symbol: "\uD83D\uDE4B" },
   { id: "timeline", label: "Timeline", symbol: "◷" },
+  { id: "agents", label: "Agents", symbol: "♟" },
   { id: "prs", label: "PRs", symbol: "\uD83D\uDD00" }
 ];
 var numbered = (tabs) => tabs.map((t, n) => ({ ...t, hotkey: String(n + 1) }));
-var NEXT_BUILD_TABS = numbered(TAB_NAMES.filter((t) => t.id !== "timeline"));
-var NEXT_BUILD_TIMELINE_TABS = numbered(TAB_NAMES);
-var RELEASE_TABS = numbered(TAB_NAMES.filter((t) => t.id !== "overview" && t.id !== "timeline"));
-var RELEASE_TIMELINE_TABS = numbered(TAB_NAMES.filter((t) => t.id !== "overview"));
-function shownTabs(isNextBuild, includeTimeline = false) {
-  return isNextBuild ? includeTimeline ? NEXT_BUILD_TIMELINE_TABS : NEXT_BUILD_TABS : includeTimeline ? RELEASE_TIMELINE_TABS : RELEASE_TABS;
+function shownTabs(isNextBuild, includeTimeline = false, includeAgents = false) {
+  return numbered(TAB_NAMES.filter((tab) => (isNextBuild || tab.id !== "overview") && (includeTimeline || tab.id !== "timeline") && (includeAgents || tab.id !== "agents")));
 }
-function tabBadge(id, counts) {
+function tabBadge(id, counts, agentsAttentionCount = 0) {
+  if (id === "agents")
+    return agentsAttentionCount > 0 ? String(agentsAttentionCount) : null;
   if (id === "timeline" && counts.timeline !== undefined)
     return String(counts.timeline);
   return isRowTab(id) && counts[id] > 0 ? String(counts[id]) : null;
@@ -1476,8 +1475,8 @@ var DOCUMENT_KEYS = [
   { keys: "v", does: "Read the selected report, if available" },
   { keys: "b", does: "Return to the inbox from a report" }
 ];
-function helpKeys(look, isNextBuild, tab, hasStatusButtons, includeTimeline = false) {
-  const tabKeys = shownTabs(isNextBuild, includeTimeline).map((t) => t.hotkey).join(" ");
+function helpKeys(look, isNextBuild, tab, hasStatusButtons, includeTimeline = false, includeAgents = false) {
+  const tabKeys = shownTabs(isNextBuild, includeTimeline, includeAgents).map((t) => t.hotkey).join(" ");
   const hasRows = isRowTab(tab);
   const selectsTimelineRows = tab === "timeline";
   const hasDocumentRows = tab === "needsYou";
@@ -3581,7 +3580,7 @@ function taskStatus(task, stalled) {
     return task.status;
   return task.status === "working" ? "working" : task.status === "waits-on-other" ? "waiting" : "queued";
 }
-function statusPresentation(status) {
+function timelineStatusPresentation(status) {
   switch (status) {
     case "done":
       return { label: "Completed", tone: "done", mark: "●" };
@@ -3648,7 +3647,7 @@ function timelineData(tree, segments, stalledSince, warnings, now, taskStatusMis
       const hasLaterSibling = index < siblings.length - 1;
       const connector = depth === 0 ? "" : hasLaterSibling ? "├─ " : "└─ ";
       const status = taskStatus(task, stalled);
-      const presentation = statusPresentation(status);
+      const presentation = timelineStatusPresentation(status);
       const progress = percent(weightedTaskProgress(tree, task.id));
       const completedUnits = completedLeaves(tree, task.id);
       rows.push({
@@ -3678,7 +3677,7 @@ function timelineData(tree, segments, stalledSince, warnings, now, taskStatusMis
   visit(children.get(null) ?? [], 0, []);
   const overall = percent(weightedTaskProgress(tree));
   const state = progressStatus(segments);
-  const presentation = statusPresentation(state);
+  const presentation = timelineStatusPresentation(state);
   const leaves = completedLeaves(tree);
   const firstCreated = tree.reduce((first, task) => first === null ? task.createdAt : Math.min(first, task.createdAt), null);
   return {
@@ -3721,7 +3720,7 @@ function updateRecovery(s) {
     return "unreadable";
   return presence.failedAttempts > 1 ? "failed-again" : "waiting";
 }
-function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timelineTaskTree = s.taskTree) {
+function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timelineTaskTree = s.taskTree, agentOverrides = {}) {
   const l = s.ledger;
   const lastActions = withoutStalePending(s.lastActions, now);
   const inbox = inboxView({
@@ -3759,6 +3758,15 @@ function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timel
     prs: prTabOf(s, lastActions, now, holds, settleWindowMs),
     statusPage: statusPage(s, now, new Set(Object.keys(taskOwnerView.stalledSince))),
     timeline: timelineData(timelineTaskTree, timelineOwnerView.segments, timelineOwnerView.stalledSince, [...s.taskFactWarnings, ...timelineOwnerView.warnings], now, s.taskStatusMismatches),
+    agents: {
+      feedRows: agentOverrides.feedRows ?? l.findings,
+      taskTree: timelineTaskTree,
+      ownerFacts: agentOverrides.ownerFacts ?? ownerFacts,
+      progress: timelineOwnerView.segments,
+      localAgents: agentOverrides.localAgents ?? [],
+      localAgentsUnavailable: agentOverrides.localAgentsUnavailable,
+      now
+    },
     taskProgressSegments: taskOwnerView.segments,
     taskStalledSince: taskOwnerView.stalledSince,
     feedStalledSince,

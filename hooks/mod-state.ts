@@ -30,6 +30,11 @@ class PaneState {
   listInput: ListInput | null = null
   foldRedrawAt: number | null = null
   herdrCheckTimer: Timer | null = null
+  agentsCheckTimer: Timer | null = null
+  agentsCheckPending = false
+  agentsPageShown = false
+  localAgents: import('./herdr').LocalAgent[] = []
+  agentsUnavailable = false
 }
 
 export const paneState = new PaneState()

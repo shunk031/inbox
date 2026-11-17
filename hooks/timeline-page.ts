@@ -15,8 +15,8 @@ import type { CurrentTaskText } from './task-text'
 import type { PrAction } from './pr-press'
 import type { ActionView } from './rows'
 
-type TimelineState = 'done' | 'working' | 'stalled' | 'waiting' | 'queued' | 'dropped'
-type TimelineTone = 'done' | 'key' | 'error' | 'muted'
+export type TimelineState = 'done' | 'working' | 'stalled' | 'waiting' | 'queued' | 'dropped'
+export type TimelineTone = 'done' | 'key' | 'error' | 'muted'
 type TimelineBarPart = {
   state: keyof Omit<TaskProgressSegments, 'total'>
   mark: string
@@ -150,7 +150,7 @@ function taskStatus(task: TaskNode, stalled: ReadonlySet<string>): TimelineState
   return task.status === 'working' ? 'working' : task.status === 'waits-on-other' ? 'waiting' : 'queued'
 }
 
-function statusPresentation(status: TimelineState): { label: string; tone: TimelineTone; mark: string } {
+export function timelineStatusPresentation(status: TimelineState): { label: string; tone: TimelineTone; mark: string } {
   switch (status) {
     case 'done':
       return { label: 'Completed', tone: 'done', mark: '●' }
@@ -222,7 +222,7 @@ export function timelineData(
       const hasLaterSibling = index < siblings.length - 1
       const connector = depth === 0 ? '' : hasLaterSibling ? '├─ ' : '└─ '
       const status = taskStatus(task, stalled)
-      const presentation = statusPresentation(status)
+      const presentation = timelineStatusPresentation(status)
       const progress = percent(weightedTaskProgress(tree, task.id))
       const completedUnits = completedLeaves(tree, task.id)
       rows.push({
@@ -253,7 +253,7 @@ export function timelineData(
 
   const overall = percent(weightedTaskProgress(tree))
   const state = progressStatus(segments)
-  const presentation = statusPresentation(state)
+  const presentation = timelineStatusPresentation(state)
   const leaves = completedLeaves(tree)
   const firstCreated = tree.reduce<number | null>(
     (first, task) => (first === null ? task.createdAt : Math.min(first, task.createdAt)),
