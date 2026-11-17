@@ -210,6 +210,8 @@ export type Session = {
   ledger: Ledger
   /** Durable work copied from Status subjects and milestones; order is the saved tree order. */
   taskTree: TaskTree
+  /** Whether this session has already reported that another session owns its projection target. */
+  taskTreeProjectionConflictReported: boolean
   /** Explicit reply claims that conflict with a task's saved status. */
   taskStatusMismatches: TaskStatusMismatch[]
   /** Last known GitHub state for each linked task PR; warnings are derived from these states and the task tree. */

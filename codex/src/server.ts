@@ -84,6 +84,8 @@ export type ServerDeps = {
   isNextBuild?: boolean
   /** The optional external progress snapshot. */
   feedPath?: FeedPathSetting
+  /** A feed path owned by the meta task-tree session; never import it as inbox rows. */
+  taskProjectionPath?: string
   /** The page template for a comparison, beside the handler's bundle. */
   comparePage: string
   /**
@@ -197,10 +199,14 @@ export function makeServer(given: ServerDeps): (m: Message) => Promise<Record<st
         await wakeAfterSettle(id).catch(() => undefined)
         await catchUpOnOpen(id).catch(() => undefined)
         const sentTab = shownTabOf(args.tab)
-        const feed = await readFeedFiles(await feedPathValue(deps.feedPath))
+        const feed = await readFeedFiles(
+          await feedPathValue(deps.feedPath),
+          undefined,
+          deps.taskProjectionPath ? [deps.taskProjectionPath] : [],
+        )
         const s = await updateState(dir, id, s => {
           const shownTab = drawnTabOf(sentTab ?? s.shownTab, deps.isNextBuild === true, true)
-          const ledger = feed ? applyFeedFiles(s.ledger, feed.root, feed.files, now()) : s.ledger
+          const ledger = feed ? applyFeedFiles(s.ledger, feed.root, feed.files, now(), feed.skippedPaths) : s.ledger
 
           const updated = ledger === s.ledger ? s : { ...s, ledger }
 

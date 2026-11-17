@@ -91,7 +91,11 @@ export async function handleHook(input: HookInput, deps: HookDeps): Promise<Reco
     { paneId: env.HERDR_PANE_ID, binPath: env.HERDR_BIN_PATH },
     deps.run,
   )
-  const feed = await readFeedFiles(feedPath)
+  const feed = await readFeedFiles(
+    feedPath,
+    undefined,
+    deps.env.INBOX_TASK_PROJECTION_PATH ? [deps.env.INBOX_TASK_PROJECTION_PATH] : [],
+  )
   const cliPath = namedCli(env)
   const withCli = (s: SessionState): SessionState => (cliPath && s.cliPath !== cliPath ? { ...s, cliPath } : s)
   // A subagent's hook names its own rollout, not the session's.
@@ -101,7 +105,7 @@ export async function handleHook(input: HookInput, deps: HookDeps): Promise<Reco
   const withHost = (s: SessionState): SessionState => withRollout(withCli(s))
   const withFeed = (s: SessionState): SessionState => {
     if (!feed) return s
-    const ledger = applyFeedFiles(s.ledger, feed.root, feed.files, now())
+    const ledger = applyFeedFiles(s.ledger, feed.root, feed.files, now(), feed.skippedPaths)
 
     return ledger === s.ledger ? s : { ...s, ledger }
   }

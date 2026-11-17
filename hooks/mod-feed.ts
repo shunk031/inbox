@@ -1,4 +1,4 @@
-import { applyFeedFiles, FEED_POLL_MS, MAX_FEED_FILE_BYTES, parseFeed, type FeedFile } from './feed'
+import { applyFeedFiles, FEED_POLL_MS, MAX_FEED_FILE_BYTES, parseFeed, skippedFeedPaths, type FeedFile } from './feed'
 import { resolveInboxFeedPath } from './feed-path'
 import type { Run } from './gh'
 import type { Ledger } from '../types'
@@ -11,10 +11,12 @@ type FeedFs = [
   (path: string) => Promise<{ name: string; isLink?: boolean }[]>,
   (path: string) => Promise<boolean>,
   (path: string) => Promise<string>,
+  ((path: string) => Promise<{ realPath?: string }>)?,
 ]
 
 export async function startModFeed(
   env: [
+    Promise<string | null | undefined>,
     Promise<string | null | undefined>,
     Promise<string | null | undefined>,
     Promise<string | null | undefined>,
@@ -26,7 +28,7 @@ export async function startModFeed(
   commit: (change: (ledger: Ledger) => Ledger) => Promise<unknown>,
   sessionId: () => Promise<string>,
 ) {
-  const [explicit, home, paneId, binPath] = await Promise.all(env)
+  const [explicit, home, paneId, binPath, projectionPath] = await Promise.all(env)
   const path = await resolveInboxFeedPath(
     explicit ?? undefined,
     home ?? undefined,
@@ -34,21 +36,32 @@ export async function startModFeed(
     run,
   )
   if (!path) return null
-  const poll = feedPoll(path, fs, now, commit)
+  const poll = feedPoll(path, fs, now, commit, projectionPath ? [projectionPath] : [])
 
   return () => sessionId().then(poll)
 }
 
 export function feedPoll(
   path: string,
-  [stat, list, exists, readFile]: FeedFs,
+  fs: FeedFs,
   now: () => Promise<number>,
   commit: (change: (ledger: Ledger) => Ledger) => Promise<unknown>,
+  skippedPaths: string[] = [],
 ): (sessionId: string) => Promise<void> {
+  const [stat, list, exists, readFile, resolvePath] = fs
   let mtimes = new Map<string, number>()
   let session: string | undefined
   let isRunning = false
-  const save = async (files: FeedFile[]) => now().then(at => commit(ledger => applyFeedFiles(ledger, path, files, at)))
+  const save = async (files: FeedFile[]) => {
+    const [at, skipped] = await Promise.all([
+      now(),
+      skippedFeedPaths(files, skippedPaths, {
+        resolve: async path => (await resolvePath?.(path).catch(() => null))?.realPath ?? path,
+        realpath: path => resolvePath?.(path).then(s => s.realPath ?? null) ?? Promise.resolve(null),
+      }),
+    ])
+    await commit(ledger => applyFeedFiles(ledger, path, files, at, skipped))
+  }
   const read = async (file: string, stat: FsStat) =>
     stat.size > MAX_FEED_FILE_BYTES
       ? null

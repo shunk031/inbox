@@ -86,6 +86,7 @@ export function createHandler(
     isPluginFolderGone,
     isNextBuild: existsSync(join(dirname(dirname(fileURLToPath(import.meta.url))), NEXT_BUILD_MARK)),
     feedPath,
+    taskProjectionPath: process.env.INBOX_TASK_PROJECTION_PATH,
     comparePage: join(dirname(fileURLToPath(import.meta.url)), COMPARE_PAGE_FILE),
     onWrite: herdrOnWrite(process.env, run, dir, Date.now, log),
     followHerdrPresses: followHerdrPresses(log),

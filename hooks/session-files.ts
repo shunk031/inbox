@@ -19,6 +19,7 @@ export function emptySession(): Session {
   return {
     ledger: EMPTY,
     taskTree: [],
+    taskTreeProjectionConflictReported: false,
     taskStatusMismatches: [],
     taskPrStates: {},
     taskFactWarnings: [],
@@ -153,6 +154,7 @@ function sessionFields(saved: SavedSession, views: Record<string, PrView>): Sess
   return {
     ledger,
     taskTree,
+    taskTreeProjectionConflictReported: saved.taskTreeProjectionConflictReported === true,
     taskStatusMismatches: upgradeTaskStatusMismatches(saved.taskStatusMismatches, taskTree),
     taskPrStates: Object.fromEntries(
       Object.entries(saved.taskPrStates ?? {}).filter(

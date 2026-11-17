@@ -41,6 +41,8 @@ import {
   type SentBy,
 } from './session-turns'
 import { emptySession, upgradeSession, type SavedSession } from './session-files'
+import { modTaskProjection, type ModTaskProjection } from './mod-task-projection'
+import { runModTool } from './mod-task-run'
 import { postToolReminder, toolCallReminder, withToolCallReminder } from './mod-task-reminder'
 import { pressOn, pruned, type SendOutcome } from './session-presses'
 import { isCompareInBackground } from './clients'
@@ -152,7 +154,7 @@ import {
   type Holds,
 } from './timing'
 import { helpKeys, UNDO_KEY } from './help'
-import { agentTools, NOT_SAVED } from './tools'
+import { agentTools } from './tools'
 import type { AgentTool } from './tools'
 import {
   ARRIVAL_TABS,
@@ -241,7 +243,6 @@ import {
 } from './mod-records'
 import {
   AWAY_MS,
-  answerToolCallWithReminder,
   broughtBack,
   type Changed,
   conversation,
@@ -276,8 +277,8 @@ import { paneRowFrame } from './pane-row-frame'
 import { paneRows } from './pane-rows'
 import { paneFrame } from './pane-frame'
 import { paneRowParts } from './pane-row-parts'
-import { documentBytes, withDocumentPreview } from './document'
-import type { DocumentFile } from './document'
+import { withDocumentPreview } from './document'
+import { modDocumentFile } from './mod-document-file'
 import type { PaneClient, PaneHandlers } from './pane-context'
 import { panePrBlocks, panePrRows } from './pane-prs'
 import { paneStatusLines } from './pane-status-lines'
@@ -288,22 +289,18 @@ import { paneHelp } from './pane-help'
 import { adjustScroll, clearDocument, documentActions, scrollBy } from './pane-document'
 import { foldOf, upgradedUnfolded, withFold } from './fold-keys'
 
-function documentFile($: EngineInterface): DocumentFile {
-  return {
-    stat: path =>
-      $.fs.stat(path, { resolve: true }).then(({ realPath, kind, size }) => ({
-        path: realPath ?? '',
-        isFile: kind === 'file',
-        size,
-      })),
-    read: (path, limit) => $.fs.read(path, { as: 'bytes' }).then(({ base64 }) => documentBytes(base64, limit)),
-  }
+function documentFile($: EngineInterface) {
+  return modDocumentFile(
+    path => $.fs.stat(path, { resolve: true }),
+    path => $.fs.read(path, { as: 'bytes' }),
+  )
 }
 
 const TAB = atom({ plugin: 'inbox', key: 'tab' } as const, 'needsYou' as Tab)
+/** Page state stays separate: unknown pages remain saved, and row tabs hide while a page is open. */
 const PAGE = atom({ plugin: 'inbox', key: 'page' } as const, null as PageTab | null)
 const SELECTION = atom({ plugin: 'inbox', key: 'selection' } as const, NO_SELECTION)
-/** The Status row whose keys work, by id, as `statusSelected` resolves it. */
+/** Status row id whose keys work. */
 const STATUS_SELECTION = atom({ plugin: 'inbox', key: 'statusSelection' } as const, null as string | null)
 const TIMELINE_SELECTION = atom({ plugin: 'inbox', key: 'timelineSelection' } as const, null as string | null)
 const TIMELINE_DETAIL_OPEN = atom({ plugin: 'inbox', key: 'timelineDetailOpen' } as const, false)
@@ -336,11 +333,10 @@ const RECORD_TOOL = 'mcp__inbox__record'
 const CLOSE_TOOL = 'mcp__inbox__close'
 const ORDER_TOOL = 'mcp__inbox__order_prs'
 const TASKS_TOOL = 'mcp__inbox__tasks'
-/**
- * The person's line for each `record` or `close` call that has one, by `tool_use_id`. It lives as long as the
- * process, so a call from before it draws nothing under its row.
- */
+/** Recent tool result lines by use id. */
 const PERSON_LINES = atom({ plugin: 'inbox', key: 'personLines' } as const, {} as Record<string, string>)
+
+let taskProjection: ModTaskProjection | null = null
 
 const PANE = 'inbox'
 
@@ -1048,7 +1044,7 @@ async function upgradeState($: EngineInterface): Promise<Ledger> {
     update($, TIMELINE_SELECTION, upgradedTimelineSelection),
     update($, TIMELINE_FOLDED, upgradedTimelineFolded),
     update($, TIMELINE_DETAIL_OPEN, upgradedTimelineDetailOpen),
-    // A demo an earlier build seeded may lack a field this one draws, so it ends; /inbox demo seeds a new one.
+    // Drop old demo state; /inbox demo seeds a fresh copy.
     update($, DEMO, d => (d === null || isDemoCopy(d) ? d : null)),
     // Migrate legacy string drafts to the current shape.
     update($, DRAFTS, (d: Record<string, Draft | string>) =>
@@ -1069,24 +1065,25 @@ async function runTool(
   isMainAgent: boolean,
   isTasksCall: boolean,
 ): Promise<string> {
-  const now = await $.clock.now()
-  const owner = currentOwner()
-  const toolInput = tool === 'record' ? await withDocumentPreview(input, documentFile($)) : input
-  let answer!: ReturnType<typeof answerToolCallWithReminder>
-  await commit($, owner, s => {
-    answer = answerToolCallWithReminder(s, tool, toolInput, now, isMainAgent, isTasksCall)
-    return answer.state
-  })
-  const { personLine } = answer
-  if (personLine !== null && toolUseId)
-    await update($, PERSON_LINES, lines =>
-      Object.fromEntries([...Object.entries(lines), [toolUseId, personLine]].slice(-MAX_PERSON_LINES)),
-    )
-  const isChangeUnsaved = answer.changedSavedState && isLastSaveRefused(owner.id)
-
-  const result = isChangeUnsaved ? `${answer.result} ${NOT_SAVED}` : answer.result
-
-  return answer.reminder ? `${result}\n\n${answer.reminder}` : result
+  return runModTool(
+    {
+      now: () => $.clock.now(),
+      owner: currentOwner,
+      preview: input => withDocumentPreview(input, documentFile($)),
+      commit: (owner, change) => commit($, owner, change),
+      refused: isLastSaveRefused,
+      projection: taskProjection,
+      savePersonLine: (id, line) =>
+        update($, PERSON_LINES, lines =>
+          Object.fromEntries([...Object.entries(lines), [id, line]].slice(-MAX_PERSON_LINES)),
+        ),
+    },
+    tool,
+    input,
+    toolUseId,
+    isMainAgent,
+    isTasksCall,
+  )
 }
 
 /** Opens the pane; Escape closes it unless its reply field is open. */
@@ -1496,7 +1493,7 @@ async function showAsk($: EngineInterface, askId: string) {
   await scrollToRow($, askId)
 }
 
-/** A set, not a toggle: a second click before the redraw posts the same state, so a double-click leaves it unfolded. */
+/** Pre-redraw clicks keep the row unfolded. */
 async function setFold($: EngineInterface, key: string, isUnfolded: unknown) {
   const fold = foldOf(key)
   if (!fold || typeof isUnfolded !== 'boolean') return
@@ -1702,7 +1699,7 @@ async function pollPrs($: EngineInterface) {
 }
 
 /** Takes a dismissed PR off the tab once its row settles, unless it is still tracked or the Dismiss was undone. */
-/** Sends the answers and Fixes held for Undo, and tells Claude about rows closed with Done, once their settle window has passed. */
+/** Sends held answers and Fixes after Undo's settle window, then tells Claude about Done rows. */
 async function wakeAfterSettle($: EngineInterface) {
   await wakeSessionAfterSettle(hostOf($, currentOwner()))
 }
@@ -1775,7 +1772,7 @@ async function runPress($: EngineInterface, p: RowPress | PrPress, surface: UiPr
   if (canRevealUndo) await keepUndoVisible($, undoKey, undoBlock, now, undoRevision)
   if (!isPrPress(p) && p.action === 'compare') void redrawAtCompareEnd($).catch(() => undefined)
   if (!isPrPress(p) && p.action === 'undo') await selectRestored($, p.id)
-  // Success notes clear after effects finish; a queued message starts its age at QUEUED_AFTER_MS.
+  // Clear success notes after effects; queued messages show Queued and age from QUEUED_AFTER_MS.
   if (sends) later($, QUEUED_AFTER_MS, () => redraw($))
   const outcome = await started.finish()
   if (outcome.wakesAfterSettle) later($, SETTLED_MS, () => wakeAfterSettle($))
@@ -2088,9 +2085,21 @@ async function readVersion($: EngineInterface) {
 
 function startFeed($: EngineInterface) {
   return startModFeed(
-    [$.env.get('INBOX_FEED'), $.env.get('HOME'), $.env.get('HERDR_PANE_ID'), $.env.get('HERDR_BIN_PATH')],
+    [
+      $.env.get('INBOX_FEED'),
+      $.env.get('HOME'),
+      $.env.get('HERDR_PANE_ID'),
+      $.env.get('HERDR_BIN_PATH'),
+      $.env.get('INBOX_TASK_PROJECTION_PATH'),
+    ],
     processRun($),
-    [p => $.fs.stat(p), p => $.fs.list(p), p => $.fs.exists(p), p => $.fs.read(p)],
+    [
+      p => $.fs.stat(p),
+      p => $.fs.list(p),
+      p => $.fs.exists(p),
+      p => $.fs.read(p),
+      p => $.fs.stat(p, { resolve: true }),
+    ],
     () => $.clock.now(),
     update => commitLedger($, update, currentOwner()),
     () => $.session.id(),
@@ -2103,6 +2112,16 @@ async function initializeInbox($: EngineInterface) {
     readVersion($),
     $.env.get('INBOX_RECORDED_ITEMS_ONLY').then(v => void (mod.recordedItemsOnly = isRecordedItemsOnly(v))),
   ])
+  const projectionPath = (await $.env.get('INBOX_TASK_PROJECTION_PATH')) ?? null
+  taskProjection = modTaskProjection(
+    {
+      exists: path => $.fs.exists(path),
+      write: (path, text) => $.fs.write(path, text),
+    },
+    processRun($),
+    () => `${Date.now()}-${Math.random()}`,
+    projectionPath,
+  )
   const feed = await startFeed($)
   mod.isOn = true
   mod.toolsRefused = false
@@ -2217,6 +2236,7 @@ async function applyConversation(
 ) {
   if (revision !== sessionState.loadRevision) return
   const isLoading = () => revision === sessionState.loadRevision && conversation.id === id
+  if (conversation.id) await taskProjection?.release(conversation.id)
   cancelUndoScroll()
   sessionState.stopGeneration++
   sessionState.resuming = null
@@ -2381,6 +2401,7 @@ export const register: Register = on => {
   })
 
   on('session.end', async ($, e, next) => {
+    await taskProjection?.release(conversation.id)
     sessionState.endReason = e.reason
     sessionState.loadRevision++
     sessionState.stopGeneration++

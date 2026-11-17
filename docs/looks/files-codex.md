@@ -54,7 +54,7 @@ Part of [the look map](../looks.md#files).
 | `codex/src/diagnostics.ts` | Codex host. Keeps only the diagnostic lines of a `codex exec` call's stderr, its errors and warnings. |
 | `codex/src/update-main.ts` | Codex host. Entry point for the update process. |
 | `codex/src/hook.ts` | Codex host. The hook logic that changes session state and applies progress feeds. |
-| `feed-reader.ts` | Node feed reader shared by Codex and omp. Reads the optional external feed file or directory with the shared size cap. |
+| `feed-reader.ts` | Node feed reader shared by Codex and omp. Reads the optional external feed file or directory with the shared size cap; supplies omp's task-projection filesystem adapter. |
 | `codex/src/hook-main.ts` | Codex host. Entry point for the hooks. |
 | `codex/src/demo.ts` | Codex host. Turns the shared demo data into a session. |
 | `codex/src/transcript.ts` | Codex host. Reads the Codex session transcript, which Codex calls the rollout. Finds a chat's rollout and reads its tail and history. |

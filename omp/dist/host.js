@@ -1411,6 +1411,8 @@ function parseFeed(text) {
     const f = feed;
     if (f.version !== 1 || !validSource(f.source) || !validTime(f.writtenAt) || !Array.isArray(f.entries) || f.warnings !== undefined && !Array.isArray(f.warnings))
       return null;
+    if (f.projected === true)
+      return f.source === "meta-open-items" ? { version: 1, source: f.source, writtenAt: f.writtenAt, entries: [], projected: true } : null;
     if (f.entries.length > 40)
       return null;
     const keys = new Set;
@@ -1419,7 +1421,7 @@ function parseFeed(text) {
       if (!value || typeof value !== "object")
         return null;
       const e = value;
-      if (typeof e.key !== "string" || e.key.length === 0 || e.key.length > 100 || keys.has(e.key) || !["working", "blocked", "done"].includes(e.state) || typeof e.title !== "string" || e.title.length === 0 || typeof e.detail !== "string" || !validTime(e.at) || e.kind !== undefined && !["work", "task"].includes(e.kind) || e.owner !== undefined && !validOwner(e.owner) || e.signalKey !== undefined && (typeof e.signalKey !== "string" || e.signalKey.length === 0 || e.signalKey.length > 100))
+      if (typeof e.key !== "string" || e.key.length === 0 || e.key.length > 100 || keys.has(e.key) || !["queued", "working", "blocked", "done"].includes(e.state) || typeof e.title !== "string" || e.title.length === 0 || typeof e.detail !== "string" || !validTime(e.at) || e.kind !== undefined && !["work", "task"].includes(e.kind) || e.owner !== undefined && !validOwner(e.owner) || e.signalKey !== undefined && (typeof e.signalKey !== "string" || e.signalKey.length === 0 || e.signalKey.length > 100))
         return null;
       if (f.source === "meta-open-items" && (e.kind === undefined || e.owner === undefined))
         return null;
@@ -1454,7 +1456,7 @@ var validOwner = (value) => {
 };
 function applyFeed(ledger, feed, now, source = "") {
   if (feed.source === "meta-open-items")
-    return applyMetaOpenItems(ledger, feed, now, source);
+    return applyMetaOpenItems(ledger, feed.projected ? { ...feed, entries: [] } : feed, now, source);
   const keys = new Set(feed.entries.map((e) => e.key));
   const owns = (f) => f.feedOwned === true && f.feedKey !== undefined && f.feedSource === source;
   const staleClosed = ledger.closedFindings.some((f) => owns(f) && !keys.has(f.feedKey));
@@ -1481,7 +1483,7 @@ function applyFeed(ledger, feed, now, source = "") {
       feedSource: source,
       feedOwned: true,
       ...owner ? { owner: { ...owner } } : {},
-      ...feed.source === "herdr-meta-patrol" && owner ? { ownerFact: { state: entry.state, since: entry.at } } : {}
+      ...feed.source === "herdr-meta-patrol" && owner ? { ownerFact: { state: entry.state === "queued" ? "working" : entry.state, since: entry.at } } : {}
     };
     if (!owner) {
       delete updated.owner;
@@ -1500,19 +1502,44 @@ function applyFeed(ledger, feed, now, source = "") {
       next = closeFinding(next, finding.id, { how: "update", outcome: "done: no longer reported" }, now);
   return next;
 }
-function applyFeedFiles(ledger, root, files, now) {
-  const present = new Set(files.map((f) => f.path));
-  const sources = new Set([...ledger.findings, ...ledger.closedFindings, ...ledger.items].map((f) => f.feedSource).filter(Boolean));
+function normalizedPath(path) {
+  return path.replace(/\\/g, "/").replace(/\/+$/, "");
+}
+async function skippedFeedPaths(files, skippedPaths, paths) {
+  if (skippedPaths.length === 0)
+    return [];
+  const canonical = async (path) => {
+    const absolute = await paths.resolve(path);
+    return await paths.realpath(absolute).catch(() => null) ?? absolute;
+  };
+  const skipped = new Set(await Promise.all(skippedPaths.map(canonical)));
+  const aliases = new Set(skippedPaths.map(normalizedPath));
+  for (const path of skipped)
+    aliases.add(normalizedPath(path));
+  for (const file of files)
+    if (skipped.has(await canonical(file.path)))
+      aliases.add(normalizedPath(file.path));
+  return [...aliases];
+}
+function applyFeedFiles(ledger, root, files, now, skippedPaths = []) {
+  const skipped = new Set(skippedPaths.map(normalizedPath));
   let next = ledger;
+  const priorSources = new Set([...ledger.findings, ...ledger.closedFindings, ...ledger.items].map((f) => f.feedSource).filter(Boolean));
+  for (const source of priorSources)
+    if (skipped.has(normalizedPath(source)))
+      next = applyFeed(next, emptyMetaFeed, now, source);
+  const activeFiles = files.filter((file) => !skipped.has(normalizedPath(file.path)));
+  const present = new Set(activeFiles.map((f) => f.path));
+  const sources = new Set([...next.findings, ...next.closedFindings, ...next.items].map((f) => f.feedSource).filter(Boolean));
   for (const source of sources)
     if (sourceUnder(source, root) && !present.has(source) && !next.findings.some((f) => f.feedSource === source && f.sourceManaged) && !next.items.some((i) => i.feedSource === source && i.sourceManaged))
       next = applyFeed(next, emptyFeed, now, source);
-  for (const file of files)
+  for (const file of activeFiles)
     if (file.feed)
       next = applyFeed(next, file.feed, now, file.path);
-  const validPaths = new Set(files.filter((file) => file.feed).map((file) => file.path));
+  const validPaths = new Set(activeFiles.filter((file) => file.feed).map((file) => file.path));
   const carriedWarnings = (next.untrackedWork ?? []).filter((w) => !sourceUnder(w.feedSource, root) || present.has(w.feedSource) && !validPaths.has(w.feedSource));
-  const currentWarnings = files.flatMap((file) => file.feed ? (file.feed.warnings ?? []).map((w) => ({ ...w, feedSource: file.path })) : []);
+  const currentWarnings = activeFiles.flatMap((file) => file.feed ? (file.feed.warnings ?? []).map((w) => ({ ...w, feedSource: file.path })) : []);
   const untrackedWork = [...carriedWarnings, ...currentWarnings];
   if (JSON.stringify(untrackedWork) !== JSON.stringify(next.untrackedWork ?? []))
     next = { ...next, untrackedWork };
@@ -1581,6 +1608,7 @@ function applyMetaOpenItems(ledger, feed, now, source) {
   return next;
 }
 var emptyFeed = { version: 1, source: "", writtenAt: 0, entries: [] };
+var emptyMetaFeed = { version: 1, source: "meta-open-items", writtenAt: 0, entries: [] };
 var sourceUnder = (source, root) => {
   const base = root.replace(/[\\/]+$/, "");
   return source === base || source.startsWith(`${base}/`) || source.startsWith(`${base}\\`);
@@ -5362,6 +5390,7 @@ function emptySession() {
   return {
     ledger: EMPTY,
     taskTree: [],
+    taskTreeProjectionConflictReported: false,
     taskStatusMismatches: [],
     taskPrStates: {},
     taskFactWarnings: [],
@@ -5444,6 +5473,7 @@ function sessionFields(saved, views) {
   return {
     ledger,
     taskTree,
+    taskTreeProjectionConflictReported: saved.taskTreeProjectionConflictReported === true,
     taskStatusMismatches: upgradeTaskStatusMismatches(saved.taskStatusMismatches, taskTree),
     taskPrStates: Object.fromEntries(Object.entries(saved.taskPrStates ?? {}).filter((entry) => entry[1] === "OPEN" || entry[1] === "CLOSED" || entry[1] === "MERGED")),
     taskFactWarnings: saved.taskFactWarnings ?? [],
@@ -11506,6 +11536,7 @@ var CLAUDE_CODE_SUPPORT = {
   "task-owner-facts": { kind: "full" },
   "task-reminder": { kind: "full" },
   "task-tree-currentness": { kind: "full" },
+  "task-tree-projection": { kind: "full" },
   "task-status-mismatch": { kind: "full" },
   timeline: { kind: "full" },
   "agents-tab": {
@@ -11671,6 +11702,10 @@ var CODEX_SUPPORT = {
   "task-owner-facts": { kind: "full" },
   "task-reminder": { kind: "full" },
   "task-tree-currentness": { kind: "full" },
+  "task-tree-projection": {
+    kind: "unsupported",
+    reason: "The Codex MCP server serves every chat, so it cannot safely enable a file projection for only the meta root chat."
+  },
   "task-status-mismatch": { kind: "full" },
   timeline: { kind: "full" },
   "agents-tab": { kind: "different", reason: "Agents is not drawn in this look yet." }
@@ -11794,6 +11829,10 @@ var OMP_SUPPORT = {
   "task-owner-facts": { kind: "full" },
   "task-reminder": { kind: "full" },
   "task-tree-currentness": { kind: "full" },
+  "task-tree-projection": {
+    kind: "unsupported",
+    reason: "Only the meta root session on Claude Code writes the task-tree projection; omp keeps its task tree and continues reading configured feeds."
+  },
   "task-status-mismatch": { kind: "full" },
   timeline: { kind: "full" },
   "agents-tab": { kind: "different", reason: "Agents is not drawn in this look yet." }
@@ -14290,19 +14329,25 @@ function ompHerdrAsk(target, memory, changed) {
 }
 
 // ../feed-reader.ts
-import { readdir as readdir3, readFile as readFile3, stat as stat3 } from "fs/promises";
+import { readdir as readdir3, readFile as readFile3, realpath, stat as stat3 } from "fs/promises";
 import { join as join3, resolve } from "path";
 var feedIo = {
   resolve,
+  realpath: async (path) => realpath(path).catch(() => null),
   join: join3,
   stat: stat3,
   list: (root) => readdir3(root, { withFileTypes: true }),
   read: (path) => readFile3(path, "utf8")
 };
-async function readFeedFiles(path, io = feedIo) {
+async function readFeedFiles(path, io = feedIo, skipPaths = []) {
   if (!path)
     return null;
   const root = io.resolve(path);
+  const result = async (files) => ({
+    root,
+    files,
+    skippedPaths: await skippedFeedPaths(files, skipPaths, io)
+  });
   const read = async (path, size) => ({
     path,
     feed: size > MAX_FEED_FILE_BYTES ? null : parseFeed(await io.read(path))
@@ -14310,7 +14355,7 @@ async function readFeedFiles(path, io = feedIo) {
   try {
     const info = await io.stat(root);
     if (info.isFile())
-      return { root, files: [await read(root, info.size)] };
+      return result([await read(root, info.size)]);
     if (!info.isDirectory())
       return null;
     const files = [];
@@ -14325,9 +14370,9 @@ async function readFeedFiles(path, io = feedIo) {
           files.push({ path: file, feed: null });
       }
     }
-    return { root, files };
+    return result(files);
   } catch (error) {
-    return missing(error) ? { root, files: [] } : null;
+    return missing(error) ? result([]) : null;
   }
 }
 var missing = (error) => !!error && typeof error === "object" && ("code" in error) && error.code === "ENOENT";
@@ -14940,11 +14985,11 @@ function turnHandlers(context, sessions) {
 
 // src/host-document.ts
 import { constants as constants2 } from "fs";
-import { open, realpath, stat as stat5 } from "fs/promises";
+import { open, realpath as realpath2, stat as stat5 } from "fs/promises";
 var BLOCKED_DOCUMENT_LINK = "inbox-blocked-document-link";
 var documentFile = {
   stat: async (path) => {
-    const target = await realpath(path);
+    const target = await realpath2(path);
     const info = await stat5(target);
     return { path: target, isFile: info.isFile(), size: info.size };
   },
