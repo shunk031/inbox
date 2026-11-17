@@ -106,7 +106,7 @@ test('on a next build, a Status call that lands after a look does not change its
   const pane = await $.ui.mount(PANE)
   let release: () => void = () => undefined
   w.statusHold = new Promise<void>(resolve => (release = resolve))
-  w.statusReply = 'UNCHANGED'
+  w.statusReply = 'HEAD: Adding a greeting CLI | Building a CLI that greets by name'
   await reply('name it greet', 't2')
   await seedTasks($, [{ id: 's2', title: 'Command', status: 'working', detail: 'named greet' }])
   expect(w.statusPrompts).toHaveLength(2)

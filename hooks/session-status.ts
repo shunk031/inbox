@@ -30,10 +30,11 @@ export function appliedStatus<S extends Session>(
   now: number,
   readSetAt: number | null = s.ledger.overview?.goal?.setAt ?? null,
   isCatchUp = false,
+  requireHead = false,
 ): S {
   if (!isStatusCallCurrent(s, appliedAfter)) return s
   const askIds = new Set(s.ledger.items.map(i => i.id))
-  const overview = applyStatus(s.ledger.overview, answer, now, askIds, readSetAt, s.taskTree)
+  const overview = applyStatus(s.ledger.overview, answer, now, askIds, readSetAt, s.taskTree, requireHead)
 
   return {
     ...s,

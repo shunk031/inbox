@@ -98,6 +98,7 @@ export const CLIENTS: Record<ClientId, ClientSupport> = {
       'task-pr-facts': { kind: 'full' },
       'task-owner-facts': { kind: 'full' },
       'task-reminder': { kind: 'full' },
+      'task-tree-currentness': { kind: 'full' },
       timeline: { kind: 'full' },
     },
   },
@@ -179,7 +180,7 @@ export const CLIENTS: Record<ClientId, ClientSupport> = {
       'host-task-list': {
         kind: 'different',
         reason:
-          "Codex runs no hook for `update_plan`, and the inbox's tool matcher cannot be widened without every person trusting the hook again. So the plan is read from the rollout when the turn stops, and shows from the next Status call. The tool is not offered by default in `codex exec`, and the app is not checked.",
+          'Codex has no hook for `update_plan`, and widening the tool matcher requires hook trust. The plan is read from the rollout at Stop and shown by the next Status call; `codex exec` does not offer the tool by default, and the app is unchecked.',
       },
       'hooks-need-trust': { kind: 'full' },
       'compare-in-background': {
@@ -278,6 +279,7 @@ export const CLIENTS: Record<ClientId, ClientSupport> = {
       'task-pr-facts': { kind: 'full' },
       'task-owner-facts': { kind: 'full' },
       'task-reminder': { kind: 'full' },
+      'task-tree-currentness': { kind: 'full' },
       timeline: { kind: 'full' },
     },
   },
@@ -403,6 +405,7 @@ export const CLIENTS: Record<ClientId, ClientSupport> = {
       'task-pr-facts': { kind: 'full' },
       'task-owner-facts': { kind: 'full' },
       'task-reminder': { kind: 'full' },
+      'task-tree-currentness': { kind: 'full' },
       timeline: { kind: 'full' },
     },
   },

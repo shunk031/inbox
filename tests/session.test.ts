@@ -247,7 +247,7 @@ test('an update cut off after one failure still reads as waiting to retry, not a
 test('each model call says which call of the update it is: a first try, the retry of a failed exchange, a Status call asked again after an answer with no operation, and a catch-up', async () => {
   const kinds: CallKind[] = []
   const ledgerAnswers = [null, LEDGER_REPLY]
-  const statusAnswers = ['Here is where things stand.', 'NO CHANGE']
+  const statusAnswers = ['Here is where things stand.', 'NO CHANGE\nHEAD: Current work | Continuing the current work']
   const { host } = fakeHost(async (_prompt, system, kind) => {
     kinds.push(kind)
     return (system === STATUS_SYSTEM ? statusAnswers : ledgerAnswers).shift() ?? null
@@ -277,7 +277,7 @@ test('each call’s last failure is saved in its own record with its cause, a pr
     timeoutMs: null,
   }
   const ledgerAnswers = [null, 'not a ledger', LEDGER_REPLY]
-  const statusAnswers = ['Here is where things stand.', 'NO CHANGE']
+  const statusAnswers = ['Here is where things stand.', 'NO CHANGE\nHEAD: Current work | Continuing the current work']
   const { host } = fakeHost(async (_prompt, system, _kind, report) => {
     const answer = (system === STATUS_SYSTEM ? statusAnswers : ledgerAnswers).shift() ?? null
     report?.(answer === null ? { model: 'm', error: 'codex exec exited 1', cause: 'process', process } : { model: 'm' })

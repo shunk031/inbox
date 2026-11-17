@@ -26,6 +26,7 @@ ${GOAL_INPUT}
 - <reply>: what the agent said this turn, in order
 
 Answer with lines only. Every line you write is applied. If nothing about the head, goal, or links changed, answer NO CHANGE.
+Write a fresh HEAD on every reply and catch-up, even if the focus is unchanged. NO CHANGE means no GOAL or LINK changed; it never replaces HEAD.
 
 Write only these lines when they apply:
 HEAD: title | description

@@ -44,7 +44,11 @@ test(
     expect(await pane.find({ text: /^1\) Add a --loud flag\?/ })).toBeDefined()
     expect(await band.find({ text: /Asks 6/ })).toBeDefined()
     expect(await pane.find({ text: /^ 6$/ })).toBeDefined()
-    expect(sidebarTokens()).toMatchObject({ ...NO_COUNTS, 'inbox-needs-you': '6' })
+    expect(sidebarTokens()).toMatchObject({
+      ...NO_COUNTS,
+      'inbox-focus': 'Continuing the current work',
+      'inbox-needs-you': '6',
+    })
 
     const answered = await $.prompt.submit({ text: '1. yes', wait: false, origin: { kind: 'composer' } })
     expect(answered.context?.join('\n')).toContain('1 → "Add a --loud flag?"')
@@ -57,7 +61,11 @@ test(
     await clock.settle()
     expect(await band.find({ text: /Asks 5/ })).toBeDefined()
     expect(await pane.find({ text: /^ 5$/ })).toBeDefined()
-    expect(sidebarTokens()).toMatchObject({ ...NO_COUNTS, 'inbox-needs-you': '5' })
+    expect(sidebarTokens()).toMatchObject({
+      ...NO_COUNTS,
+      'inbox-focus': 'Continuing the current work',
+      'inbox-needs-you': '5',
+    })
 
     w.ledgerReply = ['NEW: do | - | Water the plants | - | -', 'NEW: decide | 1 | Ship it? | yes / no | yes'].join('\n')
     await reply('ship it', 't3')
@@ -77,6 +85,7 @@ test(
     expect(sidebarTokens()).toEqual({
       ...NO_COUNTS,
       inbox: '9 · Ship it?',
+      'inbox-focus': 'Continuing the current work',
       'inbox-needs-you': '9',
       'inbox-findings': '1',
     })

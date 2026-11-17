@@ -2,6 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { parseStatus } from '../hooks/status'
 import { applyStatus } from '../hooks/status-ops'
+import { STATUS_SYSTEM } from '../hooks/status-prompt'
 import type { TaskNode } from '../types'
 
 const task = (id: string): TaskNode => ({
@@ -53,4 +54,34 @@ test('a number-only HEAD is ignored and an unchanged answer leaves saved Status 
     current.head,
   )
   expect(applyStatus(current, parseStatus('NO CHANGE')!, 200, new Set())).toEqual(current)
+})
+
+test('reply and catch-up answers need a fresh HEAD, including answers that say NO CHANGE', () => {
+  const current = applyStatus(null, parseStatus('HEAD: Old focus | Earlier work')!, 100, new Set())!
+
+  expect(parseStatus('NO CHANGE', true)).toBeNull()
+  expect(parseStatus('LINK: i1 | t1', true)).toBeNull()
+  expect(parseStatus('NO CHANGE\nHEAD: New focus | Current work', true)).toEqual({
+    kind: 'ops',
+    ops: [{ kind: 'none' }, { kind: 'head', title: 'New focus', description: 'Current work' }],
+  })
+  expect(applyStatus(current, parseStatus('NO CHANGE')!, 200, new Set(), null, [], true)).toEqual(current)
+  expect(
+    applyStatus(
+      current,
+      parseStatus('NO CHANGE\nHEAD: New focus | Current work', true)!,
+      200,
+      new Set(),
+      null,
+      [],
+      true,
+    )?.head,
+  ).toEqual({
+    title: 'New focus',
+    description: 'Current work',
+  })
+  expect(parseStatus('NO CHANGE')).toEqual({ kind: 'unchanged' })
+  expect(STATUS_SYSTEM).toContain(
+    'Write a fresh HEAD on every reply and catch-up, even if the focus is unchanged. NO CHANGE means no GOAL or LINK changed; it never replaces HEAD.',
+  )
 })

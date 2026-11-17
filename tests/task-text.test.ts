@@ -1,13 +1,13 @@
 import { expect, test } from 'claude-code/testing'
 
 import { EMPTY } from '../hooks/ledger'
-import { inboxText, statusCarryText } from '../hooks/inbox-text'
+import { inboxText, promptNotes, statusCarryText } from '../hooks/inbox-text'
 import { statusPage } from '../hooks/status-page'
 import { statusPrompt } from '../hooks/status-prompt'
 import { currentTaskText } from '../hooks/task-text'
 import { timelineData, timelinePage } from '../hooks/timeline-page'
 import { emptySession } from '../hooks/session-files'
-import type { TaskNode, TaskProgressSegments } from '../types'
+import type { TaskNode, TaskProgressSegments, Told } from '../types'
 import { CLAUDE_CODE } from '../hooks/model-text'
 
 const task = (change: Partial<TaskNode> = {}): TaskNode => ({
@@ -128,4 +128,54 @@ test('prompt inbox and Status carry text use the current task note, and the Stat
     },
   )
   expect(olderPrompt).toContain('Implement the cache | The latest note (1m ago)')
+})
+
+test('each short turn gets the same saved task tree with its own turn number', () => {
+  const tree = [task()]
+  let told: Told = { inbox: null, closed: [] }
+  for (let turn = 1; turn <= 60; turn += 1) {
+    const result = promptNotes(
+      CLAUDE_CODE,
+      { ...EMPTY, turn },
+      { text: 'Continue.', isPress: false, isOpen: true },
+      told,
+      tree,
+    )
+    const note = result.notes.find(text => text.startsWith('inbox:')) ?? ''
+    expect(note).toContain(`Task tree check for turn ${turn} (current work).`)
+    expect(note).toContain('- t1 | working | Implement the cache | The latest note')
+    expect(result.told.inbox).toBe(note)
+    told = result.told
+  }
+  expect(tree[0]?.status).toBe('working')
+})
+
+test('task snapshots omit closed tasks, cap rows and row length, and report omissions', () => {
+  const tree = Array.from({ length: 14 }, (_, index) =>
+    task({
+      id: `task-${index}`,
+      title: `タスク ${index} ${'日本語 '.repeat(20)}`,
+      detail: '最新の詳細 '.repeat(12),
+      notes: [],
+      status: index === 13 ? 'done' : 'queued',
+      history: [],
+    }),
+  )
+  const inbox = inboxText(CLAUDE_CODE, { ...EMPTY, turn: 7 }, true, tree)
+  const lines = inbox.split('\n')
+  const start = lines.findIndex(line => line.startsWith('Task tree check for turn 7'))
+  const rows = lines.slice(start + 1, start + 13)
+
+  expect(start).toBeGreaterThanOrEqual(0)
+  expect(rows).toHaveLength(12)
+  expect(rows.every(row => row.length <= 96)).toBe(true)
+  expect(rows[0]).toContain('task-0')
+  expect(rows.at(-1)).toContain('task-11')
+  expect(lines).toContain('- 1 more open task omitted.')
+  expect(inbox).not.toContain('task-12')
+  expect(inbox).not.toContain('task-13')
+})
+
+test('an empty task tree adds no snapshot text', () => {
+  expect(inboxText(CLAUDE_CODE, { ...EMPTY, turn: 3 }, true, [])).not.toContain('Task tree check')
 })

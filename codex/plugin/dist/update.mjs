@@ -4065,7 +4065,8 @@ function applyOps(last, ops, now, askIds, tree = []) {
   }
   return settleGoal(o, tree, now);
 }
-function applyStatus(last, answer, now, askIds, readSetAt = last?.goal?.setAt ?? null, taskTree = []) {
+function applyStatus(last, answer, now, askIds, readSetAt = last?.goal?.setAt ?? null, taskTree = [], requireHead = false) {
+  if (requireHead && (answer.kind !== "ops" || !answer.ops.some((op) => op.kind === "head"))) return last;
   const read = last?.goalRefused ? { ...last, goalRefused: null } : last;
   const o = answer.kind === "ops" ? applyOps(last, answer.ops, now, askIds, taskTree) : read;
   if (o === null) return null;
@@ -4078,10 +4079,10 @@ function applyStatus(last, answer, now, askIds, readSetAt = last?.goal?.setAt ??
 function isStatusCallCurrent(s, appliedAfter) {
   return s.presence.turnsApplied >= appliedAfter && s.overviewTurn <= appliedAfter;
 }
-function appliedStatus(s, answer, appliedAfter, now, readSetAt = s.ledger.overview?.goal?.setAt ?? null, isCatchUp = false) {
+function appliedStatus(s, answer, appliedAfter, now, readSetAt = s.ledger.overview?.goal?.setAt ?? null, isCatchUp = false, requireHead = false) {
   if (!isStatusCallCurrent(s, appliedAfter)) return s;
   const askIds = new Set(s.ledger.items.map((i) => i.id));
-  const overview = applyStatus(s.ledger.overview, answer, now, askIds, readSetAt, s.taskTree);
+  const overview = applyStatus(s.ledger.overview, answer, now, askIds, readSetAt, s.taskTree, requireHead);
   return {
     ...s,
     ledger: { ...s.ledger, overview },
@@ -4528,7 +4529,7 @@ function opOf(key, f) {
   if (key === "RETIRE") return { kind: "retire", why: f[0] ?? "" };
   return null;
 }
-function parseStatus(text2) {
+function parseStatus(text2, requireHead = false) {
   let ignoredLegacy = false;
   const ops = (text2 ?? "").split(NL).flatMap((raw) => {
     const m = LINE.exec(raw.trim());
@@ -4541,12 +4542,16 @@ function parseStatus(text2) {
     const op = opOf(key, fields(m[2] ?? ""));
     return op === null ? [] : [op];
   });
-  if (ops.length === 0) return ignoredLegacy ? { kind: "unchanged" } : null;
+  if (ops.length === 0) {
+    if (requireHead) return null;
+    return ignoredLegacy ? { kind: "unchanged" } : null;
+  }
+  if (requireHead && !ops.some((op) => op.kind === "head")) return null;
   return ops.every((o) => o.kind === "none") ? { kind: "unchanged" } : { kind: "ops", ops };
 }
-async function askStatus(ask) {
+async function askStatus(ask, requireHead = false) {
   const first = await ask();
-  const isUnreadable = first.text !== null && parseStatus(first.text) === null;
+  const isUnreadable = first.text !== null && parseStatus(first.text, requireHead) === null;
   return { first, last: isUnreadable ? await ask() : first };
 }
 
@@ -4629,6 +4634,7 @@ ${GOAL_INPUT}
 - <reply>: what the agent said this turn, in order
 
 Answer with lines only. Every line you write is applied. If nothing about the head, goal, or links changed, answer NO CHANGE.
+Write a fresh HEAD on every reply and catch-up, even if the focus is unchanged. NO CHANGE means no GOAL or LINK changed; it never replaces HEAD.
 
 Write only these lines when they apply:
 HEAD: title | description
@@ -4797,6 +4803,7 @@ async function askAndWriteStatus(host, s, call, appliedAfter) {
   if (!isStatusCallCurrent(s, appliedAfter)) return;
   const input = { last: s.ledger.overview, asks: s.ledger.items, taskTree: s.taskTree, now: await host.now() };
   const prompt = statusCallPrompt(input, call.exchange);
+  const requireHead = call.exchange.kind !== "mid-turn";
   let system = null;
   const heards = [];
   const { last } = await askStatus(async () => {
@@ -4806,14 +4813,14 @@ async function askAndWriteStatus(host, s, call, appliedAfter) {
     const heard = await heardCall(call.ask, prompt, currentSystem, kind, () => host.now());
     heards.push({ kind, heard });
     return heard;
-  });
+  }, requireHead);
   const attempts = heards.map((h) => attemptOf(h.heard));
-  const answer = last.text === null ? null : parseStatus(last.text);
+  const answer = last.text === null ? null : parseStatus(last.text, requireHead);
   const now = await host.now();
   let before = null;
   let isWritten = false;
   const noted = (current) => heards.reduce(
-    (x, h) => withCall(x, h.kind, h.heard, h.heard.text !== null && parseStatus(h.heard.text) !== null, now),
+    (x, h) => withCall(x, h.kind, h.heard, h.heard.text !== null && parseStatus(h.heard.text, requireHead) !== null, now),
     current
   );
   const after = await host.update((current) => {
@@ -4821,7 +4828,7 @@ async function askAndWriteStatus(host, s, call, appliedAfter) {
     before = x.ledger.overview;
     isWritten = isStatusCallCurrent(x, appliedAfter);
     const readSetAt = input.last?.goal?.setAt ?? null;
-    return answer === null ? failedStatus(x, last.text, appliedAfter, now, call.exchange.kind === "catch-up") : appliedStatus(x, answer, appliedAfter, now, readSetAt, call.exchange.kind === "catch-up");
+    return answer === null ? failedStatus(x, last.text, appliedAfter, now, call.exchange.kind === "catch-up") : appliedStatus(x, answer, appliedAfter, now, readSetAt, call.exchange.kind === "catch-up", requireHead);
   });
   if (!host.records) return;
   const record2 = {

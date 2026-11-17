@@ -945,6 +945,20 @@ function itemLine(item) {
 function findingLine(finding) {
   return `- ${finding.kind}: ${finding.title} (close id: ${finding.id})`;
 }
+function taskSnapshotLines(ledger, taskTree) {
+  const open2 = taskTree.filter((task) => task.status !== "done" && task.status !== "dropped");
+  if (open2.length === 0) return [];
+  const rows = open2.slice(0, 12).map((task) => {
+    const text2 = currentTaskText(task)?.text.replace(/\s+/g, " ").trim();
+    const row = [`- ${task.id}`, task.status, task.title, text2].filter(Boolean).join(" | ");
+    return clipLabel(row, 96);
+  });
+  return [
+    `Task tree check for turn ${ledger.turn} (current work). Keep it current with \`tasks\` when work starts, changes, becomes blocked, or finishes. Only a successful \`tasks\` call changes task status.`,
+    ...rows,
+    ...open2.length > rows.length ? [`- ${open2.length - rows.length} more open ${open2.length - rows.length === 1 ? "task" : "tasks"} omitted.`] : []
+  ];
+}
 function statusSummaryLines(ledger, taskTree = []) {
   const head = ledger.overview?.head ?? null;
   const focus = head ? [head.title, head.description].filter(Boolean).join(": ") : "";
@@ -989,6 +1003,7 @@ function inboxText(host, ledger, isOpen2, taskTree = []) {
     `inbox: what waits on the user, as of your last reply. Anything not listed here is closed. ${CLOSE_ID_RULE}`
   ];
   out.push(...statusSummaryLines(ledger, taskTree));
+  out.push(...taskSnapshotLines(ledger, taskTree));
   if (promptItems(ledger).length > 0) {
     out.push("Waiting on the user:");
     for (const item of promptItems(ledger)) out.push(itemLine(item));
@@ -1028,7 +1043,7 @@ function promptNotes(host, ledger, prompt, told, taskTree = []) {
   const toldClosed = new Set(told.closed);
   const closed = closedText(ledger.closed.filter((d) => !toldClosed.has(d.id)));
   const hasUnrecorded = ledger.unrecordedDecisions.length > 0;
-  const isEmpty = promptItems(ledger).length === 0 && ledger.findings.every((f) => f.feedOwned);
+  const isEmpty = promptItems(ledger).length === 0 && ledger.findings.every((f) => f.feedOwned) && taskTree.every((task) => task.status === "done" || task.status === "dropped");
   if (!closed && !hasUnrecorded && (inbox === told.inbox || isEmpty && told.inbox === null))
     return { notes, told, shownUnrecorded: false };
   notes.push(closed ? `${inbox}${NL2}${closed}` : inbox);
