@@ -954,14 +954,17 @@ function taskSnapshotLines(ledger, taskTree) {
     return clipLabel(row, 96);
   });
   return [
-    `Task tree check for turn ${ledger.turn} (current work). Keep it current with \`tasks\` when work starts, changes, becomes blocked, or finishes. Only a successful \`tasks\` call changes task status.`,
+    `Task tree check for turn ${ledger.turn} (current work). Keep it current with \`tasks\` when work starts, changes, becomes blocked, or finishes. Task status changes only through \`tasks\` or when a linked pull request merges.`,
     ...rows,
     ...open2.length > rows.length ? [`- ${open2.length - rows.length} more open ${open2.length - rows.length === 1 ? "task" : "tasks"} omitted.`] : []
   ];
 }
-function statusSummaryLines(ledger, taskTree = []) {
+function statusFocusLines(ledger) {
   const head = ledger.overview?.head ?? null;
   const focus = head ? [head.title, head.description].filter(Boolean).join(": ") : "";
+  return focus ? [`Working on: ${focus}`] : [];
+}
+function statusSummaryLines(ledger, taskTree = []) {
   const open2 = (ledger.overview?.subjects ?? []).filter(isOpen);
   const groups = taskRootGroups(taskTree).filter(
     ({ roots }) => roots.some((task) => task.status !== "done" && task.status !== "dropped")
@@ -973,7 +976,7 @@ function statusSummaryLines(ledger, taskTree = []) {
     return `- ${name}: ${current || "-"} (${status})`;
   });
   return [
-    ...focus ? [`Working on: ${focus}`] : [],
+    ...statusFocusLines(ledger),
     ...taskLines.length > 0 ? ["Where it stands:", ...taskLines] : open2.length > 0 ? ["Where it stands:", ...open2.map((s) => `- ${s.name}: ${s.text || "-"} (${s.status})`)] : []
   ];
 }
@@ -1002,7 +1005,7 @@ function inboxText(host, ledger, isOpen2, taskTree = []) {
   const out = [
     `inbox: what waits on the user, as of your last reply. Anything not listed here is closed. ${CLOSE_ID_RULE}`
   ];
-  out.push(...statusSummaryLines(ledger, taskTree));
+  out.push(...statusFocusLines(ledger));
   out.push(...taskSnapshotLines(ledger, taskTree));
   if (promptItems(ledger).length > 0) {
     out.push("Waiting on the user:");

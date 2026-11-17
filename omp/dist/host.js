@@ -3446,26 +3446,15 @@ function taskSnapshotLines(ledger, taskTree) {
     return clipLabel(row, 96);
   });
   return [
-    `Task tree check for turn ${ledger.turn} (current work). Keep it current with \`tasks\` when work starts, changes, becomes blocked, or finishes. Only a successful \`tasks\` call changes task status.`,
+    `Task tree check for turn ${ledger.turn} (current work). Keep it current with \`tasks\` when work starts, changes, becomes blocked, or finishes. Task status changes only through \`tasks\` or when a linked pull request merges.`,
     ...rows,
     ...open.length > rows.length ? [`- ${open.length - rows.length} more open ${open.length - rows.length === 1 ? "task" : "tasks"} omitted.`] : []
   ];
 }
-function statusSummaryLines(ledger, taskTree = []) {
+function statusFocusLines(ledger) {
   const head = ledger.overview?.head ?? null;
   const focus = head ? [head.title, head.description].filter(Boolean).join(": ") : "";
-  const open = (ledger.overview?.subjects ?? []).filter(isOpen);
-  const groups = taskRootGroups(taskTree).filter(({ roots }) => roots.some((task) => task.status !== "done" && task.status !== "dropped"));
-  const taskLines = groups.map(({ roots }) => {
-    const name = roots.map((task) => task.title).join(", ");
-    const current = roots.map((task) => currentTaskText(task)?.text).filter(Boolean).join("; ");
-    const status = roots.some((task) => task.status === "working") ? "working" : roots.some((task) => task.status === "waits-on-other") ? "waiting on others" : "queued";
-    return `- ${name}: ${current || "-"} (${status})`;
-  });
-  return [
-    ...focus ? [`Working on: ${focus}`] : [],
-    ...taskLines.length > 0 ? ["Where it stands:", ...taskLines] : open.length > 0 ? ["Where it stands:", ...open.map((s) => `- ${s.name}: ${s.text || "-"} (${s.status})`)] : []
-  ];
+  return focus ? [`Working on: ${focus}`] : [];
 }
 var CLOSE_ID_RULE = "A close id is only for the close tool. Never write one in a reply.";
 function inboxText(host, ledger, isOpen, taskTree = []) {
@@ -3473,7 +3462,7 @@ function inboxText(host, ledger, isOpen, taskTree = []) {
   const out = [
     `inbox: what waits on the user, as of your last reply. Anything not listed here is closed. ${CLOSE_ID_RULE}`
   ];
-  out.push(...statusSummaryLines(ledger, taskTree));
+  out.push(...statusFocusLines(ledger));
   out.push(...taskSnapshotLines(ledger, taskTree));
   if (promptItems(ledger).length > 0) {
     out.push("Waiting on the user:");

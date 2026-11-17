@@ -5,6 +5,7 @@ import { inboxText, promptNotes, statusCarryText } from '../hooks/inbox-text'
 import { statusPage } from '../hooks/status-page'
 import { statusPrompt } from '../hooks/status-prompt'
 import { currentTaskText } from '../hooks/task-text'
+import { EMPTY_SESSION_STATUS } from '../hooks/status-limits'
 import { timelineData, timelinePage } from '../hooks/timeline-page'
 import { emptySession } from '../hooks/session-files'
 import type { TaskNode, TaskProgressSegments, Told } from '../types'
@@ -107,7 +108,11 @@ test('prompt inbox and Status carry text use the current task note, and the Stat
     },
   )
 
-  expect(inbox).toContain('Where it stands:\n- Implement the cache: The latest note (working)')
+  expect(inbox).toContain(
+    'Task tree check for turn 0 (current work). Keep it current with `tasks` when work starts, changes, becomes blocked, or finishes. Task status changes only through `tasks` or when a linked pull request merges.',
+  )
+  expect(inbox).toContain('- t1 | working | Implement the cache | The latest note')
+  expect(inbox).not.toContain('Where it stands:')
   expect(inbox).not.toContain('The original plan')
   expect(carry).toContain('Where it stands:\n- Implement the cache: The latest note (working)')
   expect(prompt).toContain('Implement the cache | The latest note (just now)')
@@ -162,6 +167,32 @@ test('task snapshots omit closed tasks, cap rows and row length, and report omis
     }),
   )
   const inbox = inboxText(CLAUDE_CODE, { ...EMPTY, turn: 7 }, true, tree)
+  const legacyInbox = inboxText(
+    CLAUDE_CODE,
+    {
+      ...EMPTY,
+      overview: {
+        ...EMPTY_SESSION_STATUS,
+        subjects: [
+          {
+            id: 'old-task',
+            name: 'Old task group',
+            status: 'working',
+            text: 'Legacy task summary',
+            was: null,
+            merged: null,
+            createdAt: 1,
+            changedAt: 1,
+            closedAt: null,
+            into: null,
+          },
+        ],
+      },
+      turn: 7,
+    },
+    true,
+    tree,
+  )
   const lines = inbox.split('\n')
   const start = lines.findIndex(line => line.startsWith('Task tree check for turn 7'))
   const rows = lines.slice(start + 1, start + 13)
@@ -174,6 +205,9 @@ test('task snapshots omit closed tasks, cap rows and row length, and report omis
   expect(lines).toContain('- 1 more open task omitted.')
   expect(inbox).not.toContain('task-12')
   expect(inbox).not.toContain('task-13')
+  expect(lines.filter(line => line.startsWith('- task-'))).toHaveLength(12)
+  expect(legacyInbox).not.toContain('Where it stands:')
+  expect(legacyInbox).not.toContain('Legacy task summary')
 })
 
 test('an empty task tree adds no snapshot text', () => {

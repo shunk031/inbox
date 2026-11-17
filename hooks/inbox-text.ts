@@ -128,7 +128,7 @@ function taskSnapshotLines(ledger: Ledger, taskTree: TaskTree): string[] {
   })
 
   return [
-    `Task tree check for turn ${ledger.turn} (current work). Keep it current with \`tasks\` when work starts, changes, becomes blocked, or finishes. Only a successful \`tasks\` call changes task status.`,
+    `Task tree check for turn ${ledger.turn} (current work). Keep it current with \`tasks\` when work starts, changes, becomes blocked, or finishes. Task status changes only through \`tasks\` or when a linked pull request merges.`,
     ...rows,
     ...(open.length > rows.length
       ? [`- ${open.length - rows.length} more open ${open.length - rows.length === 1 ? 'task' : 'tasks'} omitted.`]
@@ -136,10 +136,15 @@ function taskSnapshotLines(ledger: Ledger, taskTree: TaskTree): string[] {
   ]
 }
 
-/** What the Status says the session is doing and how it is going. */
-function statusSummaryLines(ledger: Ledger, taskTree: TaskTree = []): string[] {
+/** What the Status says the session is doing now. */
+function statusFocusLines(ledger: Ledger): string[] {
   const head = ledger.overview?.head ?? null
   const focus = head ? [head.title, head.description].filter(Boolean).join(': ') : ''
+  return focus ? [`Working on: ${focus}`] : []
+}
+
+/** What the Status says the session is doing and how it is going. */
+function statusSummaryLines(ledger: Ledger, taskTree: TaskTree = []): string[] {
   const open = (ledger.overview?.subjects ?? []).filter(isOpen)
   const groups = taskRootGroups(taskTree).filter(({ roots }) =>
     roots.some(task => task.status !== 'done' && task.status !== 'dropped'),
@@ -159,7 +164,7 @@ function statusSummaryLines(ledger: Ledger, taskTree: TaskTree = []): string[] {
   })
 
   return [
-    ...(focus ? [`Working on: ${focus}`] : []),
+    ...statusFocusLines(ledger),
     ...(taskLines.length > 0
       ? ['Where it stands:', ...taskLines]
       : open.length > 0
@@ -206,7 +211,7 @@ export function inboxText(host: Host, ledger: Ledger, isOpen: boolean, taskTree:
   const out = [
     `inbox: what waits on the user, as of your last reply. Anything not listed here is closed. ${CLOSE_ID_RULE}`,
   ]
-  out.push(...statusSummaryLines(ledger, taskTree))
+  out.push(...statusFocusLines(ledger))
   out.push(...taskSnapshotLines(ledger, taskTree))
   if (promptItems(ledger).length > 0) {
     out.push('Waiting on the user:')
