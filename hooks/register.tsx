@@ -84,8 +84,7 @@ import { prBlockRows, threadSentIn } from './pr-rows'
 import { prNeedsYou } from './prs'
 import { EMPTY, isBlankLedger } from './ledger'
 import { closeItem } from './ledger-close'
-import { FEED_POLL_MS } from './mod-feed'
-import { startModFeedForMod } from './mod-feed-start'
+import { FEED_POLL_MS, startModFeed } from './mod-feed'
 import { tasksRunBy } from './reply-parse'
 import { CLAUDE_CODE, guidedCloseDescription } from './model-text'
 import { tasksDescription } from './tool-descriptions'
@@ -298,10 +297,10 @@ function documentFile($: EngineInterface) {
 }
 
 const TAB = atom({ plugin: 'inbox', key: 'tab' } as const, 'needsYou' as Tab)
-/** Page tab when a page is open; separate so older builds still read row tabs. */
+/** Page state stays separate: unknown pages remain saved, and row tabs hide while a page is open. */
 const PAGE = atom({ plugin: 'inbox', key: 'page' } as const, null as PageTab | null)
 const SELECTION = atom({ plugin: 'inbox', key: 'selection' } as const, NO_SELECTION)
-/** Selected Status row id; resolves to the row whose keys work. */
+/** Status row id whose keys work. */
 const STATUS_SELECTION = atom({ plugin: 'inbox', key: 'statusSelection' } as const, null as string | null)
 const TIMELINE_SELECTION = atom({ plugin: 'inbox', key: 'timelineSelection' } as const, null as string | null)
 const TIMELINE_DETAIL_OPEN = atom({ plugin: 'inbox', key: 'timelineDetailOpen' } as const, false)
@@ -334,7 +333,7 @@ const RECORD_TOOL = 'mcp__inbox__record'
 const CLOSE_TOOL = 'mcp__inbox__close'
 const ORDER_TOOL = 'mcp__inbox__order_prs'
 const TASKS_TOOL = 'mcp__inbox__tasks'
-/** Tool result lines by tool-use id, scoped to this process. */
+/** Recent tool result lines by use id. */
 const PERSON_LINES = atom({ plugin: 'inbox', key: 'personLines' } as const, {} as Record<string, string>)
 
 let taskProjection: ModTaskProjection | null = null
@@ -1045,7 +1044,7 @@ async function upgradeState($: EngineInterface): Promise<Ledger> {
     update($, TIMELINE_SELECTION, upgradedTimelineSelection),
     update($, TIMELINE_FOLDED, upgradedTimelineFolded),
     update($, TIMELINE_DETAIL_OPEN, upgradedTimelineDetailOpen),
-    // Drop demo state an older build does not understand; /inbox demo seeds a fresh copy.
+    // Drop old demo state; /inbox demo seeds a fresh copy.
     update($, DEMO, d => (d === null || isDemoCopy(d) ? d : null)),
     // Migrate legacy string drafts to the current shape.
     update($, DRAFTS, (d: Record<string, Draft | string>) =>
@@ -1286,7 +1285,6 @@ async function writeRowTab($: EngineInterface, tab: Tab) {
   await syncShown($)
 }
 
-/** Current page tab, or null; an unknown saved page stays saved. */
 async function readPage($: EngineInterface): Promise<PageTab | null> {
   const page = await read($, PAGE)
   return page !== null && drawnTabOf(page, mod.isNextBuild, true, paneState.paneLook === 'terminal') === page
@@ -1294,7 +1292,6 @@ async function readPage($: EngineInterface): Promise<PageTab | null> {
     : null
 }
 
-/** Current row tab, or null while a page is open. */
 async function readRowTab($: EngineInterface): Promise<Tab | null> {
   const [page, tab] = await Promise.all([readPage($), read($, TAB)])
   return page === null ? tab : null
@@ -1496,7 +1493,7 @@ async function showAsk($: EngineInterface, askId: string) {
   await scrollToRow($, askId)
 }
 
-/** A repeated click before redraw uses the same state, so double-clicking leaves the row unfolded. */
+/** Pre-redraw clicks keep the row unfolded. */
 async function setFold($: EngineInterface, key: string, isUnfolded: unknown) {
   const fold = foldOf(key)
   if (!fold || typeof isUnfolded !== 'boolean') return
@@ -1775,7 +1772,7 @@ async function runPress($: EngineInterface, p: RowPress | PrPress, surface: UiPr
   if (canRevealUndo) await keepUndoVisible($, undoKey, undoBlock, now, undoRevision)
   if (!isPrPress(p) && p.action === 'compare') void redrawAtCompareEnd($).catch(() => undefined)
   if (!isPrPress(p) && p.action === 'undo') await selectRestored($, p.id)
-  // Success notes clear after their effects settle; queued messages start their age at QUEUED_AFTER_MS and show Queued then.
+  // Clear success notes after effects; queued messages show Queued and age from QUEUED_AFTER_MS.
   if (sends) later($, QUEUED_AFTER_MS, () => redraw($))
   const outcome = await started.finish()
   if (outcome.wakesAfterSettle) later($, SETTLED_MS, () => wakeAfterSettle($))
@@ -2087,26 +2084,26 @@ async function readVersion($: EngineInterface) {
 }
 
 function startFeed($: EngineInterface) {
-  return startModFeedForMod({
-    env: [
+  return startModFeed(
+    [
       $.env.get('INBOX_FEED'),
       $.env.get('HOME'),
       $.env.get('HERDR_PANE_ID'),
       $.env.get('HERDR_BIN_PATH'),
       $.env.get('INBOX_TASK_PROJECTION_PATH'),
     ],
-    run: processRun($),
-    fs: {
-      stat: p => $.fs.stat(p),
-      list: p => $.fs.list(p),
-      exists: p => $.fs.exists(p),
-      read: p => $.fs.read(p),
-      resolve: p => $.fs.stat(p, { resolve: true }),
-    },
-    now: () => $.clock.now(),
-    commit: update => commitLedger($, update, currentOwner()),
-    sessionId: () => $.session.id(),
-  })
+    processRun($),
+    [
+      p => $.fs.stat(p),
+      p => $.fs.list(p),
+      p => $.fs.exists(p),
+      p => $.fs.read(p),
+      p => $.fs.stat(p, { resolve: true }),
+    ],
+    () => $.clock.now(),
+    update => commitLedger($, update, currentOwner()),
+    () => $.session.id(),
+  )
 }
 
 async function initializeInbox($: EngineInterface) {
@@ -2115,14 +2112,15 @@ async function initializeInbox($: EngineInterface) {
     readVersion($),
     $.env.get('INBOX_RECORDED_ITEMS_ONLY').then(v => void (mod.recordedItemsOnly = isRecordedItemsOnly(v))),
   ])
+  const projectionPath = (await $.env.get('INBOX_TASK_PROJECTION_PATH')) ?? null
   taskProjection = modTaskProjection(
     {
       exists: path => $.fs.exists(path),
-      read: path => $.fs.read(path),
       write: (path, text) => $.fs.write(path, text),
     },
     processRun($),
     () => `${Date.now()}-${Math.random()}`,
+    projectionPath,
   )
   const feed = await startFeed($)
   mod.isOn = true
@@ -2174,11 +2172,7 @@ async function prepareConversation(
   forkedFrom?: string,
 ) {
   const writesAtRead = sessionState.savedWrites
-  const [sessionRoot, saved, projectionPath] = await Promise.all([
-    $.session.root(),
-    readSettled(saveEngine($), id),
-    $.env.get('INBOX_TASK_PROJECTION_PATH'),
-  ])
+  const [sessionRoot, saved] = await Promise.all([$.session.root(), readSettled(saveEngine($), id)])
   if (revision !== sessionState.loadRevision) return
   const applying = sessionState.applyingConversation.then(async () => {
     if (revision !== sessionState.loadRevision) return
@@ -2186,7 +2180,7 @@ async function prepareConversation(
     const latest = writesAtRead === sessionState.savedWrites ? saved : await readSettled(saveEngine($), id)
     // A fork continues its parent's inbox, so a new id with no saved state starts from the parent's.
     const parent = latest?.session || !forkedFrom ? null : await readSettled(saveEngine($), forkedFrom)
-    await applyConversation($, id, revision, by, sessionRoot, latest, parent?.session, projectionPath ?? null)
+    await applyConversation($, id, revision, by, sessionRoot, latest, parent?.session)
   })
   sessionState.applyingConversation = applying.catch(() => undefined)
   return applying
@@ -2239,7 +2233,6 @@ async function applyConversation(
   sessionRoot: string,
   saved: { session: SavedRecord | undefined } | null,
   parent?: SavedRecord,
-  projectionPath?: string | null,
 ) {
   if (revision !== sessionState.loadRevision) return
   const isLoading = () => revision === sessionState.loadRevision && conversation.id === id
@@ -2261,10 +2254,7 @@ async function applyConversation(
   const turns = await $.session.turns().catch(() => null)
   const cutOff = (s: Session) => statusChanged(cutOffTurn(cutOffUpdate(s)), o => childrenCutOff(o, loadedAt))
   // Before notePlace's save, so this conversation is never saved with the previous one's tool fields.
-  await replaceDrawn($, s => ({
-    ...withLoadedToolFields(cutOff(s), by, saved?.session, parent, turns),
-    taskTreeProjectionPath: projectionPath || null,
-  }))
+  await replaceDrawn($, s => withLoadedToolFields(cutOff(s), by, saved?.session, parent, turns))
   if (revision !== sessionState.loadRevision) return
   void notePlace($)
   const isFresh = isBlankLedger(current)
@@ -2302,8 +2292,7 @@ async function bringBack(
     if (!isLoading() || !isBlankLedger(s.ledger)) return s
     isBrought = true
 
-    const brought = isFork ? forkedFrom(s, loaded) : broughtBack(s, loaded)
-    return { ...brought, taskTreeProjectionPath: s.taskTreeProjectionPath }
+    return isFork ? forkedFrom(s, loaded) : broughtBack(s, loaded)
   })
   if (isBrought && !isFork)
     await update($, AWAY, a => (isLoading() ? { ...a, lastActiveAt: saved.savedAt, isAway: true } : a))

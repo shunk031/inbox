@@ -1,10 +1,8 @@
 import { NOT_SAVED, type AgentTool } from './tools'
 import { answerToolCallWithReminder, type Owner } from './mod-sessions'
 import { afterTaskTreeUpdate } from './task-projection-host'
-import type { createTaskProjection } from './task-projection'
+import type { ModTaskProjection } from './mod-task-projection'
 import type { Session } from '../types'
-
-type Projection = ReturnType<typeof createTaskProjection>
 
 /** Runs the mod's tool answer and publishes a changed task tree through injected host effects. */
 export async function runModTool(
@@ -14,7 +12,7 @@ export async function runModTool(
     preview: (input: Record<string, unknown>) => Promise<Record<string, unknown>>
     commit: (owner: Owner, change: (session: Session) => Session) => Promise<Session>
     refused: (sessionId: string) => boolean
-    projection: Projection | null
+    projection: ModTaskProjection | null
     savePersonLine: (id: string, line: string) => Promise<unknown>
   },
   tool: AgentTool,
@@ -34,11 +32,10 @@ export async function runModTool(
     return answer.state
   })
   let projectionMessage: string | null = null
-  if (didChangeTaskTree && saved.taskTreeProjectionPath && !deps.refused(owner.id) && deps.projection) {
-    const result = await afterTaskTreeUpdate(deps.projection, owner.id, saved, now, change =>
-      deps.commit(owner, change),
-    )
-    projectionMessage = result.message
+  if (didChangeTaskTree && deps.projection && !deps.refused(owner.id)) {
+    projectionMessage = (
+      await afterTaskTreeUpdate(deps.projection, owner.id, saved, now, change => deps.commit(owner, change))
+    ).message
   }
   if (answer.personLine !== null && toolUseId) await deps.savePersonLine(toolUseId, answer.personLine)
   const unsaved = answer.changedSavedState && deps.refused(owner.id)

@@ -1,14 +1,8 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import {
-  createTaskProjection,
-  mergeProjectedTasks,
-  projectedTaskEntries,
-  writeProjectionAtomically,
-} from '../hooks/task-projection'
+import { createTaskProjection, projectedTaskEntries, writeProjectionAtomically } from '../hooks/task-projection'
 import { afterTaskTreeUpdate } from '../hooks/task-projection-host'
 import { emptySession } from '../hooks/session-files'
-import type { Feed } from '../hooks/feed'
 import type { TaskNode, TaskTree } from '../types'
 
 const node = (id: string, status: TaskNode['status'] = 'working', changes: Partial<TaskNode> = {}): TaskNode => ({
@@ -23,13 +17,6 @@ const node = (id: string, status: TaskNode['status'] = 'working', changes: Parti
   updatedAt: 1,
   history: [],
   ...changes,
-})
-
-const taskFeed = (...entries: Feed['entries']): Feed => ({
-  version: 1,
-  source: 'meta-open-items',
-  writtenAt: 10,
-  entries,
 })
 
 describe('task-tree projection', () => {
@@ -60,111 +47,6 @@ describe('task-tree projection', () => {
     ])
   })
 
-  test('imports old entries once and keeps tree status and text for matching ids', () => {
-    const tree: TaskTree = [
-      node('existing', 'queued', { title: 'Tree title', detail: 'Tree text' }),
-      node('missing-text', 'queued'),
-    ]
-    const feed = taskFeed(
-      {
-        key: 'new-blocked',
-        kind: 'work',
-        state: 'blocked',
-        title: 'Imported title',
-        detail: 'Imported text',
-        at: 9,
-        owner: { agent: 'worker', machine: 'host' },
-      },
-      {
-        key: 'existing',
-        kind: 'task',
-        state: 'done',
-        title: 'Feed title',
-        detail: 'Feed text',
-        at: 10,
-        owner: { agent: 'worker', machine: 'host' },
-      },
-      {
-        key: 'missing-text',
-        kind: 'task',
-        state: 'done',
-        title: 'Feed title',
-        detail: 'Fill the missing text',
-        at: 10,
-      },
-      {
-        key: 'new-done',
-        kind: 'task',
-        state: 'done',
-        title: 'Completed title',
-        detail: 'Completed text',
-        at: 10,
-      },
-      {
-        key: 'new-queued',
-        kind: 'task',
-        state: 'queued',
-        title: 'Queued title',
-        detail: '',
-        at: 10,
-      },
-      {
-        key: 'new-working',
-        kind: 'task',
-        state: 'working',
-        title: 'Working title',
-        detail: '',
-        at: 10,
-      },
-    )
-    const imported = mergeProjectedTasks(tree, feed)
-
-    expect(imported.find(task => task.id === 'existing')).toMatchObject({
-      id: 'existing',
-      status: 'queued',
-      title: 'Tree title',
-      detail: 'Tree text',
-      links: { owner: { agent: 'worker', machine: 'host' } },
-    })
-    expect(imported.find(task => task.id === 'new-blocked')).toMatchObject({
-      id: 'new-blocked',
-      status: 'waits-on-other',
-      title: 'Imported title',
-      detail: 'Imported text',
-    })
-    expect(imported.find(task => task.id === 'missing-text')).toMatchObject({
-      id: 'missing-text',
-      status: 'queued',
-      title: 'Title missing-text',
-      detail: 'Fill the missing text',
-    })
-    expect(imported.find(task => task.id === 'new-done')).toMatchObject({
-      id: 'new-done',
-      status: 'done',
-      title: 'Completed title',
-      detail: 'Completed text',
-    })
-    expect(imported.find(task => task.id === 'new-queued')?.status).toBe('queued')
-    expect(imported.find(task => task.id === 'new-working')?.status).toBe('working')
-  })
-
-  test('keeps non-empty task text when an imported entry has different text', () => {
-    const tree = [node('existing', 'working', { detail: 'Current tree text' })]
-    const imported = mergeProjectedTasks(
-      tree,
-      taskFeed({
-        key: 'existing',
-        kind: 'task',
-        state: 'blocked',
-        title: 'Feed title',
-        detail: 'Older feed text',
-        at: 10,
-      }),
-    )
-
-    expect(imported[0]).toMatchObject({ status: 'working', detail: 'Current tree text' })
-  })
-
   test('writes an adjacent temporary file before renaming it into place', async () => {
     const calls: string[] = []
     await writeProjectionAtomically('/feed/meta-open-items.json', '{snapshot}', {
@@ -180,64 +62,51 @@ describe('task-tree projection', () => {
     ])
   })
 
-  test('imports before the first write and holds the lock through later writes', async () => {
-    let file: string | null = JSON.stringify(
-      taskFeed({
-        key: 'handwritten',
-        kind: 'task',
-        state: 'blocked',
-        title: 'Hand-written title',
-        detail: 'Hand-written text',
-        at: 5,
-        owner: { agent: 'worker', machine: 'host' },
-      }),
-    )
-    let reads = 0
+  test('writes the current task tree and holds the lock through later writes', async () => {
+    let file = ''
     let writes = 0
     let locked = false
-    const projection = createTaskProjection({
-      acquireLock: async () => {
-        if (locked) return false
-        locked = true
-        return true
+    const projection = createTaskProjection(
+      {
+        acquireLock: async () => {
+          if (locked) return false
+          locked = true
+          return true
+        },
+        releaseLock: async () => void (locked = false),
+        writeAtomic: async (_path, text) => {
+          writes++
+          file = text
+        },
       },
-      releaseLock: async () => void (locked = false),
-      read: async () => {
-        reads++
-        return file
-      },
-      writeAtomic: async (_path, text) => {
-        writes++
-        file = text
-      },
-    })
-    const initial = { ...emptySession(), taskTreeProjectionPath: '/feed/meta-open-items.json' }
+      '/feed/meta-open-items.json',
+    )
+    const initial = {
+      ...emptySession(),
+      taskTree: [node('projected', 'waits-on-other', { detail: 'Waiting for the owner' })],
+    }
     const first = await projection.sync('meta', initial, 20)
 
     expect(first.kind).toBe('written')
-    if (first.kind !== 'written') return
-    expect(first.taskTree).toMatchObject([{ id: 'handwritten', status: 'waits-on-other' }])
     expect(JSON.parse(file!).entries).toMatchObject([
-      { key: 'handwritten', kind: 'task', state: 'blocked', title: 'Hand-written title', detail: 'Hand-written text' },
+      { key: 'projected', kind: 'task', state: 'blocked', title: 'Title projected', detail: 'Waiting for the owner' },
     ])
-    await projection.sync(
-      'meta',
-      { ...initial, taskTree: first.taskTree, taskTreeProjectionVersion: first.version },
-      30,
-    )
-    expect([reads, writes]).toEqual([1, 2])
+    await projection.sync('meta', initial, 30)
+    expect(writes).toBe(2)
     await projection.release('meta')
   })
 
   test('a second session reports a lock conflict once and never writes', async () => {
     let writes = 0
-    const projection = createTaskProjection({
-      acquireLock: async () => false,
-      releaseLock: async () => {},
-      read: async () => null,
-      writeAtomic: async () => void writes++,
-    })
-    let session = { ...emptySession(), taskTreeProjectionPath: '/feed/meta-open-items.json' }
+    const projection = createTaskProjection(
+      {
+        acquireLock: async () => false,
+        releaseLock: async () => {},
+        writeAtomic: async () => void writes++,
+      },
+      '/feed/meta-open-items.json',
+    )
+    let session = emptySession()
     const save = async (change: (current: typeof session) => typeof session) => (session = change(session))
     const first = await afterTaskTreeUpdate(projection, 'second', session, 1, save)
     const second = await afterTaskTreeUpdate(projection, 'second', first.session, 2, save)
@@ -249,18 +118,17 @@ describe('task-tree projection', () => {
 
   test('an unset path performs no file or lock operation', async () => {
     let operations = 0
-    const projection = createTaskProjection({
-      acquireLock: async () => {
-        operations++
-        return true
+    const projection = createTaskProjection(
+      {
+        acquireLock: async () => {
+          operations++
+          return true
+        },
+        releaseLock: async () => void operations++,
+        writeAtomic: async () => void operations++,
       },
-      releaseLock: async () => void operations++,
-      read: async () => {
-        operations++
-        return null
-      },
-      writeAtomic: async () => void operations++,
-    })
+      null,
+    )
 
     expect(await projection.sync('session', emptySession(), 1)).toEqual({ kind: 'disabled' })
     expect(operations).toBe(0)

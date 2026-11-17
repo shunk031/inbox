@@ -1399,6 +1399,400 @@ function isLapsed(d) {
   return closedState(d) !== "handled";
 }
 
+// ../hooks/task-tree.ts
+var TASK_HISTORY_LIMIT = 100;
+var TASK_NOTES_LIMIT = 40;
+var TASK_NOTE_LENGTH = 2000;
+var TASK_HISTORY_DETAIL_LENGTH = 2000;
+var TASK_NODE_LIMIT = 200;
+var TASK_DEPTH_LIMIT = 8;
+var TASK_TITLE_LENGTH = 100;
+var TASK_WEIGHT_MIN = 0.1;
+var TASK_WEIGHT_MAX = 100;
+var TASK_MACHINE_ALIAS_LENGTH = 100;
+var TASK_HISTORY_SOURCE_LENGTH = 100;
+var failed = (reason) => ({ ok: false, reason });
+var succeeded = (tree) => ({ ok: true, tree });
+function hasTask(tree, id) {
+  return tree.some((task) => task.id === id);
+}
+function boundedHistory(history, event) {
+  return [...history, event].slice(-TASK_HISTORY_LIMIT);
+}
+function eventIsValid(event) {
+  return Number.isFinite(event.at) && event.source.length > 0 && event.source.length <= TASK_HISTORY_SOURCE_LENGTH && (event.detail === undefined || event.detail.length <= TASK_HISTORY_DETAIL_LENGTH);
+}
+function notesAreValid(notes) {
+  return notes.length <= TASK_NOTES_LIMIT && notes.every((note) => note.length <= TASK_NOTE_LENGTH);
+}
+function notesOf(notes) {
+  return notes.slice(0, TASK_NOTES_LIMIT).map((note) => note.slice(0, TASK_NOTE_LENGTH));
+}
+function hasValidWeight(weight) {
+  return Number.isFinite(weight) && weight >= TASK_WEIGHT_MIN && weight <= TASK_WEIGHT_MAX;
+}
+function taskGitHubLink(value) {
+  const match = /^https:\/\/[^/?#]+\/([A-Za-z0-9](?:[A-Za-z0-9-]{0,38})?)\/([A-Za-z0-9_.-]{1,100})\/(pull|issues)\/([1-9]\d*)$/.exec(value);
+  if (!match || match[2] === "." || match[2] === "..")
+    return;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash)
+      return;
+    return {
+      host: url.host.toLowerCase(),
+      ref: `${match[1]}/${match[2]}#${match[4]}`,
+      kind: match[3],
+      number: match[4]
+    };
+  } catch {
+    return;
+  }
+}
+function taskPrLink(value) {
+  const link = taskGitHubLink(value);
+  if (link?.kind !== "pull")
+    return;
+  const url = new URL(value);
+  return { host: link.host, ref: link.ref, queryable: url.port === "" };
+}
+function validGitHubLink(value, kind) {
+  return taskGitHubLink(value)?.kind === (kind === "pull" ? "pull" : "issues");
+}
+function validAgentName(value) {
+  return typeof value === "string" && /^[a-z][a-z0-9_-]{0,31}$/.test(value.trim());
+}
+function validMachineAlias(value) {
+  return typeof value === "string" && value.trim().length > 0 && value.trim().length <= TASK_MACHINE_ALIAS_LENGTH;
+}
+function linksProblem(links) {
+  if (links.pr !== undefined && (typeof links.pr !== "string" || !validGitHubLink(links.pr, "pull")))
+    return "invalid-pr";
+  if (links.issue !== undefined && (typeof links.issue !== "string" || !validGitHubLink(links.issue, "issue")))
+    return "invalid-issue";
+  if (links.owner !== undefined && (!links.owner || !validAgentName(links.owner.agent) || !validMachineAlias(links.owner.machine)))
+    return "invalid-owner";
+  return null;
+}
+function taskLinksFromInput(input, previous) {
+  const has = (key) => Object.prototype.hasOwnProperty.call(input, key);
+  const provided = ["pr", "issue", "owner_agent", "owner_machine"].some(has);
+  if (!provided)
+    return { ok: true, provided: false };
+  const links = { ...previous };
+  for (const kind of ["pr", "issue"]) {
+    if (!has(kind))
+      continue;
+    const value = input[kind];
+    if (value === null) {
+      delete links[kind];
+    } else if (typeof value !== "string" || !validGitHubLink(value, kind === "pr" ? "pull" : "issue")) {
+      return { ok: false, reason: kind === "pr" ? "invalid-pr" : "invalid-issue" };
+    } else {
+      links[kind] = value;
+    }
+  }
+  const hasAgent = has("owner_agent");
+  const hasMachine = has("owner_machine");
+  if (hasAgent || hasMachine) {
+    const agent = input.owner_agent;
+    const machine = input.owner_machine;
+    if (hasAgent && agent === undefined || hasMachine && machine === undefined)
+      return { ok: false, reason: "invalid-owner" };
+    if (agent === null || machine === null) {
+      if (hasAgent && agent === null && hasMachine && machine !== null || hasMachine && machine === null && hasAgent && agent !== null)
+        return { ok: false, reason: "invalid-owner" };
+      delete links.owner;
+    } else {
+      const nextAgent = hasAgent ? agent : previous?.owner?.agent;
+      const nextMachine = hasMachine ? machine : previous?.owner?.machine;
+      if (!validAgentName(nextAgent) || !validMachineAlias(nextMachine))
+        return { ok: false, reason: "invalid-owner" };
+      links.owner = { agent: nextAgent.trim(), machine: nextMachine.trim() };
+    }
+  }
+  const problem = linksProblem(links);
+  return problem ? { ok: false, reason: problem } : { ok: true, provided: true, ...Object.keys(links).length ? { links } : {} };
+}
+function taskLinkProblemText(problem) {
+  if (problem === "invalid-pr")
+    return "pr must be a GitHub or GitHub Enterprise pull request URL like https://<host>/owner/repo/pull/123.";
+  if (problem === "invalid-issue")
+    return "issue must be a GitHub or GitHub Enterprise issue URL like https://<host>/owner/repo/issues/123.";
+  return `owner_agent must match the Herdr agent-name pattern [a-z][a-z0-9_-]{0,31}; owner_machine must be a non-empty alias up to ${TASK_MACHINE_ALIAS_LENGTH} characters. Provide both when adding an owner; on update, one can change an existing owner. Pass null alone to clear the owner.`;
+}
+function depthUnder(tree, parentId) {
+  let depth = 1;
+  let ancestor = parentId;
+  const seen = new Set;
+  while (ancestor !== null) {
+    if (seen.has(ancestor))
+      return Infinity;
+    seen.add(ancestor);
+    depth++;
+    ancestor = tree.find((node) => node.id === ancestor)?.parentId ?? null;
+  }
+  return depth;
+}
+function subtreeHeight(tree, id, seen = new Set) {
+  if (seen.has(id))
+    return Infinity;
+  const path = new Set(seen).add(id);
+  const children = tree.filter((node) => node.parentId === id);
+  return children.length === 0 ? 1 : 1 + Math.max(...children.map((child) => subtreeHeight(tree, child.id, path)));
+}
+function validTitle(title) {
+  return title.trim().length > 0 && title.length <= TASK_TITLE_LENGTH;
+}
+function createTask(tree, node, source) {
+  if (hasTask(tree, node.id))
+    return failed("duplicate-id");
+  if (node.parentId !== null && !hasTask(tree, node.parentId))
+    return failed("unknown-parent");
+  if (tree.length >= TASK_NODE_LIMIT || depthUnder(tree, node.parentId) > TASK_DEPTH_LIMIT)
+    return failed("limit");
+  if (!validTitle(node.title) || node.detail.length > TASK_HISTORY_DETAIL_LENGTH)
+    return failed("limit");
+  if (!hasValidWeight(node.weight))
+    return failed("invalid-weight");
+  const linkProblem = node.links ? linksProblem(node.links) : null;
+  if (linkProblem)
+    return failed(linkProblem);
+  if (!notesAreValid(node.notes) || node.history.length > TASK_HISTORY_LIMIT || !node.history.every(eventIsValid)) {
+    return failed("limit");
+  }
+  const event = { at: node.createdAt, source, kind: "created" };
+  if (!eventIsValid(event))
+    return failed("limit");
+  return succeeded([
+    ...tree,
+    {
+      ...node,
+      notes: [...node.notes],
+      history: boundedHistory(node.history, event),
+      ...node.links ? { links: { ...node.links, ...node.links.owner ? { owner: { ...node.links.owner } } : {} } } : {}
+    }
+  ]);
+}
+function updateTask(tree, id, changes, at, source) {
+  const task = tree.find((node) => node.id === id);
+  if (!task)
+    return failed("unknown-task");
+  if (changes.title !== undefined && !validTitle(changes.title) || (changes.detail?.length ?? 0) > TASK_HISTORY_DETAIL_LENGTH)
+    return failed("limit");
+  if (changes.weight !== undefined && !hasValidWeight(changes.weight))
+    return failed("invalid-weight");
+  const linkProblem = changes.links ? linksProblem(changes.links) : null;
+  if (linkProblem)
+    return failed(linkProblem);
+  const event = {
+    at,
+    source,
+    kind: "updated",
+    ...changes.links !== undefined ? { detail: "links updated" } : {}
+  };
+  const detailEvent = changes.detail !== undefined && changes.detail !== task.detail ? { at, source, kind: "detail" } : null;
+  if (!eventIsValid(event) || detailEvent !== null && !eventIsValid(detailEvent))
+    return failed("limit");
+  return succeeded(tree.map((node) => {
+    if (node.id !== id)
+      return node;
+    const { links, ...fields } = changes;
+    const history = detailEvent ? boundedHistory(boundedHistory(node.history, detailEvent), event) : boundedHistory(node.history, event);
+    const updated = { ...node, ...fields, updatedAt: at, history };
+    if (links === null)
+      delete updated.links;
+    else if (links !== undefined)
+      updated.links = { ...links, ...links.owner ? { owner: { ...links.owner } } : {} };
+    if (updated.prMergedApplied && updated.links?.pr && updated.links.pr !== updated.prMergedApplied)
+      delete updated.prMergedApplied;
+    return updated;
+  }));
+}
+function moveTask(tree, id, parentId, at, source) {
+  const task = tree.find((node) => node.id === id);
+  if (!task)
+    return failed("unknown-task");
+  if (parentId !== null && !hasTask(tree, parentId))
+    return failed("unknown-parent");
+  if (parentId === id)
+    return failed("cycle");
+  let ancestor = parentId;
+  const visited = new Set;
+  while (ancestor !== null) {
+    if (ancestor === id || visited.has(ancestor))
+      return failed("cycle");
+    visited.add(ancestor);
+    ancestor = tree.find((node) => node.id === ancestor)?.parentId ?? null;
+  }
+  if (depthUnder(tree, parentId) - 1 + subtreeHeight(tree, id) > TASK_DEPTH_LIMIT)
+    return failed("limit");
+  const event = { at, source, kind: "moved" };
+  if (!eventIsValid(event))
+    return failed("limit");
+  return succeeded(tree.map((node) => node.id === id ? { ...node, parentId, updatedAt: at, history: boundedHistory(node.history, event) } : node));
+}
+function completeTask(tree, id, at, source, detail) {
+  const task = tree.find((node) => node.id === id);
+  if (!task)
+    return failed("unknown-task");
+  const event = { at, source, kind: "completed", ...detail === undefined ? {} : { detail } };
+  if (!eventIsValid(event))
+    return failed("limit");
+  return succeeded(tree.map((node) => node.id === id ? { ...node, status: "done", updatedAt: at, history: boundedHistory(node.history, event) } : node));
+}
+function addTaskNote(tree, id, note, at, source) {
+  const task = tree.find((node) => node.id === id);
+  if (!task)
+    return failed("unknown-task");
+  if (task.notes.length >= TASK_NOTES_LIMIT || note.length > TASK_NOTE_LENGTH)
+    return failed("limit");
+  const event = { at, source, kind: "note", detail: note };
+  if (!eventIsValid(event))
+    return failed("limit");
+  return succeeded(tree.map((node) => node.id === id ? { ...node, notes: [...node.notes, note], updatedAt: at, history: boundedHistory(node.history, event) } : node));
+}
+function taskRootGroups(tree) {
+  const groups = new Map;
+  for (const task of tree.filter((task) => task.parentId === null)) {
+    const key = task.streamId ? `stream:${task.streamId}` : `task:${task.id}`;
+    const roots = groups.get(key);
+    if (roots)
+      roots.push(task);
+    else
+      groups.set(key, [task]);
+  }
+  return [...groups.values()].map((roots) => ({ id: roots[0].id, roots }));
+}
+function weightedTaskProgress(tree, rootIds) {
+  const children = new Map;
+  for (const task of tree)
+    children.set(task.parentId, [...children.get(task.parentId) ?? [], task]);
+  const progress = (task) => {
+    if (task.status === "done")
+      return 1;
+    if (task.status === "dropped")
+      return 0;
+    return weightedAverage((children.get(task.id) ?? []).map((child) => [progress(child), child.weight]));
+  };
+  const roots = rootIds === undefined ? children.get(null) ?? [] : tree.filter((task) => Array.isArray(rootIds) ? rootIds.includes(task.id) : task.id === rootIds);
+  return weightedAverage(roots.map((task) => [progress(task), task.weight]));
+}
+function weightedAverage(values) {
+  const total = values.reduce((sum, [, weight]) => sum + weight, 0);
+  return total ? values.reduce((sum, [value, weight]) => sum + value * weight, 0) / total : 0;
+}
+function weightedTaskProgressSegments(tree, stalledTasks = new Set, rootId) {
+  const children = new Map;
+  for (const task of tree)
+    children.set(task.parentId, [...children.get(task.parentId) ?? [], task]);
+  const segments = { total: 0, done: 0, working: 0, stalled: 0, waiting: 0, queued: 0 };
+  const add = (task, weight, path) => {
+    if (task.status === "dropped" || path.has(task.id))
+      return;
+    if (task.status === "done") {
+      segments.total += weight;
+      segments.done += weight;
+      return;
+    }
+    const descendants = children.get(task.id) ?? [];
+    const active = descendants.filter((child) => child.status !== "dropped");
+    if (active.length > 0) {
+      const total = active.reduce((sum, child) => sum + child.weight, 0);
+      const nextPath = new Set(path).add(task.id);
+      for (const child of active)
+        add(child, weight * child.weight / total, nextPath);
+      return;
+    }
+    segments.total += weight;
+    if (task.status === "working")
+      segments[stalledTasks.has(task.id) ? "stalled" : "working"] += weight;
+    else if (task.status === "waits-on-other")
+      segments.waiting += weight;
+    else
+      segments.queued += weight;
+  };
+  for (const root of children.get(null) ?? [])
+    if (rootId === undefined || root.id === rootId)
+      add(root, root.weight, new Set);
+  return segments;
+}
+function taskTreeFromStatus(status) {
+  if (!status)
+    return [];
+  const goalId = status.goal && !status.goal.isAwaitingMilestones ? `goal-${status.goal.setAt}` : undefined;
+  const milestones = status.milestones.map((milestone) => {
+    const node = {
+      id: milestone.id,
+      parentId: null,
+      status: milestone.status,
+      weight: 1,
+      title: milestone.name,
+      detail: milestone.text,
+      notes: notesOf(milestone.was ? [milestone.was] : []),
+      createdAt: milestone.changedAt,
+      updatedAt: milestone.closedAt ?? milestone.changedAt,
+      history: [
+        { at: milestone.changedAt, source: "status", kind: "imported" },
+        { at: milestone.changedAt, source: "status", kind: "detail" }
+      ],
+      ...goalId ? { goalId } : {}
+    };
+    if (milestone.closedAt !== null) {
+      node.history = [
+        ...node.history,
+        {
+          at: milestone.closedAt,
+          source: "status",
+          kind: milestone.status === "done" ? "completed" : "updated",
+          detail: milestone.status
+        }
+      ];
+    }
+    return node;
+  });
+  const milestoneIds = new Set(milestones.map((node) => node.id));
+  const subjectIds = new Set(status.subjects.map((subject) => subject.id));
+  const subjects = status.subjects.map((subject) => {
+    const served = status.serves[subject.id];
+    const milestoneId = typeof served === "string" && served !== "none" && milestoneIds.has(served) ? served : null;
+    const mergedIntoId = subject.into && subjectIds.has(subject.into) ? subject.into : undefined;
+    const parentId = milestoneId;
+    const notes = notesOf([subject.was, subject.merged].filter((note) => note !== null));
+    const node = {
+      id: subject.id,
+      parentId,
+      status: subject.status,
+      weight: 1,
+      title: subject.name,
+      detail: subject.text,
+      notes,
+      createdAt: subject.createdAt,
+      updatedAt: subject.closedAt ?? subject.changedAt,
+      history: [
+        { at: subject.createdAt, source: "status", kind: "created" },
+        { at: subject.changedAt, source: "status", kind: "imported" },
+        { at: subject.changedAt, source: "status", kind: "detail" }
+      ],
+      ...goalId && milestoneId ? { goalId } : {},
+      ...mergedIntoId ? { mergedIntoId } : {}
+    };
+    if (subject.closedAt !== null) {
+      node.history = [
+        ...node.history,
+        {
+          at: subject.closedAt,
+          source: "status",
+          kind: subject.status === "done" ? "completed" : "updated",
+          detail: subject.status
+        }
+      ];
+    }
+    return node;
+  });
+  return [...milestones, ...subjects];
+}
+
 // ../hooks/feed.ts
 var FEED_TTL_MS = 6 * 60 * 60 * 1000;
 var FEED_POLL_MS = 30000;
@@ -1411,7 +1805,7 @@ function parseFeed(text) {
     const f = feed;
     if (f.version !== 1 || !validSource(f.source) || !validTime(f.writtenAt) || !Array.isArray(f.entries) || f.warnings !== undefined && !Array.isArray(f.warnings))
       return null;
-    if (f.entries.length > 40)
+    if (f.entries.length > (f.source === "meta-open-items" ? TASK_NODE_LIMIT : 40))
       return null;
     const keys = new Set;
     const entries = [];
@@ -1419,9 +1813,9 @@ function parseFeed(text) {
       if (!value || typeof value !== "object")
         return null;
       const e = value;
-      if (typeof e.key !== "string" || e.key.length === 0 || e.key.length > 100 || keys.has(e.key) || !["working", "blocked", "done"].includes(e.state) || typeof e.title !== "string" || e.title.length === 0 || typeof e.detail !== "string" || !validTime(e.at) || e.kind !== undefined && !["work", "task"].includes(e.kind) || e.owner !== undefined && !validOwner(e.owner) || e.signalKey !== undefined && (typeof e.signalKey !== "string" || e.signalKey.length === 0 || e.signalKey.length > 100))
+      if (typeof e.key !== "string" || e.key.length === 0 || e.key.length > 100 || keys.has(e.key) || !["queued", "working", "blocked", "done"].includes(e.state) || typeof e.title !== "string" || e.title.length === 0 || typeof e.detail !== "string" || !validTime(e.at) || e.kind !== undefined && !["work", "task"].includes(e.kind) || e.owner !== undefined && !validOwner(e.owner) || e.signalKey !== undefined && (typeof e.signalKey !== "string" || e.signalKey.length === 0 || e.signalKey.length > 100))
         return null;
-      if (f.source === "meta-open-items" && (e.kind === undefined || e.owner === undefined))
+      if (f.source === "meta-open-items" && (e.kind === undefined || e.kind === "work" && e.owner === undefined))
         return null;
       keys.add(e.key);
       entries.push({ ...e, title: e.title.slice(0, 120), detail: e.detail.slice(0, 600) });
@@ -1450,7 +1844,7 @@ var validOwner = (value) => {
   if (!value || typeof value !== "object")
     return false;
   const owner = value;
-  return validSource(owner.machine) && validSource(owner.agent) && owner.machine.length <= 80 && owner.agent.length <= 80;
+  return validSource(owner.machine) && validSource(owner.agent) && owner.machine.length <= 100 && owner.agent.length <= 80;
 };
 function applyFeed(ledger, feed, now, source = "") {
   if (feed.source === "meta-open-items")
@@ -1481,7 +1875,7 @@ function applyFeed(ledger, feed, now, source = "") {
       feedSource: source,
       feedOwned: true,
       ...owner ? { owner: { ...owner } } : {},
-      ...feed.source === "herdr-meta-patrol" && owner ? { ownerFact: { state: entry.state, since: entry.at } } : {}
+      ...feed.source === "herdr-meta-patrol" && owner ? { ownerFact: { state: entry.state === "queued" ? "working" : entry.state, since: entry.at } } : {}
     };
     if (!owner) {
       delete updated.owner;
@@ -1500,19 +1894,44 @@ function applyFeed(ledger, feed, now, source = "") {
       next = closeFinding(next, finding.id, { how: "update", outcome: "done: no longer reported" }, now);
   return next;
 }
-function applyFeedFiles(ledger, root, files, now) {
-  const present = new Set(files.map((f) => f.path));
-  const sources = new Set([...ledger.findings, ...ledger.closedFindings, ...ledger.items].map((f) => f.feedSource).filter(Boolean));
+function normalizedPath(path) {
+  return path.replace(/\\/g, "/").replace(/\/+$/, "");
+}
+async function skippedFeedPaths(files, skippedPaths, paths) {
+  if (skippedPaths.length === 0)
+    return [];
+  const canonical = async (path) => {
+    const absolute = await paths.resolve(path);
+    return await paths.realpath(absolute).catch(() => null) ?? absolute;
+  };
+  const skipped = new Set(await Promise.all(skippedPaths.map(canonical)));
+  const aliases = new Set(skippedPaths.map(normalizedPath));
+  for (const path of skipped)
+    aliases.add(normalizedPath(path));
+  for (const file of files)
+    if (skipped.has(await canonical(file.path)))
+      aliases.add(normalizedPath(file.path));
+  return [...aliases];
+}
+function applyFeedFiles(ledger, root, files, now, skippedPaths = []) {
+  const skipped = new Set(skippedPaths.map(normalizedPath));
   let next = ledger;
+  const priorSources = new Set([...ledger.findings, ...ledger.closedFindings, ...ledger.items].map((f) => f.feedSource).filter(Boolean));
+  for (const source of priorSources)
+    if (skipped.has(normalizedPath(source)))
+      next = applyFeed(next, emptyMetaFeed, now, source);
+  const activeFiles = files.filter((file) => !skipped.has(normalizedPath(file.path)));
+  const present = new Set(activeFiles.map((f) => f.path));
+  const sources = new Set([...next.findings, ...next.closedFindings, ...next.items].map((f) => f.feedSource).filter(Boolean));
   for (const source of sources)
     if (sourceUnder(source, root) && !present.has(source) && !next.findings.some((f) => f.feedSource === source && f.sourceManaged) && !next.items.some((i) => i.feedSource === source && i.sourceManaged))
       next = applyFeed(next, emptyFeed, now, source);
-  for (const file of files)
+  for (const file of activeFiles)
     if (file.feed)
       next = applyFeed(next, file.feed, now, file.path);
-  const validPaths = new Set(files.filter((file) => file.feed).map((file) => file.path));
+  const validPaths = new Set(activeFiles.filter((file) => file.feed).map((file) => file.path));
   const carriedWarnings = (next.untrackedWork ?? []).filter((w) => !sourceUnder(w.feedSource, root) || present.has(w.feedSource) && !validPaths.has(w.feedSource));
-  const currentWarnings = files.flatMap((file) => file.feed ? (file.feed.warnings ?? []).map((w) => ({ ...w, feedSource: file.path })) : []);
+  const currentWarnings = activeFiles.flatMap((file) => file.feed ? (file.feed.warnings ?? []).map((w) => ({ ...w, feedSource: file.path })) : []);
   const untrackedWork = [...carriedWarnings, ...currentWarnings];
   if (JSON.stringify(untrackedWork) !== JSON.stringify(next.untrackedWork ?? []))
     next = { ...next, untrackedWork };
@@ -1581,6 +2000,7 @@ function applyMetaOpenItems(ledger, feed, now, source) {
   return next;
 }
 var emptyFeed = { version: 1, source: "", writtenAt: 0, entries: [] };
+var emptyMetaFeed = { version: 1, source: "meta-open-items", writtenAt: 0, entries: [] };
 var sourceUnder = (source, root) => {
   const base = root.replace(/[\\/]+$/, "");
   return source === base || source.startsWith(`${base}/`) || source.startsWith(`${base}\\`);
@@ -2886,400 +3306,6 @@ function outcomeText(d) {
     case "update":
       return `closed by the inbox: ${d.outcome}`;
   }
-}
-
-// ../hooks/task-tree.ts
-var TASK_HISTORY_LIMIT = 100;
-var TASK_NOTES_LIMIT = 40;
-var TASK_NOTE_LENGTH = 2000;
-var TASK_HISTORY_DETAIL_LENGTH = 2000;
-var TASK_NODE_LIMIT = 200;
-var TASK_DEPTH_LIMIT = 8;
-var TASK_TITLE_LENGTH = 100;
-var TASK_WEIGHT_MIN = 0.1;
-var TASK_WEIGHT_MAX = 100;
-var TASK_MACHINE_ALIAS_LENGTH = 100;
-var TASK_HISTORY_SOURCE_LENGTH = 100;
-var failed = (reason) => ({ ok: false, reason });
-var succeeded = (tree) => ({ ok: true, tree });
-function hasTask(tree, id) {
-  return tree.some((task) => task.id === id);
-}
-function boundedHistory(history, event) {
-  return [...history, event].slice(-TASK_HISTORY_LIMIT);
-}
-function eventIsValid(event) {
-  return Number.isFinite(event.at) && event.source.length > 0 && event.source.length <= TASK_HISTORY_SOURCE_LENGTH && (event.detail === undefined || event.detail.length <= TASK_HISTORY_DETAIL_LENGTH);
-}
-function notesAreValid(notes) {
-  return notes.length <= TASK_NOTES_LIMIT && notes.every((note) => note.length <= TASK_NOTE_LENGTH);
-}
-function notesOf(notes) {
-  return notes.slice(0, TASK_NOTES_LIMIT).map((note) => note.slice(0, TASK_NOTE_LENGTH));
-}
-function hasValidWeight(weight) {
-  return Number.isFinite(weight) && weight >= TASK_WEIGHT_MIN && weight <= TASK_WEIGHT_MAX;
-}
-function taskGitHubLink(value) {
-  const match = /^https:\/\/[^/?#]+\/([A-Za-z0-9](?:[A-Za-z0-9-]{0,38})?)\/([A-Za-z0-9_.-]{1,100})\/(pull|issues)\/([1-9]\d*)$/.exec(value);
-  if (!match || match[2] === "." || match[2] === "..")
-    return;
-  try {
-    const url = new URL(value);
-    if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash)
-      return;
-    return {
-      host: url.host.toLowerCase(),
-      ref: `${match[1]}/${match[2]}#${match[4]}`,
-      kind: match[3],
-      number: match[4]
-    };
-  } catch {
-    return;
-  }
-}
-function taskPrLink(value) {
-  const link = taskGitHubLink(value);
-  if (link?.kind !== "pull")
-    return;
-  const url = new URL(value);
-  return { host: link.host, ref: link.ref, queryable: url.port === "" };
-}
-function validGitHubLink(value, kind) {
-  return taskGitHubLink(value)?.kind === (kind === "pull" ? "pull" : "issues");
-}
-function validAgentName(value) {
-  return typeof value === "string" && /^[a-z][a-z0-9_-]{0,31}$/.test(value.trim());
-}
-function validMachineAlias(value) {
-  return typeof value === "string" && value.trim().length > 0 && value.trim().length <= TASK_MACHINE_ALIAS_LENGTH;
-}
-function linksProblem(links) {
-  if (links.pr !== undefined && (typeof links.pr !== "string" || !validGitHubLink(links.pr, "pull")))
-    return "invalid-pr";
-  if (links.issue !== undefined && (typeof links.issue !== "string" || !validGitHubLink(links.issue, "issue")))
-    return "invalid-issue";
-  if (links.owner !== undefined && (!links.owner || !validAgentName(links.owner.agent) || !validMachineAlias(links.owner.machine)))
-    return "invalid-owner";
-  return null;
-}
-function taskLinksFromInput(input, previous) {
-  const has = (key) => Object.prototype.hasOwnProperty.call(input, key);
-  const provided = ["pr", "issue", "owner_agent", "owner_machine"].some(has);
-  if (!provided)
-    return { ok: true, provided: false };
-  const links = { ...previous };
-  for (const kind of ["pr", "issue"]) {
-    if (!has(kind))
-      continue;
-    const value = input[kind];
-    if (value === null) {
-      delete links[kind];
-    } else if (typeof value !== "string" || !validGitHubLink(value, kind === "pr" ? "pull" : "issue")) {
-      return { ok: false, reason: kind === "pr" ? "invalid-pr" : "invalid-issue" };
-    } else {
-      links[kind] = value;
-    }
-  }
-  const hasAgent = has("owner_agent");
-  const hasMachine = has("owner_machine");
-  if (hasAgent || hasMachine) {
-    const agent = input.owner_agent;
-    const machine = input.owner_machine;
-    if (hasAgent && agent === undefined || hasMachine && machine === undefined)
-      return { ok: false, reason: "invalid-owner" };
-    if (agent === null || machine === null) {
-      if (hasAgent && agent === null && hasMachine && machine !== null || hasMachine && machine === null && hasAgent && agent !== null)
-        return { ok: false, reason: "invalid-owner" };
-      delete links.owner;
-    } else {
-      const nextAgent = hasAgent ? agent : previous?.owner?.agent;
-      const nextMachine = hasMachine ? machine : previous?.owner?.machine;
-      if (!validAgentName(nextAgent) || !validMachineAlias(nextMachine))
-        return { ok: false, reason: "invalid-owner" };
-      links.owner = { agent: nextAgent.trim(), machine: nextMachine.trim() };
-    }
-  }
-  const problem = linksProblem(links);
-  return problem ? { ok: false, reason: problem } : { ok: true, provided: true, ...Object.keys(links).length ? { links } : {} };
-}
-function taskLinkProblemText(problem) {
-  if (problem === "invalid-pr")
-    return "pr must be a GitHub or GitHub Enterprise pull request URL like https://<host>/owner/repo/pull/123.";
-  if (problem === "invalid-issue")
-    return "issue must be a GitHub or GitHub Enterprise issue URL like https://<host>/owner/repo/issues/123.";
-  return `owner_agent must match the Herdr agent-name pattern [a-z][a-z0-9_-]{0,31}; owner_machine must be a non-empty alias up to ${TASK_MACHINE_ALIAS_LENGTH} characters. Provide both when adding an owner; on update, one can change an existing owner. Pass null alone to clear the owner.`;
-}
-function depthUnder(tree, parentId) {
-  let depth = 1;
-  let ancestor = parentId;
-  const seen = new Set;
-  while (ancestor !== null) {
-    if (seen.has(ancestor))
-      return Infinity;
-    seen.add(ancestor);
-    depth++;
-    ancestor = tree.find((node) => node.id === ancestor)?.parentId ?? null;
-  }
-  return depth;
-}
-function subtreeHeight(tree, id, seen = new Set) {
-  if (seen.has(id))
-    return Infinity;
-  const path = new Set(seen).add(id);
-  const children = tree.filter((node) => node.parentId === id);
-  return children.length === 0 ? 1 : 1 + Math.max(...children.map((child) => subtreeHeight(tree, child.id, path)));
-}
-function validTitle(title) {
-  return title.trim().length > 0 && title.length <= TASK_TITLE_LENGTH;
-}
-function createTask(tree, node, source) {
-  if (hasTask(tree, node.id))
-    return failed("duplicate-id");
-  if (node.parentId !== null && !hasTask(tree, node.parentId))
-    return failed("unknown-parent");
-  if (tree.length >= TASK_NODE_LIMIT || depthUnder(tree, node.parentId) > TASK_DEPTH_LIMIT)
-    return failed("limit");
-  if (!validTitle(node.title) || node.detail.length > TASK_HISTORY_DETAIL_LENGTH)
-    return failed("limit");
-  if (!hasValidWeight(node.weight))
-    return failed("invalid-weight");
-  const linkProblem = node.links ? linksProblem(node.links) : null;
-  if (linkProblem)
-    return failed(linkProblem);
-  if (!notesAreValid(node.notes) || node.history.length > TASK_HISTORY_LIMIT || !node.history.every(eventIsValid)) {
-    return failed("limit");
-  }
-  const event = { at: node.createdAt, source, kind: "created" };
-  if (!eventIsValid(event))
-    return failed("limit");
-  return succeeded([
-    ...tree,
-    {
-      ...node,
-      notes: [...node.notes],
-      history: boundedHistory(node.history, event),
-      ...node.links ? { links: { ...node.links, ...node.links.owner ? { owner: { ...node.links.owner } } : {} } } : {}
-    }
-  ]);
-}
-function updateTask(tree, id, changes, at, source) {
-  const task = tree.find((node) => node.id === id);
-  if (!task)
-    return failed("unknown-task");
-  if (changes.title !== undefined && !validTitle(changes.title) || (changes.detail?.length ?? 0) > TASK_HISTORY_DETAIL_LENGTH)
-    return failed("limit");
-  if (changes.weight !== undefined && !hasValidWeight(changes.weight))
-    return failed("invalid-weight");
-  const linkProblem = changes.links ? linksProblem(changes.links) : null;
-  if (linkProblem)
-    return failed(linkProblem);
-  const event = {
-    at,
-    source,
-    kind: "updated",
-    ...changes.links !== undefined ? { detail: "links updated" } : {}
-  };
-  const detailEvent = changes.detail !== undefined && changes.detail !== task.detail ? { at, source, kind: "detail" } : null;
-  if (!eventIsValid(event) || detailEvent !== null && !eventIsValid(detailEvent))
-    return failed("limit");
-  return succeeded(tree.map((node) => {
-    if (node.id !== id)
-      return node;
-    const { links, ...fields } = changes;
-    const history = detailEvent ? boundedHistory(boundedHistory(node.history, detailEvent), event) : boundedHistory(node.history, event);
-    const updated = { ...node, ...fields, updatedAt: at, history };
-    if (links === null)
-      delete updated.links;
-    else if (links !== undefined)
-      updated.links = { ...links, ...links.owner ? { owner: { ...links.owner } } : {} };
-    if (updated.prMergedApplied && updated.links?.pr && updated.links.pr !== updated.prMergedApplied)
-      delete updated.prMergedApplied;
-    return updated;
-  }));
-}
-function moveTask(tree, id, parentId, at, source) {
-  const task = tree.find((node) => node.id === id);
-  if (!task)
-    return failed("unknown-task");
-  if (parentId !== null && !hasTask(tree, parentId))
-    return failed("unknown-parent");
-  if (parentId === id)
-    return failed("cycle");
-  let ancestor = parentId;
-  const visited = new Set;
-  while (ancestor !== null) {
-    if (ancestor === id || visited.has(ancestor))
-      return failed("cycle");
-    visited.add(ancestor);
-    ancestor = tree.find((node) => node.id === ancestor)?.parentId ?? null;
-  }
-  if (depthUnder(tree, parentId) - 1 + subtreeHeight(tree, id) > TASK_DEPTH_LIMIT)
-    return failed("limit");
-  const event = { at, source, kind: "moved" };
-  if (!eventIsValid(event))
-    return failed("limit");
-  return succeeded(tree.map((node) => node.id === id ? { ...node, parentId, updatedAt: at, history: boundedHistory(node.history, event) } : node));
-}
-function completeTask(tree, id, at, source, detail) {
-  const task = tree.find((node) => node.id === id);
-  if (!task)
-    return failed("unknown-task");
-  const event = { at, source, kind: "completed", ...detail === undefined ? {} : { detail } };
-  if (!eventIsValid(event))
-    return failed("limit");
-  return succeeded(tree.map((node) => node.id === id ? { ...node, status: "done", updatedAt: at, history: boundedHistory(node.history, event) } : node));
-}
-function addTaskNote(tree, id, note, at, source) {
-  const task = tree.find((node) => node.id === id);
-  if (!task)
-    return failed("unknown-task");
-  if (task.notes.length >= TASK_NOTES_LIMIT || note.length > TASK_NOTE_LENGTH)
-    return failed("limit");
-  const event = { at, source, kind: "note", detail: note };
-  if (!eventIsValid(event))
-    return failed("limit");
-  return succeeded(tree.map((node) => node.id === id ? { ...node, notes: [...node.notes, note], updatedAt: at, history: boundedHistory(node.history, event) } : node));
-}
-function taskRootGroups(tree) {
-  const groups = new Map;
-  for (const task of tree.filter((task) => task.parentId === null)) {
-    const key = task.streamId ? `stream:${task.streamId}` : `task:${task.id}`;
-    const roots = groups.get(key);
-    if (roots)
-      roots.push(task);
-    else
-      groups.set(key, [task]);
-  }
-  return [...groups.values()].map((roots) => ({ id: roots[0].id, roots }));
-}
-function weightedTaskProgress(tree, rootIds) {
-  const children = new Map;
-  for (const task of tree)
-    children.set(task.parentId, [...children.get(task.parentId) ?? [], task]);
-  const progress = (task) => {
-    if (task.status === "done")
-      return 1;
-    if (task.status === "dropped")
-      return 0;
-    return weightedAverage((children.get(task.id) ?? []).map((child) => [progress(child), child.weight]));
-  };
-  const roots = rootIds === undefined ? children.get(null) ?? [] : tree.filter((task) => Array.isArray(rootIds) ? rootIds.includes(task.id) : task.id === rootIds);
-  return weightedAverage(roots.map((task) => [progress(task), task.weight]));
-}
-function weightedAverage(values) {
-  const total = values.reduce((sum, [, weight]) => sum + weight, 0);
-  return total ? values.reduce((sum, [value, weight]) => sum + value * weight, 0) / total : 0;
-}
-function weightedTaskProgressSegments(tree, stalledTasks = new Set, rootId) {
-  const children = new Map;
-  for (const task of tree)
-    children.set(task.parentId, [...children.get(task.parentId) ?? [], task]);
-  const segments = { total: 0, done: 0, working: 0, stalled: 0, waiting: 0, queued: 0 };
-  const add = (task, weight, path) => {
-    if (task.status === "dropped" || path.has(task.id))
-      return;
-    if (task.status === "done") {
-      segments.total += weight;
-      segments.done += weight;
-      return;
-    }
-    const descendants = children.get(task.id) ?? [];
-    const active = descendants.filter((child) => child.status !== "dropped");
-    if (active.length > 0) {
-      const total = active.reduce((sum, child) => sum + child.weight, 0);
-      const nextPath = new Set(path).add(task.id);
-      for (const child of active)
-        add(child, weight * child.weight / total, nextPath);
-      return;
-    }
-    segments.total += weight;
-    if (task.status === "working")
-      segments[stalledTasks.has(task.id) ? "stalled" : "working"] += weight;
-    else if (task.status === "waits-on-other")
-      segments.waiting += weight;
-    else
-      segments.queued += weight;
-  };
-  for (const root of children.get(null) ?? [])
-    if (rootId === undefined || root.id === rootId)
-      add(root, root.weight, new Set);
-  return segments;
-}
-function taskTreeFromStatus(status) {
-  if (!status)
-    return [];
-  const goalId = status.goal && !status.goal.isAwaitingMilestones ? `goal-${status.goal.setAt}` : undefined;
-  const milestones = status.milestones.map((milestone) => {
-    const node = {
-      id: milestone.id,
-      parentId: null,
-      status: milestone.status,
-      weight: 1,
-      title: milestone.name,
-      detail: milestone.text,
-      notes: notesOf(milestone.was ? [milestone.was] : []),
-      createdAt: milestone.changedAt,
-      updatedAt: milestone.closedAt ?? milestone.changedAt,
-      history: [
-        { at: milestone.changedAt, source: "status", kind: "imported" },
-        { at: milestone.changedAt, source: "status", kind: "detail" }
-      ],
-      ...goalId ? { goalId } : {}
-    };
-    if (milestone.closedAt !== null) {
-      node.history = [
-        ...node.history,
-        {
-          at: milestone.closedAt,
-          source: "status",
-          kind: milestone.status === "done" ? "completed" : "updated",
-          detail: milestone.status
-        }
-      ];
-    }
-    return node;
-  });
-  const milestoneIds = new Set(milestones.map((node) => node.id));
-  const subjectIds = new Set(status.subjects.map((subject) => subject.id));
-  const subjects = status.subjects.map((subject) => {
-    const served = status.serves[subject.id];
-    const milestoneId = typeof served === "string" && served !== "none" && milestoneIds.has(served) ? served : null;
-    const mergedIntoId = subject.into && subjectIds.has(subject.into) ? subject.into : undefined;
-    const parentId = milestoneId;
-    const notes = notesOf([subject.was, subject.merged].filter((note) => note !== null));
-    const node = {
-      id: subject.id,
-      parentId,
-      status: subject.status,
-      weight: 1,
-      title: subject.name,
-      detail: subject.text,
-      notes,
-      createdAt: subject.createdAt,
-      updatedAt: subject.closedAt ?? subject.changedAt,
-      history: [
-        { at: subject.createdAt, source: "status", kind: "created" },
-        { at: subject.changedAt, source: "status", kind: "imported" },
-        { at: subject.changedAt, source: "status", kind: "detail" }
-      ],
-      ...goalId && milestoneId ? { goalId } : {},
-      ...mergedIntoId ? { mergedIntoId } : {}
-    };
-    if (subject.closedAt !== null) {
-      node.history = [
-        ...node.history,
-        {
-          at: subject.closedAt,
-          source: "status",
-          kind: subject.status === "done" ? "completed" : "updated",
-          detail: subject.status
-        }
-      ];
-    }
-    return node;
-  });
-  return [...milestones, ...subjects];
 }
 
 // ../hooks/task-text.ts
@@ -5362,6 +5388,7 @@ function emptySession() {
   return {
     ledger: EMPTY,
     taskTree: [],
+    taskTreeProjectionConflictReported: false,
     taskStatusMismatches: [],
     taskPrStates: {},
     taskFactWarnings: [],
@@ -5444,6 +5471,7 @@ function sessionFields(saved, views) {
   return {
     ledger,
     taskTree,
+    taskTreeProjectionConflictReported: saved.taskTreeProjectionConflictReported === true,
     taskStatusMismatches: upgradeTaskStatusMismatches(saved.taskStatusMismatches, taskTree),
     taskPrStates: Object.fromEntries(Object.entries(saved.taskPrStates ?? {}).filter((entry) => entry[1] === "OPEN" || entry[1] === "CLOSED" || entry[1] === "MERGED")),
     taskFactWarnings: saved.taskFactWarnings ?? [],
@@ -11506,6 +11534,7 @@ var CLAUDE_CODE_SUPPORT = {
   "task-owner-facts": { kind: "full" },
   "task-reminder": { kind: "full" },
   "task-tree-currentness": { kind: "full" },
+  "task-tree-projection": { kind: "full" },
   "task-status-mismatch": { kind: "full" },
   timeline: { kind: "full" },
   "agents-tab": {
@@ -11671,6 +11700,10 @@ var CODEX_SUPPORT = {
   "task-owner-facts": { kind: "full" },
   "task-reminder": { kind: "full" },
   "task-tree-currentness": { kind: "full" },
+  "task-tree-projection": {
+    kind: "unsupported",
+    reason: "The Codex MCP server serves every chat, so it cannot safely enable a file projection for only the meta root chat."
+  },
   "task-status-mismatch": { kind: "full" },
   timeline: { kind: "full" },
   "agents-tab": { kind: "different", reason: "Agents is not drawn in this look yet." }
@@ -11794,6 +11827,10 @@ var OMP_SUPPORT = {
   "task-owner-facts": { kind: "full" },
   "task-reminder": { kind: "full" },
   "task-tree-currentness": { kind: "full" },
+  "task-tree-projection": {
+    kind: "unsupported",
+    reason: "Only the meta root session on Claude Code writes the task-tree projection; omp keeps its task tree and continues reading configured feeds."
+  },
   "task-status-mismatch": { kind: "full" },
   timeline: { kind: "full" },
   "agents-tab": { kind: "different", reason: "Agents is not drawn in this look yet." }
@@ -14290,19 +14327,25 @@ function ompHerdrAsk(target, memory, changed) {
 }
 
 // ../feed-reader.ts
-import { readdir as readdir3, readFile as readFile3, stat as stat3 } from "fs/promises";
+import { readdir as readdir3, readFile as readFile3, realpath, stat as stat3 } from "fs/promises";
 import { join as join3, resolve } from "path";
 var feedIo = {
   resolve,
+  realpath: async (path) => realpath(path).catch(() => null),
   join: join3,
   stat: stat3,
   list: (root) => readdir3(root, { withFileTypes: true }),
   read: (path) => readFile3(path, "utf8")
 };
-async function readFeedFiles(path, io = feedIo) {
+async function readFeedFiles(path, io = feedIo, skipPaths = []) {
   if (!path)
     return null;
   const root = io.resolve(path);
+  const result = async (files) => ({
+    root,
+    files,
+    skippedPaths: await skippedFeedPaths(files, skipPaths, io)
+  });
   const read = async (path, size) => ({
     path,
     feed: size > MAX_FEED_FILE_BYTES ? null : parseFeed(await io.read(path))
@@ -14310,7 +14353,7 @@ async function readFeedFiles(path, io = feedIo) {
   try {
     const info = await io.stat(root);
     if (info.isFile())
-      return { root, files: [await read(root, info.size)] };
+      return result([await read(root, info.size)]);
     if (!info.isDirectory())
       return null;
     const files = [];
@@ -14325,9 +14368,9 @@ async function readFeedFiles(path, io = feedIo) {
           files.push({ path: file, feed: null });
       }
     }
-    return { root, files };
+    return result(files);
   } catch (error) {
-    return missing(error) ? { root, files: [] } : null;
+    return missing(error) ? result([]) : null;
   }
 }
 var missing = (error) => !!error && typeof error === "object" && ("code" in error) && error.code === "ENOENT";
@@ -14940,11 +14983,11 @@ function turnHandlers(context, sessions) {
 
 // src/host-document.ts
 import { constants as constants2 } from "fs";
-import { open, realpath, stat as stat5 } from "fs/promises";
+import { open, realpath as realpath2, stat as stat5 } from "fs/promises";
 var BLOCKED_DOCUMENT_LINK = "inbox-blocked-document-link";
 var documentFile = {
   stat: async (path) => {
-    const target = await realpath(path);
+    const target = await realpath2(path);
     const info = await stat5(target);
     return { path: target, isFile: info.isFile(), size: info.size };
   },
