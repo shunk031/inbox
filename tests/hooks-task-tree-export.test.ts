@@ -116,6 +116,21 @@ describe('task-tree export', () => {
     ])
   })
 
+  test('the first export for an unchanged restored tree writes, then unchanged saves are skipped', async () => {
+    const writes: string[] = []
+    const exportTree = exportTreeWith({
+      write: async (path, text) => void writes.push(`${path}:${text}`),
+    })
+    const restored = { ...emptySession(), taskTree: [node('restored')] }
+
+    await exportTree('session-restored', restored, restored)
+    await exportTree('session-restored', restored, restored)
+
+    expect(writes).toHaveLength(1)
+    expect(writes[0]).toContain('/home/test/.local/state/inbox/task-tree/session-restored.json.unique.tmp:')
+    expect(JSON.parse(writes[0]!.slice(writes[0]!.indexOf('{'))).tasks[0].id).toBe('restored')
+  })
+
   test('ignores write failures and logs once per session', async () => {
     const logs: string[] = []
     let writes = 0

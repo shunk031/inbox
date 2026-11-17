@@ -2248,6 +2248,7 @@ async function applyConversation(
   // Before notePlace's save, so this conversation is never saved with the previous one's tool fields.
   await replaceDrawn($, s => withLoadedToolFields(cutOff(s), by, saved?.session, parent, turns))
   if (revision !== sessionState.loadRevision) return
+  await taskProjection?.exportSnapshot(id, await read($, SESSION))
   void notePlace($)
   const isFresh = isBlankLedger(current)
   const isUnread =

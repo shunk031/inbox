@@ -13,6 +13,7 @@ export function modTaskTreeExport(deps: {
   log: (text: string) => void
 }) {
   const reported = new Set<string>()
+  const exported = new Set<string>()
   const command = async (args: string[]) => {
     const { code, stderr } = await deps.run(args, { cwd: '/', timeoutMs: 10_000 })
     if (code !== 0) throw new Error(stderr.trim() || `command failed: ${args[0]}`)
@@ -27,6 +28,7 @@ export function modTaskTreeExport(deps: {
 
   return async (sessionId: string, before: Session, session: Session) => {
     if (
+      exported.has(sessionId) &&
       before.taskTree === session.taskTree &&
       before.taskFactWarnings === session.taskFactWarnings &&
       before.taskStatusMismatches === session.taskStatusMismatches &&
@@ -43,6 +45,7 @@ export function modTaskTreeExport(deps: {
       const warnings = taskTimelineWarnings(session, session.taskTree, savedAt)
       const projection = taskTreeExport(sessionId, session.taskTree, warnings, session.taskStatusMismatches, savedAt)
       await writeProjectionAtomically(path, `${JSON.stringify(projection, null, 2)}\n`, files)
+      exported.add(sessionId)
       return projection
     } catch {
       if (!reported.has(sessionId)) {
