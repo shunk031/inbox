@@ -95,7 +95,7 @@ test('a terminal Status look counts rows shown before and after scrolling', asyn
   await clock.settle()
   await clock.advance(LOOK_MIN_MS)
   expect(await top.find({ key: 'status-s1' })).toBeDefined()
-  await top.press({ key: 'tab-needsYou' })
+  await top.press({ key: 'tab-key-needsYou' })
   await clock.settle()
   expect(saved!.ledger.overview?.lastLookAt).toBe(1_000_000 + LOOK_MIN_MS)
   await top.unmount()
@@ -103,7 +103,7 @@ test('a terminal Status look counts rows shown before and after scrolling', asyn
   await scrolled.press({ key: 'tab-overview' })
   await clock.settle()
   await clock.advance(LOOK_MIN_MS)
-  await scrolled.press({ key: 'tab-needsYou' })
+  await scrolled.press({ key: 'tab-key-needsYou' })
   await clock.settle()
 
   const overview = saved!.ledger.overview as SessionStatus

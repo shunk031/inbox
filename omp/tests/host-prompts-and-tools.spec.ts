@@ -90,7 +90,7 @@ test('record, close, order_prs and tasks are registered with the shared schemas 
   createInbox(pi(), deps())
   expect([...w.tools.keys()]).toEqual(['record', 'close', 'order_prs', 'tasks'])
   expect(w.tools.get('record')).toMatchObject({ loadMode: 'essential', approval: 'read' })
-  expect(w.tools.get('record').parameters.properties.kind.enum).toEqual(['question', 'task', 'finding'])
+  expect(w.tools.get('record').parameters.properties.kind.enum).toEqual(['question', 'task'])
   expect(w.tools.get('tasks').parameters.properties.operation.enum).toEqual([
     'add',
     'update',

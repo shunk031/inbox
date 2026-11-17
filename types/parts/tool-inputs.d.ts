@@ -7,7 +7,7 @@ declare module 'claude-code' {
   /** The arguments of the agent's tools, as their schemas in `hooks/tools.ts` give them. */
   interface McpToolInputs {
     mcp__inbox__record: {
-      kind: 'question' | 'task' | 'finding'
+      kind: 'question' | 'task'
       ask?: string
       context?: string
       options?: string[]
@@ -16,10 +16,7 @@ declare module 'claude-code' {
       why?: string
       steps?: string[]
       design_choice?: boolean
-      finding_kind?: 'issue' | 'opportunity'
-      title?: string
       detail?: string
-      path?: string
       document?: string
     }
     mcp__inbox__close: {

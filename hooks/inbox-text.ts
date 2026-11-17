@@ -184,7 +184,7 @@ export function statusCarryText(ledger: Ledger, taskTree: TaskTree = []): string
 }
 
 export function carryText(ledger: Ledger, title: string, taskTree: TaskTree = []): string | null {
-  const findings = ledger.findings.filter(f => !f.feedOwned)
+  const findings = ledger.findings.filter(f => !f.feedOwned && !f.sourceManaged && f.kind !== 'progress')
   const lines = statusSummaryLines(ledger, taskTree)
   if (lines.length === 0 && promptItems(ledger).length === 0 && findings.length === 0) return null
   const out = [title, ...lines]
@@ -193,7 +193,7 @@ export function carryText(ledger: Ledger, title: string, taskTree: TaskTree = []
     for (const item of promptItems(ledger)) out.push(itemLine(item))
   }
   if (findings.length > 0) {
-    out.push('Findings you recorded, still open:')
+    out.push('Legacy findings you recorded, still open:')
     for (const f of findings) out.push(findingLine(f))
   }
   if (ledger.closed.length > 0) {
@@ -213,7 +213,7 @@ export function inboxText(
   taskTree: TaskTree = [],
   taskStatusMismatches: readonly TaskStatusMismatch[] = [],
 ): string {
-  const findings = ledger.findings.filter(f => !f.feedOwned)
+  const findings = ledger.findings.filter(f => !f.feedOwned && !f.sourceManaged && f.kind !== 'progress')
   const taskById = new Map(taskTree.map(task => [task.id, task]))
   const mismatches = taskStatusMismatches
     .flatMap(mismatch => {
@@ -241,7 +241,7 @@ export function inboxText(
     out.push('Nothing is waiting on the user.')
   }
   if (findings.length > 0) {
-    out.push('Findings you recorded, still open:')
+    out.push('Legacy findings you recorded, still open:')
     for (const f of findings) out.push(findingLine(f))
   }
   if (ledger.unrecordedDecisions.length > 0) {

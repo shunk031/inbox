@@ -1,5 +1,4 @@
 import { expect, mock, test } from 'claude-code/testing'
-import type { FoldProps } from '../hooks/fold-client'
 import type { LinksProps } from '../hooks/links-client'
 import type { RowProps } from '../hooks/row-client'
 import type { TabsProps } from '../hooks/tabs-client'
@@ -49,7 +48,7 @@ test('the desktop task keeps help before Done, puts Try again first when its sen
   await arrive($)
 })
 
-test('the desktop pane draws each action as one button and the tabs as one click region, with no keys and no close button of its own', async ($, on) => {
+test('the desktop pane draws each action as one button and the remaining tabs as click regions, with no keys and no close button of its own', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   world($, on, [])
   w.surfaces = ['desktop']
@@ -93,52 +92,14 @@ test('the desktop pane draws each action as one button and the tabs as one click
 
   const tabBar = async () => (await pane.find({ key: 'tabs' }))?.props.props as TabsProps
   const { tabs, gap } = await tabBar()
-  expect(tabs.map(t => t.id)).toEqual(['needsYou', 'findings', 'timeline', 'prs'])
-  const findingsEnd = tabs[0]!.width + gap + tabs[1]!.width
-  await pane.pointer({ type: 'down', x: findingsEnd - 1, y: 1.1, button: 'left', in: 'tabs' })
+  expect(tabs.map(t => t.id)).toEqual(['needsYou', 'timeline', 'prs'])
+  const timelineX = tabs[0]!.width + gap
+  await pane.pointer({ type: 'down', x: timelineX + 1, y: 1.1, button: 'left', in: 'tabs' })
   await clock.settle()
-  expect((await tabBar()).shown).toBe('findings')
-  await pane.pointer({ type: 'down', x: tabs[0]!.width, y: 1, button: 'left', in: 'tabs' })
-  await clock.settle()
-  expect((await tabBar()).shown).toBe('findings')
-
-  await $.tool.call({
-    tool: 'mcp__inbox__record',
-    kind: 'finding',
-    finding_kind: 'issue',
-    title: 'README is stale',
-    detail: 'Old.',
-  })
-  await $.tool.call({ tool: 'mcp__inbox__close', id: 'f3', reason: 'fixed' } as never)
-  await clock.advance(9000)
-  expect(await pane.find({ key: 'settled-f3' })).toBeUndefined()
-  await pane.pointer({ type: 'down', x: 1, y: 1.1, button: 'left', in: 'tabs' })
+  expect((await tabBar()).shown).toBe('timeline')
+  await pane.pointer({ type: 'down', x: 1, y: 1, button: 'left', in: 'tabs' })
   await clock.settle()
   expect((await tabBar()).shown).toBe('needsYou')
-  await pane.pointer({ type: 'down', x: findingsEnd - 1, y: 1.1, button: 'left', in: 'tabs' })
-  await clock.settle()
-  const fold = async () => (await pane.find({ key: 'fold-issue' }))?.props.props as FoldProps
-  const closedItem = { text: /^Closed by Claude: fixed$/ } as const
-  expect((await pane.find({ key: 'fold-issue' }))?.type).toBe('Client')
-  expect(await pane.find(closedItem)).toBeUndefined()
-  await pane.pointer({ type: 'down', x: 30, y: 0, button: 'left', in: 'fold-issue' })
-  await clock.settle()
-  expect((await fold()).isUnfolded).toBe(true)
-  expect(await pane.find(closedItem)).toBeDefined()
-  await pane.post({ isUnfolded: true }, { in: 'fold-issue' })
-  await clock.settle()
-  expect((await fold()).isUnfolded).toBe(true)
-  expect(await pane.find(closedItem)).toBeDefined()
-
-  await $.tool.call({
-    tool: 'mcp__inbox__record',
-    kind: 'finding',
-    finding_kind: 'issue',
-    title: 'Retry loop never backs off',
-    detail: 'Hot.',
-  })
-  await clock.settle()
-  expect(await pane.find({ text: 'Hot.' })).toBeDefined()
 
   expect(await pane.find({ key: 'close-pane' })).toBeUndefined()
 })

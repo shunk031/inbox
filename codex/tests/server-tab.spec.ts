@@ -200,7 +200,7 @@ test('the inbox tool answers in text: the count, each row that waits, and where 
   assert.equal(
     r.result.content[0]?.text,
     [
-      '2 wait on the user · 1 finding',
+      '3 wait on the user · 1 finding',
       'A close id is only for the close tool. Never write one in a reply.',
       'Questions:',
       '1) "Ship it?"; options: Yes / No (close id: i1)',

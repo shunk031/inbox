@@ -62,8 +62,11 @@ test('Codex’s own tool calls reach their session through the turn metadata', a
     { kind: 'finding', finding_kind: 'issue', title: 'No lint script', detail: 'Only tests run.' },
     { 'x-codex-turn-metadata': { session_id: 's1', thread_id: 's1' } },
   )
-  assert.match(r.result.content[0]?.text ?? '', /^Recorded\. /)
-  assert.equal((await readState(dir, 's1')).ledger.findings[0]?.title, 'No lint script')
+  assert.equal(
+    r.result.content[0]?.text,
+    'Not recorded: findings are retired. Add it as a task with `tasks` if it is work to track, or record a question or task if the person must decide or act.',
+  )
+  assert.deepEqual((await readState(dir, 's1')).ledger.findings, [])
 })
 
 test('Codex registers tasks and saves task-tree edits through the session store', async () => {

@@ -73,12 +73,10 @@ test('a full store makes room by deleting ended sessions’ saves oldest first, 
 
   const r = await $.tool.call({
     tool: 'mcp__inbox__record',
-    kind: 'finding',
-    finding_kind: 'issue',
-    title: 'Retry loop never backs off',
-    detail: 'The fetch retry spins with no delay.',
+    kind: 'task',
+    ask: 'Run the retry test',
   })
-  expect(r.result).toBe('Recorded. The user sees it in the Finds tab of the /inbox pane.')
-  expect(w.stored.get('s:session-1')).toContain('Retry loop never backs off')
+  expect(r.result).toContain('Recorded. The user sees it in the /inbox pane.')
+  expect(w.stored.get('s:session-1')).toContain('Run the retry test')
   expect(['running-1', 'ended-1', 'ended-2'].filter(id => w.stored.has(`s:${id}`))).toEqual(['running-1', 'ended-2'])
 })

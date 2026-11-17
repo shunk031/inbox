@@ -233,7 +233,7 @@ function upgraded(saved: Saved, sessionId: string): SessionState {
       turn,
       pending: (saved.pending ?? []).map(({ ex: { checks: _exChecks, ...ex }, ...p }) => ({ ...p, ex })),
     }),
-    shownTab: isShownTab(saved.shownTab) ? saved.shownTab : base.shownTab,
+    shownTab: saved.shownTab === 'findings' ? 'needsYou' : isShownTab(saved.shownTab) ? saved.shownTab : base.shownTab,
     heard,
     ...(saved.callFailures ? {} : { callFailures: withSavedFailure(saved) }),
     coveredTurn: saved.coveredTurn !== undefined ? saved.coveredTurn : coveredBefore(heard, turn.person ?? null),

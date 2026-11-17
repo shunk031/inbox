@@ -135,15 +135,28 @@ test('a ledger update held during clear cannot write its old question into the n
 test('a forked conversation keeps the parent’s findings and closed records, and dismissing the question that replaced a finding brings the finding back', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   world($, on, [])
-
+  w.stored.set(
+    's:session-1',
+    JSON.stringify({
+      ...SAVED_SESSION,
+      ledger: {
+        ...SAVED_SESSION.ledger,
+        items: [],
+        findings: [
+          {
+            id: 'f1',
+            kind: 'issue',
+            title: 'Retry loop never backs off',
+            detail: 'The fetch retry spins with no delay.',
+            path: null,
+            at: 900_000,
+          },
+        ],
+        nextId: 2,
+      },
+    }),
+  )
   await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
-  await $.tool.call({
-    tool: 'mcp__inbox__record',
-    kind: 'finding',
-    finding_kind: 'issue',
-    title: 'Retry loop never backs off',
-    detail: 'The fetch retry spins with no delay.',
-  })
   w.ledgerReply = 'ASKED: f1 | new 1\nNEW: decide | 1 | Add a backoff to the retry loop? | Yes / No | Yes'
   await $.prompt.submit({ text: 'fix the retries', wait: false, origin: { kind: 'composer' } })
   await $.turn.complete({ answer: 'Add a backoff?', durationMs: 5, isAborted: false, turnId: 't1', reason: 'answer' })
@@ -151,12 +164,9 @@ test('a forked conversation keeps the parent’s findings and closed records, an
   const pane = await $.ui.mount(PANE)
   expect(await pane.find({ text: /Add a backoff to the retry loop\?/ })).toBeDefined()
   await clock.advance(1)
-  await pane.press({ key: 'tab-findings' })
+  await pane.press({ key: 'tab-key-needsYou' })
   await clock.settle()
   expect(await pane.find({ key: 'settled-f1' })).toBeUndefined()
-  await pane.press({ key: 'fold-issue' })
-  expect(await pane.find({ text: /^Now a question in Asks$/ })).toBeDefined()
-  await pane.press({ key: 'tab-needsYou' })
   const contextOf = async () =>
     ((await $.prompt.submit({ text: 'where are we?', wait: false, origin: { kind: 'composer' } })).context ?? []).join(
       '\n',
@@ -172,4 +182,7 @@ test('a forked conversation keeps the parent’s findings and closed records, an
   await clock.settle()
   await clock.advance(SETTLED_MS)
   expect(await contextOf()).toContain('- issue: Retry loop never backs off (close id: f1)')
+  expect(await pane.find({ key: 'fold-legacy' })).toBeDefined()
+  await pane.press({ key: 'fold-legacy' })
+  expect(await pane.find({ text: /Retry loop never backs off/ })).toBeDefined()
 })

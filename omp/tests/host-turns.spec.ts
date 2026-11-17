@@ -132,7 +132,6 @@ test('in a Herdr pane, each change reports the tab counts, a stop replaces them 
     'inbox-stop': null,
     'inbox-focus': null,
     'inbox-needs-you': null,
-    'inbox-findings': null,
     'inbox-prs': null,
   }
   await call('session_start', { type: 'session_start' })
@@ -140,13 +139,12 @@ test('in a Herdr pane, each change reports the tab counts, a stop replaces them 
   expect(herdrReports().at(-1)).toEqual({ target: 'pane report-metadata p1 --source inbox', tokens: cleared })
 
   await record({ kind: 'question', ask: 'Ship it?', options: ['yes', 'no'] })
-  await record({ kind: 'finding', title: 'The retry loop never ends', detail: 'It retries forever on a 401.' })
+  await record({ kind: 'task', ask: 'Run the retry test' })
   await settle()
   expect(herdrReports().at(-1)?.tokens).toEqual({
     ...cleared,
-    inbox: 'Ship it?',
-    'inbox-needs-you': '1',
-    'inbox-findings': '1',
+    inbox: '2 · Ship it?',
+    'inbox-needs-you': '2',
   })
 
   await endOnError({ errorStatus: 401, errorMessage: 'invalid x-api-key' })
@@ -160,8 +158,7 @@ test('in a Herdr pane, each change reports the tab counts, a stop replaces them 
   await settle()
   expect(herdrReports().at(-1)?.tokens).toMatchObject({
     'inbox-stop': null,
-    'inbox-needs-you': '1',
-    'inbox-findings': '1',
+    'inbox-needs-you': '2',
   })
 
   const reports = herdrReports().length

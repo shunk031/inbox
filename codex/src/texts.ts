@@ -8,18 +8,17 @@ export const CODEX: Host = {
   agent: 'Codex',
   surface: 'the Inbox tab',
   band: null,
-  findingsIn: 'the Finds section of the Inbox tab',
   prsIn: 'the PRs section of the Inbox tab',
   recordTool: 'mcp__inbox__record',
   closeTool: 'mcp__inbox__close',
   taskTool: 'tasks',
   splitsPlanIntoSubjects: true,
   intro:
-    'The inbox plugin shows the user what waits on them: your open questions and the tasks only they can do, and your findings, in the Inbox tab beside the conversation.',
+    'The inbox plugin shows the user what waits on them: your open questions, the tasks only they can do, and legacy findings in Asks, in the Inbox tab beside the conversation.',
 }
 
 export const INBOX_DESCRIPTION =
-  'What waits on the user in this conversation: open questions, tasks and findings, as text. Call it only when the user asks to see the inbox or what waits on them. It does not open the Inbox tab; the user opens that from the side panel.'
+  'What waits on the user in this conversation: open questions, tasks and legacy findings, as text. Call it only when the user asks to see the inbox or what waits on them. It does not open the Inbox tab; the user opens that from the side panel.'
 
 export const VIEW_DESCRIPTION =
   'For the Inbox tab only: what the tab shows for this conversation, or its demo. Do not call it; to tell the user what waits on them, call inbox.'

@@ -6,9 +6,8 @@ export const RECORD_SCHEMA = {
   properties: {
     kind: {
       type: 'string',
-      enum: ['question', 'task', 'finding'],
-      description:
-        'question: a decision only the user can make. task: a step only the user can do. finding: something outside the current task that deserves their attention.',
+      enum: ['question', 'task'],
+      description: 'question: a decision only the user can make. task: a step only the user can do.',
     },
     ask: {
       type: 'string',
@@ -53,22 +52,11 @@ export const RECORD_SCHEMA = {
       description:
         'For a question: true when its options are designs or approaches you could try and show side by side, such as two layouts or two ways to build a feature. The user can then ask you to compare them. Leave it out for a fact, an approval or a preference.',
     },
-    finding_kind: {
-      type: 'string',
-      enum: ['issue', 'opportunity'],
-      description: 'For a finding. issue: something wrong or risky. opportunity: something that could be better.',
-    },
-    title: {
-      type: 'string',
-      description:
-        'For a finding: what it is, in at most 12 words. Links as [label](https://…); a link counts as its label.',
-    },
     detail: {
       type: 'string',
       description:
-        'For a question or task: why you ask and what it holds up; for a question, what each option leads to. For a finding: why it matters and what you would do. Use short paragraphs. Links as [label](https://…).',
+        'For a question or task: why you ask and what it holds up; for a question, what each option leads to. Use short paragraphs. Links as [label](https://…).',
     },
-    path: { type: 'string', description: 'For a finding: the file it is about, if one.' },
     document: {
       type: 'string',
       description: 'For a Markdown report the user should read in the inbox: its absolute local file path.',

@@ -32,13 +32,10 @@ import {
 
 test('a selected row draws its buttons in the shared key plan order', () => {
   const screen = screenOf()
-  const rows = [...screen.view.needsYou.questions, ...screen.view.needsYou.tasks, ...screen.view.findings.rows].filter(
-    r => r.state.is !== 'settled',
-  )
+  const rows = [...screen.view.needsYou.questions, ...screen.view.needsYou.tasks].filter(r => r.state.is !== 'settled')
   expect(rows.length).toBeGreaterThan(5)
   for (const row of rows) {
-    const tab = row.type === 'finding' ? 'findings' : 'needsYou'
-    const line = buttonLine(screen, { ...onRow(row), tab, opened: row.id })
+    const line = buttonLine(screen, { ...onRow(row), tab: 'needsYou', opened: row.id })
     let from = 0
     for (const label of plannedLabels(row)) {
       const at = line.indexOf(label, from)
@@ -48,7 +45,7 @@ test('a selected row draws its buttons in the shared key plan order', () => {
   }
 })
 
-test('a feed finding draws in the Progress group', () => {
+test('a feed Progress row stays out of the omp Asks panel', () => {
   const state = demoState(NOW)
   state.ledger = {
     ...state.ledger,
@@ -66,9 +63,9 @@ test('a feed finding draws in the Progress group', () => {
     ],
   }
   const screen = screenOf({ view: sessionView(state, NOW, SETTLED_MS, NO_HOLDS) })
-  const lines = text(screen, { ...INITIAL_UI, tab: 'findings' })
-  expect(lines).toContain('Progress')
-  expect(lines).toContain('Implement the progress feed')
+  const lines = text(screen, INITIAL_UI)
+  expect(lines).not.toContain('Progress')
+  expect(lines).not.toContain('Implement the progress feed')
 })
 
 test('the panel draws untracked live work as a warning banner', () => {
@@ -93,8 +90,8 @@ test('the panel draws untracked live work as a warning banner', () => {
 
 test('a row’s follow-ups share its buttons’ last line only when all of them fit there, and otherwise start a line of their own together', () => {
   const screen = screenOf()
-  const row = screen.view.findings.rows.find(r => r.state.is === 'open')!
-  const ui: PanelUi = { ...onRow(row), tab: 'findings', opened: row.id }
+  const row = screen.view.needsYou.questions.find(r => r.state.is === 'open')!
+  const ui: PanelUi = { ...onRow(row), tab: 'needsYou', opened: row.id }
   const { keys, more } = rowKeyPlan(row, true)
   const labelsOf = (planned: typeof keys) =>
     planned.flatMap(k => (k.slot === 'action' || k.slot === 'choice' ? [k.action.label] : []))
@@ -205,11 +202,7 @@ for (const isNextBuild of [false, true])
     const ids = tabs.map(t => t.id)
     expect(ids.includes('overview')).toBe(isNextBuild)
     expect(ids.includes('timeline')).toBe(true)
-    expect(ids).toEqual(
-      isNextBuild
-        ? ['overview', 'needsYou', 'findings', 'timeline', 'prs']
-        : ['needsYou', 'findings', 'timeline', 'prs'],
-    )
+    expect(ids).toEqual(isNextBuild ? ['overview', 'needsYou', 'timeline', 'prs'] : ['needsYou', 'timeline', 'prs'])
     const start = ids.indexOf(INITIAL_UI.tab)
     const cycled = ids.map((_, n) => keys(screen, INITIAL_UI, ...ids.slice(0, n).map(() => 'tab')).tab)
     expect(cycled).toEqual([...ids.slice(start), ...ids.slice(0, start)])
@@ -306,9 +299,7 @@ test('PR buttons follow the shared plan order for the block, its threads and its
 test('a row keeps its age at a narrow width and beside a long outcome, and its title and status shorten instead', () => {
   const ui: PanelUi = { ...INITIAL_UI, unfolded: ['question', 'task', 'issue', 'opportunity'] }
   const ages = (width: number) =>
-    (['needsYou', 'findings'] as const).flatMap(
-      tab => text(screenOf(), { ...ui, tab }, width).match(/\d+[mh] ago|just now/g) ?? [],
-    )
+    (['needsYou'] as const).flatMap(tab => text(screenOf(), { ...ui, tab }, width).match(/\d+[mh] ago|just now/g) ?? [])
   const wide = ages(200)
 
   expect(wide.length).toBeGreaterThan(10)

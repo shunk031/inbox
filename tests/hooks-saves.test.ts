@@ -361,7 +361,7 @@ test('a ledger write committed before clear still saves to its original session'
   const held = new Promise<void>(resolve => (release = resolve))
   on('state.set', { plugin: 'inbox', key: 'session' } as const, async (_$, e, next) => {
     const result = await next(e)
-    if (e.value.ledger.findings.some((f: { title: string }) => f.title === 'Late finding')) {
+    if (e.value.ledger.items.some((i: { ask: string }) => i.ask === 'Late task')) {
       entered()
       await held
     }
@@ -373,10 +373,8 @@ test('a ledger write committed before clear still saves to its original session'
   await clock.settle()
   const adding = $.tool.call({
     tool: 'mcp__inbox__record',
-    kind: 'finding',
-    finding_kind: 'issue',
-    title: 'Late finding',
-    detail: 'Late detail.',
+    kind: 'task',
+    ask: 'Late task',
   })
   await afterWrite
   await $.session.end({ reason: 'clear', sessionId: 'session-1', resume: { id: 'session-1' } })
@@ -384,9 +382,9 @@ test('a ledger write committed before clear still saves to its original session'
   release()
   await adding
   await clock.settle()
-  expect(
-    JSON.parse(w.stored.get('s:session-1') ?? '{}').ledger.findings.map((f: { title: string }) => f.title),
-  ).toContain('Late finding')
+  expect(JSON.parse(w.stored.get('s:session-1') ?? '{}').ledger.items.map((i: { ask: string }) => i.ask)).toContain(
+    'Late task',
+  )
 })
 
 test('the latest committed ledger wins when an older write completes afterward', async ($, on) => {
@@ -398,8 +396,8 @@ test('the latest committed ledger wins when an older write completes afterward',
   const held = new Promise<void>(resolve => (release = resolve))
   on('state.set', { plugin: 'inbox', key: 'session' } as const, async (_$, e, next) => {
     const result = await next(e)
-    const titles = e.value.ledger.findings.map((f: { title: string }) => f.title)
-    if (titles.includes('First finding') && !titles.includes('Second finding')) {
+    const asks = e.value.ledger.items.map((i: { ask: string }) => i.ask)
+    if (asks.includes('First task') && !asks.includes('Second task')) {
       entered()
       await held
     }
@@ -408,23 +406,20 @@ test('the latest committed ledger wins when an older write completes afterward',
   await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
   const first = $.tool.call({
     tool: 'mcp__inbox__record',
-    kind: 'finding',
-    finding_kind: 'issue',
-    title: 'First finding',
-    detail: 'First.',
+    kind: 'task',
+    ask: 'First task',
   })
   await afterWrite
   await $.tool.call({
     tool: 'mcp__inbox__record',
-    kind: 'finding',
-    finding_kind: 'issue',
-    title: 'Second finding',
-    detail: 'Second.',
+    kind: 'task',
+    ask: 'Second task',
   })
   release()
   await first
   await clock.settle()
-  expect(
-    JSON.parse(w.stored.get('s:session-1') ?? '{}').ledger.findings.map((f: { title: string }) => f.title),
-  ).toEqual(['First finding', 'Second finding'])
+  expect(JSON.parse(w.stored.get('s:session-1') ?? '{}').ledger.items.map((i: { ask: string }) => i.ask)).toEqual([
+    'First task',
+    'Second task',
+  ])
 })

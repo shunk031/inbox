@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import { FOLD_QUIET_MS, PRESS_GUARD_MS, QUEUED_AFTER_MS, SETTLED_MS } from '../hooks/timing'
 import { w, arrive, world } from './hooks-world'
-import { BAND, PANE, selectRow, leaveAndReturn } from './hooks-helpers'
+import { PANE, selectRow, leaveAndReturn } from './hooks-helpers'
 
 test('terminal and desktop list every closed question under Closed and fold the full list back', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
@@ -53,7 +53,7 @@ test('terminal and desktop list every closed question under Closed and fold the 
 })
 
 test(
-  'Claude closes an item or finding that no longer applies, by the id it reads beside the prompt',
+  'Claude closes an item that no longer applies, by the id it reads beside the prompt',
   { timeoutMs: 20_000 },
   async ($, on) => {
     const clock = mock.clock(on, { now: 1_000_000 })
@@ -69,71 +69,44 @@ test(
       reason: 'answer',
     })
     await clock.settle()
-    await $.tool.call({
-      tool: 'mcp__inbox__record',
-      kind: 'finding',
-      finding_kind: 'issue',
-      title: 'README is stale',
-      detail: 'It names the old command.',
-    })
     const told = await $.prompt.submit({ text: 'where are we?', wait: false, origin: { kind: 'composer' } })
     expect(told.context?.join('\n')).toContain('- (2) "Name the command greet?" (close id: i2)')
-    expect(told.context?.join('\n')).toContain('- issue: README is stale (close id: f3)')
 
     const close = (input: Record<string, string>) => $.tool.call({ tool: 'mcp__inbox__close', ...input } as never)
     w.paneState = { isShown: true, isFocused: true }
+    await $.command.run({ command: 'inbox', args: '' } as never)
     const pane = await $.ui.mount(PANE)
-    const band = await $.ui.mount({ plugin: 'inbox', surface: 'terminal', ...BAND })
+    const present = async (label: string, q: { key?: string; text?: RegExp }) => {
+      if (!(await pane.find(q))) throw new Error(`Expected ${label} to be present.`)
+    }
 
-    await pane.press({ key: 'tab-findings' })
-    await pane.press({ key: 'discuss-f3' })
-    await clock.settle()
-    expect(w.sent.at(-1)).toContain("Let's talk through this finding you recorded")
-    expect(await pane.find({ text: /Discussing…/ })).toBeDefined()
-    expect((await pane.find({ key: 'discuss-f3-key' }))?.props.label).toBe('Discuss')
-    expect(await band.find({ text: /Finds 1/ })).toBeDefined()
-    await pane.press({ key: 'tab-needsYou' })
     w.submitAnswer = 'hold'
     w.inFlight.push(pane.press({ key: 'explain-i1-key' }))
     await clock.settle()
     await clock.advance(QUEUED_AFTER_MS)
-    expect(await pane.find({ text: /^Queued:\sExplain$/ })).toBeDefined()
+    await present('queued Explain', { text: /^Queued:\sExplain$/ })
     expect((await close({ id: 'i1', answer: 'Deno' })).result).toBe(
       'Closed. The user sees it in the /inbox pane with its outcome. Name it by what it says, never by its id.',
     )
     expect(await pane.find({ key: 'row-i1' })).toBeUndefined()
-    expect(await pane.find({ key: 'settled-i1' })).toBeDefined()
-    expect(await pane.find({ text: /^Deno$/ })).toBeDefined()
+    await present('settled answer row', { key: 'settled-i1' })
+    await present('Deno outcome', { text: /^Deno$/ })
     expect((await close({ id: 'i2', reason: 'no longer applies' })).result).toBe(
       'Closed. The user sees it in the /inbox pane with its outcome. Name it by what it says, never by its id.',
-    )
-    expect((await close({ id: 'f3', reason: 'fixed' })).result).toBe(
-      'Closed the finding. Name it by what it says, never by its id.',
     )
     expect((await close({ id: 'i9', reason: 'done' })).result).toContain(
       'Not closed: no open item or finding has the id i9.',
     )
     expect((await close({ id: 'i1', reason: 'again' })).result).toBe('Already closed: the user answered it (Deno).')
     expect((await close({ id: 'i2', answer: 'yes' })).result).toBe('Already closed: the agent closed it earlier.')
-    expect((await close({ id: 'f3', reason: 'fixed again' })).result).toBe(
-      'Already closed: the agent closed it earlier.',
-    )
 
     await clock.advance(9000)
     expect(await pane.find({ key: 'settled-i1' })).toBeUndefined()
     expect(await pane.find({ text: /^Deno$/ })).toBeUndefined()
     await pane.press({ key: 'fold-question' })
-    expect(await pane.find({ text: /^Deno$/ })).toBeDefined()
-    expect(await pane.find({ text: /^Closed by Claude: no longer applies$/ })).toBeDefined()
+    await present('closed Deno outcome', { text: /^Deno$/ })
+    await present('Claude close reason', { text: /^Closed by Claude: no longer applies$/ })
 
-    await pane.press({ key: 'tab-findings' })
-    expect(await pane.find({ key: 'row-f3' })).toBeUndefined()
-    expect(await pane.find({ text: 'No open issues' })).toBeDefined()
-    expect(await pane.find({ text: 'No open opportunities' })).toBeDefined()
-    expect((await pane.find({ key: 'fold-issue' }))?.props.label).toBe('▸ 1 closed')
-    await pane.press({ key: 'fold-issue' })
-    expect(await pane.find({ text: /^README is stale$/ })).toBeDefined()
-    expect(await pane.find({ text: /^Closed by Claude: fixed$/ })).toBeDefined()
     await arrive($)
   },
 )

@@ -44,7 +44,7 @@ test('no two buttons on a row share a hotkey, for every row kind in the demo', a
     listInput: null,
     now: 1_000_000,
   })
-  const itemRows = [...view.needsYou.questions, ...view.needsYou.tasks, ...view.findings.rows].map(row => {
+  const itemRows = [...view.needsYou.questions, ...view.needsYou.tasks].map(row => {
     const { keys, more } = rowKeyPlan(row, true)
     return {
       id: row.id,
@@ -63,14 +63,14 @@ test('no two buttons on a row share a hotkey, for every row kind in the demo', a
     ...itemRows,
     ...prRows.map(r => ({ id: r.id, hotkeys: r.actions.flatMap(a => (a.hotkey ? [a.hotkey] : [])) })),
   ]
-  expect(new Set(itemRows.map(r => r.type))).toEqual(new Set(['question', 'task', 'finding']))
+  expect(new Set(itemRows.map(r => r.type))).toEqual(new Set(['question', 'task']))
   expect(prRows.length).toBeGreaterThan(1)
   for (const row of rows) expect(row.hotkeys, row.id).toEqual([...new Set(row.hotkeys)])
 })
 
 for (const isNextBuild of [false, true])
   test(
-    `on a ${isNextBuild ? 'next' : 'release'} build, every row in the demo, on every tab, draws its plan’s buttons in the plan’s order in the terminal and desktop looks, under the build’s tabs`,
+    `on a ${isNextBuild ? 'next' : 'release'} build, every question and task in the demo draws its plan’s buttons in order under the remaining tabs`,
     { timeoutMs: 20_000 },
     async ($, on) => {
       const clock = mock.clock(on, { now: 1_000_000 })
@@ -96,7 +96,7 @@ for (const isNextBuild of [false, true])
         listInput: null,
       })
       const TITLE_START = 20
-      const expectedLabels = (row: (typeof view.findings.rows)[number]) => {
+      const expectedLabels = (row: (typeof view.needsYou.questions)[number]) => {
         const { keys, more } = rowKeyPlan(row, true)
         return [...keys, ...more].flatMap(k => {
           if (k.slot === 'retry') return ['Try again']
@@ -109,9 +109,8 @@ for (const isNextBuild of [false, true])
           id: 'needsYou',
           rows: [...view.needsYou.questions, ...view.needsYou.tasks].filter(r => r.state.is !== 'settled'),
         },
-        { id: 'findings', rows: view.findings.rows.filter(r => r.state.is !== 'settled') },
       ] as const
-      expect(tabs.map(t => t.rows.length > 0)).toEqual([true, true])
+      expect(tabs.map(t => t.rows.length > 0)).toEqual([true])
 
       for (const look of ['terminal', 'desktop'] as const) {
         const pane =
@@ -146,7 +145,7 @@ for (const isNextBuild of [false, true])
         }
         for (const tab of tabs) {
           if (look === 'terminal') {
-            if (await pane.find({ key: `tab-${tab.id}` })) await pane.press({ key: `tab-${tab.id}` })
+            await pane.press({ key: `tab-key-${tab.id}` })
           } else {
             const { tabs: bar, gap } = (await pane.find({ key: 'tabs' }))?.props.props as TabsProps
             const x = bar

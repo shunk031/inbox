@@ -5,13 +5,14 @@ import type { Feed, FeedEntry } from '../hooks/feed'
 import { inboxText, carryText } from '../hooks/inbox-text'
 import { EMPTY } from '../hooks/ledger'
 import { closeFinding } from '../hooks/ledger-close'
-import { addAgentItem, addFinding, applyUpdate } from '../hooks/ledger-update'
+import { addAgentItem, applyUpdate } from '../hooks/ledger-update'
 import { recordItem } from '../hooks/tools'
 import { buildPrompt } from '../hooks/ledger-prompt'
 import { tabBarBanners } from '../hooks/banners'
 import { CLAUDE_CODE } from '../hooks/model-text'
 import { parseReply } from '../hooks/reply-parse'
 import type { Finding } from '../types'
+import { addLegacyFinding } from './seed-findings'
 
 const entry = (change: Partial<FeedEntry> = {}): FeedEntry => ({
   key: 'machine/worker',
@@ -149,7 +150,7 @@ describe('progress feed', () => {
     )
     expect(relatedTask.is).toBe('added')
     expect(relatedTask.ledger.findings).toEqual(loaded.findings)
-    const duplicateFinding = addFinding(loaded, {
+    const duplicateFinding = addLegacyFinding(loaded, {
       kind: 'issue',
       title: 'Training run',
       detail: 'A different description.',
@@ -261,7 +262,7 @@ describe('progress feed', () => {
     expect(active.findings.map(f => f.id)).toEqual(['f1', 'f2'])
     expect(active.findings[0]).toMatchObject({ id: 'f1', feedKey: 'machine/worker' })
     expect(active.findings[0]).not.toHaveProperty('feedOwned')
-    expect(inboxText(CLAUDE_CODE, active, false)).toContain('Add progress feed')
+    expect(inboxText(CLAUDE_CODE, active, false)).not.toContain('Add progress feed')
     const completed = applyFeed(active, feed(entry({ state: 'done' })), 130, '/feed/herdr-meta-patrol.json')
     expect(completed.findings.map(f => f.id)).toEqual(['f1'])
     expect(completed.closedFindings).toMatchObject([
@@ -278,7 +279,7 @@ describe('progress feed', () => {
     expect(expired.closedFindings).toMatchObject([{ id: 'f2', feedOwned: true, outcome: 'done: feed entry expired' }])
   })
 
-  test('legacy unmarked findings survive a missing feed and stay visible to prompts and ordinary updates', () => {
+  test('legacy unmarked Progress survives a missing feed but stays out of model prompts', () => {
     const legacyFinding = finding({
       kind: 'progress',
       title: 'skills#188: separate OKR rules',
@@ -291,8 +292,8 @@ describe('progress feed', () => {
 
     expect(disappeared.findings).toEqual([legacyFinding])
     expect(disappeared.closedFindings).toEqual([])
-    expect(inboxText(CLAUDE_CODE, disappeared, false)).toContain('skills#188: separate OKR rules')
-    expect(carryText(disappeared, 'carry')).toContain('skills#188: separate OKR rules')
+    expect(inboxText(CLAUDE_CODE, disappeared, false)).not.toContain('skills#188: separate OKR rules')
+    expect(carryText(disappeared, 'carry')).toBeNull()
     expect(
       buildPrompt(disappeared, {
         person: '',
@@ -304,11 +305,11 @@ describe('progress feed', () => {
         screen: '',
         tasks: [],
       }),
-    ).toContain('f1 | progress: skills#188: separate OKR rules')
+    ).not.toContain('f1 | progress: skills#188: separate OKR rules')
 
-    const normallyClosed = applyUpdate(disappeared, parseReply('FIXED: f1 | reviewed the note')!, 130, 1)
-    expect(normallyClosed.findings).toEqual([])
-    expect(normallyClosed.closedFindings).toMatchObject([{ id: 'f1', outcome: 'reviewed the note', how: 'update' }])
+    const modelUpdate = applyUpdate(disappeared, parseReply('FIXED: f1 | reviewed the note')!, 130, 1)
+    expect(modelUpdate.findings).toEqual([legacyFinding])
+    expect(modelUpdate.closedFindings).toEqual([])
   })
 
   test('closes completed and missing entries, preserves dismissed keys, and ignores untracked completion', () => {
@@ -390,7 +391,7 @@ describe('progress feed', () => {
       ],
       nextId: 60,
     }
-    const added = addFinding(ledger, {
+    const added = addLegacyFinding(ledger, {
       kind: 'issue',
       title: 'Another manual finding',
       detail: 'A regular finding.',

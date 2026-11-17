@@ -3,10 +3,11 @@ import { describe, expect, test } from 'claude-code/testing'
 import { CLAUDE_CODE } from '../hooks/model-text'
 import { EMPTY } from '../hooks/ledger'
 import { closeByAgent, closeFinding, closeItem, reopenFinding, reopenItem } from '../hooks/ledger-close'
-import { addAgentItem, addFinding, applyUpdate } from '../hooks/ledger-update'
+import { addAgentItem, applyUpdate } from '../hooks/ledger-update'
 import { parseReply } from '../hooks/reply-parse'
 import { recordClose } from '../hooks/tools'
 import type { Item } from '../types'
+import { addLegacyFinding } from './seed-findings'
 
 describe('reopening', () => {
   const item = (id: string, options: string[] = []): Item => ({
@@ -54,8 +55,8 @@ describe('reopening', () => {
 
   test('a closed finding goes back as it was', () => {
     const finding = { kind: 'issue' as const, title: 'Hotkeys vanish', detail: 'In ANSI', path: null, at: 1 }
-    const one = addFinding(EMPTY, finding).ledger
-    const two = addFinding(one, { ...finding, title: 'Tabs unreadable' }).ledger
+    const one = addLegacyFinding(EMPTY, finding).ledger
+    const two = addLegacyFinding(one, { ...finding, title: 'Tabs unreadable' }).ledger
     const dismissed = closeFinding(two, 'f1', { how: 'dismissed', outcome: 'dismissed' }, 9)
     expect(dismissed.findings.map(f => f.id)).toEqual(['f2'])
     expect(dismissed.closedFindings).toEqual([
@@ -66,7 +67,7 @@ describe('reopening', () => {
 
   test('closing an id that is already closed says how it closed and changes nothing', () => {
     const finding = { kind: 'issue' as const, title: 'Hotkeys vanish', detail: 'In ANSI', path: null, at: 1 }
-    const open = addFinding(EMPTY, finding).ledger
+    const open = addLegacyFinding(EMPTY, finding).ledger
     const dismissed = closeFinding(open, 'f1', { how: 'dismissed', outcome: 'dismissed' }, 5)
     const again = recordClose(CLAUDE_CODE, dismissed, { id: 'f1', reason: 'fixed' }, 9, {
       lastActions: {},
@@ -89,7 +90,10 @@ describe('reopening', () => {
 
   test('Claude and the per-turn update close findings with how and outcome, and the update closes one only as fixed', () => {
     const finding = { kind: 'issue' as const, title: 'Hotkeys vanish', detail: 'In ANSI', path: null, at: 1 }
-    const open = addFinding(addFinding(EMPTY, finding).ledger, { ...finding, title: 'Tabs unreadable' }).ledger
+    const open = addLegacyFinding(addLegacyFinding(EMPTY, finding).ledger, {
+      ...finding,
+      title: 'Tabs unreadable',
+    }).ledger
     const answered = closeByAgent(CLAUDE_CODE, open, 'f1', { answer: 'leave it' }, 5)
     expect(answered.closed).toMatchObject({ finding: { id: 'f1' } })
     const updated = applyUpdate(answered.ledger, parseReply('FIXED: f2 | fixed in the theme')!, 6, 1)
@@ -120,7 +124,12 @@ describe('reopening', () => {
       at: 1,
     }
     const dismissed = {
-      ...closeFinding(addFinding({ ...EMPTY, turn: 2 }, finding).ledger, 'f1', { how: 'dismissed', outcome: '' }, 2),
+      ...closeFinding(
+        addLegacyFinding({ ...EMPTY, turn: 2 }, finding).ledger,
+        'f1',
+        { how: 'dismissed', outcome: '' },
+        2,
+      ),
       turn: 3,
     }
     const question = {
@@ -137,15 +146,15 @@ describe('reopening', () => {
     expect(addAgentItem(dismissed, { ...question, ask: 'Add a CLI flag for verbose logs?' }, 3).is).toBe('added')
     const wider = 'Add the missing tests for the parser and the release script before v2?'
     expect(addAgentItem(dismissed, { ...question, ask: wider }, 3).is).toBe('added')
-    expect(addFinding(dismissed, { ...finding, title: 'The parser is missing tests' }).isAdded).toBe(false)
+    expect(addLegacyFinding(dismissed, { ...finding, title: 'The parser is missing tests' }).isAdded).toBe(false)
   })
 
   test('closed findings remain in durable history past the newest 12', () => {
     const finding = { kind: 'issue' as const, title: 'Old dismissed thing', detail: 'd', path: null, at: 1 }
-    let ledger = closeFinding(addFinding(EMPTY, finding).ledger, 'f1', { how: 'dismissed', outcome: '' }, 1)
+    let ledger = closeFinding(addLegacyFinding(EMPTY, finding).ledger, 'f1', { how: 'dismissed', outcome: '' }, 1)
     for (let n = 0; n < 15; n += 1)
       ledger = closeFinding(
-        addFinding(ledger, { ...finding, title: `Other ${n}` }).ledger,
+        addLegacyFinding(ledger, { ...finding, title: `Other ${n}` }).ledger,
         `f${n + 2}`,
         { how: 'update', outcome: 'fixed' },
         2,
@@ -157,10 +166,10 @@ describe('reopening', () => {
   test('a finding added to a full list closes the oldest as expired, so it stays in Closed', () => {
     const finding = { kind: 'issue' as const, title: '', detail: 'd', path: null, at: 1 }
     const full = Array.from({ length: 30 }, (_, n) => n).reduce(
-      (l, n) => addFinding(l, { ...finding, title: `Problem number ${n}` }).ledger,
+      (l, n) => addLegacyFinding(l, { ...finding, title: `Problem number ${n}` }).ledger,
       EMPTY,
     )
-    const r = addFinding(full, { ...finding, title: 'One more problem', at: 7 })
+    const r = addLegacyFinding(full, { ...finding, title: 'One more problem', at: 7 })
     expect([r.isAdded, r.expired?.id]).toEqual([true, 'f1'])
     expect(r.ledger.findings.length).toBe(30)
     expect(r.ledger.closedFindings.map(f => [f.id, f.how, f.outcome, f.closedAt])).toEqual([
@@ -170,19 +179,21 @@ describe('reopening', () => {
 
   test('a finding the person dismissed is not recorded again, but an expired or fixed one is', () => {
     const finding = { kind: 'issue' as const, title: 'Hotkeys vanish in ANSI mode', detail: 'd', path: null, at: 1 }
-    const open = addFinding(EMPTY, finding).ledger
+    const open = addLegacyFinding(EMPTY, finding).ledger
     const dismissed = closeFinding(open, 'f1', { how: 'dismissed', outcome: 'dismissed' }, 5)
-    const again = addFinding(dismissed, { ...finding, title: 'Hotkeys vanish in ANSI mode', at: 6 })
+    const again = addLegacyFinding(dismissed, { ...finding, title: 'Hotkeys vanish in ANSI mode', at: 6 })
     expect([again.isAdded, again.dismissed?.id, again.ledger]).toEqual([false, 'f1', dismissed])
-    expect(addFinding(dismissed, { ...finding, title: 'In the ANSI mode, hotkeys vanish' }).isAdded).toBe(false)
-    expect(addFinding(dismissed, { ...finding, title: 'Hotkeys vanish in ANSI mode on macOS' }).isAdded).toBe(false)
-    expect(addFinding(dismissed, { ...finding, title: 'Hotkeys vanished in ANSI mode' }).isAdded).toBe(false)
-    expect(addFinding(dismissed, { ...finding, title: 'Tabs unreadable' }).isAdded).toBe(true)
+    expect(addLegacyFinding(dismissed, { ...finding, title: 'In the ANSI mode, hotkeys vanish' }).isAdded).toBe(false)
+    expect(addLegacyFinding(dismissed, { ...finding, title: 'Hotkeys vanish in ANSI mode on macOS' }).isAdded).toBe(
+      false,
+    )
+    expect(addLegacyFinding(dismissed, { ...finding, title: 'Hotkeys vanished in ANSI mode' }).isAdded).toBe(false)
+    expect(addLegacyFinding(dismissed, { ...finding, title: 'Tabs unreadable' }).isAdded).toBe(true)
     for (const closing of [
       { how: 'expired' as const, outcome: 'list full' },
       { how: 'update' as const, outcome: 'fixed in the theme' },
     ]) {
-      const r = addFinding(closeFinding(open, 'f1', closing, 5), finding)
+      const r = addLegacyFinding(closeFinding(open, 'f1', closing, 5), finding)
       expect([r.isAdded, r.dismissed]).toEqual([true, null])
     }
   })
@@ -196,34 +207,41 @@ describe('reopening', () => {
       at: 1,
     }
     const dismissed = closeFinding(
-      addFinding(EMPTY, finding).ledger,
+      addLegacyFinding(EMPTY, finding).ledger,
       'f1',
       { how: 'dismissed', outcome: 'dismissed' },
       5,
     )
-    const r = addFinding(dismissed, { ...finding, title: 'package.json has no engines field', at: 6 })
+    const r = addLegacyFinding(dismissed, { ...finding, title: 'package.json has no engines field', at: 6 })
     expect([r.isAdded, r.dismissed]).toEqual([true, null])
-    const reworded = addFinding(dismissed, { ...finding, title: 'package.json is missing a license field', at: 6 })
+    const reworded = addLegacyFinding(dismissed, {
+      ...finding,
+      title: 'package.json is missing a license field',
+      at: 6,
+    })
     expect([reworded.isAdded, reworded.dismissed?.id]).toEqual([false, 'f1'])
   })
 
   test('a dismissed finding blocks one that swaps a word for its synonym, but not one with a different word there', () => {
     const finding = { kind: 'issue' as const, title: 'Hotkeys vanish in ANSI mode', detail: 'd', path: null, at: 1 }
     const dismissed = closeFinding(
-      addFinding(EMPTY, finding).ledger,
+      addLegacyFinding(EMPTY, finding).ledger,
       'f1',
       { how: 'dismissed', outcome: 'dismissed' },
       5,
     )
-    const swapped = addFinding(dismissed, { ...finding, title: 'Hotkeys disappear in ANSI mode', at: 6 })
+    const swapped = addLegacyFinding(dismissed, { ...finding, title: 'Hotkeys disappear in ANSI mode', at: 6 })
     expect([swapped.isAdded, swapped.dismissed?.id]).toEqual([false, 'f1'])
-    const other = addFinding(dismissed, { ...finding, title: 'Hotkeys lag in ANSI mode', at: 6 })
+    const other = addLegacyFinding(dismissed, { ...finding, title: 'Hotkeys lag in ANSI mode', at: 6 })
     expect([other.isAdded, other.dismissed]).toEqual([true, null])
   })
 
   test('a finding an item asks about closes into that item', () => {
     const finding = { kind: 'issue' as const, title: 'Research folder sits in the app', detail: 'd', path: null, at: 1 }
-    const open = addFinding(addFinding(EMPTY, finding).ledger, { ...finding, title: 'Tabs unreadable' }).ledger
+    const open = addLegacyFinding(addLegacyFinding(EMPTY, finding).ledger, {
+      ...finding,
+      title: 'Tabs unreadable',
+    }).ledger
     const reply =
       'NEW: do | - | Tell Claude when QA ends, to move the research folder out of the app | - | -\nASKED: f1 | new 1'
     const updated = applyUpdate(open, parseReply(reply)!, 6, 1)
@@ -236,7 +254,7 @@ describe('reopening', () => {
 
   test('an ASKED line naming no open item leaves the finding open', () => {
     const finding = { kind: 'issue' as const, title: 'Tabs unreadable', detail: 'd', path: null, at: 1 }
-    const open = addFinding(EMPTY, finding).ledger
+    const open = addLegacyFinding(EMPTY, finding).ledger
     expect(applyUpdate(open, parseReply('ASKED: f1 | i9\nASKED: f1 | new 1')!, 6, 1).findings.map(f => f.id)).toEqual([
       'f1',
     ])
@@ -250,7 +268,7 @@ describe('reopening', () => {
       path: null,
       at: 1,
     }
-    const open = addFinding(EMPTY, finding).ledger
+    const open = addLegacyFinding(EMPTY, finding).ledger
     const asked = applyUpdate(
       open,
       parseReply('NEW: decide | - | Add the login fix to the release notes? | Yes / No | -')!,
@@ -259,7 +277,7 @@ describe('reopening', () => {
     )
     expect(asked.findings).toEqual([])
     expect(asked.closedFindings.map(f => f.outcome)).toEqual(['asked as i2'])
-    const again = addFinding(asked, finding)
+    const again = addLegacyFinding(asked, finding)
     expect([again.isAdded, again.id]).toEqual([false, 'i2'])
   })
 })

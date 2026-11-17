@@ -58,7 +58,7 @@ export function latestUndo<U extends { at: number }>(undos: readonly U[]): U | n
 export function tabUndos(tab: Tab, lists: DrawnLists<unknown>, prs: readonly DrawnPr[]): ShownUndo[] {
   return tab === 'prs'
     ? prUndos(prs)
-    : listUndos(tab === 'needsYou' ? [...lists.questions, ...lists.tasks] : lists.findings)
+    : listUndos(tab === 'needsYou' ? [...lists.questions, ...lists.tasks, ...lists.legacyFindings] : lists.findings)
 }
 
 function listUndos(entries: readonly DrawnEntry<unknown>[]): ShownUndo[] {
@@ -130,6 +130,8 @@ export function actionsOf(
       action({ action: 'discard', id }, ROW_COPY.discard, 'view'),
     ]
   const stepActions = steps.map((s, n) => action({ action: 'step', id, step: n, label: s.label }, s.label, stepKind(s)))
+  if (!item && row.finding && !row.finding.feedOwned && !row.finding.sourceManaged && row.finding.kind !== 'progress')
+    return [action({ action: 'discuss', id }, 'Discuss', 'talk'), action({ action: 'dismiss', id }, 'Close', 'mark')]
   if (!item)
     return [
       action({ action: 'address', id }, row.finding ? fixLabel(row.finding) : 'Fix', 'handoff'),
@@ -175,6 +177,7 @@ export type DrawnLists<R> = {
   questions: DrawnEntry<R>[]
   tasks: DrawnEntry<R>[]
   findings: DrawnEntry<R>[]
+  legacyFindings: DrawnEntry<R>[]
   findingGroups: { kind: Finding['kind']; title: string; entries: DrawnEntry<R>[] }[]
   byTab: { needsYou: R[]; findings: R[] }
 }
@@ -183,6 +186,7 @@ export function drawnLists<R>(
   v: InboxView,
   isSettledDrawn: (id: string) => boolean,
   toRow: (r: RowView) => R | null,
+  includeLegacy = false,
 ): DrawnLists<R> {
   const entries = (rows: RowView[]) =>
     rows.flatMap((r): DrawnEntry<R>[] => {
@@ -192,6 +196,7 @@ export function drawnLists<R>(
     })
   const questions = entries(v.needsYou.questions)
   const tasks = entries(v.needsYou.tasks)
+  const legacyFindings = entries(v.needsYou.legacyFindings)
   const findingGroups = (Object.keys(FINDING_GROUPS) as Finding['kind'][]).map(kind => ({
     kind,
     title: FINDING_GROUPS[kind].title,
@@ -203,8 +208,12 @@ export function drawnLists<R>(
     questions,
     tasks,
     findings,
+    legacyFindings,
     findingGroups,
-    byTab: { needsYou: [...rowsIn(questions), ...rowsIn(tasks)], findings: rowsIn(findings) },
+    byTab: {
+      needsYou: [...rowsIn(questions), ...rowsIn(tasks), ...(includeLegacy ? rowsIn(legacyFindings) : [])],
+      findings: rowsIn(findings),
+    },
   }
 }
 
@@ -214,7 +223,7 @@ export function entryId(x: DrawnEntry<{ id: string }>): string {
 
 export type RowWait = { id: string; isWaiting: boolean }
 
-export function listWaits(v: InboxView): { needsYou: RowWait[]; findings: RowWait[] } {
+export function listWaits(v: InboxView, includeLegacy = false): { needsYou: RowWait[]; findings: RowWait[] } {
   const lists = drawnLists(
     v,
     () => true,
@@ -225,7 +234,10 @@ export function listWaits(v: InboxView): { needsYou: RowWait[]; findings: RowWai
       'row' in x ? { id: x.row.id, isWaiting: isWaitingRow(x.row) } : { id: x.settled.id, isWaiting: false },
     )
 
-  return { needsYou: waits([...lists.questions, ...lists.tasks]), findings: waits(lists.findings) }
+  return {
+    needsYou: waits([...lists.questions, ...lists.tasks, ...(includeLegacy ? lists.legacyFindings : [])]),
+    findings: waits(lists.findings),
+  }
 }
 
 export function firstWaiting(rows: RowWait[]): string | null {

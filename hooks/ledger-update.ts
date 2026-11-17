@@ -1,17 +1,14 @@
-import type { Closed, ClosedFinding, Exchange, Finding, Item, Ledger, Press, PressKind } from '../types'
+import type { Closed, ClosedFinding, Exchange, Item, Ledger, Press, PressKind } from '../types'
 import {
   dismissedFindingOf,
   isQuestionBack,
   matchOpen,
-  raisesOnly,
   CLOSED_CONTEXT_LIMIT,
   canAskAgain,
   recommendedOption,
   repeatsClosed,
   repeatsSettled,
-  repeatsSubject,
   restates,
-  sameAsk,
 } from './ask-match'
 import { asksAbout, closedRecord, closeFinding, OVERTAKEN_OUTCOMES, reopenAskedFindings } from './ledger-close'
 import { todoAsk, withHelp } from './reply-parse'
@@ -30,7 +27,6 @@ const UNFOUNDED_MOOT =
 const PUT_OFF =
   /^\s*(?:(?:the )?(?:user|person) )?(?:dismissed|declined|deferred (?:to|until|till|for)|postponed|put (?:it )?off|set aside|not now|later\b|can wait|won'?t fix|skipped)|\b(?:user|person) (?:said|says|asked|wants|chose|decided|declined|dismissed|deferred|put it off)\b/i
 export const EXPIRED = 'expired, unanswered'
-const MAX_FINDINGS = 30
 
 /** The recommendation of a question asked again: the stated one when it names one of `options`, else the old one when it still does. */
 function restatedRec(options: string[], old: string | null, stated: string | null): string | null {
@@ -88,7 +84,7 @@ export function isPersonsAnswer(outcome: string): boolean {
  * answer, so it closes no question.
  */
 export function applyUpdate(ledger: Ledger, u: Update, now: number, turn: number, promptAt = now): Ledger {
-  const feedIds = new Set(ledger.findings.filter(f => f.feedOwned).map(f => f.id))
+  const feedIds = new Set(ledger.findings.filter(f => f.feedOwned || f.kind === 'progress').map(f => f.id))
   const sourceItemIds = new Set(ledger.items.filter(i => i.sourceManaged).map(i => i.id))
   const stillAsked = new Set(u.updated.filter(c => c.options || c.rec).map(c => c.id))
   const isPutOffFinding = (c: Update['closed'][number]) =>
@@ -171,7 +167,7 @@ export function applyUpdate(ledger: Ledger, u: Update, now: number, turn: number
     }
     const isKnown =
       items.some(i => restates(i.ask, work)) ||
-      ledger.findings.some(f => !f.feedOwned && restates(f.title, work)) ||
+      ledger.findings.some(f => !f.feedOwned && f.kind !== 'progress' && restates(f.title, work)) ||
       repeatsClosed(ledger.closed, { ...todo, helps: [] }, promptAt, isPersonsAnswer)
     if (isKnown) continue
     items.push({ ...todo, helps: [], id: `i${nextId}`, turn, at: now, from: 'update' })
@@ -188,7 +184,8 @@ export function applyUpdate(ledger: Ledger, u: Update, now: number, turn: number
   }
   for (const i of items.filter(i => created.has(i.id)))
     for (const f of ledger.findings)
-      if (!f.sourceManaged && !f.feedOwned && !askedBy.has(f.id) && asksAbout(i, f)) askedBy.set(f.id, i.id)
+      if (!f.sourceManaged && !f.feedOwned && f.kind !== 'progress' && !askedBy.has(f.id) && asksAbout(i, f))
+        askedBy.set(f.id, i.id)
   const { findings, closedFindings } = ledger.findings.reduce((l, f) => {
     const asker = askedBy.get(f.id)
     const outcome = closing.get(f.id)
@@ -219,88 +216,6 @@ function withUpdate(item: Item, updated: Update['updated']): Item {
   const options = change.options ?? item.options
 
   return withRec({ ...item, options }, restatedRec(options, item.rec, change.rec))
-}
-
-/**
- * Adds a finding Claude recorded. One whose title matches an open finding, or
- * rewords an open item's ask, is skipped, so one thing shows in one list. So is
- * one that repeats a finding or an ask the person dismissed (`dismissed` is that record) as
- * `repeatsSubject` says; a finding that expired
- * or was closed as fixed can be recorded again. When the list is full, the
- * oldest finding closes as expired to make room.
- */
-export function addFinding(
-  ledger: Ledger,
-  finding: Omit<Finding, 'id' | 'path'> & { path?: Finding['path'] },
-): {
-  ledger: Ledger
-  id: string
-  isAdded: boolean
-  matched: 'finding' | 'item' | 'managed' | null
-  expired: Finding | null
-  dismissed: ClosedFinding | Pick<Closed, 'id' | 'outcome'> | null
-} {
-  const sourceManaged =
-    ledger.findings.find(f => f.sourceManaged && sameAsk(f.title, finding.title)) ??
-    ledger.items.find(i => i.sourceManaged && restates(i.ask, finding.title))
-  if (sourceManaged)
-    return { ledger, id: sourceManaged.id, isAdded: false, matched: 'managed', expired: null, dismissed: null }
-
-  const sameFinding = ledger.findings.find(f => sameAsk(f.title, finding.title))
-  const same = sameFinding ?? ledger.items.find(i => restates(i.ask, finding.title))
-  if (same) {
-    let refreshed: Finding | undefined
-    if (sameFinding) {
-      const updated: Finding = {
-        ...sameFinding,
-        kind: finding.kind,
-        detail: finding.detail,
-        ...(finding.path === undefined ? {} : { path: finding.path }),
-        ...(finding.document === undefined
-          ? {}
-          : { document: finding.document, documentPreview: finding.documentPreview }),
-      }
-      if (
-        updated.kind !== sameFinding.kind ||
-        updated.detail !== sameFinding.detail ||
-        updated.path !== sameFinding.path ||
-        updated.document !== sameFinding.document ||
-        updated.documentPreview !== sameFinding.documentPreview
-      )
-        refreshed = { ...updated, at: finding.at }
-    }
-    const findings = refreshed ? ledger.findings.map(f => (f.id === same.id ? refreshed! : f)) : ledger.findings
-    return {
-      ledger: findings === ledger.findings ? ledger : { ...ledger, findings },
-      id: same.id,
-      isAdded: false,
-      matched: sameFinding ? 'finding' : 'item',
-      expired: null,
-      dismissed: null,
-    }
-  }
-  const dismissed =
-    ledger.closedFindings.findLast(f => f.how === 'dismissed' && repeatsSubject(f.title, finding.title)) ??
-    ledger.closed.findLast(c => c.how === 'dismissed' && raisesOnly(c.ask, finding.title)) ??
-    null
-  if (dismissed) return { ledger, id: dismissed.id, isAdded: false, matched: null, expired: null, dismissed }
-  const id = `f${ledger.nextId}`
-  const ordinary = ledger.findings.filter(f => !f.feedOwned)
-  const expired = ordinary.length >= MAX_FINDINGS ? ordinary[0]! : null
-  const room = expired ? closeFinding(ledger, expired.id, { how: 'expired', outcome: 'list full' }, finding.at) : ledger
-
-  return {
-    ledger: {
-      ...room,
-      findings: [...room.findings, { ...finding, path: finding.path ?? null, id }],
-      nextId: ledger.nextId + 1,
-    },
-    id,
-    isAdded: true,
-    matched: null,
-    expired,
-    dismissed: null,
-  }
 }
 
 type AgentItemResult =
@@ -401,7 +316,7 @@ export function addAgentItem(
   const id = `i${ledger.nextId}`
   const items = [...ledger.items, { ...entry, label: null, id, turn: ledger.turn, at: now, from: 'record' as const }]
   const asked = { ...entry, label: null }
-  const restated = ledger.findings.filter(f => !f.sourceManaged && asksAbout(asked, f))
+  const restated = ledger.findings.filter(f => !f.sourceManaged && f.kind !== 'progress' && asksAbout(asked, f))
   const base: Ledger = { ...ledger, items, nextId: ledger.nextId + 1, batchTurn: ledger.turn }
   const next = reopenAskedFindings(
     restated.reduce((l, f) => closeFinding(l, f.id, { outcome: `asked as ${id}`, how: 'update' }, now, id), base),

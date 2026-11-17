@@ -2,12 +2,11 @@ import assert from 'node:assert/strict'
 import { rm } from 'node:fs/promises'
 import { test } from 'node:test'
 import { Window } from 'happy-dom'
-import { handleHook } from '../src/hook'
-import { readState, updateState } from '../src/state'
+import { updateState } from '../src/state'
 import { makeServer } from '../src/server'
 import { POLL_MS } from '../src/settle'
 import TAB_HTML from '../src/tab.html'
-import { fakeRunner, hookDeps, input, rolloutCopy, tempDir } from './helpers'
+import { fakeRunner, rolloutCopy, tempDir } from './helpers'
 import { task } from './row-actions-fixtures'
 
 test('the built tab starts without randomUUID and reloads without losing its host or reusing numeric request IDs', async () => {
@@ -160,7 +159,7 @@ test('the built tab starts without randomUUID and reloads without losing its hos
   }
 })
 
-test('the built tab keeps polling after a view it cannot draw, so a queued Explain moves on once Codex takes it', async () => {
+test('the built Codex tab leaves old findings saved without drawing a Finds tab or row', async () => {
   const dir = tempDir()
   const rollout = rolloutCopy()
   await updateState(dir, 's1', state => ({
@@ -196,30 +195,15 @@ test('the built tab keeps polling after a view it cannot draw, so a queued Expla
     url: 'https://inbox.test/',
     settings: { enableJavaScriptEvaluation: true, suppressInsecureJavaScriptEnvironmentWarning: true },
   })
-  let isNextViewUndrawable = false
-  let views = 0
-  const drawErrors: unknown[] = []
-  host.console.error = (...args: unknown[]) => void drawErrors.push(args[0])
   host.parent.postMessage = message => {
     const request = message as Parameters<typeof handle>[0]
     if (typeof request.id !== 'number') return
-    const isView = request.params?.name === 'inbox_view'
     const response =
       request.method === 'ui/initialize'
         ? Promise.resolve({ jsonrpc: '2.0', id: request.id, result: {} })
         : handle({ ...request, params: { ...request.params, _meta: { thread_id: 's1' } } })
     void response.then(answer => {
-      let data: unknown = answer
-      if (isView) views++
-      if (isView && isNextViewUndrawable) {
-        isNextViewUndrawable = false
-        const undrawable = JSON.parse(JSON.stringify(answer)) as {
-          result: { structuredContent: { findings: { rows: { feedback: unknown }[] } } }
-        }
-        undrawable.result.structuredContent.findings.rows[0]!.feedback = { is: 'local', result: null }
-        data = undrawable
-      }
-      queueMicrotask(() => host.dispatchEvent(new host.MessageEvent('message', { data })))
+      queueMicrotask(() => host.dispatchEvent(new host.MessageEvent('message', { data: answer })))
     })
   }
   const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
@@ -228,25 +212,10 @@ test('the built tab keeps polling after a view it cannot draw, so a queued Expla
     assert.ok(ready())
   }
   const text = () => host.document.getElementById('app')?.textContent ?? ''
-  const button = (label: string) => [...host.document.querySelectorAll('button')].find(b => b.textContent === label)
   try {
     host.document.write(resource.contents[0]!.text)
-    await until(() => button('Explain') !== undefined)
-    button('Explain')!.click()
-    await until(() => text().includes('Queued: Explain'))
-    isNextViewUndrawable = true
-    const before = views
-    await until(() => views > before)
-    const queued = await readState(dir, 's1')
-    const deps = hookDeps(dir, Date.now)
-    await handleHook(
-      input('UserPromptSubmit', { prompt: queued.sent[0]!.text, turn_id: 't9', transcript_path: rollout }),
-      { ...deps, env: { ...deps.env, INBOX_IN_EXEC: '1' } },
-    )
-    await until(() => text().includes('Explaining…'))
-    assert.doesNotMatch(text(), /Queued: Explain/)
-    assert.equal(drawErrors.length, 1)
-    assert.ok(drawErrors[0] instanceof host.TypeError)
+    await until(() => host.document.querySelectorAll('.tab').length > 0)
+    assert.doesNotMatch(text(), /Finds|Retry loop spins/)
   } finally {
     await host.happyDOM.close()
     await rm(dir, { recursive: true, force: true })

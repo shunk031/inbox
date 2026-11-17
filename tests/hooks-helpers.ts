@@ -57,12 +57,12 @@ export async function seedTasks(
 export async function leaveAndReturn(
   pane: Pick<Mounted, 'press'>,
   clock: Pick<ReturnType<typeof mock.clock>, 'advance' | 'settle'>,
-  tab: 'needsYou' | 'findings' | 'prs',
+  tab: 'needsYou' | 'prs',
 ) {
   await clock.advance(1)
-  await pane.press({ key: tab === 'findings' ? 'tab-needsYou' : 'tab-findings' })
+  await pane.press({ key: tab === 'needsYou' ? 'tab-key-prs' : 'tab-key-needsYou' })
   await clock.settle()
-  await pane.press({ key: `tab-${tab}` })
+  await pane.press({ key: `tab-key-${tab}` })
   await clock.settle()
 }
 
@@ -92,7 +92,6 @@ export const NO_COUNTS = {
   'inbox-stop': null,
   'inbox-focus': null,
   'inbox-needs-you': null,
-  'inbox-findings': null,
   'inbox-prs': null,
 }
 

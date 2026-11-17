@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { recordClose, recordItem } from '../../hooks/tools'
+import { recordClose } from '../../hooks/tools'
 import { NO_HOLDS } from '../../hooks/timing'
 import { ARRIVAL_TABS, followTo } from '../../hooks/arrivals'
 import { isShownEmpty, newRows, openRows } from '../src/arrivals'
@@ -10,8 +10,7 @@ import { demoState } from '../src/demo'
 import { emptyState, NOTHING_HEARD } from '../src/state'
 import type { SessionState } from '../src/state'
 import { CODEX } from '../src/texts'
-import { withItems } from './press-fixtures'
-import { TOOL_FIELDS } from '../../hooks/tool-schemas'
+import { withItems, withLegacyFinding } from './press-fixtures'
 
 test('the tab reports active work separately from pending exchanges and failed updates', () => {
   const s = { ...withItems(), presence: { ...withItems().presence, isUpdating: false, ledgerState: 'failed' as const } }
@@ -61,20 +60,11 @@ test('a tool call in a turn the prompt hook recorded, after a Stop sent Codex ba
   assert.equal(viewOf(called, 40).heard, 'heard')
 })
 
-test('the tab moves from an empty Asks to Finds when it opens on a finding or a poll brings one, and counts as new only rows added since its first view', () => {
+test('a legacy finding may arrive, but never moves a Codex tab to the removed Finds tab', () => {
   const s = noteHook(emptyState('s1'), 'start', 1)
   const first = newRows({}, viewOf(s, 10), false)
   assert.deepEqual(first.added, { needsYou: [], findings: [], prs: [] })
-  const withFinding = {
-    ...s,
-    ledger: recordItem(
-      CODEX,
-      s.ledger,
-      { kind: 'finding', finding_kind: 'issue', title: 'No lint script', detail: 'Only tests run.' },
-      20,
-      TOOL_FIELDS,
-    ).ledger,
-  }
+  const withFinding = withLegacyFinding(s, 20)
   const next = newRows(first.seen, viewOf(withFinding, 20), false)
   assert.deepEqual(next.added, { needsYou: [], findings: ['f1'], prs: [] })
   const followed = (state: SessionState) =>
@@ -84,11 +74,11 @@ test('the tab moves from an empty Asks to Finds when it opens on a finding or a 
       isShownEmpty(viewOf(state, 20), 'needsYou', new Set(), new Set(), false),
       next.added,
     )
-  assert.equal(followed(withFinding), 'findings')
+  assert.equal(followed(withFinding), null)
   const opened = viewOf(withFinding, 20)
   assert.equal(
     followTo(ARRIVAL_TABS, 'needsYou', isShownEmpty(opened, 'needsYou', new Set(), new Set(), false), openRows(opened)),
-    'findings',
+    null,
   )
   assert.equal(viewOf({ ...withFinding, heard: NOTHING_HEARD }, 20).heard, 'none')
   assert.equal(followed({ ...withFinding, heard: NOTHING_HEARD }), null)
@@ -145,6 +135,6 @@ test('a new PR counts as a new row, moves an empty tab to PRs, and counts nothin
   assert.equal(followed('prs', withPrs(['a/b#1']), arrived.added), null)
   const emptied = withPrs([])
   assert.equal(isShownEmpty(emptied, 'prs', new Set(), new Set(), true), false)
-  assert.equal(followed('prs', emptied, { needsYou: [], findings: ['f1'], prs: [] }), 'findings')
+  assert.equal(followed('prs', emptied, { needsYou: [], findings: ['f1'], prs: [] }), null)
   assert.equal(followed('prs', emptied, { needsYou: [], findings: [], prs: [] }), null)
 })

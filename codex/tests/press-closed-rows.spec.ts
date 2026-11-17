@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import { applyPress } from '../../hooks/press-reducer'
-import { recordClose, recordItem } from '../../hooks/tools'
+import { recordClose } from '../../hooks/tools'
 import { closedShown } from '../../hooks/rows'
 import { firstWaiting, keptOpen, listWaits, rowAfterClose } from '../../hooks/action-plan'
 import { QUEUED_AFTER_MS, NO_HOLDS, SETTLED_MS } from '../../hooks/timing'
@@ -11,8 +11,7 @@ import { viewOf } from '../src/core'
 import { EXIT_MS } from '../../hooks/row-motion'
 import { drawnSettled, SETTLE_WINDOW_MS } from '../src/settle'
 import { CODEX } from '../src/texts'
-import { after, withItems } from './press-fixtures'
-import { TOOL_FIELDS } from '../../hooks/tool-schemas'
+import { after, withItems, withLegacyFinding } from './press-fixtures'
 
 test('the tab draws a settled row while it shows the tab the row closed in, and lists it in the Closed fold once the person switches tab', () => {
   const s = withItems()
@@ -135,13 +134,7 @@ test('a row Codex closes while the person types a reply stays held in place, out
 
 test('a held finding’s reply sends what a reply to the open finding sends, and a row the person closed holds nothing', () => {
   const s = withItems()
-  const recorded = recordItem(
-    CODEX,
-    s.ledger,
-    { kind: 'finding', finding_kind: 'issue', title: 'No lint script', detail: 'Only tests run.' },
-    10,
-    TOOL_FIELDS,
-  ).ledger
+  const recorded = withLegacyFinding(s).ledger
   const closed = recordClose(CODEX, recorded, { id: 'f3', reason: 'added one' }, 50, {
     lastActions: {},
     turnStartedAt: null,

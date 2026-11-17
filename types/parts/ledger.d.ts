@@ -30,7 +30,7 @@ export type Finding = {
   ownerFact?: TaskOwnerFact
 }
 
-export type FoldKind = Item['kind'] | Finding['kind']
+export type FoldKind = Item['kind'] | Finding['kind'] | 'legacy'
 
 export type ClosedFinding = Finding & Pick<Closed, 'how' | 'outcome'> & { closedAt: number }
 

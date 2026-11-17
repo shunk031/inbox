@@ -8,12 +8,10 @@ import { applyPress } from '../../hooks/press-reducer'
 import type { PressResult } from '../../hooks/press-reducer'
 import { inboxView } from '../../hooks/view'
 import { ledgerActions, RowActions } from '../src/row-actions'
-import { recordItem } from '../../hooks/tools'
-import { CODEX } from '../src/texts'
 import { buttons, named, task } from './row-actions-fixtures'
-import { TOOL_FIELDS } from '../../hooks/tool-schemas'
+import { addLegacyFinding } from '../../tests/seed-findings'
 
-test('the Codex renderer preserves retry, folded-option and finding action order, keeps a row’s follow-ups in one group that wraps as a unit, maps emphasis, and guards presses', async () => {
+test('the Codex renderer preserves retry, folded-option and legacy finding action order, keeps a row’s follow-ups in one group that wraps as a unit, maps emphasis, and guards presses', async () => {
   const { row, ledger } = task()
   let state = ledger
   let retried: PressResult | null = null
@@ -130,13 +128,13 @@ test('the Codex renderer preserves retry, folded-option and finding action order
   const answered = answer as PressResult | null
   assert.ok(answered && !('stale' in answered))
   assert.equal(answered.ledger.closed[0]?.outcome, 'F')
-  const findingLedger = recordItem(
-    CODEX,
-    EMPTY,
-    { kind: 'finding', finding_kind: 'issue', title: 'Missing retry limit', detail: 'The request loops.' },
-    1,
-    TOOL_FIELDS,
-  ).ledger
+  const findingLedger = addLegacyFinding(EMPTY, {
+    kind: 'issue',
+    title: 'Missing retry limit',
+    detail: 'The request loops.',
+    path: null,
+    at: 1,
+  }).ledger
   const finding = inboxView({
     ledger: findingLedger,
     lastActions: {},
@@ -153,9 +151,10 @@ test('the Codex renderer preserves retry, folded-option and finding action order
     listInput: null,
   }).findings.rows[0]!
   let discussion: PressResult | null = null
+  let findingState = findingLedger
   const followUps = ledgerActions(finding, false, null, {
     press: p => {
-      discussion = applyPress(findingLedger, undefined, p, {
+      discussion = applyPress(findingState, undefined, p, {
         now: 20,
         turnsStarted: 1,
         extraSteps: [],
@@ -163,6 +162,7 @@ test('the Codex renderer preserves retry, folded-option and finding action order
         compareInBackground: false,
         holdMs: 1000,
       })
+      if (discussion && !('stale' in discussion)) findingState = discussion.ledger
     },
     reply: () => {},
     discard: () => {},
@@ -173,17 +173,15 @@ test('the Codex renderer preserves retry, folded-option and finding action order
   )
   assert.deepEqual(
     buttons(root).map(b => b.textContent),
-    ['Fix', 'File issue', 'Reply', 'Explain', 'Discuss', 'Dismiss'],
-  )
-  assert.deepEqual(
-    buttons(named(root, 'Explain').parentElement!).map(b => b.textContent),
-    ['Reply', 'Explain', 'Discuss', 'Dismiss'],
+    ['Discuss', 'Close'],
   )
   await act(() => named(root, 'Discuss').click())
   const discussed = discussion as PressResult | null
   assert.ok(discussed && !('stale' in discussed))
   assert.equal(discussed.last?.kind, 'talk')
   assert.equal(discussed.ledger.findings[0]?.id, finding.id)
+  await act(() => named(root, 'Close').click())
+  assert.equal(findingState.closedFindings[0]?.id, finding.id)
   await act(() => render(null, root))
   root.remove()
 })

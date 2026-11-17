@@ -5,14 +5,13 @@ export const OMP: Host = {
   agent: 'omp',
   surface: 'the /inbox panel',
   band: 'a band above their prompt',
-  findingsIn: 'the Finds tab of the /inbox panel',
   prsIn: 'the PRs tab of the /inbox panel',
   recordTool: 'record',
   closeTool: 'close',
   taskTool: 'tasks',
   splitsPlanIntoSubjects: false,
   intro:
-    "The inbox extension shows the user what waits on them: your open questions and the tasks only they can do, in the /inbox panel, and your findings, in the panel's Finds tab. A band above their prompt shows only counts: one for your questions and their tasks together, one for your findings, and one for their PRs that wait on them.",
+    'The inbox extension shows the user what waits on them: your open questions, the tasks only they can do, and legacy findings in Asks, in the /inbox panel. A band above their prompt shows only counts: one for your questions and their tasks together, and one for their PRs that wait on them.',
 }
 
 /** The names omp shows for the inbox's tools. */
