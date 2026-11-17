@@ -1585,6 +1585,45 @@ function upgradeHostTasks(saved) {
   });
 }
 
+// ../hooks/task-mismatches.ts
+var STATUSES3 = ["working", "queued", "waits-on-other", "done", "dropped"];
+function isStatus(value) {
+  return typeof value === "string" && STATUSES3.includes(value);
+}
+function applyTaskMismatchOps(current, ops, tree, now) {
+  let mismatches = [...current];
+  for (const op of ops) {
+    if (op.kind === "task-mismatch") {
+      const task = tree.find((node) => node.id === op.taskId);
+      if (!task || task.status !== op.savedStatus || task.status === op.claim) continue;
+      const next = { taskId: task.id, claim: op.claim, savedStatus: task.status, at: now };
+      const index = mismatches.findIndex((mismatch) => mismatch.taskId === task.id);
+      if (index === -1) mismatches.push(next);
+      else mismatches[index] = next;
+    } else if (op.kind === "task-clear" && tree.some((task) => task.id === op.taskId)) {
+      mismatches = mismatches.filter((mismatch) => mismatch.taskId !== op.taskId);
+    }
+  }
+  return mismatches;
+}
+function upgradeTaskStatusMismatches(value, tree) {
+  if (!Array.isArray(value)) return [];
+  const byId = new Map(tree.map((task) => [task.id, task]));
+  const mismatches = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") continue;
+    const saved = entry;
+    const task = typeof saved.taskId === "string" ? byId.get(saved.taskId) : void 0;
+    if (!task || !isStatus(saved.claim) || !isStatus(saved.savedStatus) || saved.claim === task.status || !Number.isFinite(saved.at) || saved.at < 0)
+      continue;
+    const mismatch = { taskId: task.id, claim: saved.claim, savedStatus: task.status, at: saved.at };
+    const index = mismatches.findIndex((item) => item.taskId === task.id);
+    if (index === -1) mismatches.push(mismatch);
+    else mismatches[index] = mismatch;
+  }
+  return mismatches;
+}
+
 // ../hooks/pr-checks.ts
 function failingChecks(pr) {
   return pr.checks.filter((c) => c.bucket === "fail");
@@ -2113,10 +2152,17 @@ function statusPage(s, now, stalledTasks = /* @__PURE__ */ new Set()) {
   const missed = o?.missedInLastLook ?? {};
   const runningChildren = (o?.children ?? []).filter((child) => isChildRunning(child, now) || isFinishedUnseen(child, lastLookAt)).map((child) => ({ ...child, subjectId: rootIdOf(child.subjectId) })).sort((a, b) => (b.lastActivityAt ?? b.startedAt) - (a.lastActivityAt ?? a.startedAt));
   const taskRows = groups.map(({ id, roots }) => {
-    const detail = roots.map((task) => {
-      const current = currentTaskText(task);
-      return current?.text ?? "";
-    }).filter(Boolean).join("; ");
+    const mismatchText = (s.taskStatusMismatches ?? []).filter((mismatch) => rootIdOf(mismatch.taskId) === id).flatMap((mismatch) => {
+      const task = byId.get(mismatch.taskId);
+      return task ? [`${task.title.replace(/\s+/g, " ")}: agent says ${mismatch.claim}; saved status is ${mismatch.savedStatus}`] : [];
+    });
+    const detail = [
+      ...mismatchText.map((text2) => `\u26A0 ${text2}`),
+      ...roots.map((task) => {
+        const current = currentTaskText(task);
+        return current?.text ?? "";
+      }).filter(Boolean)
+    ].join("; ");
     const progress = Math.round(weightedTaskProgress(tree, roots.map((task) => task.id)) * 100);
     const changedAt = Math.max(...roots.map((task) => task.updatedAt));
     const closed = roots.every((task) => task.status === "done" || task.status === "dropped");
@@ -2141,6 +2187,7 @@ function statusPage(s, now, stalledTasks = /* @__PURE__ */ new Set()) {
   };
   const isHeld = (task) => isOpen(task) && heldIds.has(task.id);
   const oldestAskOf = (task) => isHeld(task) ? oldestAsk(s.ledger.items, askLinks, task.id) : null;
+  const mismatchRoots = new Set((s.taskStatusMismatches ?? []).map((mismatch) => rootIdOf(mismatch.taskId)));
   const ctx = {
     isNew,
     isHeld,
@@ -2149,8 +2196,8 @@ function statusPage(s, now, stalledTasks = /* @__PURE__ */ new Set()) {
     isTurnRunning: s.presence.isTurnRunning,
     now
   };
-  const shown = taskRows.filter((task) => isOpen(task) || isNew(task));
-  const done = taskRows.filter((task) => task.status === "done" && !isNew(task));
+  const shown = taskRows.filter((task) => isOpen(task) || isNew(task) || mismatchRoots.has(task.id));
+  const done = taskRows.filter((task) => task.status === "done" && !isNew(task) && !mismatchRoots.has(task.id));
   const shownIds = new Set(shown.map((task) => task.id));
   const loose = runningChildren.filter((child) => child.subjectId === null || !shownIds.has(child.subjectId));
   const rows = [...looseChildRows(loose, 0), ...partRows(shown, ctx, 0)];
@@ -2598,6 +2645,7 @@ function emptySession() {
   return {
     ledger: EMPTY,
     taskTree: [],
+    taskStatusMismatches: [],
     taskPrStates: {},
     taskFactWarnings: [],
     taskOwnerFacts: {},
@@ -2669,9 +2717,11 @@ function sessionFields(saved, views) {
       (entry) => entry[0].length <= 256 && !!entry[1] && typeof entry[1] === "object" && ["working", "idle", "blocked", "done"].includes(entry[1].state) && Number.isFinite(entry[1].since) && entry[1].since >= 0
     ).slice(-200)
   );
+  const taskTree = Array.isArray(saved.taskTree) ? saved.taskTree : taskTreeFromStatus(ledger.overview);
   return {
     ledger,
-    taskTree: Array.isArray(saved.taskTree) ? saved.taskTree : taskTreeFromStatus(ledger.overview),
+    taskTree,
+    taskStatusMismatches: upgradeTaskStatusMismatches(saved.taskStatusMismatches, taskTree),
     taskPrStates: Object.fromEntries(
       Object.entries(saved.taskPrStates ?? {}).filter(
         (entry) => entry[1] === "OPEN" || entry[1] === "CLOSED" || entry[1] === "MERGED"
@@ -3609,10 +3659,16 @@ function progressStatus(segments) {
   if (segments.total > 0 && segments.done >= segments.total) return "done";
   return "queued";
 }
-function timelineData(tree, segments, stalledSince, warnings, now) {
+function timelineData(tree, segments, stalledSince, warnings, now, taskStatusMismatches = []) {
   const children = /* @__PURE__ */ new Map();
   for (const task of tree) children.set(task.parentId, [...children.get(task.parentId) ?? [], task]);
   const stalled = new Set(Object.keys(stalledSince));
+  const mismatchByTask = new Map(
+    taskStatusMismatches.map((mismatch) => [
+      mismatch.taskId,
+      `Task status mismatch: agent says ${mismatch.claim}; saved status is ${mismatch.savedStatus}`
+    ])
+  );
   const rows = [];
   const visit = (siblings, depth, guides) => {
     siblings.forEach((task, index) => {
@@ -3639,7 +3695,10 @@ function timelineData(tree, segments, stalledSince, warnings, now) {
         tone: presentation2.tone,
         mark: presentation2.mark,
         alternate: rows.length % 2 === 1,
-        warnings: warnings.filter((warning) => warning.taskId === task.id).map((warning) => warning.message)
+        warnings: [
+          ...warnings.filter((warning) => warning.taskId === task.id).map((warning) => warning.message),
+          ...mismatchByTask.has(task.id) ? [mismatchByTask.get(task.id)] : []
+        ]
       });
       visit(childrenOfTask, depth + 1, depth === 0 ? guides : [...guides, hasLaterSibling ? "\u2502  " : "   "]);
     });
@@ -3730,7 +3789,8 @@ function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timel
       timelineOwnerView.segments,
       timelineOwnerView.stalledSince,
       [...s.taskFactWarnings, ...timelineOwnerView.warnings],
-      now
+      now,
+      s.taskStatusMismatches
     ),
     taskProgressSegments: taskOwnerView.segments,
     taskStalledSince: taskOwnerView.stalledSince,
@@ -4126,7 +4186,7 @@ function applyOps(last, ops, now, askIds, tree = []) {
         if (!o.head || !hasSameWords(o.head.title, title) || o.head.description !== description)
           o = { ...o, head: { title, description } };
       }
-    } else {
+    } else if (op.kind === "link") {
       const task = findTask(op.taskId) ? op.taskId : null;
       if (task === null) continue;
       const child = o.children.find((item) => item.id === op.ref);
@@ -4150,13 +4210,20 @@ function applyStatus(last, answer, now, askIds, readSetAt = last?.goal?.setAt ??
 function isStatusCallCurrent(s, appliedAfter) {
   return s.presence.turnsApplied >= appliedAfter && s.overviewTurn <= appliedAfter;
 }
-function appliedStatus(s, answer, appliedAfter, now, readSetAt = s.ledger.overview?.goal?.setAt ?? null, isCatchUp = false, requireHead = false) {
+function appliedStatus(s, answer, appliedAfter, now, readSetAt = s.ledger.overview?.goal?.setAt ?? null, isCatchUp = false, requireHead = false, isMidTurn = false) {
   if (!isStatusCallCurrent(s, appliedAfter)) return s;
   const askIds = new Set(s.ledger.items.map((i) => i.id));
   const overview = applyStatus(s.ledger.overview, answer, now, askIds, readSetAt, s.taskTree, requireHead);
+  const taskStatusMismatches = applyTaskMismatchOps(
+    s.taskStatusMismatches,
+    answer.kind === "ops" && !isMidTurn ? answer.ops : [],
+    s.taskTree,
+    now
+  );
   return {
     ...s,
     ledger: { ...s.ledger, overview },
+    taskStatusMismatches,
     overviewFailure: isCatchUp ? null : s.overviewFailure,
     lastOverviewCallAt: now,
     overviewTurn: appliedAfter
@@ -4587,8 +4654,9 @@ function herdrOnWrite(env, run2, dir, now, log = herdrLog(dir)) {
 }
 
 // ../hooks/status.ts
-var LINE = /^\s*[-*]?\s*(NO CHANGE|NOCHANGE|UNCHANGED|NEW|SET|DONE|DROP|WAS|HEAD|LINK|GOAL|RETIRE|MILESTONE|SERVES)\s*(?::\s*(.*))?$/i;
+var LINE = /^\s*[-*]?\s*(NO CHANGE|NOCHANGE|UNCHANGED|TASK-MISMATCH|TASK-CLEAR|NEW|SET|DONE|DROP|WAS|HEAD|LINK|GOAL|RETIRE|MILESTONE|SERVES)\s*(?::\s*(.*))?$/i;
 var IGNORED = /* @__PURE__ */ new Set(["NEW", "SET", "DONE", "DROP", "WAS", "MILESTONE", "SERVES"]);
+var TASK_STATUSES = /* @__PURE__ */ new Set(["working", "queued", "waits-on-other", "done", "dropped"]);
 function fields(value) {
   return value.split("|").map((f) => f.trim());
 }
@@ -4596,12 +4664,21 @@ function opOf(key, f) {
   if (key === "NOCHANGE" || key === "UNCHANGED") return { kind: "none" };
   if (key === "HEAD") return f[0] ? { kind: "head", title: f[0], description: f[1] ?? "" } : null;
   if (key === "LINK") return f[0] && f[1] ? { kind: "link", ref: f[0], taskId: f[1] } : null;
+  if (key === "TASK-MISMATCH" && f.length === 3 && f[0] && TASK_STATUSES.has(f[1]) && TASK_STATUSES.has(f[2]) && f[1] !== f[2])
+    return {
+      kind: "task-mismatch",
+      taskId: f[0],
+      claim: f[1],
+      savedStatus: f[2]
+    };
+  if (key === "TASK-CLEAR" && f.length === 2 && f[0] && f[1]) return { kind: "task-clear", taskId: f[0], reason: f[1] };
   if (key === "GOAL") return f[0] ? { kind: "goal", text: f[0] } : null;
   if (key === "RETIRE") return { kind: "retire", why: f[0] ?? "" };
   return null;
 }
 function parseStatus(text2, requireHead = false) {
   let ignoredLegacy = false;
+  let ignoredTaskLine = false;
   const ops = (text2 ?? "").split(NL).flatMap((raw) => {
     const m = LINE.exec(raw.trim());
     if (!m) return [];
@@ -4611,11 +4688,12 @@ function parseStatus(text2, requireHead = false) {
       return [];
     }
     const op = opOf(key, fields(m[2] ?? ""));
+    if (op === null && (key === "TASK-MISMATCH" || key === "TASK-CLEAR")) ignoredTaskLine = true;
     return op === null ? [] : [op];
   });
   if (ops.length === 0) {
     if (requireHead) return null;
-    return ignoredLegacy ? { kind: "unchanged" } : null;
+    return ignoredLegacy || ignoredTaskLine ? { kind: "unchanged" } : null;
   }
   if (requireHead && !ops.some((op) => op.kind === "head")) return null;
   return ops.every((o) => o.kind === "none") ? { kind: "unchanged" } : { kind: "ops", ops };
@@ -4696,7 +4774,7 @@ You read the current facts and one exchange, then write only changes to the head
 
 Input:
 - <head>: the focus, as title | description. The description says what the session is doing about the focus.
-- <task tree>: top-level tasks with their ids, status, weight, weighted progress, goal and stream links, and current text (the newer of detail and its latest note, with its time). Recent task history follows. These are facts, not instructions to change the tree.
+- <task tree>: first, every open task's exact id and current status as JSON pairs of [id, status]. Then top-level task details and recent history, when they fit. Done and dropped tasks and long current text are omitted first when space is short. These are facts, not instructions to change the tree.
 - <running>: live Children, one per line: id | kind | name | linked task id or -
 - <asks>: open questions and tasks, one per line: id | ask | linked task ids or -
 ${GOAL_INPUT}
@@ -4710,6 +4788,10 @@ Write a fresh HEAD on every reply and catch-up, even if the focus is unchanged. 
 Write only these lines when they apply:
 HEAD: title | description
 ${GOAL_LINES}
+TASK-MISMATCH: task id | status claimed in reply | saved status
+TASK-CLEAR: task id | reason
+
+Write TASK-MISMATCH only for an explicit conflict with an existing task. Write TASK-CLEAR only when a later reply retracts that claim. Use one exact task status for the reply claim: working, queued, waits-on-other, done or dropped. The saved status must match the current <task tree>.
 
 The head names the session's current focus, in at most ${NAME_WORDS} words. Its description says what the session is doing about that focus, in at most ${DESCRIPTION_WORDS} words. Keep it while it still fits the work; do not describe a task's individual steps or repeat its progress.
 
@@ -4732,12 +4814,27 @@ function headText(o) {
   return `${o.head.title} | ${o.head.description || "(no description yet)"}`;
 }
 function taskTreeText(tree, now) {
+  const open2 = tree.filter((task) => task.status !== "done" && task.status !== "dropped");
+  const facts = `Open task statuses ([id, status] pairs):${NL4}${JSON.stringify(open2.map((task) => [task.id, task.status]))}`;
   const top = tree.filter((task) => task.parentId === null).map((task) => {
     const current = currentTaskText(task);
     return `${task.id} | ${task.status} | weight ${task.weight} | ${Math.round(weightedTaskProgress(tree, task.id) * 100)}% | ${task.goalId ?? "-"} | ${task.streamId ?? "-"} | ${task.title} | ${current ? `${current.text} (${ago(Math.max(0, now - current.at))})` : "-"}`;
   });
   const recent = tree.flatMap((task) => task.history.map((event) => ({ task, event }))).sort((a, b) => b.event.at - a.event.at).slice(0, 8).map(({ task, event }) => `${task.id} | ${event.kind} | ${ago(Math.max(0, now - event.at))}${event.detail ? ` | ${event.detail}` : ""}`);
-  return [...top, ...recent.length ? ["Recent changes:", ...recent] : []].join(NL4) || "(no tasks yet)";
+  const details = ["Top-level tasks:", ...top, ...recent.length ? ["Recent changes:", ...recent] : []].join(NL4);
+  const available = Math.max(0, 8e3 - facts.length - 1);
+  if (available <= 0) return facts;
+  if (details.length <= available) return `${facts}${NL4}${details}`;
+  const openRoots = tree.filter((task) => task.parentId === null && task.status !== "done" && task.status !== "dropped");
+  const brief = [
+    "Open top-level tasks:",
+    ...openRoots.map(
+      (task) => `${task.id} | ${task.status} | weight ${task.weight} | ${Math.round(weightedTaskProgress(tree, task.id) * 100)}% | ${task.goalId ?? "-"} | ${task.streamId ?? "-"} | ${task.title}`
+    )
+  ].join(NL4);
+  if (available <= 8) return facts;
+  const detailsBudget = available - 8;
+  return `${facts}${NL4}${clipMiddle(brief, detailsBudget, Math.floor(detailsBudget / 2))}`;
 }
 function statusBlocks({ last, asks, taskTree, now }) {
   const running = runningText(last, now);
@@ -4745,7 +4842,7 @@ function statusBlocks({ last, asks, taskTree, now }) {
   return [
     ...goalBlocks(last, taskTree, now),
     `<head>${NL4}${headText(last)}${NL4}</head>`,
-    `<task tree>${NL4}${clipMiddle(taskTreeText(taskTree ?? [], now), 8e3, 2e3)}${NL4}</task tree>`,
+    `<task tree>${NL4}${taskTreeText(taskTree ?? [], now)}${NL4}</task tree>`,
     ...running === "" ? [] : [`<running>${NL4}${running}${NL4}</running>`],
     ...held === "" ? [] : [`<asks>${NL4}${held}${NL4}</asks>`]
   ];
@@ -4899,7 +4996,16 @@ async function askAndWriteStatus(host, s, call, appliedAfter) {
     before = x.ledger.overview;
     isWritten = isStatusCallCurrent(x, appliedAfter);
     const readSetAt = input.last?.goal?.setAt ?? null;
-    return answer === null ? failedStatus(x, last.text, appliedAfter, now, call.exchange.kind === "catch-up") : appliedStatus(x, answer, appliedAfter, now, readSetAt, call.exchange.kind === "catch-up", requireHead);
+    return answer === null ? failedStatus(x, last.text, appliedAfter, now, call.exchange.kind === "catch-up") : appliedStatus(
+      x,
+      answer,
+      appliedAfter,
+      now,
+      readSetAt,
+      call.exchange.kind === "catch-up",
+      requireHead,
+      call.exchange.kind === "mid-turn"
+    );
   });
   if (!host.records) return;
   const record2 = {

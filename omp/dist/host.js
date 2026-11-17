@@ -3457,13 +3457,22 @@ function statusFocusLines(ledger) {
   return focus ? [`Working on: ${focus}`] : [];
 }
 var CLOSE_ID_RULE = "A close id is only for the close tool. Never write one in a reply.";
-function inboxText(host, ledger, isOpen, taskTree = []) {
+function inboxText(host, ledger, isOpen, taskTree = [], taskStatusMismatches = []) {
   const findings = ledger.findings.filter((f) => !f.feedOwned);
+  const taskById = new Map(taskTree.map((task) => [task.id, task]));
+  const mismatches = taskStatusMismatches.flatMap((mismatch) => {
+    const task = taskById.get(mismatch.taskId);
+    return task ? [
+      clipLabel(`- ${task.title.replace(/\s+/g, " ")}: agent says ${mismatch.claim}; saved status is ${mismatch.savedStatus}`, 96)
+    ] : [];
+  }).slice(0, 3);
   const out = [
     `inbox: what waits on the user, as of your last reply. Anything not listed here is closed. ${CLOSE_ID_RULE}`
   ];
   out.push(...statusFocusLines(ledger));
   out.push(...taskSnapshotLines(ledger, taskTree));
+  if (mismatches.length > 0)
+    out.push("Task status mismatches:", ...mismatches);
   if (promptItems(ledger).length > 0) {
     out.push("Waiting on the user:");
     for (const item of promptItems(ledger))
@@ -3492,16 +3501,16 @@ function closedText(closed) {
   ].join(NL5);
 }
 var TOLD_NOTHING = { inbox: null, closed: [] };
-function promptNotes(host, ledger, prompt, told, taskTree = []) {
+function promptNotes(host, ledger, prompt, told, taskTree = [], taskStatusMismatches = []) {
   const notes = [];
   const answer = prompt.isPress ? null : answerNote(ledger, prompt.text);
   if (answer)
     notes.push(answer);
-  const inbox = inboxText(host, ledger, prompt.isOpen, taskTree);
+  const inbox = inboxText(host, ledger, prompt.isOpen, taskTree, taskStatusMismatches);
   const toldClosed = new Set(told.closed);
   const closed = closedText(ledger.closed.filter((d) => !toldClosed.has(d.id)));
   const hasUnrecorded = ledger.unrecordedDecisions.length > 0;
-  const isEmpty = promptItems(ledger).length === 0 && ledger.findings.every((f) => f.feedOwned) && taskTree.every((task) => task.status === "done" || task.status === "dropped");
+  const isEmpty = promptItems(ledger).length === 0 && ledger.findings.every((f) => f.feedOwned) && taskStatusMismatches.length === 0 && taskTree.every((task) => task.status === "done" || task.status === "dropped");
   if (!closed && !hasUnrecorded && (inbox === told.inbox || isEmpty && told.inbox === null))
     return { notes, told, shownUnrecorded: false };
   notes.push(closed ? `${inbox}${NL5}${closed}` : inbox);
@@ -3623,6 +3632,58 @@ function upgradeHostTasks(saved) {
     const status = STATUSES2[String(t.status)];
     return typeof t.id === "string" && typeof t.text === "string" && t.text !== "" && status ? [{ id: t.id, text: t.text, status }] : [];
   });
+}
+
+// ../hooks/task-mismatches.ts
+var STATUSES3 = ["working", "queued", "waits-on-other", "done", "dropped"];
+function isStatus(value) {
+  return typeof value === "string" && STATUSES3.includes(value);
+}
+function applyTaskMismatchOps(current, ops, tree, now) {
+  let mismatches = [...current];
+  for (const op of ops) {
+    if (op.kind === "task-mismatch") {
+      const task = tree.find((node) => node.id === op.taskId);
+      if (!task || task.status !== op.savedStatus || task.status === op.claim)
+        continue;
+      const next = { taskId: task.id, claim: op.claim, savedStatus: task.status, at: now };
+      const index = mismatches.findIndex((mismatch) => mismatch.taskId === task.id);
+      if (index === -1)
+        mismatches.push(next);
+      else
+        mismatches[index] = next;
+    } else if (op.kind === "task-clear" && tree.some((task) => task.id === op.taskId)) {
+      mismatches = mismatches.filter((mismatch) => mismatch.taskId !== op.taskId);
+    }
+  }
+  return mismatches;
+}
+function afterTaskTreeUpdate(current, tree) {
+  return current.flatMap((mismatch) => {
+    const task = tree.find((node) => node.id === mismatch.taskId);
+    return !task || task.status === mismatch.claim ? [] : [{ ...mismatch, savedStatus: task.status }];
+  });
+}
+function upgradeTaskStatusMismatches(value, tree) {
+  if (!Array.isArray(value))
+    return [];
+  const byId = new Map(tree.map((task) => [task.id, task]));
+  const mismatches = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object")
+      continue;
+    const saved = entry;
+    const task = typeof saved.taskId === "string" ? byId.get(saved.taskId) : undefined;
+    if (!task || !isStatus(saved.claim) || !isStatus(saved.savedStatus) || saved.claim === task.status || !Number.isFinite(saved.at) || saved.at < 0)
+      continue;
+    const mismatch = { taskId: task.id, claim: saved.claim, savedStatus: task.status, at: saved.at };
+    const index = mismatches.findIndex((item) => item.taskId === task.id);
+    if (index === -1)
+      mismatches.push(mismatch);
+    else
+      mismatches[index] = mismatch;
+  }
+  return mismatches;
 }
 
 // ../hooks/presses.ts
@@ -4475,10 +4536,17 @@ function statusPage(s, now, stalledTasks = new Set) {
   const missed = o?.missedInLastLook ?? {};
   const runningChildren = (o?.children ?? []).filter((child) => isChildRunning(child, now) || isFinishedUnseen(child, lastLookAt)).map((child) => ({ ...child, subjectId: rootIdOf(child.subjectId) })).sort((a, b) => (b.lastActivityAt ?? b.startedAt) - (a.lastActivityAt ?? a.startedAt));
   const taskRows = groups.map(({ id, roots }) => {
-    const detail = roots.map((task) => {
-      const current = currentTaskText(task);
-      return current?.text ?? "";
-    }).filter(Boolean).join("; ");
+    const mismatchText = (s.taskStatusMismatches ?? []).filter((mismatch) => rootIdOf(mismatch.taskId) === id).flatMap((mismatch) => {
+      const task = byId.get(mismatch.taskId);
+      return task ? [`${task.title.replace(/\s+/g, " ")}: agent says ${mismatch.claim}; saved status is ${mismatch.savedStatus}`] : [];
+    });
+    const detail = [
+      ...mismatchText.map((text) => `\u26A0 ${text}`),
+      ...roots.map((task) => {
+        const current = currentTaskText(task);
+        return current?.text ?? "";
+      }).filter(Boolean)
+    ].join("; ");
     const progress = Math.round(weightedTaskProgress(tree, roots.map((task) => task.id)) * 100);
     const changedAt = Math.max(...roots.map((task) => task.updatedAt));
     const closed = roots.every((task) => task.status === "done" || task.status === "dropped");
@@ -4503,6 +4571,7 @@ function statusPage(s, now, stalledTasks = new Set) {
   };
   const isHeld = (task) => isOpen(task) && heldIds.has(task.id);
   const oldestAskOf = (task) => isHeld(task) ? oldestAsk(s.ledger.items, askLinks, task.id) : null;
+  const mismatchRoots = new Set((s.taskStatusMismatches ?? []).map((mismatch) => rootIdOf(mismatch.taskId)));
   const ctx = {
     isNew,
     isHeld,
@@ -4511,8 +4580,8 @@ function statusPage(s, now, stalledTasks = new Set) {
     isTurnRunning: s.presence.isTurnRunning,
     now
   };
-  const shown = taskRows.filter((task) => isOpen(task) || isNew(task));
-  const done = taskRows.filter((task) => task.status === "done" && !isNew(task));
+  const shown = taskRows.filter((task) => isOpen(task) || isNew(task) || mismatchRoots.has(task.id));
+  const done = taskRows.filter((task) => task.status === "done" && !isNew(task) && !mismatchRoots.has(task.id));
   const shownIds = new Set(shown.map((task) => task.id));
   const loose = runningChildren.filter((child) => child.subjectId === null || !shownIds.has(child.subjectId));
   const rows = [...looseChildRows(loose, 0), ...partRows(shown, ctx, 0)];
@@ -5343,6 +5412,7 @@ function emptySession() {
   return {
     ledger: EMPTY,
     taskTree: [],
+    taskStatusMismatches: [],
     taskPrStates: {},
     taskFactWarnings: [],
     taskOwnerFacts: {},
@@ -5420,9 +5490,11 @@ function sessionFields(saved, views) {
   const base = emptySession();
   const ledger = saved.ledger ? { ...base.ledger, ...upgradeLedger({ ...saved.ledger, items: saved.ledger.items ?? [] }) } : base.ledger;
   const taskOwnerFacts = Object.fromEntries(Object.entries(saved.taskOwnerFacts ?? {}).filter((entry) => entry[0].length <= 256 && !!entry[1] && typeof entry[1] === "object" && ["working", "idle", "blocked", "done"].includes(entry[1].state) && Number.isFinite(entry[1].since) && entry[1].since >= 0).slice(-200));
+  const taskTree = Array.isArray(saved.taskTree) ? saved.taskTree : taskTreeFromStatus(ledger.overview);
   return {
     ledger,
-    taskTree: Array.isArray(saved.taskTree) ? saved.taskTree : taskTreeFromStatus(ledger.overview),
+    taskTree,
+    taskStatusMismatches: upgradeTaskStatusMismatches(saved.taskStatusMismatches, taskTree),
     taskPrStates: Object.fromEntries(Object.entries(saved.taskPrStates ?? {}).filter((entry) => entry[1] === "OPEN" || entry[1] === "CLOSED" || entry[1] === "MERGED")),
     taskFactWarnings: saved.taskFactWarnings ?? [],
     taskOwnerFacts,
@@ -7924,11 +7996,15 @@ function progressStatus(segments) {
     return "done";
   return "queued";
 }
-function timelineData(tree, segments, stalledSince, warnings, now) {
+function timelineData(tree, segments, stalledSince, warnings, now, taskStatusMismatches = []) {
   const children = new Map;
   for (const task of tree)
     children.set(task.parentId, [...children.get(task.parentId) ?? [], task]);
   const stalled = new Set(Object.keys(stalledSince));
+  const mismatchByTask = new Map(taskStatusMismatches.map((mismatch) => [
+    mismatch.taskId,
+    `Task status mismatch: agent says ${mismatch.claim}; saved status is ${mismatch.savedStatus}`
+  ]));
   const rows = [];
   const visit = (siblings, depth, guides) => {
     siblings.forEach((task, index) => {
@@ -7955,7 +8031,10 @@ function timelineData(tree, segments, stalledSince, warnings, now) {
         tone: presentation.tone,
         mark: presentation.mark,
         alternate: rows.length % 2 === 1,
-        warnings: warnings.filter((warning) => warning.taskId === task.id).map((warning) => warning.message)
+        warnings: [
+          ...warnings.filter((warning) => warning.taskId === task.id).map((warning) => warning.message),
+          ...mismatchByTask.has(task.id) ? [mismatchByTask.get(task.id)] : []
+        ]
       });
       visit(childrenOfTask, depth + 1, depth === 0 ? guides : [...guides, hasLaterSibling ? "\u2502  " : "   "]);
     });
@@ -8175,7 +8254,7 @@ function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timel
     turns: { turnsStarted: s.presence.turnsStarted, turnsApplied: s.presence.turnsApplied },
     prs: prTabOf(s, lastActions, now, holds, settleWindowMs),
     statusPage: statusPage(s, now, new Set(Object.keys(taskOwnerView.stalledSince))),
-    timeline: timelineData(timelineTaskTree, timelineOwnerView.segments, timelineOwnerView.stalledSince, [...s.taskFactWarnings, ...timelineOwnerView.warnings], now),
+    timeline: timelineData(timelineTaskTree, timelineOwnerView.segments, timelineOwnerView.stalledSince, [...s.taskFactWarnings, ...timelineOwnerView.warnings], now, s.taskStatusMismatches),
     taskProgressSegments: taskOwnerView.segments,
     taskStalledSince: taskOwnerView.stalledSince,
     feedStalledSince,
@@ -8286,7 +8365,9 @@ function recorded(host, s, tool, args, now, fields) {
   const presses = { lastActions: s.lastActions, turnStartedAt: s.presence.turnStartedAt };
   const r = toolAnswer(host, s.ledger, tool, args, now, presses, fields, s.taskTree);
   const ledger = withOrderStatuses(r.ledger, s.prViews.views);
-  const state = linkDialogs({ ...s, ledger, taskTree: r.taskTree ?? s.taskTree }, now);
+  const taskTree = r.taskTree ?? s.taskTree;
+  const taskStatusMismatches = tool === "tasks" && taskTree !== s.taskTree ? afterTaskTreeUpdate(s.taskStatusMismatches, taskTree) : s.taskStatusMismatches;
+  const state = linkDialogs({ ...s, ledger, taskTree, taskStatusMismatches }, now);
   const answered = ledger.items.find((i) => !state.ledger.items.some((o) => o.id === i.id));
   if (!answered)
     return { state, result: r.result, personLine: r.personLine };
@@ -11383,386 +11464,392 @@ function demoView(now, agent) {
   };
 }
 
+// ../hooks/client-support-claude.ts
+var CLAUDE_CODE_SUPPORT = {
+  "catch-up": { kind: "full" },
+  "failed-update-recovery": { kind: "full" },
+  "ledger-behind-state": { kind: "full" },
+  "recorded-items-only": { kind: "full" },
+  "ask-history": { kind: "full" },
+  "dialog-outcome": { kind: "full" },
+  "dialog-answer": {
+    kind: "different",
+    reason: "The dialog blocks the turn, and the inbox copies a dialog only once it ended, so no open dialog is left for an inbox answer to close."
+  },
+  "dialog-answer-closes-copy": { kind: "full" },
+  "dialog-descriptions": { kind: "full" },
+  "tool-output-urls": { kind: "full" },
+  "pr-link-from-output": { kind: "full" },
+  "pr-arrivals": { kind: "full" },
+  "account-pr-list": { kind: "full" },
+  "feed-findings": { kind: "full" },
+  "meta-active-items": { kind: "full" },
+  "meta-default-feed": { kind: "full" },
+  "untracked-work-warning": { kind: "full" },
+  "prs-empty-hint": { kind: "full" },
+  "gh-signed-out-notice": { kind: "full" },
+  "link-open-rule": { kind: "full" },
+  "fork-ledger": { kind: "full" },
+  "band-and-stop-rows": { kind: "full" },
+  "exchange-trigger": { kind: "full" },
+  "settle-window": { kind: "full" },
+  "fold-on-typed-message": { kind: "full" },
+  "fold-waits-for-list-use": {
+    kind: "different",
+    reason: "The terminal reports no pointer, so a row waits to fold on presses, keys and scrolls. Desktop settled text reports no pointer, so rows wait on presses and pointer moves over open rows."
+  },
+  "version-label": { kind: "full" },
+  "status-tab": { kind: "full" },
+  "turn-working": { kind: "full" },
+  "host-task-list": { kind: "full" },
+  "hooks-need-trust": {
+    kind: "unsupported",
+    reason: "Claude Code asks no one to trust a plugin's hooks, so no hook stops running for want of trust."
+  },
+  "compare-in-background": { kind: "full" },
+  "compare-page": { kind: "full" },
+  "running-marks": { kind: "full" },
+  "pending-answer-mark": { kind: "full" },
+  "tab-symbols": { kind: "full" },
+  "dim-pressed-button": {
+    kind: "different",
+    reason: "The desktop app's Button has no disabled state. `dimColor` fades only its label, and a click still shows the native press highlight before the shared press path ignores it."
+  },
+  "herdr-sidebar": { kind: "full" },
+  "herdr-look": { kind: "full" },
+  "herdr-open": { kind: "full" },
+  "herdr-install": { kind: "full" },
+  "status-children": { kind: "full" },
+  "child-names": { kind: "full" },
+  "status-failed-warning": { kind: "full" },
+  "asks-holds-up-line": { kind: "full" },
+  "asks-rec-reason-line": { kind: "full" },
+  "asks-context-line": { kind: "full" },
+  "status-mid-turn-refresh": { kind: "full" },
+  "ran-call-activity": { kind: "full" },
+  "ran-call-delegates": { kind: "full" },
+  "tool-result-line": { kind: "full" },
+  "status-call-records": { kind: "full" },
+  "model-instructions": { kind: "full" },
+  "pr-order": { kind: "full" },
+  "pr-rank-again": { kind: "full" },
+  "clear-merged-and-closed-prs": { kind: "full" },
+  "pr-check-rerun": { kind: "full" },
+  "pr-fetch-notice": { kind: "full" },
+  "help-page": {
+    kind: "different",
+    reason: "The engine binds only a digit or a lowercase letter as a Button's hotkey, so no key opens the terminal's Help. The desktop pane takes no keys, so its Help lists only the marks."
+  },
+  "status-view-ask": { kind: "full" },
+  "status-goal": { kind: "full" },
+  "status-done-fold": { kind: "full" },
+  "status-named-fold": { kind: "full" },
+  "seen-on-screen": { kind: "full" },
+  "status-idle-age": { kind: "full" },
+  "question-back-stays-open": { kind: "full" },
+  "markdown-item-links": { kind: "full" },
+  "item-explanations": { kind: "full" },
+  "finding-links": { kind: "full" },
+  "option-links": { kind: "full" },
+  "item-document": { kind: "full" },
+  "document-preview": { kind: "full" },
+  "record-link-guard": { kind: "full" },
+  "task-pr-facts": { kind: "full" },
+  "task-owner-facts": { kind: "full" },
+  "task-reminder": { kind: "full" },
+  "task-tree-currentness": { kind: "full" },
+  "task-status-mismatch": { kind: "full" },
+  timeline: { kind: "full" }
+};
+
+// ../hooks/client-support-codex.ts
+var CODEX_SUPPORT = {
+  "catch-up": {
+    kind: "different",
+    reason: "Codex runs no hook when a chat is opened. A resumed chat catches up when its Inbox tab opens, and at the hook its next message runs if the tab stays closed. A chat whose ledger failed or fell behind, such as an archived chat that runs no hooks, also catches up when its tab opens, once until the ledger or the chat moves on."
+  },
+  "failed-update-recovery": { kind: "full" },
+  "ledger-behind-state": {
+    kind: "different",
+    reason: "Codex runs no hook when a chat is opened. A resumed chat is marked behind when its Inbox tab opens, and at the hook its next message runs if the tab stays closed."
+  },
+  "recorded-items-only": { kind: "full" },
+  "ask-history": { kind: "full" },
+  "dialog-outcome": {
+    kind: "different",
+    reason: "Codex's dialog tool returns at once and the answer arrives later as a user message, so a dialog is noted as open and its outcome is never recorded."
+  },
+  "dialog-answer": { kind: "full" },
+  "dialog-answer-closes-copy": {
+    kind: "different",
+    reason: "Codex's dialog tool returns before the person answers, so the inbox sees no answer when the dialog ends. The copy stays open until the person's reply in the dialog's form arrives, and the agent closes it then."
+  },
+  "dialog-descriptions": { kind: "full" },
+  "tool-output-urls": { kind: "full" },
+  "pr-link-from-output": {
+    kind: "different",
+    reason: "Codex runs no hook for a long command's output, so the inbox reads the turn's shell commands from the rollout at Stop. A PR that `gh pr create` opened is linked when the turn ends, not when the command finishes."
+  },
+  "pr-arrivals": { kind: "full" },
+  "account-pr-list": { kind: "full" },
+  "feed-findings": {
+    kind: "different",
+    reason: "Codex has no idle timer, so it applies the feed at hooks and Inbox tab view requests."
+  },
+  "meta-active-items": { kind: "full" },
+  "meta-default-feed": { kind: "full" },
+  "untracked-work-warning": { kind: "full" },
+  "prs-empty-hint": {
+    kind: "different",
+    reason: "The Codex app calls a conversation a chat, so its hint says chat where the mod says session."
+  },
+  "gh-signed-out-notice": { kind: "full" },
+  "link-open-rule": { kind: "full" },
+  "fork-ledger": {
+    kind: "different",
+    reason: "Codex runs no hook when a chat is opened. A fork takes its parent's ledger when its Inbox tab opens, and at the hook its first message runs if the tab stays closed."
+  },
+  "band-and-stop-rows": {
+    kind: "unsupported",
+    reason: "Codex has no line above its prompt, and shows no stops."
+  },
+  "exchange-trigger": {
+    kind: "different",
+    reason: "A Codex hook names no source for a turn that has no prompt, so the exchange reads unknown. The mod reads the prompt origin."
+  },
+  "settle-window": {
+    kind: "different",
+    reason: "The tab only learns of a close at its next poll, so the server offers Undo for two polls longer."
+  },
+  "fold-on-typed-message": { kind: "full" },
+  "fold-waits-for-list-use": { kind: "full" },
+  "version-label": { kind: "full" },
+  "status-tab": { kind: "full" },
+  "turn-working": {
+    kind: "different",
+    reason: "Codex runs no hook when a chat is opened, and a turn whose app-server dies has no end row in the rollout. So after Codex's app-server dies during a turn, Working\u2026 stays and Done messages wait until the next message. Quitting the app, even with SIGKILL, ends the turn in the rollout."
+  },
+  "host-task-list": {
+    kind: "different",
+    reason: "Codex runs no hook for `update_plan`, and the inbox's tool matcher cannot be widened without every person trusting the hook again. So the plan is read from the rollout when the turn stops, and shows from the next Status call. The tool is not offered by default in `codex exec`, and the app is not checked."
+  },
+  "hooks-need-trust": { kind: "full" },
+  "compare-in-background": {
+    kind: "different",
+    reason: "When a Codex subagent ends, Codex queues its result for the main agent and starts no turn for it. So a result that arrives after the agent's turn has ended does not reach the chat on its own, and the Compare message asks for the comparison in the agent's own turn."
+  },
+  "compare-page": { kind: "full" },
+  "running-marks": { kind: "full" },
+  "pending-answer-mark": { kind: "full" },
+  "tab-symbols": { kind: "full" },
+  "dim-pressed-button": { kind: "full" },
+  "herdr-sidebar": {
+    kind: "different",
+    reason: "In a Herdr pane, only Codex's hooks and the update a hook starts report, so a record or close during a turn reaches the sidebar at the next hook. In a Herdr app terminal, the MCP server labels too. Codex finds no stops, and runs no hook when a session ends, so its tokens or labels stay."
+  },
+  "herdr-look": {
+    kind: "different",
+    reason: "Codex runs no hook when a session ends, so its published file stays."
+  },
+  "herdr-open": {
+    kind: "unsupported",
+    reason: "The Codex CLI has no action that opens the inbox. A Codex plugin adds skills, MCP servers and hooks but no slash command, and the Inbox tab shows only in the Codex app. A `$inbox` skill that has the model call an MCP tool could open the Herdr look, but only after a model turn, so the press could not show what it did at once. It is left as an option."
+  },
+  "herdr-install": {
+    kind: "different",
+    reason: "The Codex CLI shows no inbox where the install question could show: a Codex plugin adds no slash command, and the Inbox tab shows only in the Codex app. So the app's tab asks when the Herdr app's settings folder exists, and Codex has no `/inbox herdr`. At start, Codex updates an installed inbox build, installs after a saved yes, and logs a failure only."
+  },
+  "status-children": {
+    kind: "different",
+    reason: "Codex's hooks report subagents and shell commands, and nothing else that runs apart from the turn, so workflows do not show. The end of a wait on a Herdr delegate is read at Stop."
+  },
+  "child-names": { kind: "full" },
+  "status-failed-warning": { kind: "full" },
+  "asks-holds-up-line": { kind: "full" },
+  "asks-rec-reason-line": { kind: "full" },
+  "asks-context-line": { kind: "full" },
+  "status-mid-turn-refresh": { kind: "full" },
+  "ran-call-activity": {
+    kind: "different",
+    reason: "Codex shows calls from PreToolUse, before approval. Stop and mid-turn Status reconciliation remove rows for declined or blocked calls when the rollout identifies them. One declined command at the end of a code-mode script is the only missing row; when multiple calls have no row, all remain. Declined MCP calls and blocks caught by scripts keep their rows."
+  },
+  "ran-call-delegates": {
+    kind: "different",
+    reason: "Codex runs PreToolUse before a call is approved, so a herdr command's delegate rows show from then. Stop, and the tool call that claims a Status call during the turn, take back the rows of each command the rollout shows was declined or blocked. In a code-mode script that ends on a declined command, that is the only command with no row while the script ran. When more than one has none, every row stays. A code-mode call whose script catches the block keeps its rows."
+  },
+  "tool-result-line": {
+    kind: "unsupported",
+    reason: "Codex draws an MCP tool call's result from its content, which is the text the model reads. structuredContent reaches the model too, and _meta reaches only an MCP App view, so a result has no field for the person alone."
+  },
+  "status-call-records": { kind: "full" },
+  "model-instructions": { kind: "full" },
+  "pr-order": { kind: "full" },
+  "pr-rank-again": { kind: "full" },
+  "clear-merged-and-closed-prs": { kind: "full" },
+  "pr-check-rerun": { kind: "full" },
+  "pr-fetch-notice": { kind: "full" },
+  "help-page": { kind: "full" },
+  "status-view-ask": {
+    kind: "different",
+    reason: "Pete's choice: View takes clicks only, with no key. The Codex Status has no row selection and is used by clicking."
+  },
+  "status-goal": {
+    kind: "different",
+    reason: "The goal's buttons take clicks only, as View does: the Codex Status has no row selection and is used by clicking."
+  },
+  "status-done-fold": {
+    kind: "different",
+    reason: "A done fold takes clicks only, as View does: the Codex Status has no row selection and is used by clicking."
+  },
+  "status-named-fold": { kind: "full" },
+  "seen-on-screen": { kind: "full" },
+  "status-idle-age": { kind: "full" },
+  "question-back-stays-open": {
+    kind: "different",
+    reason: "A typed reply to a question linked to an open Codex dialog goes in the dialog's reply form, question or not, since that form is what closes the dialog. The close refusal and the update rule apply as everywhere."
+  },
+  "markdown-item-links": { kind: "full" },
+  "item-explanations": { kind: "full" },
+  "finding-links": { kind: "full" },
+  "option-links": { kind: "full" },
+  "item-document": { kind: "full" },
+  "document-preview": { kind: "full" },
+  "record-link-guard": { kind: "full" },
+  "task-pr-facts": { kind: "full" },
+  "task-owner-facts": { kind: "full" },
+  "task-reminder": { kind: "full" },
+  "task-tree-currentness": { kind: "full" },
+  "task-status-mismatch": { kind: "full" },
+  timeline: { kind: "full" }
+};
+
+// ../hooks/client-support-omp.ts
+var OMP_SUPPORT = {
+  "catch-up": { kind: "full" },
+  "failed-update-recovery": { kind: "full" },
+  "ledger-behind-state": { kind: "full" },
+  "recorded-items-only": { kind: "full" },
+  "ask-history": { kind: "full" },
+  "dialog-outcome": { kind: "full" },
+  "dialog-answer": {
+    kind: "different",
+    reason: "The ask dialog blocks the turn, and the inbox copies a dialog only once it ended, so no open dialog is left for an inbox answer to close."
+  },
+  "dialog-answer-closes-copy": { kind: "full" },
+  "dialog-descriptions": { kind: "full" },
+  "tool-output-urls": { kind: "full" },
+  "pr-link-from-output": { kind: "full" },
+  "pr-arrivals": { kind: "full" },
+  "account-pr-list": { kind: "full" },
+  "feed-findings": { kind: "full" },
+  "meta-active-items": { kind: "full" },
+  "meta-default-feed": { kind: "full" },
+  "untracked-work-warning": { kind: "full" },
+  "prs-empty-hint": { kind: "full" },
+  "gh-signed-out-notice": { kind: "full" },
+  "link-open-rule": { kind: "full" },
+  "fork-ledger": { kind: "full" },
+  "band-and-stop-rows": {
+    kind: "different",
+    reason: "omp's band cannot take keys, so Resume is a button in the panel. omp classes a stop from the request's HTTP status and message, so it never names billing or a reset time."
+  },
+  "exchange-trigger": {
+    kind: "different",
+    reason: "omp's `before_agent_start` event carries only the prompt text, so every turn has words and none reads as started by something else."
+  },
+  "settle-window": { kind: "full" },
+  "fold-on-typed-message": { kind: "full" },
+  "fold-waits-for-list-use": {
+    kind: "different",
+    reason: "omp's panel takes keys only, so a row due to fold waits on keys."
+  },
+  "version-label": {
+    kind: "different",
+    reason: "omp's panel footer ends with the inbox model's name, so the version follows it there."
+  },
+  "status-tab": { kind: "full" },
+  "turn-working": { kind: "full" },
+  "host-task-list": { kind: "full" },
+  "hooks-need-trust": {
+    kind: "unsupported",
+    reason: "omp runs an installed extension's events without asking anyone to trust them."
+  },
+  "compare-in-background": { kind: "full" },
+  "compare-page": { kind: "full" },
+  "running-marks": { kind: "full" },
+  "pending-answer-mark": { kind: "full" },
+  "tab-symbols": { kind: "full" },
+  "dim-pressed-button": {
+    kind: "different",
+    reason: "The panel already draws a follow-up such as Discuss dim, and has no dimmer style, so an out follow-up looks as it does at rest until it is focused. Its key still does nothing."
+  },
+  "herdr-sidebar": { kind: "full" },
+  "herdr-look": { kind: "full" },
+  "herdr-open": { kind: "full" },
+  "herdr-install": { kind: "full" },
+  "status-children": {
+    kind: "different",
+    reason: "omp's extension events report subagents and bash calls. omp's reference names no event for a workflow run, so those do not show."
+  },
+  "child-names": { kind: "full" },
+  "status-failed-warning": { kind: "full" },
+  "asks-holds-up-line": { kind: "full" },
+  "asks-rec-reason-line": { kind: "full" },
+  "asks-context-line": { kind: "full" },
+  "status-mid-turn-refresh": { kind: "full" },
+  "ran-call-activity": { kind: "full" },
+  "ran-call-delegates": { kind: "full" },
+  "tool-result-line": { kind: "full" },
+  "status-call-records": { kind: "full" },
+  "model-instructions": { kind: "full" },
+  "pr-order": { kind: "full" },
+  "pr-rank-again": { kind: "full" },
+  "clear-merged-and-closed-prs": { kind: "full" },
+  "pr-check-rerun": { kind: "full" },
+  "pr-fetch-notice": { kind: "full" },
+  "help-page": {
+    kind: "different",
+    reason: "The panel takes keys only, so `?` opens Help, and no button does."
+  },
+  "status-view-ask": { kind: "full" },
+  "status-goal": { kind: "full" },
+  "status-done-fold": { kind: "full" },
+  "status-named-fold": { kind: "full" },
+  "seen-on-screen": { kind: "full" },
+  "status-idle-age": { kind: "full" },
+  "question-back-stays-open": { kind: "full" },
+  "markdown-item-links": {
+    kind: "different",
+    reason: "The panel uses OSC 8 links only when omp enables them for its terminal; otherwise it shows the label."
+  },
+  "item-explanations": {
+    kind: "different",
+    reason: "A selected detail that exceeds the panel scrolls with \u2191 and \u2193; j and k move between rows."
+  },
+  "finding-links": {
+    kind: "different",
+    reason: "The panel uses OSC 8 links only when omp enables them for its terminal; otherwise it shows the label."
+  },
+  "option-links": {
+    kind: "different",
+    reason: "The panel uses OSC 8 links only when omp enables them for its terminal; otherwise it shows the label."
+  },
+  "item-document": { kind: "full" },
+  "document-preview": { kind: "full" },
+  "record-link-guard": { kind: "full" },
+  "task-pr-facts": { kind: "full" },
+  "task-owner-facts": { kind: "full" },
+  "task-reminder": { kind: "full" },
+  "task-tree-currentness": { kind: "full" },
+  "task-status-mismatch": { kind: "full" },
+  timeline: { kind: "full" }
+};
+
 // ../hooks/client-support.ts
 var CLIENTS = {
-  "claude-code": {
-    support: {
-      "catch-up": { kind: "full" },
-      "failed-update-recovery": { kind: "full" },
-      "ledger-behind-state": { kind: "full" },
-      "recorded-items-only": { kind: "full" },
-      "ask-history": { kind: "full" },
-      "dialog-outcome": { kind: "full" },
-      "dialog-answer": {
-        kind: "different",
-        reason: "The dialog blocks the turn, and the inbox copies a dialog only once it ended, so no open dialog is left for an inbox answer to close."
-      },
-      "dialog-answer-closes-copy": { kind: "full" },
-      "dialog-descriptions": { kind: "full" },
-      "tool-output-urls": { kind: "full" },
-      "pr-link-from-output": { kind: "full" },
-      "pr-arrivals": { kind: "full" },
-      "account-pr-list": { kind: "full" },
-      "feed-findings": { kind: "full" },
-      "meta-active-items": { kind: "full" },
-      "meta-default-feed": { kind: "full" },
-      "untracked-work-warning": { kind: "full" },
-      "prs-empty-hint": { kind: "full" },
-      "gh-signed-out-notice": { kind: "full" },
-      "link-open-rule": { kind: "full" },
-      "fork-ledger": { kind: "full" },
-      "band-and-stop-rows": { kind: "full" },
-      "exchange-trigger": { kind: "full" },
-      "settle-window": { kind: "full" },
-      "fold-on-typed-message": { kind: "full" },
-      "fold-waits-for-list-use": {
-        kind: "different",
-        reason: "The terminal reports no pointer, so a row waits to fold on presses, keys and scrolls. Desktop settled text reports no pointer, so rows wait on presses and pointer moves over open rows."
-      },
-      "version-label": { kind: "full" },
-      "status-tab": { kind: "full" },
-      "turn-working": { kind: "full" },
-      "host-task-list": { kind: "full" },
-      "hooks-need-trust": {
-        kind: "unsupported",
-        reason: "Claude Code asks no one to trust a plugin's hooks, so no hook stops running for want of trust."
-      },
-      "compare-in-background": { kind: "full" },
-      "compare-page": { kind: "full" },
-      "running-marks": { kind: "full" },
-      "pending-answer-mark": { kind: "full" },
-      "tab-symbols": { kind: "full" },
-      "dim-pressed-button": {
-        kind: "different",
-        reason: "The desktop app's Button has no disabled state. `dimColor` fades only its label, and a click still shows the native press highlight before the shared press path ignores it."
-      },
-      "herdr-sidebar": { kind: "full" },
-      "herdr-look": { kind: "full" },
-      "herdr-open": { kind: "full" },
-      "herdr-install": { kind: "full" },
-      "status-children": { kind: "full" },
-      "child-names": { kind: "full" },
-      "status-failed-warning": { kind: "full" },
-      "asks-holds-up-line": { kind: "full" },
-      "asks-rec-reason-line": { kind: "full" },
-      "asks-context-line": { kind: "full" },
-      "status-mid-turn-refresh": { kind: "full" },
-      "ran-call-activity": { kind: "full" },
-      "ran-call-delegates": { kind: "full" },
-      "tool-result-line": { kind: "full" },
-      "status-call-records": { kind: "full" },
-      "model-instructions": { kind: "full" },
-      "pr-order": { kind: "full" },
-      "pr-rank-again": { kind: "full" },
-      "clear-merged-and-closed-prs": { kind: "full" },
-      "pr-check-rerun": { kind: "full" },
-      "pr-fetch-notice": { kind: "full" },
-      "help-page": {
-        kind: "different",
-        reason: "The engine binds only a digit or a lowercase letter as a Button's hotkey, so no key opens the terminal's Help. The desktop pane takes no keys, so its Help lists only the marks."
-      },
-      "status-view-ask": { kind: "full" },
-      "status-goal": { kind: "full" },
-      "status-done-fold": { kind: "full" },
-      "status-named-fold": { kind: "full" },
-      "seen-on-screen": { kind: "full" },
-      "status-idle-age": { kind: "full" },
-      "question-back-stays-open": { kind: "full" },
-      "markdown-item-links": { kind: "full" },
-      "item-explanations": { kind: "full" },
-      "finding-links": { kind: "full" },
-      "option-links": { kind: "full" },
-      "item-document": { kind: "full" },
-      "document-preview": { kind: "full" },
-      "record-link-guard": { kind: "full" },
-      "task-pr-facts": { kind: "full" },
-      "task-owner-facts": { kind: "full" },
-      "task-reminder": { kind: "full" },
-      "task-tree-currentness": { kind: "full" },
-      timeline: { kind: "full" }
-    }
-  },
-  codex: {
-    support: {
-      "catch-up": {
-        kind: "different",
-        reason: "Codex runs no hook when a chat is opened. A resumed chat catches up when its Inbox tab opens, and at the hook its next message runs if the tab stays closed. A chat whose ledger failed or fell behind, such as an archived chat that runs no hooks, also catches up when its tab opens, once until the ledger or the chat moves on."
-      },
-      "failed-update-recovery": { kind: "full" },
-      "ledger-behind-state": {
-        kind: "different",
-        reason: "Codex runs no hook when a chat is opened. A resumed chat is marked behind when its Inbox tab opens, and at the hook its next message runs if the tab stays closed."
-      },
-      "recorded-items-only": { kind: "full" },
-      "ask-history": { kind: "full" },
-      "dialog-outcome": {
-        kind: "different",
-        reason: "Codex's dialog tool returns at once and the answer arrives later as a user message, so a dialog is noted as open and its outcome is never recorded."
-      },
-      "dialog-answer": { kind: "full" },
-      "dialog-answer-closes-copy": {
-        kind: "different",
-        reason: "Codex's dialog tool returns before the person answers, so the inbox sees no answer when the dialog ends. The copy stays open until the person's reply in the dialog's form arrives, and the agent closes it then."
-      },
-      "dialog-descriptions": { kind: "full" },
-      "tool-output-urls": { kind: "full" },
-      "pr-link-from-output": {
-        kind: "different",
-        reason: "Codex runs no hook for a long command's output, so the inbox reads the turn's shell commands from the rollout at Stop. A PR that `gh pr create` opened is linked when the turn ends, not when the command finishes."
-      },
-      "pr-arrivals": { kind: "full" },
-      "account-pr-list": { kind: "full" },
-      "feed-findings": {
-        kind: "different",
-        reason: "Codex has no idle timer, so it applies the feed at hooks and Inbox tab view requests."
-      },
-      "meta-active-items": { kind: "full" },
-      "meta-default-feed": { kind: "full" },
-      "untracked-work-warning": { kind: "full" },
-      "prs-empty-hint": {
-        kind: "different",
-        reason: "The Codex app calls a conversation a chat, so its hint says chat where the mod says session."
-      },
-      "gh-signed-out-notice": { kind: "full" },
-      "link-open-rule": { kind: "full" },
-      "fork-ledger": {
-        kind: "different",
-        reason: "Codex runs no hook when a chat is opened. A fork takes its parent's ledger when its Inbox tab opens, and at the hook its first message runs if the tab stays closed."
-      },
-      "band-and-stop-rows": {
-        kind: "unsupported",
-        reason: "Codex has no line above its prompt, and shows no stops."
-      },
-      "exchange-trigger": {
-        kind: "different",
-        reason: "A Codex hook names no source for a turn that has no prompt, so the exchange reads unknown. The mod reads the prompt origin."
-      },
-      "settle-window": {
-        kind: "different",
-        reason: "The tab only learns of a close at its next poll, so the server offers Undo for two polls longer."
-      },
-      "fold-on-typed-message": { kind: "full" },
-      "fold-waits-for-list-use": { kind: "full" },
-      "version-label": { kind: "full" },
-      "status-tab": { kind: "full" },
-      "turn-working": {
-        kind: "different",
-        reason: "Codex runs no hook when a chat is opened, and a turn whose app-server dies has no end row in the rollout. So after Codex's app-server dies during a turn, Working\u2026 stays and Done messages wait until the next message. Quitting the app, even with SIGKILL, ends the turn in the rollout."
-      },
-      "host-task-list": {
-        kind: "different",
-        reason: "Codex has no hook for `update_plan`, and widening the tool matcher requires hook trust. The plan is read from the rollout at Stop and shown by the next Status call; `codex exec` does not offer the tool by default, and the app is unchecked."
-      },
-      "hooks-need-trust": { kind: "full" },
-      "compare-in-background": {
-        kind: "different",
-        reason: "When a Codex subagent ends, Codex queues its result for the main agent and starts no turn for it. So a result that arrives after the agent's turn has ended does not reach the chat on its own, and the Compare message asks for the comparison in the agent's own turn."
-      },
-      "compare-page": { kind: "full" },
-      "running-marks": { kind: "full" },
-      "pending-answer-mark": { kind: "full" },
-      "tab-symbols": { kind: "full" },
-      "dim-pressed-button": { kind: "full" },
-      "herdr-sidebar": {
-        kind: "different",
-        reason: "In a Herdr pane, only Codex's hooks and the update a hook starts report, so a record or close during a turn reaches the sidebar at the next hook. In a Herdr app terminal, the MCP server labels too. Codex finds no stops, and runs no hook when a session ends, so its tokens or labels stay."
-      },
-      "herdr-look": {
-        kind: "different",
-        reason: "Codex runs no hook when a session ends, so its published file stays."
-      },
-      "herdr-open": {
-        kind: "unsupported",
-        reason: "The Codex CLI has no action that opens the inbox. A Codex plugin adds skills, MCP servers and hooks but no slash command, and the Inbox tab shows only in the Codex app. A `$inbox` skill that has the model call an MCP tool could open the Herdr look, but only after a model turn, so the press could not show what it did at once. It is left as an option."
-      },
-      "herdr-install": {
-        kind: "different",
-        reason: "The Codex CLI shows no inbox where the install question could show: a Codex plugin adds no slash command, and the Inbox tab shows only in the Codex app. So the app's tab asks when the Herdr app's settings folder exists, and Codex has no `/inbox herdr`. At start, Codex updates an installed inbox build, installs after a saved yes, and logs a failure only."
-      },
-      "status-children": {
-        kind: "different",
-        reason: "Codex's hooks report subagents and shell commands, and nothing else that runs apart from the turn, so workflows do not show. The end of a wait on a Herdr delegate is read at Stop."
-      },
-      "child-names": { kind: "full" },
-      "status-failed-warning": { kind: "full" },
-      "asks-holds-up-line": { kind: "full" },
-      "asks-rec-reason-line": { kind: "full" },
-      "asks-context-line": { kind: "full" },
-      "status-mid-turn-refresh": { kind: "full" },
-      "ran-call-activity": {
-        kind: "different",
-        reason: "Codex shows calls from PreToolUse, before approval. Stop and mid-turn Status reconciliation remove rows for declined or blocked calls when the rollout identifies them. One declined command at the end of a code-mode script is the only missing row; when multiple calls have no row, all remain. Declined MCP calls and blocks caught by scripts keep their rows."
-      },
-      "ran-call-delegates": {
-        kind: "different",
-        reason: "Codex runs PreToolUse before a call is approved, so a herdr command's delegate rows show from then. Stop, and the tool call that claims a Status call during the turn, take back the rows of each command the rollout shows was declined or blocked. In a code-mode script that ends on a declined command, that is the only command with no row while the script ran. When more than one has none, every row stays. A code-mode call whose script catches the block keeps its rows."
-      },
-      "tool-result-line": {
-        kind: "unsupported",
-        reason: "Codex draws an MCP tool call's result from its content, which is the text the model reads. structuredContent reaches the model too, and _meta reaches only an MCP App view, so a result has no field for the person alone."
-      },
-      "status-call-records": { kind: "full" },
-      "model-instructions": { kind: "full" },
-      "pr-order": { kind: "full" },
-      "pr-rank-again": { kind: "full" },
-      "clear-merged-and-closed-prs": { kind: "full" },
-      "pr-check-rerun": { kind: "full" },
-      "pr-fetch-notice": { kind: "full" },
-      "help-page": { kind: "full" },
-      "status-view-ask": {
-        kind: "different",
-        reason: "Pete's choice: View takes clicks only, with no key. The Codex Status has no row selection and is used by clicking."
-      },
-      "status-goal": {
-        kind: "different",
-        reason: "The goal's buttons take clicks only, as View does: the Codex Status has no row selection and is used by clicking."
-      },
-      "status-done-fold": {
-        kind: "different",
-        reason: "A done fold takes clicks only, as View does: the Codex Status has no row selection and is used by clicking."
-      },
-      "status-named-fold": { kind: "full" },
-      "seen-on-screen": { kind: "full" },
-      "status-idle-age": { kind: "full" },
-      "question-back-stays-open": {
-        kind: "different",
-        reason: "A typed reply to a question linked to an open Codex dialog goes in the dialog's reply form, question or not, since that form is what closes the dialog. The close refusal and the update rule apply as everywhere."
-      },
-      "markdown-item-links": { kind: "full" },
-      "item-explanations": { kind: "full" },
-      "finding-links": { kind: "full" },
-      "option-links": { kind: "full" },
-      "item-document": { kind: "full" },
-      "document-preview": { kind: "full" },
-      "record-link-guard": { kind: "full" },
-      "task-pr-facts": { kind: "full" },
-      "task-owner-facts": { kind: "full" },
-      "task-reminder": { kind: "full" },
-      "task-tree-currentness": { kind: "full" },
-      timeline: { kind: "full" }
-    }
-  },
-  omp: {
-    support: {
-      "catch-up": { kind: "full" },
-      "failed-update-recovery": { kind: "full" },
-      "ledger-behind-state": { kind: "full" },
-      "recorded-items-only": { kind: "full" },
-      "ask-history": { kind: "full" },
-      "dialog-outcome": { kind: "full" },
-      "dialog-answer": {
-        kind: "different",
-        reason: "The ask dialog blocks the turn, and the inbox copies a dialog only once it ended, so no open dialog is left for an inbox answer to close."
-      },
-      "dialog-answer-closes-copy": { kind: "full" },
-      "dialog-descriptions": { kind: "full" },
-      "tool-output-urls": { kind: "full" },
-      "pr-link-from-output": { kind: "full" },
-      "pr-arrivals": { kind: "full" },
-      "account-pr-list": { kind: "full" },
-      "feed-findings": { kind: "full" },
-      "meta-active-items": { kind: "full" },
-      "meta-default-feed": { kind: "full" },
-      "untracked-work-warning": { kind: "full" },
-      "prs-empty-hint": { kind: "full" },
-      "gh-signed-out-notice": { kind: "full" },
-      "link-open-rule": { kind: "full" },
-      "fork-ledger": { kind: "full" },
-      "band-and-stop-rows": {
-        kind: "different",
-        reason: "omp's band cannot take keys, so Resume is a button in the panel. omp classes a stop from the request's HTTP status and message, so it never names billing or a reset time."
-      },
-      "exchange-trigger": {
-        kind: "different",
-        reason: "omp's `before_agent_start` event carries only the prompt text, so every turn has words and none reads as started by something else."
-      },
-      "settle-window": { kind: "full" },
-      "fold-on-typed-message": { kind: "full" },
-      "fold-waits-for-list-use": {
-        kind: "different",
-        reason: "omp's panel takes keys only, so a row due to fold waits on keys."
-      },
-      "version-label": {
-        kind: "different",
-        reason: "omp's panel footer ends with the inbox model's name, so the version follows it there."
-      },
-      "status-tab": { kind: "full" },
-      "turn-working": { kind: "full" },
-      "host-task-list": { kind: "full" },
-      "hooks-need-trust": {
-        kind: "unsupported",
-        reason: "omp runs an installed extension's events without asking anyone to trust them."
-      },
-      "compare-in-background": { kind: "full" },
-      "compare-page": { kind: "full" },
-      "running-marks": { kind: "full" },
-      "pending-answer-mark": { kind: "full" },
-      "tab-symbols": { kind: "full" },
-      "dim-pressed-button": {
-        kind: "different",
-        reason: "The panel already draws a follow-up such as Discuss dim, and has no dimmer style, so an out follow-up looks as it does at rest until it is focused. Its key still does nothing."
-      },
-      "herdr-sidebar": { kind: "full" },
-      "herdr-look": { kind: "full" },
-      "herdr-open": { kind: "full" },
-      "herdr-install": { kind: "full" },
-      "status-children": {
-        kind: "different",
-        reason: "omp's extension events report subagents and bash calls. omp's reference names no event for a workflow run, so those do not show."
-      },
-      "child-names": { kind: "full" },
-      "status-failed-warning": { kind: "full" },
-      "asks-holds-up-line": { kind: "full" },
-      "asks-rec-reason-line": { kind: "full" },
-      "asks-context-line": { kind: "full" },
-      "status-mid-turn-refresh": { kind: "full" },
-      "ran-call-activity": { kind: "full" },
-      "ran-call-delegates": { kind: "full" },
-      "tool-result-line": { kind: "full" },
-      "status-call-records": { kind: "full" },
-      "model-instructions": { kind: "full" },
-      "pr-order": { kind: "full" },
-      "pr-rank-again": { kind: "full" },
-      "clear-merged-and-closed-prs": { kind: "full" },
-      "pr-check-rerun": { kind: "full" },
-      "pr-fetch-notice": { kind: "full" },
-      "help-page": {
-        kind: "different",
-        reason: "The panel takes keys only, so `?` opens Help, and no button does."
-      },
-      "status-view-ask": { kind: "full" },
-      "status-goal": { kind: "full" },
-      "status-done-fold": { kind: "full" },
-      "status-named-fold": { kind: "full" },
-      "seen-on-screen": { kind: "full" },
-      "status-idle-age": { kind: "full" },
-      "question-back-stays-open": { kind: "full" },
-      "markdown-item-links": {
-        kind: "different",
-        reason: "The panel uses OSC 8 links only when omp enables them for its terminal; otherwise it shows the label."
-      },
-      "item-explanations": {
-        kind: "different",
-        reason: "A selected detail that exceeds the panel scrolls with \u2191 and \u2193; j and k move between rows."
-      },
-      "finding-links": {
-        kind: "different",
-        reason: "The panel uses OSC 8 links only when omp enables them for its terminal; otherwise it shows the label."
-      },
-      "option-links": {
-        kind: "different",
-        reason: "The panel uses OSC 8 links only when omp enables them for its terminal; otherwise it shows the label."
-      },
-      "item-document": { kind: "full" },
-      "document-preview": { kind: "full" },
-      "record-link-guard": { kind: "full" },
-      "task-pr-facts": { kind: "full" },
-      "task-owner-facts": { kind: "full" },
-      "task-reminder": { kind: "full" },
-      "task-tree-currentness": { kind: "full" },
-      timeline: { kind: "full" }
-    }
-  }
+  "claude-code": { support: CLAUDE_CODE_SUPPORT },
+  codex: { support: CODEX_SUPPORT },
+  omp: { support: OMP_SUPPORT }
 };
 
 // ../hooks/clients.ts
@@ -11936,7 +12023,7 @@ function startTurn(s) {
 }
 function recordPrompt(host, s, text, isOpen, sentBy) {
   const ledger = { ...s.ledger, turn: s.ledger.turn + 1 };
-  const r = promptNotes(host, ledger, { text, isPress: sentBy !== null, isOpen }, s.told, s.taskTree);
+  const r = promptNotes(host, ledger, { text, isPress: sentBy !== null, isOpen }, s.told, s.taskTree, s.taskStatusMismatches);
   const person = s.turn.person === null ? text : `${s.turn.person}
 
 ${text}`;
@@ -12053,7 +12140,7 @@ function applyOps(last, ops, now, askIds, tree = []) {
         if (!o.head || !hasSameWords(o.head.title, title) || o.head.description !== description)
           o = { ...o, head: { title, description } };
       }
-    } else {
+    } else if (op.kind === "link") {
       const task = findTask(op.taskId) ? op.taskId : null;
       if (task === null)
         continue;
@@ -12082,14 +12169,16 @@ function applyStatus(last, answer, now, askIds, readSetAt = last?.goal?.setAt ??
 function isStatusCallCurrent(s, appliedAfter) {
   return s.presence.turnsApplied >= appliedAfter && s.overviewTurn <= appliedAfter;
 }
-function appliedStatus(s, answer, appliedAfter, now, readSetAt = s.ledger.overview?.goal?.setAt ?? null, isCatchUp = false, requireHead = false) {
+function appliedStatus(s, answer, appliedAfter, now, readSetAt = s.ledger.overview?.goal?.setAt ?? null, isCatchUp = false, requireHead = false, isMidTurn = false) {
   if (!isStatusCallCurrent(s, appliedAfter))
     return s;
   const askIds = new Set(s.ledger.items.map((i) => i.id));
   const overview = applyStatus(s.ledger.overview, answer, now, askIds, readSetAt, s.taskTree, requireHead);
+  const taskStatusMismatches = applyTaskMismatchOps(s.taskStatusMismatches, answer.kind === "ops" && !isMidTurn ? answer.ops : [], s.taskTree, now);
   return {
     ...s,
     ledger: { ...s.ledger, overview },
+    taskStatusMismatches,
     overviewFailure: isCatchUp ? null : s.overviewFailure,
     lastOverviewCallAt: now,
     overviewTurn: appliedAfter
@@ -12193,8 +12282,9 @@ function appliedCatchUp(s, begun, parsed, now) {
 }
 
 // ../hooks/status.ts
-var LINE = /^\s*[-*]?\s*(NO CHANGE|NOCHANGE|UNCHANGED|NEW|SET|DONE|DROP|WAS|HEAD|LINK|GOAL|RETIRE|MILESTONE|SERVES)\s*(?::\s*(.*))?$/i;
+var LINE = /^\s*[-*]?\s*(NO CHANGE|NOCHANGE|UNCHANGED|TASK-MISMATCH|TASK-CLEAR|NEW|SET|DONE|DROP|WAS|HEAD|LINK|GOAL|RETIRE|MILESTONE|SERVES)\s*(?::\s*(.*))?$/i;
 var IGNORED = new Set(["NEW", "SET", "DONE", "DROP", "WAS", "MILESTONE", "SERVES"]);
+var TASK_STATUSES2 = new Set(["working", "queued", "waits-on-other", "done", "dropped"]);
 function fields(value) {
   return value.split("|").map((f) => f.trim());
 }
@@ -12205,6 +12295,15 @@ function opOf(key, f) {
     return f[0] ? { kind: "head", title: f[0], description: f[1] ?? "" } : null;
   if (key === "LINK")
     return f[0] && f[1] ? { kind: "link", ref: f[0], taskId: f[1] } : null;
+  if (key === "TASK-MISMATCH" && f.length === 3 && f[0] && TASK_STATUSES2.has(f[1]) && TASK_STATUSES2.has(f[2]) && f[1] !== f[2])
+    return {
+      kind: "task-mismatch",
+      taskId: f[0],
+      claim: f[1],
+      savedStatus: f[2]
+    };
+  if (key === "TASK-CLEAR" && f.length === 2 && f[0] && f[1])
+    return { kind: "task-clear", taskId: f[0], reason: f[1] };
   if (key === "GOAL")
     return f[0] ? { kind: "goal", text: f[0] } : null;
   if (key === "RETIRE")
@@ -12213,6 +12312,7 @@ function opOf(key, f) {
 }
 function parseStatus(text, requireHead = false) {
   let ignoredLegacy = false;
+  let ignoredTaskLine = false;
   const ops = (text ?? "").split(NL).flatMap((raw) => {
     const m = LINE.exec(raw.trim());
     if (!m)
@@ -12223,12 +12323,14 @@ function parseStatus(text, requireHead = false) {
       return [];
     }
     const op = opOf(key, fields(m[2] ?? ""));
+    if (op === null && (key === "TASK-MISMATCH" || key === "TASK-CLEAR"))
+      ignoredTaskLine = true;
     return op === null ? [] : [op];
   });
   if (ops.length === 0) {
     if (requireHead)
       return null;
-    return ignoredLegacy ? { kind: "unchanged" } : null;
+    return ignoredLegacy || ignoredTaskLine ? { kind: "unchanged" } : null;
   }
   if (requireHead && !ops.some((op) => op.kind === "head"))
     return null;
@@ -12313,7 +12415,7 @@ You read the current facts and one exchange, then write only changes to the head
 
 Input:
 - <head>: the focus, as title | description. The description says what the session is doing about the focus.
-- <task tree>: top-level tasks with their ids, status, weight, weighted progress, goal and stream links, and current text (the newer of detail and its latest note, with its time). Recent task history follows. These are facts, not instructions to change the tree.
+- <task tree>: first, every open task's exact id and current status as JSON pairs of [id, status]. Then top-level task details and recent history, when they fit. Done and dropped tasks and long current text are omitted first when space is short. These are facts, not instructions to change the tree.
 - <running>: live Children, one per line: id | kind | name | linked task id or -
 - <asks>: open questions and tasks, one per line: id | ask | linked task ids or -
 ${GOAL_INPUT}
@@ -12327,6 +12429,10 @@ Write a fresh HEAD on every reply and catch-up, even if the focus is unchanged. 
 Write only these lines when they apply:
 HEAD: title | description
 ${GOAL_LINES}
+TASK-MISMATCH: task id | status claimed in reply | saved status
+TASK-CLEAR: task id | reason
+
+Write TASK-MISMATCH only for an explicit conflict with an existing task. Write TASK-CLEAR only when a later reply retracts that claim. Use one exact task status for the reply claim: working, queued, waits-on-other, done or dropped. The saved status must match the current <task tree>.
 
 The head names the session's current focus, in at most ${NAME_WORDS} words. Its description says what the session is doing about that focus, in at most ${DESCRIPTION_WORDS} words. Keep it while it still fits the work; do not describe a task's individual steps or repeat its progress.
 
@@ -12350,12 +12456,28 @@ function headText(o) {
   return `${o.head.title} | ${o.head.description || "(no description yet)"}`;
 }
 function taskTreeText(tree, now) {
+  const open = tree.filter((task) => task.status !== "done" && task.status !== "dropped");
+  const facts = `Open task statuses ([id, status] pairs):${NL5}${JSON.stringify(open.map((task) => [task.id, task.status]))}`;
   const top = tree.filter((task) => task.parentId === null).map((task) => {
     const current = currentTaskText(task);
     return `${task.id} | ${task.status} | weight ${task.weight} | ${Math.round(weightedTaskProgress(tree, task.id) * 100)}% | ${task.goalId ?? "-"} | ${task.streamId ?? "-"} | ${task.title} | ${current ? `${current.text} (${ago(Math.max(0, now - current.at))})` : "-"}`;
   });
   const recent = tree.flatMap((task) => task.history.map((event) => ({ task, event }))).sort((a, b) => b.event.at - a.event.at).slice(0, 8).map(({ task, event }) => `${task.id} | ${event.kind} | ${ago(Math.max(0, now - event.at))}${event.detail ? ` | ${event.detail}` : ""}`);
-  return [...top, ...recent.length ? ["Recent changes:", ...recent] : []].join(NL5) || "(no tasks yet)";
+  const details = ["Top-level tasks:", ...top, ...recent.length ? ["Recent changes:", ...recent] : []].join(NL5);
+  const available = Math.max(0, 8000 - facts.length - 1);
+  if (available <= 0)
+    return facts;
+  if (details.length <= available)
+    return `${facts}${NL5}${details}`;
+  const openRoots = tree.filter((task) => task.parentId === null && task.status !== "done" && task.status !== "dropped");
+  const brief = [
+    "Open top-level tasks:",
+    ...openRoots.map((task) => `${task.id} | ${task.status} | weight ${task.weight} | ${Math.round(weightedTaskProgress(tree, task.id) * 100)}% | ${task.goalId ?? "-"} | ${task.streamId ?? "-"} | ${task.title}`)
+  ].join(NL5);
+  if (available <= 8)
+    return facts;
+  const detailsBudget = available - 8;
+  return `${facts}${NL5}${clipMiddle(brief, detailsBudget, Math.floor(detailsBudget / 2))}`;
 }
 function statusBlocks({ last, asks, taskTree, now }) {
   const running = runningText(last, now);
@@ -12363,7 +12485,7 @@ function statusBlocks({ last, asks, taskTree, now }) {
   return [
     ...goalBlocks(last, taskTree, now),
     `<head>${NL5}${headText(last)}${NL5}</head>`,
-    `<task tree>${NL5}${clipMiddle(taskTreeText(taskTree ?? [], now), 8000, 2000)}${NL5}</task tree>`,
+    `<task tree>${NL5}${taskTreeText(taskTree ?? [], now)}${NL5}</task tree>`,
     ...running === "" ? [] : [`<running>${NL5}${running}${NL5}</running>`],
     ...held === "" ? [] : [`<asks>${NL5}${held}${NL5}</asks>`]
   ];
@@ -12524,7 +12646,7 @@ async function askAndWriteStatus(host, s, call, appliedAfter) {
     before = x.ledger.overview;
     isWritten = isStatusCallCurrent(x, appliedAfter);
     const readSetAt = input.last?.goal?.setAt ?? null;
-    return answer === null ? failedStatus(x, last.text, appliedAfter, now, call.exchange.kind === "catch-up") : appliedStatus(x, answer, appliedAfter, now, readSetAt, call.exchange.kind === "catch-up", requireHead);
+    return answer === null ? failedStatus(x, last.text, appliedAfter, now, call.exchange.kind === "catch-up") : appliedStatus(x, answer, appliedAfter, now, readSetAt, call.exchange.kind === "catch-up", requireHead, call.exchange.kind === "mid-turn");
   });
   if (!host.records)
     return;
