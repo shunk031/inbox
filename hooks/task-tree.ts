@@ -54,9 +54,10 @@ function hasValidWeight(weight: number): boolean {
   return Number.isFinite(weight) && weight >= TASK_WEIGHT_MIN && weight <= TASK_WEIGHT_MAX
 }
 
-type TaskGitHubLink = { host: string; ref: string; kind: 'pull' | 'issues' }
+type TaskGitHubLink = { host: string; ref: string; kind: 'pull' | 'issues'; number: string }
 
-function taskGitHubLink(value: string): TaskGitHubLink | undefined {
+/** Parses the URL shape accepted for a task's GitHub or GitHub Enterprise PR and issue links. */
+export function taskGitHubLink(value: string): TaskGitHubLink | undefined {
   const match =
     /^https:\/\/[^/?#]+\/([A-Za-z0-9](?:[A-Za-z0-9-]{0,38})?)\/([A-Za-z0-9_.-]{1,100})\/(pull|issues)\/([1-9]\d*)$/.exec(
       value,
@@ -70,6 +71,7 @@ function taskGitHubLink(value: string): TaskGitHubLink | undefined {
       host: url.host.toLowerCase(),
       ref: `${match[1]}/${match[2]}#${match[4]}`,
       kind: match[3] as 'pull' | 'issues',
+      number: match[4]!,
     }
   } catch {
     return undefined

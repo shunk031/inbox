@@ -110,10 +110,23 @@ test('Timeline j and k run the planned Select action for the task they land on',
 
 test('Timeline link open results stay on the Links line', () => {
   const root = taskNode('root', 'Root', 'working')
-  const pr = 'https://github.com/example/project/pull/4'
-  const issue = 'https://github.com/example/project/issues/7'
+  const pr = 'https://git.example.org/example/project/pull/4'
+  const issue = 'https://git.example.org/example/project/issues/7'
   root.links = { pr, issue }
   const screen = taskScreen([root])
+  screen.view.lastActions[prMarkId(pr)] = {
+    kind: 'local',
+    action: 'pr-open',
+    text: 'Open PR',
+    at: NOW,
+    result: { state: 'pending', at: NOW, parts: [{ kind: 'open', name: 'PR #4', error: null, isCommand: false }] },
+  }
+  const ui: PanelUi = { ...INITIAL_UI, tab: 'timeline', selectedId: 'root', timelineSelection: 'root' }
+  const opening = text(screen, ui)
+    .split('\n')
+    .find(line => line.includes('Links ·'))!
+  expect(opening).toContain('Opening…')
+
   screen.view.lastActions[prMarkId(pr)] = {
     kind: 'local',
     action: 'pr-open',
@@ -132,7 +145,6 @@ test('Timeline link open results stay on the Links line', () => {
       parts: [{ kind: 'open', name: 'Issue #7', error: 'no browser', isCommand: false }],
     },
   }
-  const ui: PanelUi = { ...INITIAL_UI, tab: 'timeline', selectedId: 'root', timelineSelection: 'root' }
   const lines = text(screen, ui).split('\n')
   const links = lines.find(line => line.includes('Links ·'))!
   expect(links).toContain('Open PR')

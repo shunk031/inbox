@@ -3218,7 +3218,8 @@ function taskGitHubLink(value) {
     return {
       host: url.host.toLowerCase(),
       ref: `${match[1]}/${match[2]}#${match[4]}`,
-      kind: match[3]
+      kind: match[3],
+      number: match[4]
     };
   } catch {
     return;
@@ -6353,10 +6354,10 @@ function applyPrPress(ledger, prState, lastActions, p, ctx) {
   const pr = prState.views[p.ref];
   const markId = prMarkId(p.ref);
   if (p.action === "pr-open" && (!pr || !isTracked(prState, ledger, p.ref))) {
-    const match = /^https:\/\/github\.com\/[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})?\/([A-Za-z0-9_.-]{1,100})\/(pull|issues)\/([1-9]\d*)$/.exec(p.ref);
-    if (!match || match[1] === "." || match[1] === "..")
+    const link = taskGitHubLink(p.ref);
+    if (!link)
       return stale;
-    const name = `${match[2] === "pull" ? "PR" : "issue"} #${match[3]}`;
+    const name = `${link.kind === "pull" ? "PR" : "issue"} #${link.number}`;
     const effects = [{ kind: "open", target: p.ref, name }];
     const result = pendingResult(effects, ctx.now, ctx.localPressId);
     const last = localLast(lastActions[markId], { action: p.action, text: `Open ${name}` }, result);
