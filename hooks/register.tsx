@@ -44,7 +44,7 @@ import { emptySession, upgradeSession, type SavedSession } from './session-files
 import { postToolReminder, toolCallReminder, withToolCallReminder } from './mod-task-reminder'
 import { pressOn, pruned, type SendOutcome } from './session-presses'
 import { isCompareInBackground } from './clients'
-import { agentsAttentionCount } from './agents-page'
+import { agentsAttentionCount, agentsInputForPane } from './agents-page'
 import { showsRunningMark, type SessionView } from './session-view'
 import {
   childrenCutOff,
@@ -3206,7 +3206,7 @@ export const register: Register = on => {
       handlers,
     )
 
-    // The Status and Help draw no rows, so none are built while either shows.
+    // Status and Help show no rows.
     const isListShown = !isPageShown && !isHelpShown
     const { lists, needsYouGroups, findingEntries } = paneListRows(
       view,
@@ -3238,12 +3238,9 @@ export const register: Register = on => {
     }
     const agentsCount =
       look === 'terminal'
-        ? agentsAttentionCount({
-            ...view.agents,
-            now,
-            localAgents: isDemo ? view.agents.localAgents : paneState.localAgents,
-            localAgentsUnavailable: isDemo ? view.agents.localAgentsUnavailable : paneState.agentsUnavailable,
-          })
+        ? agentsAttentionCount(
+            agentsInputForPane(view.agents, now, isDemo, paneState.localAgents, paneState.agentsUnavailable),
+          )
         : 0
     const badgeOf = (id: ShownTab) => tabBadge(id, counts, agentsCount)
     const tabTone = (id: ShownTab) =>
@@ -3403,7 +3400,7 @@ export const register: Register = on => {
         ...client,
         e,
         tabList,
-        badgeOf: badge,
+        badgeOf,
         shownTab,
         pal,
         look,

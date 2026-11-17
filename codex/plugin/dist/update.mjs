@@ -1877,13 +1877,9 @@ var TAB_NAMES = [
   { id: "overview", label: "Status", symbol: "\u{1F9ED}" },
   { id: "needsYou", label: "Asks", symbol: "\u{1F64B}" },
   { id: "timeline", label: "Timeline", symbol: "\u25F7" },
+  { id: "agents", label: "Agents", symbol: "\u265F" },
   { id: "prs", label: "PRs", symbol: "\u{1F500}" }
 ];
-var numbered = (tabs) => tabs.map((t, n) => ({ ...t, hotkey: String(n + 1) }));
-var NEXT_BUILD_TABS = numbered(TAB_NAMES.filter((t) => t.id !== "timeline"));
-var NEXT_BUILD_TIMELINE_TABS = numbered(TAB_NAMES);
-var RELEASE_TABS = numbered(TAB_NAMES.filter((t) => t.id !== "overview" && t.id !== "timeline"));
-var RELEASE_TIMELINE_TABS = numbered(TAB_NAMES.filter((t) => t.id !== "overview"));
 function isListedTab(tab) {
   return tab === "needsYou";
 }
@@ -3613,7 +3609,7 @@ function taskStatus(task, stalled) {
   if (task.status === "done" || task.status === "dropped") return task.status;
   return task.status === "working" ? "working" : task.status === "waits-on-other" ? "waiting" : "queued";
 }
-function statusPresentation(status) {
+function timelineStatusPresentation(status) {
   switch (status) {
     case "done":
       return { label: "Completed", tone: "done", mark: "\u25CF" };
@@ -3672,7 +3668,7 @@ function timelineData(tree, segments, stalledSince, warnings, now, taskStatusMis
       const hasLaterSibling = index < siblings.length - 1;
       const connector = depth === 0 ? "" : hasLaterSibling ? "\u251C\u2500 " : "\u2514\u2500 ";
       const status = taskStatus(task, stalled);
-      const presentation2 = statusPresentation(status);
+      const presentation2 = timelineStatusPresentation(status);
       const progress = percent(weightedTaskProgress(tree, task.id));
       const completedUnits = completedLeaves(tree, task.id);
       rows.push({
@@ -3702,7 +3698,7 @@ function timelineData(tree, segments, stalledSince, warnings, now, taskStatusMis
   visit(children.get(null) ?? [], 0, []);
   const overall = percent(weightedTaskProgress(tree));
   const state = progressStatus(segments);
-  const presentation = statusPresentation(state);
+  const presentation = timelineStatusPresentation(state);
   const leaves = completedLeaves(tree);
   const firstCreated = tree.reduce(
     (first, task) => first === null ? task.createdAt : Math.min(first, task.createdAt),
@@ -3744,7 +3740,7 @@ function updateRecovery(s) {
   if (s.pending.length === 0 && presence.isConversationUnreadable) return "unreadable";
   return presence.failedAttempts > 1 ? "failed-again" : "waiting";
 }
-function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timelineTaskTree = s.taskTree) {
+function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timelineTaskTree = s.taskTree, agentOverrides = {}) {
   const l = s.ledger;
   const lastActions = withoutStalePending(s.lastActions, now);
   const inbox = inboxView({
@@ -3789,6 +3785,15 @@ function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timel
       now,
       s.taskStatusMismatches
     ),
+    agents: {
+      feedRows: agentOverrides.feedRows ?? l.findings,
+      taskTree: timelineTaskTree,
+      ownerFacts: agentOverrides.ownerFacts ?? ownerFacts,
+      progress: timelineOwnerView.segments,
+      localAgents: agentOverrides.localAgents ?? [],
+      localAgentsUnavailable: agentOverrides.localAgentsUnavailable,
+      now
+    },
     taskProgressSegments: taskOwnerView.segments,
     taskStalledSince: taskOwnerView.stalledSince,
     feedStalledSince,

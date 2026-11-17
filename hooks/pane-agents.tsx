@@ -1,4 +1,4 @@
-import { agentsPage } from './agents-page'
+import { agentsInputForPane, agentsPage } from './agents-page'
 import type { PaneBase } from './pane-context'
 import type { PaneRowParts } from './pane-row-parts'
 import { timelineChip, timelineRowBackground, timelineRowLead, timelineToneColor } from './pane-timeline'
@@ -57,12 +57,7 @@ export function paneAgents({
   const width = e.props.bodyColumns - 2 - (hasRail ? 5 : 0)
   const paneWidth = cellWidth(' '.repeat(e.props.bodyColumns - (hasRail ? 5 : 0)))
   const page = agentsPage(
-    {
-      ...view.agents,
-      now,
-      localAgents: isDemo ? view.agents.localAgents : paneState.localAgents,
-      localAgentsUnavailable: isDemo ? view.agents.localAgentsUnavailable : paneState.agentsUnavailable,
-    },
+    agentsInputForPane(view.agents, now, isDemo, paneState.localAgents, paneState.agentsUnavailable),
     width,
   )
   const orchestrators = page.rows.filter(

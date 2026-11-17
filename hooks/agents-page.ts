@@ -155,3 +155,18 @@ export function agentsPage(input: AgentsPageInput, width: number): AgentsPage {
 export function agentsAttentionCount(input: AgentsPageInput): number {
   return agentsPage(input, Number.MAX_SAFE_INTEGER).attentionCount
 }
+
+export function agentsInputForPane(
+  input: Omit<AgentsPageInput, 'now'>,
+  now: number,
+  isDemo: boolean,
+  localAgents: readonly LocalAgent[],
+  unavailable: boolean,
+): AgentsPageInput {
+  return {
+    ...input,
+    now,
+    localAgents: isDemo ? input.localAgents : localAgents,
+    localAgentsUnavailable: isDemo ? input.localAgentsUnavailable : unavailable,
+  }
+}
