@@ -6,7 +6,6 @@ import { isRowTab, shownTabs, tabBadge } from '../../hooks/tabs'
 import { footerStatus } from '../../hooks/view'
 import { SETTLED_MS } from '../../hooks/timing'
 import type { ShownTab } from '../../hooks/tabs'
-import type { Tab } from '../../types'
 import type { TabView as View } from './core'
 import { tabState, selection, drawnRows } from './tab-state'
 import { switchTab, drawnTab } from './tab-selection'
@@ -94,7 +93,12 @@ export function Status({ v }: { v: View }) {
 }
 
 export function TabBar({ v }: { v: View }) {
-  const counts: Record<Tab, number> = { needsYou: v.needsYou.count, findings: v.findings.count, prs: v.prs.count }
+  const counts = {
+    needsYou: v.needsYou.count,
+    findings: v.findings.count,
+    prs: v.prs.count,
+    timeline: v.timeline.openTasks,
+  }
   const badgeOf = (id: ShownTab) => tabBadge(id, counts)
   const { error } = footerOf(v)
   const shown = drawnTab()

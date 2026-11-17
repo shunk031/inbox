@@ -3218,14 +3218,15 @@ export const register: Register = on => {
       findings: lists.byTab.findings,
       prs: prGroups.flatMap(g => g.rows),
     }
-    const tabCounts: Record<Tab, number> = {
+    const counts = {
       needsYou: view.needsYou.count,
       findings: view.findings.count,
       prs: shownPrs.filter(x => x.state.is === 'open' && prNeedsYou(x.pr, isThreadSent)).length,
+      timeline: view.timeline.openTasks,
     }
-    const badgeOf = (id: ShownTab) => tabBadge(id, tabCounts)
+    const badge = (id: ShownTab) => tabBadge(id, counts)
     const tabTone = (id: ShownTab) => (isRowTab(id) ? pal.tone[id] : undefined)
-    const tabText = (id: ShownTab, name: string) => `${name}${badgeOf(id) === null ? '' : ` ${badgeOf(id)}`}`
+    const tabText = (id: ShownTab, name: string) => `${name}${badge(id) === null ? '' : ` ${badge(id)}`}`
     const hasRail = isInline && look === 'terminal' && e.props.bodyColumns >= INLINE_RAIL_AT
     const railWidth = Math.max(...tabList.map(t => cellWidth(tabText(t.id, t.label)))) + 2 * TAB_PAD.length
     const listColumns = e.props.bodyColumns - 2 - (hasRail ? railWidth + RAIL_GUTTER : 0)
@@ -3381,7 +3382,7 @@ export const register: Register = on => {
         ...client,
         e,
         tabList,
-        badgeOf,
+        badgeOf: badge,
         shownTab,
         pal,
         look,

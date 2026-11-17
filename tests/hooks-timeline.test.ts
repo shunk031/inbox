@@ -4,7 +4,6 @@ import type { On } from 'claude-code'
 import type { TabsProps } from '../hooks/tabs-client'
 import { prMarkId } from '../hooks/pr-rows'
 import { applyPrPress } from '../hooks/pr-tab'
-import { taskOwnerKey } from '../hooks/task-facts'
 import { cellWidth } from '../hooks/text'
 import type { Session } from '../types'
 import { w, world } from './hooks-world'
@@ -157,6 +156,10 @@ test('the next-build pane draws Timeline with its saved selection and folded bra
     text.some(line => line.includes('Timeline')),
     'Timeline tab',
   ).toBe(true)
+  expect(
+    text.some(line => line.trim() === '3'),
+    'three open tasks appear beside Timeline',
+  ).toBe(true)
   expect(text, 'the saved selection row').toContain('Other')
   expect(text, 'the saved selection marker').toContain('> ○ ')
   expect(text, 'the saved folded branch').not.toContain('Child')
@@ -290,68 +293,84 @@ test('terminal Timeline keeps Japanese titles, row metadata and detail guides at
   expect((await pane.findAll({ type: 'Text' })).some(line => line.text === longDetail)).toBe(true)
 })
 
-test('terminal Timeline shows stalled and owner or PR warnings under their task rows', async ($, on) => {
+test('terminal Timeline aligns percentages, strips rows, and separates only top-level trees', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   world($, on, [])
   w.files = ['/.next-build']
-  const owner = { machine: 'local', agent: 'worker-1' }
-  const ownerKey = taskOwnerKey(owner)
-  const pr = 'https://github.com/example/project/pull/12'
-  on('state.set', { plugin: 'inbox', key: 'session' } as const, (_$, event, next) => {
-    const session = event.value as Session & { revision: number }
-    const taskTree = session.taskTree.map(task =>
-      task.id === 'owner-task' ? { ...task, links: { ...task.links, owner } } : task,
-    )
-    return next({
-      ...event,
-      value: {
-        ...session,
-        taskTree,
-        taskOwnerFacts: { ...session.taskOwnerFacts, [ownerKey]: { state: 'done', since: 940_000 } },
-        taskFactWarnings: [
-          ...session.taskFactWarnings,
-          { taskId: 'pr-task', pr, message: 'PR merged, task still open' as const },
-        ],
-      },
-    })
-  })
 
   await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'mcp__inbox__tasks', operation: 'add', task_id: 'zero', title: 'Zero', status: 'queued' })
   await $.tool.call({
     tool: 'mcp__inbox__tasks',
     operation: 'add',
-    task_id: 'owner-task',
-    title: 'Owner task',
+    task_id: 'forty',
+    title: 'Forty',
     status: 'working',
   })
   await $.tool.call({
     tool: 'mcp__inbox__tasks',
     operation: 'add',
-    task_id: 'pr-task',
-    title: 'Task with merged PR',
-    status: 'working',
+    task_id: 'forty-done',
+    parent_id: 'forty',
+    title: 'Done child',
+    status: 'done',
+    weight: 2,
+  } as never)
+  await $.tool.call({
+    tool: 'mcp__inbox__tasks',
+    operation: 'add',
+    task_id: 'forty-open',
+    parent_id: 'forty',
+    title: 'Open child',
+    status: 'queued',
+    weight: 3,
+  } as never)
+  await $.tool.call({
+    tool: 'mcp__inbox__tasks',
+    operation: 'add',
+    task_id: 'hundred',
+    title: 'Hundred',
+    status: 'done',
+  })
+  await $.tool.call({
+    tool: 'mcp__inbox__tasks',
+    operation: 'add',
+    task_id: 'dropped',
+    title: 'Dropped',
+    status: 'dropped',
   })
 
   const pane = await $.ui.mount(PANE)
   await pane.press({ key: 'tab-key-timeline' })
   await clock.settle()
 
-  const rows = await pane.findAll({ type: 'Text' })
+  const row = async (id: string) => pane.find({ key: `timeline-${id}` })
+  for (const [id, paddingTop] of [
+    ['zero', 0],
+    ['forty', 1],
+    ['forty-done', 0],
+    ['forty-open', 0],
+    ['hundred', 1],
+    ['dropped', 1],
+  ] as const) {
+    const element = await row(id)
+    expect(element?.props.paddingTop, `${id} spacing`).toBe(paddingTop)
+    expect(element?.props.backgroundColor, `${id} has no alternate band`).toBeUndefined()
+  }
+
+  const percentages = await Promise.all(
+    ['zero', 'forty', 'hundred'].map(async id => (await row(id))?.text.match(/ {1,3}(?:0|40|100)\.00%/)?.[0]),
+  )
+  expect(percentages).toEqual(['   0.00%', '  40.00%', ' 100.00%'])
+  expect(percentages.map(text => cellWidth(text ?? ''))).toEqual([8, 8, 8])
+  const bars = await Promise.all(
+    ['zero', 'forty', 'hundred'].map(async id => (await pane.find({ key: `timeline-row-bar-${id}` }))?.text ?? ''),
+  )
+  expect(bars.map(text => cellWidth(text))).toEqual([10, 10, 10])
+  const text = (await pane.findAll({ type: 'Text' })).map(node => node.text)
   expect(
-    rows.some(line => line.text === 'Stalled'),
-    'the stalled chip remains visible',
-  ).toBe(true)
-  expect(
-    rows.some(line => line.text.includes('✕')),
-    'the stalled mark remains on the task title line',
-  ).toBe(true)
-  expect(
-    rows.some(line => line.text.includes('⚠ Owner finished, task open')),
-    'the owner warning is under its task row',
-  ).toBe(true)
-  expect(
-    rows.some(line => line.text.includes('⚠ PR merged, task still open')),
-    'the PR warning is under its task row',
+    text.some(line => line.trim() === '3'),
+    'three open tasks appear beside Timeline',
   ).toBe(true)
 })
 

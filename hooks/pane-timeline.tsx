@@ -67,7 +67,7 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
                 <Text color={pal.muted}>{` · ${row.statusLabel} · ${row.percent}`}</Text>
               </Box>
               {row.warnings.map(warning => (
-                <Text color={pal.tone.issue ?? pal.muted}>{`${row.detailLead}⚠ ${warning}`}</Text>
+                <Text color={pal.tone.issue ?? pal.muted}>{`${row.treeLead}⚠ ${warning}`}</Text>
               ))}
               {selection?.details.map(line =>
                 line.label === 'Links' ? (
@@ -124,8 +124,8 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
   const paneWidth = widthForCells(' '.repeat(bodyColumns))
   const color = (tone: string) =>
     tone === 'key' ? pal.key : tone === 'muted' ? pal.muted : (pal.tone[tone as 'done' | 'error'] ?? pal.muted)
-  const chip = (label: string, tone: string) => (
-    <Box backgroundColor={color(tone)} paddingX={1}>
+  const chip = (label: string, tone: string, key?: string) => (
+    <Box key={key} backgroundColor={color(tone)} paddingX={1}>
       <Text color="inverseText">{label}</Text>
     </Box>
   )
@@ -247,69 +247,77 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
             <Text color={pal.muted}>{page.empty.hint}</Text>
           </Box>
         ) : null}
-        {page.rows.map(row => {
-          const selected = row.task.id === page.selected?.row.task.id
-          const backgroundColor = row.alternate ? (pal.card ?? pal.line) : undefined
-          const rowLead = `${selected ? '> ' : '  '}${row.prefix}${row.mark} `
-          const percentCells = cellWidth(` ${row.percent}`)
-          const availableWithBar = bodyColumns - 2 - cellWidth(rowLead) - 10 - percentCells
-          const showTaskBar = availableWithBar >= 20
-          const titleCells = Math.max(1, bodyColumns - 2 - cellWidth(rowLead) - percentCells - (showTaskBar ? 10 : 0))
-          const title =
-            cellWidth(row.task.title) > titleCells
-              ? `${cutToCells(row.task.title, Math.max(0, titleCells - 1))}…`
-              : row.task.title
-          return (
-            <Box
-              key={`timeline-${row.task.id}`}
-              width={paneWidth}
-              flexDirection="column"
-              paddingX={1}
-              backgroundColor={backgroundColor}
-            >
-              <Box flexDirection="row" alignItems="flex-start">
-                <Box width={widthForCells(rowLead)} flexShrink={0}>
-                  <Text color={color(row.tone)}>
-                    {selected ? '> ' : '  '}
-                    {row.prefix}
-                    {row.mark}{' '}
-                  </Text>
-                </Box>
-                <Box flexDirection="row" flexGrow={1} flexShrink={1} minWidth={0}>
-                  <Box flexGrow={1} flexShrink={1} minWidth={0}>
-                    <Button
-                      plain
-                      key={`timeline-title-${row.task.id}`}
-                      autoFocus={look === 'terminal' && selected ? true : undefined}
-                      onPress={() => void openTimelineDetail(row.task.id)}
-                    >
-                      {look === 'terminal' ? (
-                        <Text color={color(row.tone)} wrap="truncate-end">
-                          {title}
-                        </Text>
-                      ) : (
-                        title
-                      )}
-                    </Button>
+        <Box flexDirection="column">
+          {page.rows.map((row, rowIndex) => {
+            const selected = row.task.id === page.selected?.row.task.id
+            const rowLead = `${selected ? '> ' : '  '}${row.prefix}${row.mark} `
+            const titleLeadWidth = cellWidth(rowLead)
+            const chipLeadWidth = Math.max(0, titleLeadWidth - 1)
+            const chipLead = cutToCells(row.treeLead, chipLeadWidth).padEnd(chipLeadWidth)
+            const warningLead = cutToCells(row.treeLead, titleLeadWidth).padEnd(titleLeadWidth)
+            const percent = row.percent.padStart(7)
+            const percentCells = cellWidth(` ${percent}`)
+            const availableWithBar = bodyColumns - 2 - cellWidth(rowLead) - 10 - percentCells
+            const showTaskBar = availableWithBar >= 20
+            const titleCells = Math.max(1, bodyColumns - 2 - cellWidth(rowLead) - percentCells - (showTaskBar ? 10 : 0))
+            const title =
+              cellWidth(row.task.title) > titleCells
+                ? `${cutToCells(row.task.title, Math.max(0, titleCells - 1))}…`
+                : row.task.title
+            return (
+              <Box
+                key={`timeline-${row.task.id}`}
+                width={paneWidth}
+                flexDirection="column"
+                paddingX={1}
+                paddingTop={row.depth === 0 && rowIndex > 0 ? 1 : 0}
+              >
+                <Box flexDirection="row" alignItems="flex-start">
+                  <Box key={`timeline-title-lead-${row.task.id}`} width={widthForCells(rowLead)} flexShrink={0}>
+                    <Text color={color(row.tone)}>
+                      {selected ? '> ' : '  '}
+                      {row.prefix}
+                      {row.mark}{' '}
+                    </Text>
                   </Box>
-                  <Box flexDirection="row" flexShrink={0}>
-                    {showTaskBar ? <Box key={`timeline-row-bar-${row.task.id}`}>{bar(row.progressBar)}</Box> : null}
-                    <Box flexShrink={0}>
-                      <Text color={color(row.tone)}>{` ${row.percent}`}</Text>
+                  <Box flexDirection="row" flexGrow={1} flexShrink={1} minWidth={0}>
+                    <Box flexGrow={1} flexShrink={1} minWidth={0}>
+                      <Button
+                        plain
+                        key={`timeline-title-${row.task.id}`}
+                        autoFocus={look === 'terminal' && selected ? true : undefined}
+                        onPress={() => void openTimelineDetail(row.task.id)}
+                      >
+                        {look === 'terminal' ? (
+                          <Text color={color(row.tone)} wrap="truncate-end">
+                            {title}
+                          </Text>
+                        ) : (
+                          title
+                        )}
+                      </Button>
+                    </Box>
+                    <Box flexDirection="row" flexShrink={0}>
+                      {showTaskBar ? <Box key={`timeline-row-bar-${row.task.id}`}>{bar(row.progressBar)}</Box> : null}
+                      <Box flexShrink={0}>
+                        <Text key={`timeline-row-percent-${row.task.id}`} color={color(row.tone)}>{` ${percent}`}</Text>
+                      </Box>
                     </Box>
                   </Box>
                 </Box>
+                <Box key={`timeline-status-line-${row.task.id}`} flexDirection="row">
+                  <Box key={`timeline-chip-lead-${row.task.id}`} width={chipLeadWidth} flexShrink={0}>
+                    <Text>{chipLead}</Text>
+                  </Box>
+                  {chip(row.statusLabel, row.tone, `timeline-chip-${row.task.id}`)}
+                </Box>
+                {row.warnings.map(warning => (
+                  <Text color={pal.tone.error ?? pal.muted}>{`${warningLead}⚠ ${warning}`}</Text>
+                ))}
               </Box>
-              <Box flexDirection="row" gap={1}>
-                <Text>{row.detailLead}</Text>
-                {chip(row.statusLabel, row.tone)}
-              </Box>
-              {row.warnings.map(warning => (
-                <Text color={pal.tone.error ?? pal.muted}>{`${row.detailLead}⚠ ${warning}`}</Text>
-              ))}
-            </Box>
-          )
-        })}
+            )
+          })}
+        </Box>
       </Box>
     )
   const footer =

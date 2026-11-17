@@ -1,5 +1,5 @@
 // Built by herdr/build.ts with Bun 1.4.4 from herdr/src and hooks/. Do not edit.
-// Built at 2026-11-17T13:41:55.232Z. 224547 characters follow.
+// Built at 2026-11-17T14:17:14.954Z. 224739 characters follow.
 
 // src/main.ts
 import { View, div as div5 } from "gpui-kit";
@@ -94,6 +94,8 @@ function shownTabs(isNextBuild, includeTimeline = false) {
   return isNextBuild ? includeTimeline ? NEXT_BUILD_TIMELINE_TABS : NEXT_BUILD_TABS : includeTimeline ? RELEASE_TIMELINE_TABS : RELEASE_TABS;
 }
 function tabBadge(id, counts) {
+  if (id === "timeline" && counts.timeline !== undefined)
+    return String(counts.timeline);
   return isRowTab(id) && counts[id] > 0 ? String(counts[id]) : null;
 }
 function isListedTab(tab) {
@@ -3674,6 +3676,7 @@ function timelineData(tree, segments, stalledSince, warnings, now, taskStatusMis
   const firstCreated = tree.reduce((first, task) => first === null ? task.createdAt : Math.min(first, task.createdAt), null);
   return {
     isEmpty: tree.length === 0,
+    openTasks: tree.filter((task) => task.status !== "done" && task.status !== "dropped").length,
     empty: { title: "Timeline", hint: "No tasks have been recorded for this session." },
     progressCard: {
       status: state,

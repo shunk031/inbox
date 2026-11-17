@@ -3293,6 +3293,7 @@ function timelineData(tree, segments, stalledSince, warnings, now, taskStatusMis
   );
   return {
     isEmpty: tree.length === 0,
+    openTasks: tree.filter((task) => task.status !== "done" && task.status !== "dropped").length,
     empty: { title: "Timeline", hint: "No tasks have been recorded for this session." },
     progressCard: {
       status: state,

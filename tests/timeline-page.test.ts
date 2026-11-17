@@ -92,6 +92,18 @@ test('Timeline summarizes weighted completion and counts completed leaf tasks', 
   })
 })
 
+test('Timeline counts open tasks without counting completed or dropped tasks', () => {
+  const tree: TaskTree = [
+    task('working', { status: 'working' }),
+    task('queued', { status: 'queued' }),
+    task('done', { status: 'done' }),
+    task('dropped', { status: 'dropped' }),
+  ]
+
+  expect(timelineData(tree, segments, {}, [], now).openTasks).toBe(2)
+  expect(timelineData([], segments, {}, [], now).openTasks).toBe(0)
+})
+
 test('Timeline formats history times in the shared plan', () => {
   const updatedAt = now - 15 * 60_000
   const page = timelineData(
@@ -217,6 +229,13 @@ test('top-level Timeline tasks do not add guide columns to each other or their c
   ])
   const rootDetail = timelinePage(timelineData(tree, segments, {}, [], now), 'second-root', [], {}, true).selected
   expect(rootDetail?.row.detailLead).not.toMatch(/[│├└]/)
+  const page = timelinePage(timelineData(tree, segments, {}, [], now), 'first-root', [])
+  expect(page.rows.map(row => [row.task.id, row.treeLead])).toEqual([
+    ['first-root', '  │  '],
+    ['first-child', '     '],
+    ['last-child', '     '],
+    ['second-root', '     '],
+  ])
 })
 
 test('Timeline preserves long Japanese titles and guide paths across deep, wide trees', () => {

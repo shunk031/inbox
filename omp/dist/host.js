@@ -1780,6 +1780,8 @@ function fitTabs(layouts, fits) {
   return { naming: "symbols", layout: layouts.at(-1) };
 }
 function tabBadge(id, counts) {
+  if (id === "timeline" && counts.timeline !== undefined)
+    return String(counts.timeline);
   return isRowTab(id) && counts[id] > 0 ? String(counts[id]) : null;
 }
 function isListedTab(tab) {
@@ -8047,6 +8049,7 @@ function timelineData(tree, segments, stalledSince, warnings, now, taskStatusMis
   const firstCreated = tree.reduce((first, task) => first === null ? task.createdAt : Math.min(first, task.createdAt), null);
   return {
     isEmpty: tree.length === 0,
+    openTasks: tree.filter((task) => task.status !== "done" && task.status !== "dropped").length,
     empty: { title: "Timeline", hint: "No tasks have been recorded for this session." },
     progressCard: {
       status: state,
@@ -8095,10 +8098,15 @@ function timelinePage(data, selectedId, folded, lastActions = {}, isDetailOpen =
   });
   const visibleParents = new Set(visibleRows.flatMap((row) => row.task.parentId ? [row.task.parentId] : []));
   const rows = visibleRows.map((row) => {
-    const siblingGuide = row.hasLaterSibling || row.depth > 0 ? row.hasLaterSibling ? "\u2502  " : "   " : "";
     const hasVisibleChildren = visibleParents.has(row.task.id);
     const childGuide = hasVisibleChildren ? "\u2502  " : "   ";
-    return { ...row, hasVisibleChildren, detailLead: `  ${row.guides.join("")}${siblingGuide}${childGuide}` };
+    const siblingGuide = row.hasLaterSibling || row.depth > 0 ? row.hasLaterSibling ? "\u2502  " : "   " : "";
+    return {
+      ...row,
+      hasVisibleChildren,
+      treeLead: `  ${row.guides.join("")}${childGuide}`,
+      detailLead: `  ${row.guides.join("")}${siblingGuide}${childGuide}`
+    };
   });
   let selected = rows.find((row) => row.task.id === selectedId);
   if (!selected && selectedId) {
@@ -10420,7 +10428,8 @@ function tabBar(d) {
   const counts = {
     needsYou: screen.view.needsYou.count,
     findings: screen.view.findings.count,
-    prs: screen.view.prs.count
+    prs: screen.view.prs.count,
+    timeline: screen.view.timeline.openTasks
   };
   const tabs = shownTabs(screen.isNextBuild === true, true).map((t) => ({
     ...t,
