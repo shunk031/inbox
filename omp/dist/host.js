@@ -6714,7 +6714,7 @@ function recordDescription(host) {
 For any kind with a Markdown report the user should read, give its absolute local path in document. The inbox checks the file and shows a short excerpt; do not use this field for a file they should edit.
 Do not record rhetorical questions, offers to continue when continuing is the default, FYIs, or invitations to look at finished work.`;
 }
-var CLOSE_DESCRIPTION = `Close an open item or finding by its id, such as i35 or f12, as listed in the latest "inbox:" text beside the user's prompt. Pass the user's answer when their message answered it, and a reason otherwise.`;
+var CLOSE_DESCRIPTION = `Close an open item or finding by an id from the latest "inbox:" text.`;
 function tasksDescription(host) {
   return `Keep your task tree current when you make a plan, start work, finish work or drop work. Add, update, move, complete or note tasks. A task is your own work plan, never a question or a step for the user; use ${host.recordTool} for those.
 
@@ -7055,7 +7055,7 @@ function recordItem(host, ledger, input, now, fields = V0_3_TOOL_FIELDS) {
       ...before && after ? bodyChanges(before, after) : []
     ];
     const updated = changes.length > 0 ? ` and ${changes.join(" and ")}` : "";
-    return unchanged(recorded, `Already open as ${r.id}, so this record updated it${updated}. ${r.id} stays open; do not close it.${leftOut}${documentNote}`);
+    return unchanged(recorded, `Already open as ${r.id}, so this record updated it${updated}. ${r.id} is the only copy and stays open; do not close it to replace it.${leftOut}${documentNote}`);
   }
   return {
     ledger: recorded,
@@ -11491,7 +11491,7 @@ Write the text of questions, tasks and findings in the language the person write
 
 When a choice can be inferred from the work or is easy to undo, make it and say what you chose. When you ask the user to decide something, say which option you recommend and why, in one clause ("I'd go with B: it keeps the old API"). If you cannot recommend one, say what would decide it.
 
-Take each step yourself when your tools can, including running commands, checking or reloading pages, and reading logs. For changes others see, such as merging, releasing or messaging, ask for their OK as a question, then act on yes. Record a task only when your tools cannot take the step, and say in your reply why.
+Before you hand the user a step, take it yourself when your tools reach it, such as running a command, reloading or checking a page, or reading a log. When the step changes something other people see, such as merging, releasing or messaging someone, ask for their OK as a question and take the step when they say yes. Record a task only for a step your tools cannot reach, and say in your reply why you cannot take it.
 
 When asking the user to act, give them the link, path or command, what to do, and how to return the result in your reply. If you cannot read it, such as in their browser, say how to send it.
 

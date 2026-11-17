@@ -60,7 +60,7 @@ test('a record after the agent closed the question with a reason in its Compare 
 
   expect(await call('close', { id, reason: 'replaced by the compared copy' })).toMatch(/^Closed\./)
   expect(await call('record', compared)).toBe(
-    'Already open as i1, so this record updated it and added its new steps. i1 stays open; do not close it.',
+    'Already open as i1, so this record updated it and added its new steps. i1 is the only copy and stays open; do not close it to replace it.',
   )
   const { ledger } = await host.read()
   expect(ledger.items.map(i => i.id)).toEqual([id])
@@ -122,7 +122,7 @@ test('Compare reads Comparing… after its reply until the agent records the que
 
   const reported = await record({ ...question, steps: ['/tmp/project/.scratch/compare/caches.html', 'npm test'] })
   expect(reported).toBe(
-    'Already open as i1, so this record updated it and added its new steps. i1 stays open; do not close it. Some steps were not an absolute file path or a link, so they are left out.',
+    'Already open as i1, so this record updated it and added its new steps. i1 is the only copy and stays open; do not close it to replace it. Some steps were not an absolute file path or a link, so they are left out.',
   )
   expect(await row()).toEqual({
     feedback: '✓ Compared',

@@ -236,7 +236,7 @@ test('a question Claude records waits in the pane with its recommendation, a rep
   await clock.settle()
   expect(await pane.find({ text: /Which cache should the API use\?/ })).toBeDefined()
   expect((await $.tool.call({ ...question, ask: 'Which cache should the API use?' })).result).toBe(
-    'Already open as i1, so this record updated it. i1 stays open; do not close it.',
+    'Already open as i1, so this record updated it. i1 is the only copy and stays open; do not close it to replace it.',
   )
   expect((await $.tool.call({ ...question, ask: 'Which cache should it use?', rec: 'Memcached' })).result).toBe(
     'Not recorded: rec must be one of the options.',

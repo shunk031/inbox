@@ -209,7 +209,7 @@ export function recordItem(
 
     return unchanged(
       recorded,
-      `Already open as ${r.id}, so this record updated it${updated}. ${r.id} stays open; do not close it.${leftOut}${documentNote}`,
+      `Already open as ${r.id}, so this record updated it${updated}. ${r.id} is the only copy and stays open; do not close it to replace it.${leftOut}${documentNote}`,
     )
   }
 
