@@ -30,6 +30,7 @@ type AgentsPage = {
   notice: string | null
   empty: string | null
   rows: AgentsPageRow[]
+  attentionCount: number
 }
 
 const isOpen = (status: string) => status !== 'done' && status !== 'dropped'
@@ -139,9 +140,18 @@ export function agentsPage(input: AgentsPageInput, width: number): AgentsPage {
     })
   }
 
+  const attentionCount = rows.filter(
+    row => row.status === 'stalled' || row.status === 'blocked' || row.status === 'stale',
+  ).length
+
   return {
     notice: input.localAgentsUnavailable ? 'Herdr agent list unavailable; local agent status is not current.' : null,
     empty: rows.length === 0 ? 'No roots, agents, or live feed rows.' : null,
     rows,
+    attentionCount,
   }
+}
+
+export function agentsAttentionCount(input: AgentsPageInput): number {
+  return agentsPage(input, Number.MAX_SAFE_INTEGER).attentionCount
 }

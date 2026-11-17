@@ -44,6 +44,7 @@ import { emptySession, upgradeSession, type SavedSession } from './session-files
 import { postToolReminder, toolCallReminder, withToolCallReminder } from './mod-task-reminder'
 import { pressOn, pruned, type SendOutcome } from './session-presses'
 import { isCompareInBackground } from './clients'
+import { agentsAttentionCount } from './agents-page'
 import { showsRunningMark, type SessionView } from './session-view'
 import {
   childrenCutOff,
@@ -3235,9 +3236,19 @@ export const register: Register = on => {
       prs: shownPrs.filter(x => x.state.is === 'open' && prNeedsYou(x.pr, isThreadSent)).length,
       timeline: view.timeline.openTasks,
     }
-    const badge = (id: ShownTab) => tabBadge(id, counts)
-    const tabTone = (id: ShownTab) => (isRowTab(id) ? pal.tone[id] : undefined)
-    const tabText = (id: ShownTab, name: string) => `${name}${badge(id) === null ? '' : ` ${badge(id)}`}`
+    const agentsCount =
+      look === 'terminal'
+        ? agentsAttentionCount({
+            ...view.agents,
+            now,
+            localAgents: isDemo ? view.agents.localAgents : paneState.localAgents,
+            localAgentsUnavailable: isDemo ? view.agents.localAgentsUnavailable : paneState.agentsUnavailable,
+          })
+        : 0
+    const badgeOf = (id: ShownTab) => tabBadge(id, counts, agentsCount)
+    const tabTone = (id: ShownTab) =>
+      id === 'agents' ? (agentsCount > 0 ? pal.tone.issue : undefined) : isRowTab(id) ? pal.tone[id] : undefined
+    const tabText = (id: ShownTab, name: string) => `${name}${badgeOf(id) === null ? '' : ` ${badgeOf(id)}`}`
     const hasRail = isInline && look === 'terminal' && e.props.bodyColumns >= INLINE_RAIL_AT
     const railWidth = Math.max(...tabList.map(t => cellWidth(tabText(t.id, t.label)))) + 2 * TAB_PAD.length
     const listColumns = e.props.bodyColumns - 2 - (hasRail ? railWidth + RAIL_GUTTER : 0)

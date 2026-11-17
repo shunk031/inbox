@@ -79,8 +79,13 @@ export function fitTabs<L>(
 
   return { naming: 'symbols', layout: layouts.at(-1)! }
 }
-/** What a tab draws after its name: waiting rows, or open Timeline tasks. Null draws nothing. */
-export function tabBadge(id: ShownTab, counts: Readonly<Record<Tab, number> & { timeline?: number }>): string | null {
+/** What a tab draws after its name: its row count, Timeline tasks, or Agents attention. Null draws nothing. */
+export function tabBadge(
+  id: ShownTab,
+  counts: Readonly<Record<Tab, number> & { timeline?: number }>,
+  agentsAttentionCount = 0,
+): string | null {
+  if (id === 'agents') return agentsAttentionCount > 0 ? String(agentsAttentionCount) : null
   if (id === 'timeline' && counts.timeline !== undefined) return String(counts.timeline)
   return isRowTab(id) && counts[id] > 0 ? String(counts[id]) : null
 }

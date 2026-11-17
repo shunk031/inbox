@@ -1,6 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
-import { agentsPage } from '../hooks/agents-page'
+import { agentsAttentionCount, agentsPage, type AgentsPageInput } from '../hooks/agents-page'
 import { cellWidth } from '../hooks/text'
+import { tabBadge } from '../hooks/tabs'
 import type { Finding, TaskNode, TaskProgressSegments, TaskTree } from '../types'
 import { w, world } from './hooks-world'
 import { PANE } from './hooks-helpers'
@@ -107,6 +108,31 @@ test('Agents root rows show a two-hour-old patrol as stale before the feed expir
   expect(page.rows[0]?.text).toContain('2h')
   expect(cellWidth(page.rows[0]!.text)).toBeLessThanOrEqual(18)
   expect(page.rows[0]?.text).not.toContain('working')
+})
+
+test('Agents tab badge counts stalled, blocked, and stale rows and hides zero', () => {
+  const input = {
+    feedRows: [
+      feed({ at: now - 16 * 60_000, ownerFact: { state: 'working', since: now - 16 * 60_000 } }),
+      feed({
+        id: 'blocked-root',
+        feedKey: 'herdr/linux/blocked',
+        at: now - 60_000,
+        ownerFact: { state: 'blocked', since: now },
+      }),
+    ],
+    taskTree: [task({ id: 'stalled', links: { owner: { machine: 'linux', agent: 'stalled-agent' } } })],
+    ownerFacts: { '["linux","stalled-agent"]': { state: 'idle', since: now - 15 * 60_000 } },
+    progress,
+    localAgents: [{ machine: 'linux', name: 'blocked-agent', status: 'blocked' }],
+    now,
+  } satisfies AgentsPageInput
+  const counts = { needsYou: 0, findings: 0, prs: 0 }
+  const attentionCount = agentsAttentionCount(input)
+
+  expect(attentionCount).toBe(4)
+  expect(tabBadge('agents', counts, attentionCount)).toBe('4')
+  expect(tabBadge('agents', counts)).toBeNull()
 })
 
 test('Agents plan clips long Japanese titles by terminal cell width and reports an empty tree', () => {

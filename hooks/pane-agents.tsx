@@ -76,11 +76,11 @@ export function paneAgents({
     { title: 'Local agents', count: localAgents.length, rows: localAgents },
   ]
   const groupViews = groups.map(({ title, count, rows }) => {
-    const rowViews = rows.map((row, index) => {
+    const rowViews = rows.map(row => {
       const status = timelineStatusPresentation(timelineState(row.status))
       const mark = timelineRowLead({ prefix: row.prefix ?? '', mark: status.mark }, false)
       const label = chipLabel(row.status, status.label)
-      const backgroundColor = timelineRowBackground(pal, index % 2 === 1)
+      const backgroundColor = timelineRowBackground(pal, false)
       const color = timelineToneColor(pal, status.tone)
 
       return (
