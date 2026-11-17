@@ -4,13 +4,14 @@ import { GH_TIMEOUT_MS } from '../hooks/gh'
 import { STATUS_SYSTEM } from '../hooks/status-prompt'
 import { prNodeOf, prsAnswerOf, queriedPrs } from './gh-answers'
 import type { PrAnswer, ThreadsJson, ViewJson } from './gh-answers'
+import { DEFAULT_STATUS_REPLY, defaultStatusReply } from './status-fixtures'
 
 export const LEDGER_REPLY = `NEW: decide | 1 | Use Node or Python? | Node / Python | Node
 NEW: decide | 2 | Name the command greet? | - | yes`
 
 class World {
   ledgerReply = LEDGER_REPLY
-  statusReply: string | null | string[] = 'UNCHANGED'
+  statusReply: string | null | string[] = DEFAULT_STATUS_REPLY
   statusPrompts: string[] = []
   modelSystems: string[] = []
   statusHold: Promise<void> | null = null
@@ -274,7 +275,7 @@ export function world($: Engine, on: On, prompts: string[], vars: Record<string,
   w.isGhMissing = false
   w.slowGhClock = null
   w.ledgerReply = LEDGER_REPLY
-  w.statusReply = 'UNCHANGED'
+  w.statusReply = DEFAULT_STATUS_REPLY
   w.statusPrompts = []
   w.modelSystems = []
   w.statusHold = null
@@ -462,14 +463,15 @@ export function world($: Engine, on: On, prompts: string[], vars: Record<string,
     const statusText = !isStatusCall
       ? null
       : Array.isArray(w.statusReply)
-        ? (w.statusReply.shift() ?? 'UNCHANGED')
+        ? (w.statusReply.shift() ?? DEFAULT_STATUS_REPLY)
         : w.statusReply
-    if (isStatusCall && statusText === null) return { deny: 'the Status call failed' }
+    const answer = statusText === DEFAULT_STATUS_REPLY ? defaultStatusReply(e.prompt) : statusText
+    if (isStatusCall && answer === null) return { deny: 'the Status call failed' }
 
     return {
       value: {
         isAnswered: true,
-        text: isStatusCall ? statusText! : w.ledgerReply,
+        text: isStatusCall ? answer! : w.ledgerReply,
         usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
       },
     }

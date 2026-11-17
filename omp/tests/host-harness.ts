@@ -79,7 +79,7 @@ export function startWorld() {
     smolModel: smol,
     inboxRoleModel: undefined,
     reply: MODEL_ANSWER,
-    statusReply: 'UNCHANGED',
+    statusReply: 'HEAD: Current work | Continuing the current work',
     statusHold: null,
     statusCompletions: [],
     isIdle: false,

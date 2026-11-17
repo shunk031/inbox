@@ -3436,21 +3436,25 @@ function itemLine(item) {
 function findingLine(finding) {
   return `- ${finding.kind}: ${finding.title} (close id: ${finding.id})`;
 }
-function statusSummaryLines(ledger, taskTree = []) {
-  const head = ledger.overview?.head ?? null;
-  const focus = head ? [head.title, head.description].filter(Boolean).join(": ") : "";
-  const open = (ledger.overview?.subjects ?? []).filter(isOpen);
-  const groups = taskRootGroups(taskTree).filter(({ roots }) => roots.some((task) => task.status !== "done" && task.status !== "dropped"));
-  const taskLines = groups.map(({ roots }) => {
-    const name = roots.map((task) => task.title).join(", ");
-    const current = roots.map((task) => currentTaskText(task)?.text).filter(Boolean).join("; ");
-    const status = roots.some((task) => task.status === "working") ? "working" : roots.some((task) => task.status === "waits-on-other") ? "waiting on others" : "queued";
-    return `- ${name}: ${current || "-"} (${status})`;
+function taskSnapshotLines(ledger, taskTree) {
+  const open = taskTree.filter((task) => task.status !== "done" && task.status !== "dropped");
+  if (open.length === 0)
+    return [];
+  const rows = open.slice(0, 12).map((task) => {
+    const text = currentTaskText(task)?.text.replace(/\s+/g, " ").trim();
+    const row = [`- ${task.id}`, task.status, task.title, text].filter(Boolean).join(" | ");
+    return clipLabel(row, 96);
   });
   return [
-    ...focus ? [`Working on: ${focus}`] : [],
-    ...taskLines.length > 0 ? ["Where it stands:", ...taskLines] : open.length > 0 ? ["Where it stands:", ...open.map((s) => `- ${s.name}: ${s.text || "-"} (${s.status})`)] : []
+    `Task tree check for turn ${ledger.turn} (current work). Keep it current with \`tasks\` when work starts, changes, becomes blocked, or finishes. Task status changes only through \`tasks\` or when a linked pull request merges.`,
+    ...rows,
+    ...open.length > rows.length ? [`- ${open.length - rows.length} more open ${open.length - rows.length === 1 ? "task" : "tasks"} omitted.`] : []
   ];
+}
+function statusFocusLines(ledger) {
+  const head = ledger.overview?.head ?? null;
+  const focus = head ? [head.title, head.description].filter(Boolean).join(": ") : "";
+  return focus ? [`Working on: ${focus}`] : [];
 }
 var CLOSE_ID_RULE = "A close id is only for the close tool. Never write one in a reply.";
 function inboxText(host, ledger, isOpen, taskTree = []) {
@@ -3458,7 +3462,8 @@ function inboxText(host, ledger, isOpen, taskTree = []) {
   const out = [
     `inbox: what waits on the user, as of your last reply. Anything not listed here is closed. ${CLOSE_ID_RULE}`
   ];
-  out.push(...statusSummaryLines(ledger, taskTree));
+  out.push(...statusFocusLines(ledger));
+  out.push(...taskSnapshotLines(ledger, taskTree));
   if (promptItems(ledger).length > 0) {
     out.push("Waiting on the user:");
     for (const item of promptItems(ledger))
@@ -3496,7 +3501,7 @@ function promptNotes(host, ledger, prompt, told, taskTree = []) {
   const toldClosed = new Set(told.closed);
   const closed = closedText(ledger.closed.filter((d) => !toldClosed.has(d.id)));
   const hasUnrecorded = ledger.unrecordedDecisions.length > 0;
-  const isEmpty = promptItems(ledger).length === 0 && ledger.findings.every((f) => f.feedOwned);
+  const isEmpty = promptItems(ledger).length === 0 && ledger.findings.every((f) => f.feedOwned) && taskTree.every((task) => task.status === "done" || task.status === "dropped");
   if (!closed && !hasUnrecorded && (inbox === told.inbox || isEmpty && told.inbox === null))
     return { notes, told, shownUnrecorded: false };
   notes.push(closed ? `${inbox}${NL5}${closed}` : inbox);
@@ -11216,6 +11221,7 @@ var CLIENTS = {
       "task-pr-facts": { kind: "full" },
       "task-owner-facts": { kind: "full" },
       "task-reminder": { kind: "full" },
+      "task-tree-currentness": { kind: "full" },
       timeline: { kind: "full" }
     }
   },
@@ -11288,7 +11294,7 @@ var CLIENTS = {
       },
       "host-task-list": {
         kind: "different",
-        reason: "Codex runs no hook for `update_plan`, and the inbox's tool matcher cannot be widened without every person trusting the hook again. So the plan is read from the rollout when the turn stops, and shows from the next Status call. The tool is not offered by default in `codex exec`, and the app is not checked."
+        reason: "Codex has no hook for `update_plan`, and widening the tool matcher requires hook trust. The plan is read from the rollout at Stop and shown by the next Status call; `codex exec` does not offer the tool by default, and the app is unchecked."
       },
       "hooks-need-trust": { kind: "full" },
       "compare-in-background": {
@@ -11375,6 +11381,7 @@ var CLIENTS = {
       "task-pr-facts": { kind: "full" },
       "task-owner-facts": { kind: "full" },
       "task-reminder": { kind: "full" },
+      "task-tree-currentness": { kind: "full" },
       timeline: { kind: "full" }
     }
   },
@@ -11495,6 +11502,7 @@ var CLIENTS = {
       "task-pr-facts": { kind: "full" },
       "task-owner-facts": { kind: "full" },
       "task-reminder": { kind: "full" },
+      "task-tree-currentness": { kind: "full" },
       timeline: { kind: "full" }
     }
   }
@@ -11801,7 +11809,9 @@ function applyOps(last, ops, now, askIds, tree = []) {
   }
   return settleGoal(o, tree, now);
 }
-function applyStatus(last, answer, now, askIds, readSetAt = last?.goal?.setAt ?? null, taskTree = []) {
+function applyStatus(last, answer, now, askIds, readSetAt = last?.goal?.setAt ?? null, taskTree = [], requireHead = false) {
+  if (requireHead && (answer.kind !== "ops" || !answer.ops.some((op) => op.kind === "head")))
+    return last;
   const read = last?.goalRefused ? { ...last, goalRefused: null } : last;
   const o = answer.kind === "ops" ? applyOps(last, answer.ops, now, askIds, taskTree) : read;
   if (o === null)
@@ -11815,11 +11825,11 @@ function applyStatus(last, answer, now, askIds, readSetAt = last?.goal?.setAt ??
 function isStatusCallCurrent(s, appliedAfter) {
   return s.presence.turnsApplied >= appliedAfter && s.overviewTurn <= appliedAfter;
 }
-function appliedStatus(s, answer, appliedAfter, now, readSetAt = s.ledger.overview?.goal?.setAt ?? null, isCatchUp = false) {
+function appliedStatus(s, answer, appliedAfter, now, readSetAt = s.ledger.overview?.goal?.setAt ?? null, isCatchUp = false, requireHead = false) {
   if (!isStatusCallCurrent(s, appliedAfter))
     return s;
   const askIds = new Set(s.ledger.items.map((i) => i.id));
-  const overview = applyStatus(s.ledger.overview, answer, now, askIds, readSetAt, s.taskTree);
+  const overview = applyStatus(s.ledger.overview, answer, now, askIds, readSetAt, s.taskTree, requireHead);
   return {
     ...s,
     ledger: { ...s.ledger, overview },
@@ -11944,7 +11954,7 @@ function opOf(key, f) {
     return { kind: "retire", why: f[0] ?? "" };
   return null;
 }
-function parseStatus(text) {
+function parseStatus(text, requireHead = false) {
   let ignoredLegacy = false;
   const ops = (text ?? "").split(NL).flatMap((raw) => {
     const m = LINE.exec(raw.trim());
@@ -11958,13 +11968,18 @@ function parseStatus(text) {
     const op = opOf(key, fields(m[2] ?? ""));
     return op === null ? [] : [op];
   });
-  if (ops.length === 0)
+  if (ops.length === 0) {
+    if (requireHead)
+      return null;
     return ignoredLegacy ? { kind: "unchanged" } : null;
+  }
+  if (requireHead && !ops.some((op) => op.kind === "head"))
+    return null;
   return ops.every((o) => o.kind === "none") ? { kind: "unchanged" } : { kind: "ops", ops };
 }
-async function askStatus(ask) {
+async function askStatus(ask, requireHead = false) {
   const first = await ask();
-  const isUnreadable = first.text !== null && parseStatus(first.text) === null;
+  const isUnreadable = first.text !== null && parseStatus(first.text, requireHead) === null;
   return { first, last: isUnreadable ? await ask() : first };
 }
 
@@ -12050,6 +12065,7 @@ ${GOAL_INPUT}
 - <reply>: what the agent said this turn, in order
 
 Answer with lines only. Every line you write is applied. If nothing about the head, goal, or links changed, answer NO CHANGE.
+Write a fresh HEAD on every reply and catch-up, even if the focus is unchanged. NO CHANGE means no GOAL or LINK changed; it never replaces HEAD.
 
 Write only these lines when they apply:
 HEAD: title | description
@@ -12229,6 +12245,7 @@ async function askAndWriteStatus(host, s, call, appliedAfter) {
     return;
   const input = { last: s.ledger.overview, asks: s.ledger.items, taskTree: s.taskTree, now: await host.now() };
   const prompt = statusCallPrompt(input, call.exchange);
+  const requireHead = call.exchange.kind !== "mid-turn";
   let system = null;
   const heards = [];
   const { last } = await askStatus(async () => {
@@ -12238,19 +12255,19 @@ async function askAndWriteStatus(host, s, call, appliedAfter) {
     const heard = await heardCall(call.ask, prompt, currentSystem, kind, () => host.now());
     heards.push({ kind, heard });
     return heard;
-  });
+  }, requireHead);
   const attempts = heards.map((h) => attemptOf(h.heard));
-  const answer = last.text === null ? null : parseStatus(last.text);
+  const answer = last.text === null ? null : parseStatus(last.text, requireHead);
   const now = await host.now();
   let before = null;
   let isWritten = false;
-  const noted = (current) => heards.reduce((x, h) => withCall(x, h.kind, h.heard, h.heard.text !== null && parseStatus(h.heard.text) !== null, now), current);
+  const noted = (current) => heards.reduce((x, h) => withCall(x, h.kind, h.heard, h.heard.text !== null && parseStatus(h.heard.text, requireHead) !== null, now), current);
   const after = await host.update((current) => {
     const x = noted(current);
     before = x.ledger.overview;
     isWritten = isStatusCallCurrent(x, appliedAfter);
     const readSetAt = input.last?.goal?.setAt ?? null;
-    return answer === null ? failedStatus(x, last.text, appliedAfter, now, call.exchange.kind === "catch-up") : appliedStatus(x, answer, appliedAfter, now, readSetAt, call.exchange.kind === "catch-up");
+    return answer === null ? failedStatus(x, last.text, appliedAfter, now, call.exchange.kind === "catch-up") : appliedStatus(x, answer, appliedAfter, now, readSetAt, call.exchange.kind === "catch-up", requireHead);
   });
   if (!host.records)
     return;

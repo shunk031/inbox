@@ -88,6 +88,7 @@ export type FeatureId =
   | 'task-pr-facts'
   | 'task-owner-facts'
   | 'task-reminder'
+  | 'task-tree-currentness'
   | 'timeline'
 
 type FeatureSupport = { kind: 'full' } | { kind: 'different' | 'unsupported'; reason: string }

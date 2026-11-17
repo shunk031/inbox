@@ -5,6 +5,7 @@ import type { Host } from './model-text'
 import { isOpen } from './status-limits'
 import { taskRootGroups } from './task-tree'
 import { currentTaskText } from './task-text'
+import { clipLabel } from './text'
 
 export const START_TITLE =
   'inbox: where this session stands, as of the last reply. An "inbox:" text beside a later prompt replaces this.'
@@ -116,10 +117,34 @@ function findingLine(finding: Finding): string {
   return `- ${finding.kind}: ${finding.title} (close id: ${finding.id})`
 }
 
-/** What the Status says the session is doing and how it is going. */
-function statusSummaryLines(ledger: Ledger, taskTree: TaskTree = []): string[] {
+function taskSnapshotLines(ledger: Ledger, taskTree: TaskTree): string[] {
+  const open = taskTree.filter(task => task.status !== 'done' && task.status !== 'dropped')
+  if (open.length === 0) return []
+
+  const rows = open.slice(0, 12).map(task => {
+    const text = currentTaskText(task)?.text.replace(/\s+/g, ' ').trim()
+    const row = [`- ${task.id}`, task.status, task.title, text].filter(Boolean).join(' | ')
+    return clipLabel(row, 96)
+  })
+
+  return [
+    `Task tree check for turn ${ledger.turn} (current work). Keep it current with \`tasks\` when work starts, changes, becomes blocked, or finishes. Task status changes only through \`tasks\` or when a linked pull request merges.`,
+    ...rows,
+    ...(open.length > rows.length
+      ? [`- ${open.length - rows.length} more open ${open.length - rows.length === 1 ? 'task' : 'tasks'} omitted.`]
+      : []),
+  ]
+}
+
+/** What the Status says the session is doing now. */
+function statusFocusLines(ledger: Ledger): string[] {
   const head = ledger.overview?.head ?? null
   const focus = head ? [head.title, head.description].filter(Boolean).join(': ') : ''
+  return focus ? [`Working on: ${focus}`] : []
+}
+
+/** What the Status says the session is doing and how it is going. */
+function statusSummaryLines(ledger: Ledger, taskTree: TaskTree = []): string[] {
   const open = (ledger.overview?.subjects ?? []).filter(isOpen)
   const groups = taskRootGroups(taskTree).filter(({ roots }) =>
     roots.some(task => task.status !== 'done' && task.status !== 'dropped'),
@@ -139,7 +164,7 @@ function statusSummaryLines(ledger: Ledger, taskTree: TaskTree = []): string[] {
   })
 
   return [
-    ...(focus ? [`Working on: ${focus}`] : []),
+    ...statusFocusLines(ledger),
     ...(taskLines.length > 0
       ? ['Where it stands:', ...taskLines]
       : open.length > 0
@@ -186,7 +211,8 @@ export function inboxText(host: Host, ledger: Ledger, isOpen: boolean, taskTree:
   const out = [
     `inbox: what waits on the user, as of your last reply. Anything not listed here is closed. ${CLOSE_ID_RULE}`,
   ]
-  out.push(...statusSummaryLines(ledger, taskTree))
+  out.push(...statusFocusLines(ledger))
+  out.push(...taskSnapshotLines(ledger, taskTree))
   if (promptItems(ledger).length > 0) {
     out.push('Waiting on the user:')
     for (const item of promptItems(ledger)) out.push(itemLine(item))
@@ -243,7 +269,10 @@ export function promptNotes(
   const toldClosed = new Set(told.closed)
   const closed = closedText(ledger.closed.filter(d => !toldClosed.has(d.id)))
   const hasUnrecorded = ledger.unrecordedDecisions.length > 0
-  const isEmpty = promptItems(ledger).length === 0 && ledger.findings.every(f => f.feedOwned)
+  const isEmpty =
+    promptItems(ledger).length === 0 &&
+    ledger.findings.every(f => f.feedOwned) &&
+    taskTree.every(task => task.status === 'done' || task.status === 'dropped')
   if (!closed && !hasUnrecorded && (inbox === told.inbox || (isEmpty && told.inbox === null)))
     return { notes, told, shownUnrecorded: false }
   notes.push(closed ? `${inbox}${NL}${closed}` : inbox)

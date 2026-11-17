@@ -9,7 +9,7 @@ test('the mod reads XDG instructions on each inbox model call from a temporary c
   world($, on, [], { HOME: '/tmp/inbox-person-home', XDG_CONFIG_HOME: configHome })
   w.written[path] = 'Use compact sentences.'
   w.ledgerReply = 'NONE'
-  w.statusReply = 'NO CHANGE'
+  w.statusReply = 'HEAD: Current work | Continuing the current work'
 
   const reply = async (text: string, turnId: string) => {
     await $.prompt.submit({ text: 'Continue', wait: false, origin: { kind: 'composer' } })

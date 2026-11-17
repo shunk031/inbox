@@ -69,10 +69,28 @@ test('a Status call that answers with prose twice writes nothing and saves its s
   expect(overviewFailure).toMatchObject({ cause: 'refused', answer: 'Still prose.' })
 })
 
-test('a Status answer of UNCHANGED leaves the last Status as it was', async ($, on) => {
-  const { ledger } = await replyWithStatus($, on, 'UNCHANGED')
+test('a reply NO CHANGE without HEAD keeps the old head and records the failure', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  world($, on, [])
+  let session: Pick<Session, 'ledger' | 'overviewFailure'> | null = null
+  on('state.set', { plugin: 'inbox', key: 'session' } as const, (_$, e, next) => {
+    session = e.value as never
+    return next(e)
+  })
+  const reply = async (text: string, turnId: string) => {
+    await $.prompt.submit({ text, wait: false, origin: { kind: 'composer' } })
+    await $.turn.complete({ answer: 'Continuing.', durationMs: 5, isAborted: false, turnId, reason: 'answer' })
+    await clock.settle()
+  }
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  w.statusReply = 'HEAD: Existing focus | Work before this reply'
+  await reply('Continue the work', 't1')
+  w.statusReply = ['NO CHANGE', 'NO CHANGE']
+  await reply('Still working', 't2')
 
-  expect(ledger.overview).toBeNull()
+  expect(w.statusPrompts).toHaveLength(3)
+  expect(session!.ledger.overview?.head).toEqual({ title: 'Existing focus', description: 'Work before this reply' })
+  expect(session!.overviewFailure).toMatchObject({ cause: 'refused', answer: 'NO CHANGE' })
 })
 
 test('a ledger update shows before its Status call returns', async ($, on) => {
@@ -91,6 +109,7 @@ test('a ledger update shows before its Status call returns', async ($, on) => {
     await clock.settle()
   }
   await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  w.statusReply = 'HEAD: Existing focus | Work before the second reply'
   w.ledgerReply = 'NEW: decide | 1 | Use Node or Python? | Node / Python | Node'
   await reply('add a greeting cli', 't1')
 
@@ -101,7 +120,10 @@ test('a ledger update shows before its Status call returns', async ($, on) => {
   await reply('use node', 't2')
 
   expect(session!.ledger.items).toEqual([])
-  expect(session!.ledger.overview).toBeNull()
+  expect(session!.ledger.overview?.head).toEqual({
+    title: 'Existing focus',
+    description: 'Work before the second reply',
+  })
   expect(w.statusPrompts.at(-1)).not.toContain('Use Node or Python?')
   release()
   await clock.settle()

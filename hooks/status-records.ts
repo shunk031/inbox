@@ -156,6 +156,7 @@ export async function askAndWriteStatus<S extends Session>(
   if (!isStatusCallCurrent(s, appliedAfter)) return
   const input = { last: s.ledger.overview, asks: s.ledger.items, taskTree: s.taskTree, now: await host.now() }
   const prompt = statusCallPrompt(input, call.exchange)
+  const requireHead = call.exchange.kind !== 'mid-turn'
   let system: string | null = null
   const heards: { kind: CallKind; heard: HeardCall }[] = []
   const { last } = await askStatus(async () => {
@@ -165,15 +166,16 @@ export async function askAndWriteStatus<S extends Session>(
     const heard = await heardCall(call.ask, prompt, currentSystem, kind, () => host.now())
     heards.push({ kind, heard })
     return heard
-  })
+  }, requireHead)
   const attempts = heards.map(h => attemptOf(h.heard))
-  const answer = last.text === null ? null : parseStatus(last.text)
+  const answer = last.text === null ? null : parseStatus(last.text, requireHead)
   const now = await host.now()
   let before: SessionStatus | null = null
   let isWritten = false
   const noted = (current: S) =>
     heards.reduce(
-      (x, h) => withCall(x, h.kind, h.heard, h.heard.text !== null && parseStatus(h.heard.text) !== null, now),
+      (x, h) =>
+        withCall(x, h.kind, h.heard, h.heard.text !== null && parseStatus(h.heard.text, requireHead) !== null, now),
       current,
     )
   const after = await host.update(current => {
@@ -183,7 +185,7 @@ export async function askAndWriteStatus<S extends Session>(
     const readSetAt = input.last?.goal?.setAt ?? null
     return answer === null
       ? failedStatus(x, last.text, appliedAfter, now, call.exchange.kind === 'catch-up')
-      : appliedStatus(x, answer, appliedAfter, now, readSetAt, call.exchange.kind === 'catch-up')
+      : appliedStatus(x, answer, appliedAfter, now, readSetAt, call.exchange.kind === 'catch-up', requireHead)
   })
   if (!host.records) return
   const record: StatusRecord = {

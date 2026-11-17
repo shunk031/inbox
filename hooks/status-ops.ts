@@ -51,7 +51,9 @@ export function applyStatus(
   askIds: ReadonlySet<string>,
   readSetAt: number | null = last?.goal?.setAt ?? null,
   taskTree: TaskTree = [],
+  requireHead = false,
 ): SessionStatus | null {
+  if (requireHead && (answer.kind !== 'ops' || !answer.ops.some(op => op.kind === 'head'))) return last
   const read = last?.goalRefused ? { ...last, goalRefused: null } : last
   const o = answer.kind === 'ops' ? applyOps(last, answer.ops, now, askIds, taskTree) : read
   if (o === null) return null

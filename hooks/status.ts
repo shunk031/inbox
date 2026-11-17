@@ -31,7 +31,7 @@ function opOf(key: string, f: string[]): Op | null {
 }
 
 /** Parses Status updates; legacy subject and milestone lines are ignored as unchanged input. */
-export function parseStatus(text: string | null): StatusAnswer | null {
+export function parseStatus(text: string | null, requireHead = false): StatusAnswer | null {
   let ignoredLegacy = false
   const ops = (text ?? '').split(NL).flatMap(raw => {
     const m = LINE.exec(raw.trim())
@@ -45,17 +45,23 @@ export function parseStatus(text: string | null): StatusAnswer | null {
 
     return op === null ? [] : [op]
   })
-  if (ops.length === 0) return ignoredLegacy ? { kind: 'unchanged' } : null
+  if (ops.length === 0) {
+    if (requireHead) return null
+    return ignoredLegacy ? { kind: 'unchanged' } : null
+  }
+
+  if (requireHead && !ops.some(op => op.kind === 'head')) return null
 
   return ops.every(o => o.kind === 'none') ? { kind: 'unchanged' } : { kind: 'ops', ops }
 }
 
-/** Asks again only when a reply contains no recognized Status line, not when it contains ignored legacy lines. */
+/** Asks again when the answer has no recognized Status line or lacks a required HEAD. */
 export async function askStatus<T extends { text: string | null }>(
   ask: () => Promise<T>,
+  requireHead = false,
 ): Promise<{ first: T; last: T }> {
   const first = await ask()
-  const isUnreadable = first.text !== null && parseStatus(first.text) === null
+  const isUnreadable = first.text !== null && parseStatus(first.text, requireHead) === null
 
   return { first, last: isUnreadable ? await ask() : first }
 }
