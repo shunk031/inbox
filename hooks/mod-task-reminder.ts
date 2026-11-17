@@ -4,7 +4,7 @@ import { taskReminderSession } from './task-reminder'
 
 type Write = (change: (s: Session) => Session) => Promise<Session>
 
-export async function noteTaskReminderAfterCall(
+async function noteTaskReminderAfterCall(
   write: Write,
   isMainAgent: boolean,
   isTasksCall: boolean,
@@ -18,6 +18,17 @@ export async function noteTaskReminderAfterCall(
   }).catch(() => undefined)
 
   return reminder
+}
+
+export async function toolCallReminder(
+  write: Write,
+  toolUseId: string | undefined,
+  isMainAgent: boolean,
+  sawPostHook: boolean,
+  result: { deny?: string; isError?: true; text?: string },
+): Promise<string | null> {
+  if (!toolUseId || !isMainAgent || sawPostHook || isDeniedToolCall(result)) return null
+  return noteTaskReminderAfterCall(write, true, false)
 }
 
 function withHookReminder<T extends { additionalContext?: string[] }>(result: T, reminder: string | null): T {
@@ -54,7 +65,7 @@ export function withToolCallReminder<T extends { text?: string }>(result: T, rem
   }
 }
 
-export function isDeniedToolCall(result: { deny?: string; isError?: true; text?: string }): boolean {
+function isDeniedToolCall(result: { deny?: string; isError?: true; text?: string }): boolean {
   return (
     typeof result.deny === 'string' ||
     (result.isError === true &&

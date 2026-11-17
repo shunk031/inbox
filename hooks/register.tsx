@@ -41,12 +41,7 @@ import {
   type SentBy,
 } from './session-turns'
 import { emptySession, upgradeSession, type SavedSession } from './session-files'
-import {
-  isDeniedToolCall,
-  noteTaskReminderAfterCall,
-  postToolReminder,
-  withToolCallReminder,
-} from './mod-task-reminder'
+import { postToolReminder, toolCallReminder, withToolCallReminder } from './mod-task-reminder'
 import { pressOn, pruned, type SendOutcome } from './session-presses'
 import { isCompareInBackground } from './clients'
 import { showsRunningMark, type SessionView } from './session-view'
@@ -762,14 +757,6 @@ async function deliver($: EngineInterface, owner: Owner, text: string, deliveryI
 /** The shipped comparison template. */
 function comparePagePath($: EngineInterface): string {
   return `${$.plugin.root}/hooks/${COMPARE_PAGE_FILE}`
-}
-
-async function noteReminderAfterCall(
-  $: EngineInterface,
-  isMainAgent: boolean,
-  isTasksCall = false,
-): Promise<string | null> {
-  return noteTaskReminderAfterCall(change => commit($, currentOwner(), change), isMainAgent, isTasksCall)
 }
 
 /** The mod host for one conversation. */
@@ -2555,8 +2542,13 @@ export const register: Register = on => {
         call.didRun = endedCallRan(e.tool_use_id, String(e.tool))
         if (call.didRun && activity) await noteActivity($, activity)
       }
-      if (e.tool_use_id && !isDeniedToolCall(result) && !e.agentId && !call.sawPostHook)
-        reminder = await noteReminderAfterCall($, true)
+      reminder = await toolCallReminder(
+        change => commit($, currentOwner(), change),
+        e.tool_use_id,
+        !e.agentId,
+        call.sawPostHook,
+        result,
+      )
 
       return result
     }
