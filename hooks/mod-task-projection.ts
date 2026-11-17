@@ -33,6 +33,7 @@ export function modTaskProjection(fs: ModProjectionFs, run: Run, nonce: () => st
       throw new Error(result.stderr.trim() || 'could not acquire the task projection lock')
     },
     releaseLock: path => command(['rmdir', '--', `${path}.lock`]).catch(() => undefined),
+    exists: path => fs.exists(path),
     read: async path => ((await fs.exists(path)) ? fs.read(path) : null),
     writeAtomic: (path, text) =>
       writeProjectionAtomically(path, text, {

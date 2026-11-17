@@ -24,6 +24,32 @@ const node = (id: string, status: TaskNode['status'] = 'working', changes: Parti
   ...changes,
 })
 
+const memoryFiles = (path: string, initial?: string) => {
+  const contents = new Map<string, string>()
+  if (initial !== undefined) contents.set(path, initial)
+  let locked = false
+  const writes: string[] = []
+  const reads: string[] = []
+  return {
+    contents,
+    writes,
+    reads,
+    files: {
+      acquireLock: async () => (locked ? false : (locked = true)),
+      releaseLock: async () => void (locked = false),
+      exists: async (file: string) => contents.has(file),
+      read: async (file: string) => {
+        reads.push(file)
+        return contents.get(file) ?? null
+      },
+      writeAtomic: async (file: string, text: string) => {
+        writes.push(file)
+        contents.set(file, text)
+      },
+    },
+  }
+}
+
 describe('task-tree projection', () => {
   test('projects every open status with the current text and owner', () => {
     const tree: TaskTree = [
@@ -68,43 +94,30 @@ describe('task-tree projection', () => {
   })
 
   test('writes the current task tree and holds the lock through later writes', async () => {
-    let file = ''
-    let writes = 0
-    let locked = false
-    const projection = createTaskProjection(
-      {
-        acquireLock: async () => {
-          if (locked) return false
-          locked = true
-          return true
-        },
-        releaseLock: async () => void (locked = false),
-        read: async () => null,
-        writeAtomic: async (_path, text) => {
-          writes++
-          file = text
-        },
-      },
-      '/feed/meta-open-items.json',
-    )
+    const path = '/feed/meta-open-items.json'
+    const store = memoryFiles(path)
+    const projection = createTaskProjection(store.files, path)
     const initial = {
       ...emptySession(),
       taskTree: [node('projected', 'waits-on-other', { detail: 'Waiting for the owner' })],
     }
-    const first = await projection.sync('meta', initial, 20)
+    const first = await projection.sync('meta', initial, 20, change => Promise.resolve(change(initial)))
 
     expect(first.kind).toBe('written')
-    expect(JSON.parse(file!).projected).toBe(true)
-    expect(JSON.parse(file!).entries).toMatchObject([
+    expect(JSON.parse(store.contents.get(path)!).projected).toBe(true)
+    expect(JSON.parse(store.contents.get(path)!).entries).toMatchObject([
       { key: 'projected', kind: 'task', state: 'blocked', title: 'Title projected', detail: 'Waiting for the owner' },
     ])
-    await projection.sync('meta', initial, 30)
-    expect(writes).toBe(2)
+    if (first.kind !== 'written') return
+    const second = await projection.sync('meta', first.session, 30, change => Promise.resolve(change(first.session)))
+    expect(second.kind).toBe('written')
+    expect(store.writes.filter(file => file === path)).toHaveLength(2)
     await projection.release('meta')
   })
 
   test('imports hand-written entries once, preserving existing status and text', async () => {
-    let file: string | null = JSON.stringify({
+    const path = '/feed/meta-open-items.json'
+    const original = JSON.stringify({
       version: 1,
       source: 'meta-open-items',
       writtenAt: 10,
@@ -138,20 +151,8 @@ describe('task-tree projection', () => {
         },
       ],
     })
-    let reads = 0
-    let locked = false
-    const projection = createTaskProjection(
-      {
-        acquireLock: async () => (locked ? false : (locked = true)),
-        releaseLock: async () => void (locked = false),
-        read: async () => {
-          reads++
-          return file
-        },
-        writeAtomic: async (_path, text) => void (file = text),
-      },
-      '/feed/meta-open-items.json',
-    )
+    const store = memoryFiles(path, original)
+    const projection = createTaskProjection(store.files, path)
     let session = {
       ...emptySession(),
       taskTree: [
@@ -174,52 +175,154 @@ describe('task-tree projection', () => {
       { id: 'fill-text', status: 'working', detail: 'Imported missing text' },
       { id: 'new-blocked', status: 'waits-on-other', title: 'New title', detail: 'New text' },
     ])
-    expect(JSON.parse(file!).projected).toBe(true)
+    expect(store.contents.get(`${path}.pre-projection`)).toBe(original)
+    expect(JSON.parse(store.contents.get(path)!).projected).toBe(true)
 
     await afterTaskTreeUpdate(projection, 'meta', first.session, 30, save)
-    expect(reads).toBe(1)
+    expect(store.reads).toEqual([path])
+    expect(store.writes.filter(file => file === `${path}.pre-projection`)).toHaveLength(1)
     expect(session.taskTree.filter(task => task.id === 'new-blocked')).toHaveLength(1)
     await projection.release('meta')
   })
 
-  test('does not import entries from an already projected snapshot', async () => {
-    let file = JSON.stringify({
+  test('does not import rows from an existing projected snapshot', async () => {
+    const path = '/feed/meta-open-items.json'
+    const original = JSON.stringify({
       version: 1,
       source: 'meta-open-items',
       writtenAt: 10,
       projected: true,
       entries: [{ key: 'transport-only', state: 'working', title: 'Projected', detail: '', at: 10 }],
     })
-    const projection = createTaskProjection(
-      {
-        acquireLock: async () => true,
-        releaseLock: async () => {},
-        read: async () => file,
-        writeAtomic: async (_path, text) => void (file = text),
-      },
-      '/feed/meta-open-items.json',
-    )
+    const store = memoryFiles(path, original)
+    const projection = createTaskProjection(store.files, path)
+    let session = emptySession()
+    const save = async (change: (current: typeof session) => typeof session) => (session = change(session))
+    const result = await afterTaskTreeUpdate(projection, 'meta', session, 20, save)
 
-    const result = await projection.sync('meta', emptySession(), 20)
-    expect(result).toMatchObject({ kind: 'written', imported: [], version: 1 })
-    expect(JSON.parse(file).entries).toEqual([])
+    expect(result.session.taskTree).toEqual([])
+    expect(JSON.parse(store.contents.get(path)!).entries).toEqual([])
+    expect(store.contents.get(`${path}.pre-projection`)).toBe(original)
     await projection.release('meta')
   })
 
-  test('does not mark the import complete when the first write fails', async () => {
-    const projection = createTaskProjection(
-      {
-        acquireLock: async () => true,
-        releaseLock: async () => {},
-        read: async () => null,
-        writeAtomic: async () => {
-          throw new Error('write failed')
-        },
-      },
-      '/feed/meta-open-items.json',
-    )
+  test('an empty file imports nothing, is preserved, and is replaced with a projection', async () => {
+    const path = '/feed/meta-open-items.json'
+    const store = memoryFiles(path, '')
+    const projection = createTaskProjection(store.files, path)
+    let session = emptySession()
+    const save = async (change: (current: typeof session) => typeof session) => (session = change(session))
+    const result = await afterTaskTreeUpdate(projection, 'meta', session, 20, save)
 
-    expect(await projection.sync('meta', emptySession(), 20)).toMatchObject({ kind: 'failed' })
+    expect(result.session.taskTree).toEqual([])
+    expect(result.session.taskTreeProjectionVersion).toBe(1)
+    expect(store.contents.get(`${path}.pre-projection`)).toBe('')
+    expect(JSON.parse(store.contents.get(path)!).projected).toBe(true)
+    expect(result.message).toBeNull()
+    await projection.release('meta')
+  })
+
+  test('an invalid file is copied once, reported, skipped, and then replaced', async () => {
+    const path = '/feed/meta-open-items.json'
+    const original = '{ invalid json'
+    const now = Date.UTC(2026, 10, 18, 2, 30)
+    const invalidPath = `${path}.invalid-${new Date(now).toISOString()}`
+    const store = memoryFiles(path, original)
+    const projection = createTaskProjection(store.files, path)
+    let session = emptySession()
+    const save = async (change: (current: typeof session) => typeof session) => (session = change(session))
+    const first = await afterTaskTreeUpdate(projection, 'meta', session, now, save)
+
+    expect(first.session.taskTree).toEqual([])
+    expect(first.session.taskTreeProjectionInvalidAt).toBe(now)
+    expect(first.session.taskTreeProjectionInvalidReported).toBe(true)
+    expect(store.contents.get(invalidPath)).toBe(original)
+    expect(store.contents.get(`${path}.pre-projection`)).toBe(original)
+    expect(JSON.parse(store.contents.get(path)!).projected).toBe(true)
+    expect(first.message).toContain(invalidPath)
+
+    const second = await afterTaskTreeUpdate(projection, 'meta', first.session, now + 1, save)
+    expect(second.message).toBeNull()
+    expect(store.writes.filter(file => file === invalidPath)).toHaveLength(1)
+    expect(store.writes.filter(file => file === `${path}.pre-projection`)).toHaveLength(1)
+    expect(store.contents.get(invalidPath)).toBe(original)
+    await projection.release('meta')
+  })
+
+  test('a failed migration save leaves the source and backups untouched', async () => {
+    const path = '/feed/meta-open-items.json'
+    const original = JSON.stringify({
+      version: 1,
+      source: 'meta-open-items',
+      writtenAt: 10,
+      entries: [
+        {
+          key: 'handwritten',
+          kind: 'task',
+          state: 'working',
+          title: 'Hand-written',
+          detail: 'Keep me',
+          at: 10,
+          owner: { agent: 'worker', machine: 'host' },
+        },
+      ],
+    })
+    const store = memoryFiles(path, original)
+    const projection = createTaskProjection(store.files, path)
+    const initial = emptySession()
+    const result = await afterTaskTreeUpdate(projection, 'meta', initial, 20, async () => {
+      throw new Error('session save failed')
+    })
+
+    expect(result.message).toContain('session save failed')
+    expect(result.session).toBe(initial)
+    expect(store.contents.get(path)).toBe(original)
+    expect(store.contents.has(`${path}.pre-projection`)).toBe(false)
+    expect(store.writes).toEqual([])
+    await projection.release('meta')
+  })
+
+  test('a crash after the migration save does not import entries twice', async () => {
+    const path = '/feed/meta-open-items.json'
+    const original = JSON.stringify({
+      version: 1,
+      source: 'meta-open-items',
+      writtenAt: 10,
+      entries: [
+        {
+          key: 'handwritten',
+          kind: 'task',
+          state: 'working',
+          title: 'Hand-written',
+          detail: 'Keep me',
+          at: 10,
+          owner: { agent: 'worker', machine: 'host' },
+        },
+      ],
+    })
+    const store = memoryFiles(path, original)
+    const projection = createTaskProjection(store.files, path)
+    let session = emptySession()
+    const save = async (change: (current: typeof session) => typeof session) => (session = change(session))
+    const originalWrite = store.files.writeAtomic
+    store.files.writeAtomic = async (file, text) => {
+      if (file === path) throw new Error('simulated crash after save')
+      return originalWrite(file, text)
+    }
+    const failed = await afterTaskTreeUpdate(projection, 'meta', session, 20, save)
+
+    expect(failed.message).toContain('simulated crash after save')
+    expect(failed.session.taskTree).toMatchObject([{ id: 'handwritten', detail: 'Keep me' }])
+    expect(failed.session.taskTreeProjectionVersion).toBe(1)
+    expect(store.contents.get(path)).toBe(original)
+    expect(store.contents.get(`${path}.pre-projection`)).toBe(original)
+
+    store.files.writeAtomic = originalWrite
+    const retried = await afterTaskTreeUpdate(projection, 'meta', failed.session, 30, save)
+    expect(retried.session.taskTree.filter(task => task.id === 'handwritten')).toHaveLength(1)
+    expect(JSON.parse(store.contents.get(path)!).entries).toHaveLength(1)
+    expect(store.reads).toEqual([path])
+    await projection.release('meta')
   })
 
   test('merge helper fills only missing text and owner for an existing id', () => {
@@ -254,6 +357,7 @@ describe('task-tree projection', () => {
       {
         acquireLock: async () => false,
         releaseLock: async () => {},
+        exists: async () => false,
         read: async () => null,
         writeAtomic: async () => void writes++,
       },
@@ -278,6 +382,10 @@ describe('task-tree projection', () => {
           return true
         },
         releaseLock: async () => void operations++,
+        exists: async () => {
+          operations++
+          return false
+        },
         read: async () => {
           operations++
           return null
@@ -287,7 +395,9 @@ describe('task-tree projection', () => {
       null,
     )
 
-    expect(await projection.sync('session', emptySession(), 1)).toEqual({ kind: 'disabled' })
+    expect(await projection.sync('session', emptySession(), 1, async change => change(emptySession()))).toEqual({
+      kind: 'disabled',
+    })
     expect(operations).toBe(0)
   })
 })
