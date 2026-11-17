@@ -134,6 +134,56 @@ test('prompt inbox and Status carry text use the current task note, and the Stat
   expect(olderPrompt).toContain('Implement the cache | The latest note (1m ago)')
 })
 
+test('Status task facts include an open child task id and its current status', () => {
+  const parent = task()
+  const child = task({ id: 't1-child', parentId: parent.id, status: 'queued', title: 'Check parser behavior' })
+  const prompt = statusPrompt(
+    { last: null, asks: [], taskTree: [parent, child], now: 2_500 },
+    {
+      turn: 1,
+      person: 'Continue',
+      trigger: null,
+      activity: [],
+      reply: 'The parser check is complete.',
+      press: null,
+      screen: '',
+      tasks: [],
+    },
+  )
+
+  expect(prompt).toContain('Task ids and statuses:\nt1 | working\nt1-child | queued')
+})
+
+test('Status task facts keep child ids and statuses ahead of clipped details within the existing cap', () => {
+  const roots = Array.from({ length: 6 }, (_, index) =>
+    task({
+      id: `root-${index}`,
+      detail: 'Current task detail. '.repeat(80),
+      notes: [],
+      createdAt: 1_000,
+      history: [{ at: 2_000, source: 'agent', kind: 'detail' }],
+    }),
+  )
+  const child = task({ id: 'last-child', parentId: 'root-0', status: 'queued' })
+  const prompt = statusPrompt(
+    { last: null, asks: [], taskTree: [...roots, child], now: 2_500 },
+    {
+      turn: 1,
+      person: 'Continue',
+      trigger: null,
+      activity: [],
+      reply: 'The child is still queued.',
+      press: null,
+      screen: '',
+      tasks: [],
+    },
+  )
+  const taskTree = /<task tree>\n([\s\S]*?)\n<\/task tree>/.exec(prompt)?.[1] ?? ''
+
+  expect(taskTree).toContain('last-child | queued')
+  expect(taskTree.length).toBeLessThanOrEqual(8000)
+})
+
 test('each short turn gets the same saved task tree with its own turn number', () => {
   const tree = [task()]
   let told: Told = { inbox: null, closed: [] }

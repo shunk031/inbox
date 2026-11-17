@@ -32,13 +32,14 @@ export function appliedStatus<S extends Session>(
   readSetAt: number | null = s.ledger.overview?.goal?.setAt ?? null,
   isCatchUp = false,
   requireHead = false,
+  isMidTurn = false,
 ): S {
   if (!isStatusCallCurrent(s, appliedAfter)) return s
   const askIds = new Set(s.ledger.items.map(i => i.id))
   const overview = applyStatus(s.ledger.overview, answer, now, askIds, readSetAt, s.taskTree, requireHead)
   const taskStatusMismatches = applyTaskMismatchOps(
     s.taskStatusMismatches,
-    answer.kind === 'ops' ? answer.ops : [],
+    answer.kind === 'ops' && !isMidTurn ? answer.ops : [],
     s.taskTree,
     now,
   )

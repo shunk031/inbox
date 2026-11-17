@@ -58,6 +58,16 @@ test('a reply mismatch is saved without changing task status and appears in prom
   expect(timeline.rows[0]?.warnings).toEqual(['Task status mismatch: agent says done; saved status is working'])
 })
 
+test('a reply mismatch is saved for a child task', () => {
+  const parent = task('parent')
+  const child = { ...task('child', 'queued'), parentId: parent.id }
+  const initial = { ...emptySession(), taskTree: [parent, child] }
+  const saved = appliedStatus(initial, parseStatus('TASK-MISMATCH: child | done | queued')!, 0, 100)
+
+  expect(saved.taskTree.map(node => node.status)).toEqual(['working', 'queued'])
+  expect(saved.taskStatusMismatches).toEqual([{ taskId: 'child', claim: 'done', savedStatus: 'queued', at: 100 }])
+})
+
 test('a mismatch keeps a completed task visible and prompt text is capped at three single-line entries', () => {
   const completed = task('done-task', 'done')
   const closedStatus = {
@@ -143,6 +153,21 @@ test('failed and out-of-order Status calls leave mismatch state alone', () => {
   expect(failedStatus(saved, null, 0, 200).taskStatusMismatches).toEqual(saved.taskStatusMismatches)
   const newer = { ...saved, overviewTurn: 2, presence: { ...saved.presence, turnsApplied: 2 } }
   expect(appliedStatus(newer, parseStatus('TASK-CLEAR: t1 | retracted')!, 1, 300)).toBe(newer)
+})
+
+test('mid-turn Status ignores task mismatch and clear lines', () => {
+  const initial = {
+    ...emptySession(),
+    taskTree: [task('t1')],
+    taskStatusMismatches: [{ taskId: 't1', claim: 'done' as const, savedStatus: 'working' as const, at: 50 }],
+  }
+  const answer = parseStatus(
+    'HEAD: Current | Checking work\nTASK-MISMATCH: t1 | dropped | working\nTASK-CLEAR: t1 | retracted',
+  )!
+  const updated = appliedStatus(initial, answer, 0, 100, null, false, false, true)
+
+  expect(updated.taskStatusMismatches).toEqual(initial.taskStatusMismatches)
+  expect(updated.ledger.overview?.head?.title).toBe('Current')
 })
 
 test('saved sessions from before mismatch state upgrade with no mismatches', () => {
