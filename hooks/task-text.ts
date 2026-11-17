@@ -7,7 +7,14 @@ export function currentTaskText(
   task: Pick<TaskNode, 'detail' | 'createdAt' | 'updatedAt' | 'notes' | 'history'>,
 ): CurrentTaskText | null {
   const detailIndex = task.history.findLastIndex(event => event.kind === 'detail')
-  const detailAt = task.history[detailIndex]?.at ?? task.createdAt
+  const legacyUpdateIndex =
+    detailIndex < 0
+      ? task.history.findLastIndex(
+          event => event.kind === 'updated' && event.detail !== 'links updated' && event.at >= task.createdAt,
+        )
+      : -1
+  const detailAt = task.history[detailIndex]?.at ?? task.history[legacyUpdateIndex]?.at ?? task.createdAt
+  const detailOrder = detailIndex >= 0 ? detailIndex : legacyUpdateIndex
   const noteEvent = task.history
     .map((event, index) => ({ event, index }))
     .filter(({ event }) => event.kind === 'note' && event.detail !== undefined && task.notes.includes(event.detail))
@@ -18,7 +25,7 @@ export function currentTaskText(
       ? { text: task.notes.at(-1)!, at: task.createdAt, index: -1 }
       : null
 
-  if (latestNote && (latestNote.at > detailAt || (latestNote.at === detailAt && latestNote.index > detailIndex)))
+  if (latestNote && (latestNote.at > detailAt || (latestNote.at === detailAt && latestNote.index > detailOrder)))
     return { text: latestNote.text, at: latestNote.at }
   return task.detail ? { text: task.detail, at: detailAt } : latestNote
 }

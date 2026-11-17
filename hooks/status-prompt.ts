@@ -5,7 +5,7 @@ import { asksText, runningText } from './status-children'
 import { DESCRIPTION_WORDS, NAME_WORDS } from './status-limits'
 import { GOAL_INPUT, GOAL_LINES, goalBlocks, goalRules } from './status-prompt-goal'
 import type { GoalPartId } from './status-prompt-goal'
-import { clipMiddle, numberBlocks } from './text'
+import { ago, clipMiddle, numberBlocks } from './text'
 import { weightedTaskProgress } from './task-tree'
 import { currentTaskText } from './task-text'
 import { personInstructionsBlock } from './person-instructions'
@@ -61,11 +61,11 @@ function headText(o: SessionStatus | null): string {
 function taskTreeText(tree: TaskTree, now: number): string {
   const top = tree.filter(task => task.parentId === null).map(task => {
     const current = currentTaskText(task)
-    return `${task.id} | ${task.status} | weight ${task.weight} | ${Math.round(weightedTaskProgress(tree, task.id) * 100)}% | ${task.goalId ?? '-'} | ${task.streamId ?? '-'} | ${task.title} | ${current ? `${current.text} (${Math.max(0, now - current.at)}ms ago)` : '-'}`
+    return `${task.id} | ${task.status} | weight ${task.weight} | ${Math.round(weightedTaskProgress(tree, task.id) * 100)}% | ${task.goalId ?? '-'} | ${task.streamId ?? '-'} | ${task.title} | ${current ? `${current.text} (${ago(Math.max(0, now - current.at))})` : '-'}`
   })
   const recent = tree.flatMap(task => task.history.map(event => ({ task, event })))
     .sort((a, b) => b.event.at - a.event.at).slice(0, 8)
-    .map(({ task, event }) => `${task.id} | ${event.kind} | ${Math.max(0, now - event.at)}ms ago${event.detail ? ` | ${event.detail}` : ''}`)
+    .map(({ task, event }) => `${task.id} | ${event.kind} | ${ago(Math.max(0, now - event.at))}${event.detail ? ` | ${event.detail}` : ''}`)
   return [...top, ...(recent.length ? ['Recent changes:', ...recent] : [])].join(NL) || '(no tasks yet)'
 }
 

@@ -4,6 +4,7 @@ import { EMPTY } from '../hooks/ledger'
 import { inboxText, statusCarryText } from '../hooks/inbox-text'
 import { statusPage } from '../hooks/status-page'
 import { statusPrompt } from '../hooks/status-prompt'
+import { currentTaskText } from '../hooks/task-text'
 import { timelineData, timelinePage } from '../hooks/timeline-page'
 import { emptySession } from '../hooks/session-files'
 import type { TaskNode, TaskProgressSegments } from '../types'
@@ -60,6 +61,20 @@ test('current task text uses newer detail when its recorded change time follows 
   })
 })
 
+test('legacy task detail uses its latest updated event when it follows a note', () => {
+  const legacy = task({
+    detail: 'The verified plan',
+    updatedAt: 3_000,
+    history: [
+      { at: 1_000, source: 'agent', kind: 'created' },
+      { at: 2_000, source: 'agent', kind: 'note', detail: 'The latest note' },
+      { at: 3_000, source: 'agent', kind: 'updated' },
+    ],
+  })
+
+  expect(currentTaskText(legacy)).toEqual({ text: 'The verified plan', at: 3_000 })
+})
+
 test('prompt inbox and Status carry text use the current task note, and the Status prompt gives its time', () => {
   const current = task()
   const inbox = inboxText(CLAUDE_CODE, EMPTY, true, [current])
@@ -81,6 +96,22 @@ test('prompt inbox and Status carry text use the current task note, and the Stat
   expect(inbox).toContain('Where it stands:\n- Implement the cache: The latest note (working)')
   expect(inbox).not.toContain('The original plan')
   expect(carry).toContain('Where it stands:\n- Implement the cache: The latest note (working)')
-  expect(prompt).toContain('Implement the cache | The latest note (500ms ago)')
+  expect(prompt).toContain('Implement the cache | The latest note (just now)')
+  expect(prompt).toContain('note | just now | The latest note')
   expect(prompt).not.toContain('The original plan')
+
+  const olderPrompt = statusPrompt(
+    { last: null, asks: [], taskTree: [current], now: 62_000 },
+    {
+      turn: 1,
+      person: 'Continue',
+      trigger: null,
+      activity: [],
+      reply: 'The fix is ready.',
+      press: null,
+      screen: '',
+      tasks: [],
+    },
+  )
+  expect(olderPrompt).toContain('Implement the cache | The latest note (1m ago)')
 })

@@ -1450,10 +1450,14 @@ function taskTreeFromStatus(status) {
 // ../hooks/task-text.ts
 function currentTaskText(task) {
   const detailIndex = task.history.findLastIndex((event) => event.kind === "detail");
-  const detailAt = task.history[detailIndex]?.at ?? task.createdAt;
+  const legacyUpdateIndex = detailIndex < 0 ? task.history.findLastIndex(
+    (event) => event.kind === "updated" && event.detail !== "links updated" && event.at >= task.createdAt
+  ) : -1;
+  const detailAt = task.history[detailIndex]?.at ?? task.history[legacyUpdateIndex]?.at ?? task.createdAt;
+  const detailOrder = detailIndex >= 0 ? detailIndex : legacyUpdateIndex;
   const noteEvent = task.history.map((event, index) => ({ event, index })).filter(({ event }) => event.kind === "note" && event.detail !== void 0 && task.notes.includes(event.detail)).toSorted((a, b) => b.event.at - a.event.at || b.index - a.index)[0];
   const latestNote = noteEvent ? { text: noteEvent.event.detail, at: noteEvent.event.at, index: noteEvent.index } : task.notes.length > 0 ? { text: task.notes.at(-1), at: task.createdAt, index: -1 } : null;
-  if (latestNote && (latestNote.at > detailAt || latestNote.at === detailAt && latestNote.index > detailIndex))
+  if (latestNote && (latestNote.at > detailAt || latestNote.at === detailAt && latestNote.index > detailOrder))
     return { text: latestNote.text, at: latestNote.at };
   return task.detail ? { text: task.detail, at: detailAt } : latestNote;
 }
@@ -4649,9 +4653,9 @@ function headText(o) {
 function taskTreeText(tree, now) {
   const top = tree.filter((task) => task.parentId === null).map((task) => {
     const current = currentTaskText(task);
-    return `${task.id} | ${task.status} | weight ${task.weight} | ${Math.round(weightedTaskProgress(tree, task.id) * 100)}% | ${task.goalId ?? "-"} | ${task.streamId ?? "-"} | ${task.title} | ${current ? `${current.text} (${Math.max(0, now - current.at)}ms ago)` : "-"}`;
+    return `${task.id} | ${task.status} | weight ${task.weight} | ${Math.round(weightedTaskProgress(tree, task.id) * 100)}% | ${task.goalId ?? "-"} | ${task.streamId ?? "-"} | ${task.title} | ${current ? `${current.text} (${ago(Math.max(0, now - current.at))})` : "-"}`;
   });
-  const recent = tree.flatMap((task) => task.history.map((event) => ({ task, event }))).sort((a, b) => b.event.at - a.event.at).slice(0, 8).map(({ task, event }) => `${task.id} | ${event.kind} | ${Math.max(0, now - event.at)}ms ago${event.detail ? ` | ${event.detail}` : ""}`);
+  const recent = tree.flatMap((task) => task.history.map((event) => ({ task, event }))).sort((a, b) => b.event.at - a.event.at).slice(0, 8).map(({ task, event }) => `${task.id} | ${event.kind} | ${ago(Math.max(0, now - event.at))}${event.detail ? ` | ${event.detail}` : ""}`);
   return [...top, ...recent.length ? ["Recent changes:", ...recent] : []].join(NL4) || "(no tasks yet)";
 }
 function statusBlocks({ last, asks, taskTree, now }) {
