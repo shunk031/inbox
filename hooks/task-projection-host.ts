@@ -1,4 +1,5 @@
-import type { createTaskProjection } from './task-projection'
+import { mergeProjectedTasks, type createTaskProjection } from './task-projection'
+import type { Feed } from './feed'
 import type { Session } from '../types'
 
 type Projection = ReturnType<typeof createTaskProjection>
@@ -13,8 +14,25 @@ export async function afterTaskTreeUpdate<S extends Session>(
 ): Promise<{ session: S; message: string | null }> {
   const result = await projection.sync(sessionId, session, now)
   const conflict = result.kind === 'conflict' && !session.taskTreeProjectionConflictReported
+  const updated =
+    result.kind === 'written' && (session.taskTreeProjectionVersion < result.version || result.imported.length > 0)
+      ? await save(current => ({
+          ...current,
+          taskTree: mergeProjectedTasks(current.taskTree, {
+            version: 1,
+            source: 'meta-open-items',
+            writtenAt: now,
+            entries: result.imported,
+          } satisfies Feed),
+          taskTreeProjectionVersion: Math.max(current.taskTreeProjectionVersion, result.version),
+        }))
+      : result.kind === 'written'
+        ? session
+        : conflict
+          ? await save(current => ({ ...current, taskTreeProjectionConflictReported: true }))
+          : session
   return {
-    session: conflict ? await save(current => ({ ...current, taskTreeProjectionConflictReported: true })) : session,
+    session: updated,
     message: conflict
       ? 'The task tree was saved, but another session already owns its projection path. This session will not write there.'
       : result.kind === 'failed'

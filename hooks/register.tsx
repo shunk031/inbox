@@ -2105,6 +2105,7 @@ async function initializeInbox($: EngineInterface) {
   taskProjection = modTaskProjection(
     {
       exists: path => $.fs.exists(path),
+      read: path => $.fs.read(path),
       write: (path, text) => $.fs.write(path, text),
       home: () => $.env.get('HOME'),
       now: () => $.clock.now(),

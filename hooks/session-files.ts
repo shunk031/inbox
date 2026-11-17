@@ -19,6 +19,7 @@ export function emptySession(): Session {
   return {
     ledger: EMPTY,
     taskTree: [],
+    taskTreeProjectionVersion: 0,
     taskTreeProjectionConflictReported: false,
     taskStatusMismatches: [],
     taskPrStates: {},
@@ -154,6 +155,10 @@ function sessionFields(saved: SavedSession, views: Record<string, PrView>): Sess
   return {
     ledger,
     taskTree,
+    taskTreeProjectionVersion:
+      Number.isSafeInteger(saved.taskTreeProjectionVersion) && saved.taskTreeProjectionVersion! >= 0
+        ? saved.taskTreeProjectionVersion!
+        : 0,
     taskTreeProjectionConflictReported: saved.taskTreeProjectionConflictReported === true,
     taskStatusMismatches: upgradeTaskStatusMismatches(saved.taskStatusMismatches, taskTree),
     taskPrStates: Object.fromEntries(

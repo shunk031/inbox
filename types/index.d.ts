@@ -757,6 +757,8 @@ export type Session = {
   ledger: Ledger
   /** Durable work copied from Status subjects and milestones; order is the saved tree order. */
   taskTree: TaskTree
+  /** Version of the one-time hand-written projection import saved to this session. */
+  taskTreeProjectionVersion: number
   /** Whether this session has already reported that another session owns its projection target. */
   taskTreeProjectionConflictReported: boolean
   /** Explicit reply claims that conflict with a task's saved status. */
