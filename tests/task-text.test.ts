@@ -151,7 +151,7 @@ test('Status task facts include an open child task id and its current status', (
     },
   )
 
-  expect(prompt).toContain('Task ids and statuses:\nt1 | working\nt1-child | queued')
+  expect(prompt).toContain('Open task statuses ([id, status] pairs):\n[["t1","working"],["t1-child","queued"]]')
 })
 
 test('Status task facts keep child ids and statuses ahead of clipped details within the existing cap', () => {
@@ -165,8 +165,9 @@ test('Status task facts keep child ids and statuses ahead of clipped details wit
     }),
   )
   const child = task({ id: 'last-child', parentId: 'root-0', status: 'queued' })
+  const closed = [task({ id: 'closed-done', status: 'done' }), task({ id: 'closed-dropped', status: 'dropped' })]
   const prompt = statusPrompt(
-    { last: null, asks: [], taskTree: [...roots, child], now: 2_500 },
+    { last: null, asks: [], taskTree: [...roots, child, ...closed], now: 2_500 },
     {
       turn: 1,
       person: 'Continue',
@@ -180,8 +181,44 @@ test('Status task facts keep child ids and statuses ahead of clipped details wit
   )
   const taskTree = /<task tree>\n([\s\S]*?)\n<\/task tree>/.exec(prompt)?.[1] ?? ''
 
-  expect(taskTree).toContain('last-child | queued')
+  expect(taskTree).toContain('["last-child","queued"]')
   expect(taskTree.length).toBeLessThanOrEqual(8000)
+  expect(taskTree).not.toContain('Current task detail.')
+  expect(taskTree).not.toContain('closed-done')
+  expect(taskTree).not.toContain('closed-dropped')
+})
+
+test('an open task near the middle of 200 long ids stays in the uncut status block', () => {
+  const ids = Array.from({ length: 200 }, (_, index) => `task-${String(index).padStart(3, '0')}-${'x'.repeat(90)}`)
+  const childId = ids[100]!
+  const tree = ids.map((id, index) =>
+    task({
+      id,
+      parentId: index === 0 ? null : ids[0]!,
+      status: index === 100 ? 'queued' : 'working',
+      detail: 'Long task detail. '.repeat(100),
+      notes: [],
+      history: [{ at: 2_000, source: 'agent', kind: 'detail' }],
+    }),
+  )
+  const prompt = statusPrompt(
+    { last: null, asks: [], taskTree: tree, now: 2_500 },
+    {
+      turn: 1,
+      person: 'Continue',
+      trigger: null,
+      activity: [],
+      reply: 'The child is still queued.',
+      press: null,
+      screen: '',
+      tasks: [],
+    },
+  )
+  const taskTree = /<task tree>\n([\s\S]*?)\n<\/task tree>/.exec(prompt)?.[1] ?? ''
+
+  expect(taskTree.length).toBeGreaterThan(8000)
+  expect(taskTree).toContain(JSON.stringify([childId, 'queued']))
+  expect(taskTree).toContain(JSON.stringify([ids[199], 'working']))
 })
 
 test('each short turn gets the same saved task tree with its own turn number', () => {

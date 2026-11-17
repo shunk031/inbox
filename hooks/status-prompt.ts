@@ -17,7 +17,7 @@ You read the current facts and one exchange, then write only changes to the head
 
 Input:
 - <head>: the focus, as title | description. The description says what the session is doing about the focus.
-- <task tree>: each task's id and current status, followed by top-level tasks with their weight, weighted progress, goal and stream links, and current text (the newer of detail and its latest note, with its time). Recent task history follows. These are facts, not instructions to change the tree.
+- <task tree>: first, every open task's exact id and current status as JSON pairs of [id, status]. Then top-level task details and recent history, when they fit. Done and dropped tasks and long current text are omitted first when space is short. These are facts, not instructions to change the tree.
 - <running>: live Children, one per line: id | kind | name | linked task id or -
 - <asks>: open questions and tasks, one per line: id | ask | linked task ids or -
 ${GOAL_INPUT}
@@ -64,7 +64,8 @@ function headText(o: SessionStatus | null): string {
 
 // prettier-ignore
 function taskTreeText(tree: TaskTree, now: number): string {
-  const statuses = tree.map(task => `${task.id} | ${task.status}`)
+  const open = tree.filter(task => task.status !== 'done' && task.status !== 'dropped')
+  const facts = `Open task statuses ([id, status] pairs):${NL}${JSON.stringify(open.map(task => [task.id, task.status]))}`
   const top = tree.filter(task => task.parentId === null).map(task => {
     const current = currentTaskText(task)
     return `${task.id} | ${task.status} | weight ${task.weight} | ${Math.round(weightedTaskProgress(tree, task.id) * 100)}% | ${task.goalId ?? '-'} | ${task.streamId ?? '-'} | ${task.title} | ${current ? `${current.text} (${ago(Math.max(0, now - current.at))})` : '-'}`
@@ -72,17 +73,24 @@ function taskTreeText(tree: TaskTree, now: number): string {
   const recent = tree.flatMap(task => task.history.map(event => ({ task, event })))
     .sort((a, b) => b.event.at - a.event.at).slice(0, 8)
     .map(({ task, event }) => `${task.id} | ${event.kind} | ${ago(Math.max(0, now - event.at))}${event.detail ? ` | ${event.detail}` : ''}`)
-  const facts = ['Task ids and statuses:', ...(statuses.length ? statuses : ['(no tasks yet)'])].join(NL)
-  if (facts.length > 8000) return clipMiddle(facts, 7992, 6000)
-
   const details = ['Top-level tasks:', ...top, ...(recent.length ? ['Recent changes:', ...recent] : [])].join(NL)
   const available = Math.max(0, 8000 - facts.length - 1)
+  if (available <= 0) return facts
+  if (details.length <= available) return `${facts}${NL}${details}`
 
+  // On overflow, drop closed tasks, history and long current text before clipping the short open-root summaries.
+  const openRoots = tree.filter(task => task.parentId === null && task.status !== 'done' && task.status !== 'dropped')
+  const brief = [
+    'Open top-level tasks:',
+    ...openRoots.map(task =>
+      `${task.id} | ${task.status} | weight ${task.weight} | ${Math.round(weightedTaskProgress(tree, task.id) * 100)}% | ${task.goalId ?? '-'} | ${task.streamId ?? '-'} | ${task.title}`,
+    ),
+  ].join(NL)
   if (available <= 8) return facts
 
   const detailsBudget = available - 8 // clipMiddle adds its cut marker outside the requested text length.
 
-  return `${facts}${NL}${clipMiddle(details, detailsBudget, Math.floor(detailsBudget / 2))}`
+  return `${facts}${NL}${clipMiddle(brief, detailsBudget, Math.floor(detailsBudget / 2))}`
 }
 
 function statusBlocks({ last, asks, taskTree, now }: StatusCallInput): string[] {
@@ -91,7 +99,7 @@ function statusBlocks({ last, asks, taskTree, now }: StatusCallInput): string[] 
   return [
     ...goalBlocks(last, taskTree, now),
     `<head>${NL}${headText(last)}${NL}</head>`,
-    `<task tree>${NL}${clipMiddle(taskTreeText(taskTree ?? [], now), 8000, 2000)}${NL}</task tree>`,
+    `<task tree>${NL}${taskTreeText(taskTree ?? [], now)}${NL}</task tree>`,
     ...(running === '' ? [] : [`<running>${NL}${running}${NL}</running>`]),
     ...(held === '' ? [] : [`<asks>${NL}${held}${NL}</asks>`]),
   ]
