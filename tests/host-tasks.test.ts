@@ -116,6 +116,6 @@ test('a saved host task list is not read by Status, which reads the task tree', 
 
   const ex = { turn: 1, person: 'go', trigger: null, activity: [], reply: 'ok', press: null, screen: '', tasks: [] }
   const prompt = statusPrompt({ last: null, asks: [], taskTree: [], now: 0 }, ex)
-  expect(prompt).toContain('<task tree>\n(no tasks yet)\n</task tree>')
+  expect(prompt).toContain('<task tree>\nOpen task statuses ([id, status] pairs):\n[]\nTop-level tasks:\n</task tree>')
   expect(prompt).not.toContain('<tasks>')
 })

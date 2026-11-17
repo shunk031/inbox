@@ -89,6 +89,7 @@ export type FeatureId =
   | 'task-owner-facts'
   | 'task-reminder'
   | 'task-tree-currentness'
+  | 'task-status-mismatch'
   | 'timeline'
 
 type FeatureSupport = { kind: 'full' } | { kind: 'different' | 'unsupported'; reason: string }

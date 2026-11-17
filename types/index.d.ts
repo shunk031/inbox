@@ -487,6 +487,9 @@ export type Ledger = {
 
 export type TaskStatus = 'working' | 'queued' | 'waits-on-other' | 'done' | 'dropped'
 
+/** A reply's explicit task-status claim that conflicts with the task tree. */
+export type TaskStatusMismatch = { taskId: string; claim: TaskStatus; savedStatus: TaskStatus; at: number }
+
 export type TaskHistoryEvent = {
   at: number
   source: string
@@ -750,6 +753,8 @@ export type Session = {
   ledger: Ledger
   /** Durable work copied from Status subjects and milestones; order is the saved tree order. */
   taskTree: TaskTree
+  /** Explicit reply claims that conflict with a task's saved status. */
+  taskStatusMismatches: TaskStatusMismatch[]
   /** Last known GitHub state for each linked task PR; warnings are derived from these states and the task tree. */
   taskPrStates: Record<string, TaskPrState>
   /** Warnings from the latest task-fact pass. These are not task history. */

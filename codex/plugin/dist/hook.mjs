@@ -1000,13 +1000,24 @@ function carryText(ledger, title, taskTree = []) {
   return out.join(NL2);
 }
 var CLOSE_ID_RULE = "A close id is only for the close tool. Never write one in a reply.";
-function inboxText(host, ledger, isOpen2, taskTree = []) {
+function inboxText(host, ledger, isOpen2, taskTree = [], taskStatusMismatches = []) {
   const findings = ledger.findings.filter((f) => !f.feedOwned);
+  const taskById = new Map(taskTree.map((task) => [task.id, task]));
+  const mismatches = taskStatusMismatches.flatMap((mismatch) => {
+    const task = taskById.get(mismatch.taskId);
+    return task ? [
+      clipLabel(
+        `- ${task.title.replace(/\s+/g, " ")}: agent says ${mismatch.claim}; saved status is ${mismatch.savedStatus}`,
+        96
+      )
+    ] : [];
+  }).slice(0, 3);
   const out = [
     `inbox: what waits on the user, as of your last reply. Anything not listed here is closed. ${CLOSE_ID_RULE}`
   ];
   out.push(...statusFocusLines(ledger));
   out.push(...taskSnapshotLines(ledger, taskTree));
+  if (mismatches.length > 0) out.push("Task status mismatches:", ...mismatches);
   if (promptItems(ledger).length > 0) {
     out.push("Waiting on the user:");
     for (const item of promptItems(ledger)) out.push(itemLine(item));
@@ -1038,15 +1049,15 @@ function closedText(closed) {
   ].join(NL2);
 }
 var TOLD_NOTHING = { inbox: null, closed: [] };
-function promptNotes(host, ledger, prompt, told, taskTree = []) {
+function promptNotes(host, ledger, prompt, told, taskTree = [], taskStatusMismatches = []) {
   const notes = [];
   const answer = prompt.isPress ? null : answerNote(ledger, prompt.text);
   if (answer) notes.push(answer);
-  const inbox = inboxText(host, ledger, prompt.isOpen, taskTree);
+  const inbox = inboxText(host, ledger, prompt.isOpen, taskTree, taskStatusMismatches);
   const toldClosed = new Set(told.closed);
   const closed = closedText(ledger.closed.filter((d) => !toldClosed.has(d.id)));
   const hasUnrecorded = ledger.unrecordedDecisions.length > 0;
-  const isEmpty = promptItems(ledger).length === 0 && ledger.findings.every((f) => f.feedOwned) && taskTree.every((task) => task.status === "done" || task.status === "dropped");
+  const isEmpty = promptItems(ledger).length === 0 && ledger.findings.every((f) => f.feedOwned) && taskStatusMismatches.length === 0 && taskTree.every((task) => task.status === "done" || task.status === "dropped");
   if (!closed && !hasUnrecorded && (inbox === told.inbox || isEmpty && told.inbox === null))
     return { notes, told, shownUnrecorded: false };
   notes.push(closed ? `${inbox}${NL2}${closed}` : inbox);
@@ -1151,6 +1162,29 @@ function upgradeHostTasks(saved) {
     const status = STATUSES2[String(t.status)];
     return typeof t.id === "string" && typeof t.text === "string" && t.text !== "" && status ? [{ id: t.id, text: t.text, status }] : [];
   });
+}
+
+// ../hooks/task-mismatches.ts
+var STATUSES3 = ["working", "queued", "waits-on-other", "done", "dropped"];
+function isStatus(value) {
+  return typeof value === "string" && STATUSES3.includes(value);
+}
+function upgradeTaskStatusMismatches(value, tree) {
+  if (!Array.isArray(value)) return [];
+  const byId = new Map(tree.map((task) => [task.id, task]));
+  const mismatches = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") continue;
+    const saved = entry;
+    const task = typeof saved.taskId === "string" ? byId.get(saved.taskId) : void 0;
+    if (!task || !isStatus(saved.claim) || !isStatus(saved.savedStatus) || saved.claim === task.status || !Number.isFinite(saved.at) || saved.at < 0)
+      continue;
+    const mismatch = { taskId: task.id, claim: saved.claim, savedStatus: task.status, at: saved.at };
+    const index = mismatches.findIndex((item) => item.taskId === task.id);
+    if (index === -1) mismatches.push(mismatch);
+    else mismatches[index] = mismatch;
+  }
+  return mismatches;
 }
 
 // ../hooks/pr-checks.ts
@@ -1676,10 +1710,17 @@ function statusPage(s, now, stalledTasks = /* @__PURE__ */ new Set()) {
   const missed = o?.missedInLastLook ?? {};
   const runningChildren = (o?.children ?? []).filter((child) => isChildRunning(child, now) || isFinishedUnseen(child, lastLookAt)).map((child) => ({ ...child, subjectId: rootIdOf(child.subjectId) })).sort((a, b) => (b.lastActivityAt ?? b.startedAt) - (a.lastActivityAt ?? a.startedAt));
   const taskRows = groups.map(({ id, roots }) => {
-    const detail = roots.map((task) => {
-      const current = currentTaskText(task);
-      return current?.text ?? "";
-    }).filter(Boolean).join("; ");
+    const mismatchText = (s.taskStatusMismatches ?? []).filter((mismatch) => rootIdOf(mismatch.taskId) === id).flatMap((mismatch) => {
+      const task = byId.get(mismatch.taskId);
+      return task ? [`${task.title.replace(/\s+/g, " ")}: agent says ${mismatch.claim}; saved status is ${mismatch.savedStatus}`] : [];
+    });
+    const detail = [
+      ...mismatchText.map((text2) => `\u26A0 ${text2}`),
+      ...roots.map((task) => {
+        const current = currentTaskText(task);
+        return current?.text ?? "";
+      }).filter(Boolean)
+    ].join("; ");
     const progress = Math.round(weightedTaskProgress(tree, roots.map((task) => task.id)) * 100);
     const changedAt = Math.max(...roots.map((task) => task.updatedAt));
     const closed = roots.every((task) => task.status === "done" || task.status === "dropped");
@@ -1704,6 +1745,7 @@ function statusPage(s, now, stalledTasks = /* @__PURE__ */ new Set()) {
   };
   const isHeld = (task) => isOpen(task) && heldIds.has(task.id);
   const oldestAskOf = (task) => isHeld(task) ? oldestAsk(s.ledger.items, askLinks, task.id) : null;
+  const mismatchRoots = new Set((s.taskStatusMismatches ?? []).map((mismatch) => rootIdOf(mismatch.taskId)));
   const ctx = {
     isNew,
     isHeld,
@@ -1712,8 +1754,8 @@ function statusPage(s, now, stalledTasks = /* @__PURE__ */ new Set()) {
     isTurnRunning: s.presence.isTurnRunning,
     now
   };
-  const shown = taskRows.filter((task) => isOpen(task) || isNew(task));
-  const done = taskRows.filter((task) => task.status === "done" && !isNew(task));
+  const shown = taskRows.filter((task) => isOpen(task) || isNew(task) || mismatchRoots.has(task.id));
+  const done = taskRows.filter((task) => task.status === "done" && !isNew(task) && !mismatchRoots.has(task.id));
   const shownIds = new Set(shown.map((task) => task.id));
   const loose = runningChildren.filter((child) => child.subjectId === null || !shownIds.has(child.subjectId));
   const rows = [...looseChildRows(loose, 0), ...partRows(shown, ctx, 0)];
@@ -2180,6 +2222,7 @@ function emptySession() {
   return {
     ledger: EMPTY,
     taskTree: [],
+    taskStatusMismatches: [],
     taskPrStates: {},
     taskFactWarnings: [],
     taskOwnerFacts: {},
@@ -2251,9 +2294,11 @@ function sessionFields(saved, views) {
       (entry) => entry[0].length <= 256 && !!entry[1] && typeof entry[1] === "object" && ["working", "idle", "blocked", "done"].includes(entry[1].state) && Number.isFinite(entry[1].since) && entry[1].since >= 0
     ).slice(-200)
   );
+  const taskTree = Array.isArray(saved.taskTree) ? saved.taskTree : taskTreeFromStatus(ledger.overview);
   return {
     ledger,
-    taskTree: Array.isArray(saved.taskTree) ? saved.taskTree : taskTreeFromStatus(ledger.overview),
+    taskTree,
+    taskStatusMismatches: upgradeTaskStatusMismatches(saved.taskStatusMismatches, taskTree),
     taskPrStates: Object.fromEntries(
       Object.entries(saved.taskPrStates ?? {}).filter(
         (entry) => entry[1] === "OPEN" || entry[1] === "CLOSED" || entry[1] === "MERGED"
@@ -3193,10 +3238,16 @@ function progressStatus(segments) {
   if (segments.total > 0 && segments.done >= segments.total) return "done";
   return "queued";
 }
-function timelineData(tree, segments, stalledSince, warnings, now) {
+function timelineData(tree, segments, stalledSince, warnings, now, taskStatusMismatches = []) {
   const children = /* @__PURE__ */ new Map();
   for (const task of tree) children.set(task.parentId, [...children.get(task.parentId) ?? [], task]);
   const stalled = new Set(Object.keys(stalledSince));
+  const mismatchByTask = new Map(
+    taskStatusMismatches.map((mismatch) => [
+      mismatch.taskId,
+      `Task status mismatch: agent says ${mismatch.claim}; saved status is ${mismatch.savedStatus}`
+    ])
+  );
   const rows = [];
   const visit = (siblings, depth, guides) => {
     siblings.forEach((task, index) => {
@@ -3223,7 +3274,10 @@ function timelineData(tree, segments, stalledSince, warnings, now) {
         tone: presentation2.tone,
         mark: presentation2.mark,
         alternate: rows.length % 2 === 1,
-        warnings: warnings.filter((warning) => warning.taskId === task.id).map((warning) => warning.message)
+        warnings: [
+          ...warnings.filter((warning) => warning.taskId === task.id).map((warning) => warning.message),
+          ...mismatchByTask.has(task.id) ? [mismatchByTask.get(task.id)] : []
+        ]
       });
       visit(childrenOfTask, depth + 1, depth === 0 ? guides : [...guides, hasLaterSibling ? "\u2502  " : "   "]);
     });
@@ -3314,7 +3368,8 @@ function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timel
       timelineOwnerView.segments,
       timelineOwnerView.stalledSince,
       [...s.taskFactWarnings, ...timelineOwnerView.warnings],
-      now
+      now,
+      s.taskStatusMismatches
     ),
     taskProgressSegments: taskOwnerView.segments,
     taskStalledSince: taskOwnerView.stalledSince,
@@ -3698,6 +3753,7 @@ function cleared(s) {
     ...s,
     hostTasks: [],
     ledger: EMPTY,
+    taskStatusMismatches: [],
     turn: NO_TURN,
     told: { inbox: null, closed: [] },
     pending: [],
@@ -3769,7 +3825,14 @@ function startTurn(s) {
 }
 function recordPrompt(host, s, text2, isOpen2, sentBy) {
   const ledger = { ...s.ledger, turn: s.ledger.turn + 1 };
-  const r = promptNotes(host, ledger, { text: text2, isPress: sentBy !== null, isOpen: isOpen2 }, s.told, s.taskTree);
+  const r = promptNotes(
+    host,
+    ledger,
+    { text: text2, isPress: sentBy !== null, isOpen: isOpen2 },
+    s.told,
+    s.taskTree,
+    s.taskStatusMismatches
+  );
   const person = s.turn.person === null ? text2 : `${s.turn.person}
 
 ${text2}`;

@@ -3,6 +3,7 @@ import { TOLD_NOTHING } from './inbox-text'
 import { upgradeLastActions } from './last-actions'
 import { upgradeHostTasks } from './host-tasks'
 import { taskTreeFromStatus } from './task-tree'
+import { upgradeTaskStatusMismatches } from './task-mismatches'
 import { withCheckKeys } from './saved-check-keys'
 import { NO_TASK_REMINDER, taskReminderState } from './task-reminder'
 import type { PrView, PrViews, Session, Told, ToolFields, TurnDialogQuestion } from '../types'
@@ -18,6 +19,7 @@ export function emptySession(): Session {
   return {
     ledger: EMPTY,
     taskTree: [],
+    taskStatusMismatches: [],
     taskPrStates: {},
     taskFactWarnings: [],
     taskOwnerFacts: {},
@@ -146,10 +148,12 @@ function sessionFields(saved: SavedSession, views: Record<string, PrView>): Sess
       )
       .slice(-200),
   )
+  const taskTree = Array.isArray(saved.taskTree) ? saved.taskTree : taskTreeFromStatus(ledger.overview)
 
   return {
     ledger,
-    taskTree: Array.isArray(saved.taskTree) ? saved.taskTree : taskTreeFromStatus(ledger.overview),
+    taskTree,
+    taskStatusMismatches: upgradeTaskStatusMismatches(saved.taskStatusMismatches, taskTree),
     taskPrStates: Object.fromEntries(
       Object.entries(saved.taskPrStates ?? {}).filter(
         (entry): entry is [string, 'OPEN' | 'CLOSED' | 'MERGED'] =>

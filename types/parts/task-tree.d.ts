@@ -1,5 +1,8 @@
 export type TaskStatus = 'working' | 'queued' | 'waits-on-other' | 'done' | 'dropped'
 
+/** A reply's explicit task-status claim that conflicts with the task tree. */
+export type TaskStatusMismatch = { taskId: string; claim: TaskStatus; savedStatus: TaskStatus; at: number }
+
 export type TaskHistoryEvent = {
   at: number
   source: string

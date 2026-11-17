@@ -67,6 +67,9 @@ Part of [the look map](../looks.md#files).
 | `hooks/conversation.ts` | Shared module. `flattenConversation` turns a conversation's `Turn`s into the text a catch-up reads, and clips it. Each host maps its own conversation to turns. |
 | `hooks/clients.ts` | Shared module. The `FeatureId` list and host identity types. |
 | `hooks/client-support.ts` | Shared module. The host parity record: how each host supports each feature, and why where it does not. |
+| `hooks/client-support-claude.ts` | Shared module. The Claude Code terminal and desktop support record for each feature. |
+| `hooks/client-support-codex.ts` | Shared module. The Codex support record for each feature. |
+| `hooks/client-support-omp.ts` | Shared module. The omp support record for each feature. |
 | `hooks/session-host.ts` | Shared module. The `SessionHost` and `UpdateHost` types a host supplies, and the update flows that run on a host's store: `runUpdates`, `askOverConversation` and `reconcileUpdateStatus`. It also holds `exclusiveKeys` and `orderedKeys`, which keep runs of one key apart in a process. |
 | `hooks/status-records.ts` | Shared module. The Status call: `statusCallPrompt` builds its prompt, `askAndWriteStatus` sends it and writes the answer, and `refreshStatus` runs one during a long turn. It also holds the call records, `StatusRecord` and `writeStatusRecord`. |
 | `hooks/host-press.ts` | Shared module. `press` and `startPress`, which run a press on a host's store and coordinate messages held for Undo, including telling the agent about rows closed with Done. |

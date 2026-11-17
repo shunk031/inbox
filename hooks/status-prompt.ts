@@ -17,7 +17,7 @@ You read the current facts and one exchange, then write only changes to the head
 
 Input:
 - <head>: the focus, as title | description. The description says what the session is doing about the focus.
-- <task tree>: top-level tasks with their ids, status, weight, weighted progress, goal and stream links, and current text (the newer of detail and its latest note, with its time). Recent task history follows. These are facts, not instructions to change the tree.
+- <task tree>: first, every open task's exact id and current status as JSON pairs of [id, status]. Then top-level task details and recent history, when they fit. Done and dropped tasks and long current text are omitted first when space is short. These are facts, not instructions to change the tree.
 - <running>: live Children, one per line: id | kind | name | linked task id or -
 - <asks>: open questions and tasks, one per line: id | ask | linked task ids or -
 ${GOAL_INPUT}
@@ -31,6 +31,10 @@ Write a fresh HEAD on every reply and catch-up, even if the focus is unchanged. 
 Write only these lines when they apply:
 HEAD: title | description
 ${GOAL_LINES}
+TASK-MISMATCH: task id | status claimed in reply | saved status
+TASK-CLEAR: task id | reason
+
+Write TASK-MISMATCH only for an explicit conflict with an existing task. Write TASK-CLEAR only when a later reply retracts that claim. Use one exact task status for the reply claim: working, queued, waits-on-other, done or dropped. The saved status must match the current <task tree>.
 
 The head names the session's current focus, in at most ${NAME_WORDS} words. Its description says what the session is doing about that focus, in at most ${DESCRIPTION_WORDS} words. Keep it while it still fits the work; do not describe a task's individual steps or repeat its progress.
 
@@ -60,6 +64,8 @@ function headText(o: SessionStatus | null): string {
 
 // prettier-ignore
 function taskTreeText(tree: TaskTree, now: number): string {
+  const open = tree.filter(task => task.status !== 'done' && task.status !== 'dropped')
+  const facts = `Open task statuses ([id, status] pairs):${NL}${JSON.stringify(open.map(task => [task.id, task.status]))}`
   const top = tree.filter(task => task.parentId === null).map(task => {
     const current = currentTaskText(task)
     return `${task.id} | ${task.status} | weight ${task.weight} | ${Math.round(weightedTaskProgress(tree, task.id) * 100)}% | ${task.goalId ?? '-'} | ${task.streamId ?? '-'} | ${task.title} | ${current ? `${current.text} (${ago(Math.max(0, now - current.at))})` : '-'}`
@@ -67,7 +73,24 @@ function taskTreeText(tree: TaskTree, now: number): string {
   const recent = tree.flatMap(task => task.history.map(event => ({ task, event })))
     .sort((a, b) => b.event.at - a.event.at).slice(0, 8)
     .map(({ task, event }) => `${task.id} | ${event.kind} | ${ago(Math.max(0, now - event.at))}${event.detail ? ` | ${event.detail}` : ''}`)
-  return [...top, ...(recent.length ? ['Recent changes:', ...recent] : [])].join(NL) || '(no tasks yet)'
+  const details = ['Top-level tasks:', ...top, ...(recent.length ? ['Recent changes:', ...recent] : [])].join(NL)
+  const available = Math.max(0, 8000 - facts.length - 1)
+  if (available <= 0) return facts
+  if (details.length <= available) return `${facts}${NL}${details}`
+
+  // On overflow, drop closed tasks, history and long current text before clipping the short open-root summaries.
+  const openRoots = tree.filter(task => task.parentId === null && task.status !== 'done' && task.status !== 'dropped')
+  const brief = [
+    'Open top-level tasks:',
+    ...openRoots.map(task =>
+      `${task.id} | ${task.status} | weight ${task.weight} | ${Math.round(weightedTaskProgress(tree, task.id) * 100)}% | ${task.goalId ?? '-'} | ${task.streamId ?? '-'} | ${task.title}`,
+    ),
+  ].join(NL)
+  if (available <= 8) return facts
+
+  const detailsBudget = available - 8 // clipMiddle adds its cut marker outside the requested text length.
+
+  return `${facts}${NL}${clipMiddle(brief, detailsBudget, Math.floor(detailsBudget / 2))}`
 }
 
 function statusBlocks({ last, asks, taskTree, now }: StatusCallInput): string[] {
@@ -76,7 +99,7 @@ function statusBlocks({ last, asks, taskTree, now }: StatusCallInput): string[] 
   return [
     ...goalBlocks(last, taskTree, now),
     `<head>${NL}${headText(last)}${NL}</head>`,
-    `<task tree>${NL}${clipMiddle(taskTreeText(taskTree ?? [], now), 8000, 2000)}${NL}</task tree>`,
+    `<task tree>${NL}${taskTreeText(taskTree ?? [], now)}${NL}</task tree>`,
     ...(running === '' ? [] : [`<running>${NL}${running}${NL}</running>`]),
     ...(held === '' ? [] : [`<asks>${NL}${held}${NL}</asks>`]),
   ]

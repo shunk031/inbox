@@ -2,7 +2,7 @@ import type { Place } from './status'
 import type { TurnDialogQuestion } from './items'
 import type { LastAction, RowNote } from './press'
 import type { Ledger, PrView } from './ledger'
-import type { TaskFactWarning, TaskOwnerFacts, TaskPrState, TaskTree } from './task-tree'
+import type { TaskFactWarning, TaskOwnerFacts, TaskPrState, TaskStatusMismatch, TaskTree } from './task-tree'
 
 /** Why the session halted outside the conversation, from the error Claude Code classified it with. */
 export type Stop = {
@@ -206,6 +206,8 @@ export type Session = {
   ledger: Ledger
   /** Durable work copied from Status subjects and milestones; order is the saved tree order. */
   taskTree: TaskTree
+  /** Explicit reply claims that conflict with a task's saved status. */
+  taskStatusMismatches: TaskStatusMismatch[]
   /** Last known GitHub state for each linked task PR; warnings are derived from these states and the task tree. */
   taskPrStates: Record<string, TaskPrState>
   /** Warnings from the latest task-fact pass. These are not task history. */

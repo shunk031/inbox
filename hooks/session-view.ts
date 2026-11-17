@@ -162,6 +162,7 @@ export function sessionView(
       timelineOwnerView.stalledSince,
       [...s.taskFactWarnings, ...timelineOwnerView.warnings],
       now,
+      s.taskStatusMismatches,
     ),
     taskProgressSegments: taskOwnerView.segments,
     taskStalledSince: taskOwnerView.stalledSince,

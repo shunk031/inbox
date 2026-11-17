@@ -32,7 +32,7 @@ export function applyOps(
         if (!o.head || !hasSameWords(o.head.title, title) || o.head.description !== description)
           o = { ...o, head: { title, description } }
       }
-    } else {
+    } else if (op.kind === 'link') {
       const task = findTask(op.taskId) ? op.taskId : null
       if (task === null) continue
       const child = o.children.find(item => item.id === op.ref)
