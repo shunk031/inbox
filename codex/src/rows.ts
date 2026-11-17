@@ -15,12 +15,12 @@ type TimelineRowForm = {
 }
 
 /** The text keeps tree spacing and branch arms; CSS draws the vertical guides across the whole row form. */
-export function timelineRowForm(row: TimelineRow): TimelineRowForm {
+export function timelineRowForm(row: TimelineRow, visibleRow: TimelineRow = row): TimelineRowForm {
   return {
     prefix: row.prefix.replaceAll('│', ' '),
     detailLead: row.detailLead.replaceAll('│', ' '),
     ancestorGuides: row.guides.flatMap((guide, depth) => (guide.includes('│') ? [depth] : [])),
-    childGuide: row.hasChildren ? row.depth : null,
+    childGuide: visibleRow.hasVisibleChildren ? row.depth : null,
   }
 }
 

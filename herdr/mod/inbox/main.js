@@ -1,5 +1,5 @@
 // Built by herdr/build.ts with Bun 1.4.4 from herdr/src and hooks/. Do not edit.
-// Built at 2026-11-17T05:55:45.029Z. 218693 characters follow.
+// Built at 2026-11-17T06:09:51.603Z. 218646 characters follow.
 
 // src/main.ts
 import { View, div as div5 } from "gpui-kit";
@@ -3511,7 +3511,6 @@ function timelineData(tree, segments, stalledSince, warnings, now) {
         depth,
         guides,
         prefix: `${guides.join("")}${connector}`,
-        warningLead: `${guides.join("")}└─ ⚠`,
         hasLaterSibling,
         hasChildren: childrenOfTask.length > 0,
         progress,

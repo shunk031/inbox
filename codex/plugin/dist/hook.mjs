@@ -3102,7 +3102,6 @@ function timelineData(tree, segments, stalledSince, warnings, now) {
         depth,
         guides,
         prefix: `${guides.join("")}${connector}`,
-        warningLead: `${guides.join("")}\u2514\u2500 \u26A0`,
         hasLaterSibling,
         hasChildren: childrenOfTask.length > 0,
         progress,

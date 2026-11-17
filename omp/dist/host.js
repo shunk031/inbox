@@ -7784,7 +7784,6 @@ function timelineData(tree, segments, stalledSince, warnings, now) {
         depth,
         guides,
         prefix: `${guides.join("")}${connector}`,
-        warningLead: `${guides.join("")}\u2514\u2500 \u26A0`,
         hasLaterSibling,
         hasChildren: childrenOfTask.length > 0,
         progress,
@@ -7847,8 +7846,9 @@ function timelinePage(data, selectedId, folded, lastActions = {}) {
   const visibleParents = new Set(visibleRows.flatMap((row) => row.task.parentId ? [row.task.parentId] : []));
   const rows = visibleRows.map((row) => {
     const siblingGuide = row.hasLaterSibling || row.depth > 0 ? row.hasLaterSibling ? "\u2502  " : "   " : "";
-    const childGuide = visibleParents.has(row.task.id) ? "\u2502  " : "   ";
-    return { ...row, detailLead: `  ${row.guides.join("")}${siblingGuide}${childGuide}` };
+    const hasVisibleChildren = visibleParents.has(row.task.id);
+    const childGuide = hasVisibleChildren ? "\u2502  " : "   ";
+    return { ...row, hasVisibleChildren, detailLead: `  ${row.guides.join("")}${siblingGuide}${childGuide}` };
   });
   let selected = rows.find((row) => row.task.id === selectedId);
   if (!selected && selectedId) {
@@ -9511,7 +9511,7 @@ function timelineEntries(screen, ui) {
       line: {
         ...blankLine(`${row.task.id}:warning:${index}`),
         depth: 0,
-        lead: { text: row.warningLead, tone: "error", padMark: false },
+        lead: { text: `${row.detailLead}\u26A0`, tone: "error", padMark: false },
         title: warning,
         isStatic: true
       }

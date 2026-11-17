@@ -32,7 +32,7 @@ export function TimelineTab({ view }: { view: TabView }) {
     const selection = selected ? page.selected : track?.hasPanel ? (drawnRows.get(id)?.openTimeline ?? null) : null
     const selectAction = visible.get(row.task.id)?.actions.find(action => action.action === 'select')
     const branchAction = selection?.row.actions.find(action => action.action === 'toggle-branch')
-    const form = timelineRowForm(row)
+    const form = timelineRowForm(row, visible.get(row.task.id))
     const isClosing = track?.state === 'closing' || track?.state === 'leaving'
     const mark = row.status === 'stalled' ? '!' : (SUBJECT_MARKS[row.status as keyof typeof SUBJECT_MARKS]?.mark ?? '·')
 

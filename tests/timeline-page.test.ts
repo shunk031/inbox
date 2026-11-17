@@ -154,7 +154,25 @@ test('folding a selected parent hides its children and keeps the parent selected
   const page = timelinePage(data, 'leaf', ['root'])
 
   expect(page.rows.map(row => row.task.id)).toEqual(['root'])
+  expect(page.rows[0]).toMatchObject({ hasChildren: true, hasVisibleChildren: false })
   expect(page.selected?.row.task.id).toBe('root')
+})
+
+test('top-level Timeline tasks do not add guide columns to each other or their children', () => {
+  const tree = [
+    task('first-root'),
+    task('first-child', { parentId: 'first-root' }),
+    task('last-child', { parentId: 'first-root' }),
+    task('second-root'),
+  ]
+  const rows = timelineData(tree, segments, {}, [], now).rows
+
+  expect(rows.map(row => [row.task.id, row.depth, row.guides, row.prefix])).toEqual([
+    ['first-root', 0, [], ''],
+    ['first-child', 1, [], '├─ '],
+    ['last-child', 1, [], '└─ '],
+    ['second-root', 0, [], ''],
+  ])
 })
 
 test('Timeline plans joined guides through deep branches and aligns both detail examples', () => {

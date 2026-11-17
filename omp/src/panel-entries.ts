@@ -483,7 +483,7 @@ function timelineEntries(screen: PanelScreen, ui: PanelUi): Entry[] {
         line: {
           ...blankLine(`${row.task.id}:warning:${index}`),
           depth: 0,
-          lead: { text: row.warningLead, tone: 'error', padMark: false },
+          lead: { text: `${row.detailLead}⚠`, tone: 'error', padMark: false },
           title: warning,
           isStatic: true,
         },

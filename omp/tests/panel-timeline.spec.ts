@@ -62,7 +62,7 @@ test('Timeline draws the shared empty state, task details and planned buttons, a
   expect(drawnRows).toContain('> ● Build the view · working ·')
   expect(drawnRows).toContain('├─ ✓ Read the design · done · w1')
   expect(drawnRows).toContain('└─ · Draw the panel · queued · w1')
-  expect(drawnRows).toContain('└─ ⚠ PR merged, task still open')
+  expect(drawnRows).toContain('  │  ⚠ PR merged, task still open')
   expect(drawnRows).not.toContain('! PR merged, task still open')
   const selectedChild = strip(text(screen, { ...ui, timelineSelection: 'first', selectedId: 'first' }, 100))
   expect(selectedChild).toContain('> ├─ ✓ Read the design · done · w1')
