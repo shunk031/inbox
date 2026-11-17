@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { UNSTARTABLE_CODE } from '../hooks/gh'
+import type { Timer } from 'claude-code'
+import { TIMED_OUT_CODE, UNSTARTABLE_CODE } from '../hooks/gh'
 import type { Run } from '../hooks/gh'
 import {
   CLEARED_TOKENS,
@@ -7,8 +8,10 @@ import {
   herdrLabels,
   herdrReporter,
   herdrTarget,
+  localAgentsInHerdr,
   taskOwnerInHerdr,
 } from '../hooks/herdr'
+import { watchLocalAgents } from '../hooks/mod-agents'
 import { pressFile } from '../hooks/herdr-press-file'
 import type { EnvelopeSource } from '../hooks/herdr'
 import { publishSession } from '../hooks/herdr-app'
@@ -47,6 +50,66 @@ describe('taskOwnerInHerdr', () => {
     ).toBeNull()
     expect(await taskOwnerInHerdr('worker-1', async () => ({ code: 1, stdout: '', stderr: '' }))).toBeNull()
     expect(await taskOwnerInHerdr('worker-1', async () => Promise.reject(new Error('herdr unavailable')))).toBeNull()
+  })
+})
+
+describe('localAgentsInHerdr', () => {
+  test('marks listed agents as belonging to the local machine', async () => {
+    expect(
+      await localAgentsInHerdr(async () => ({
+        code: 0,
+        stdout: JSON.stringify({ result: { agents: [{ name: 'worker', agent_status: 'working' }] } }),
+        stderr: '',
+      })),
+    ).toEqual([{ machine: 'local', name: 'worker', status: 'working' }])
+  })
+
+  test('treats a missing Herdr executable and a Herdr timeout as unavailable', async () => {
+    const calls: { args: string[]; cwd: string; timeoutMs: number }[] = []
+    const run: Run = async (args, options) => {
+      calls.push({ args, cwd: options.cwd, timeoutMs: options.timeoutMs })
+      return { code: UNSTARTABLE_CODE, stdout: '', stderr: '', errorCode: 'ENOENT' }
+    }
+    expect(await localAgentsInHerdr(run)).toBeNull()
+    expect(calls).toEqual([{ args: ['herdr', 'agent', 'list'], cwd: '/', timeoutMs: 5000 }])
+
+    expect(await localAgentsInHerdr(async () => ({ code: TIMED_OUT_CODE, stdout: '', stderr: '' }))).toBeNull()
+  })
+
+  test('watchLocalAgents clears saved rows and reports unavailable after a timeout', async () => {
+    let finish!: (result: { code: number; stdout: string; stderr: string }) => void
+    let redraw!: () => void
+    const redrawn = new Promise<void>(resolve => {
+      redraw = resolve
+    })
+    const state = {
+      agentsCheckTimer: null as Timer | null,
+      agentsCheckPending: false,
+      localAgents: [{ machine: 'local', name: 'worker', status: 'working' as const }],
+      agentsUnavailable: false,
+      agentsPageShown: true,
+    }
+    const run: Run = () =>
+      new Promise(resolve => {
+        finish = resolve
+      })
+    let everyMs = 0
+
+    watchLocalAgents(
+      state,
+      (ms, _fn) => {
+        everyMs = ms
+        return { cancel: () => undefined } as Timer
+      },
+      run,
+      redraw,
+    )
+    finish({ code: TIMED_OUT_CODE, stdout: '', stderr: '' })
+    await redrawn
+
+    expect(everyMs).toBe(30_000)
+    expect(state.localAgents).toEqual([])
+    expect(state.agentsUnavailable).toBe(true)
   })
 })
 

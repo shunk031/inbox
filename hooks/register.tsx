@@ -103,6 +103,7 @@ import {
 import { ghIn } from './gh'
 import { isGhUnstartable, pathProbe, placeChange, runOf, sessionFolder, type CommandCalls } from './mod-commands'
 import { delegatesInHerdr } from './herdr'
+import { watchLocalAgents, stopAgentsCheck } from './mod-agents'
 import type { HerdrFile } from './herdr-press-file'
 import { applyHerdrFile } from './herdr-app'
 import {
@@ -281,6 +282,7 @@ import { panePrBlocks, panePrRows } from './pane-prs'
 import { paneStatusLines } from './pane-status-lines'
 import { paneStatus } from './pane-status'
 import { paneTimeline } from './pane-timeline'
+import { paneAgents } from './pane-agents'
 import { paneHelp } from './pane-help'
 import { adjustScroll, clearDocument, documentActions, scrollBy } from './pane-document'
 import { foldOf, upgradedUnfolded, withFold } from './fold-keys'
@@ -298,10 +300,6 @@ function documentFile($: EngineInterface): DocumentFile {
 }
 
 const TAB = atom({ plugin: 'inbox', key: 'tab' } as const, 'needsYou' as Tab)
-/**
- * The page tab shown in place of `TAB`, or null while a row tab shows. Kept apart from `TAB` so a build that
- * does not know the page still reads a row tab there.
- */
 const PAGE = atom({ plugin: 'inbox', key: 'page' } as const, null as PageTab | null)
 const SELECTION = atom({ plugin: 'inbox', key: 'selection' } as const, NO_SELECTION)
 /** The Status row whose keys work, by id, as `statusSelected` resolves it. */
@@ -514,7 +512,7 @@ async function clearingDialog<T>($: EngineInterface, key: string, run: () => Pro
   }
 }
 
-// Claude rejects `$` passed to another file, so engine callbacks, storage and SessionHost stay here.
+// Claude requires engine callbacks, storage and SessionHost in this file.
 
 const OLD_LEDGER = atom({ plugin: 'inbox', key: 'ledger' } as const, EMPTY)
 const OLD_PRESENCE = atom({ plugin: 'inbox', key: 'presence' } as const, NO_OLD_PRESENCE)
@@ -578,13 +576,11 @@ async function changeSession(
   for (let tries = 0; tries < MAX_TRIES; tries++) {
     if (!isCurrent(owner)) return changeSaved(saveEngine($), owner.id, change)
     const drawn = await read($, SESSION)
-    // A hot reload can leave a session an earlier build wrote. The fetch that is running still runs.
     const upgraded = upgradeSession(drawn)
     const before = { ...upgraded, prViews: { ...upgraded.prViews, isFetching: drawn.prViews.isFetching } }
     const changed = await change(before)
     if (changed === before) return { before, after: before, isDrawn: true }
-    // A resume drops the running turn, so a write that changes only the turn, such as each tool call's activity,
-    // leaves the saved copy alone.
+    // A resume drops turn-only writes, such as tool activity, from saved state.
     const isTurnOnly = !hasSavedChange(before, changed)
     const shown = await read($, SHOWN)
     const kept = pruned({ ...changed, heldRows: [...held], shownSince: shown && !shown.isDemo ? shown.since : null })
@@ -766,7 +762,6 @@ function sessionHost(
     refreshPrs: () => Promise<void>
   },
 ): SessionHost<Session> {
-  // gh is taken to start until a run fails. Then `find` asks it for its version, which only an unstartable gh refuses.
   let ghFound: string | null | undefined = 'gh'
 
   return {
@@ -843,8 +838,7 @@ function redrawWhileUndoLasts($: EngineInterface, expiresAt: number) {
   if (ends.has(expiresAt)) return
   ends.add(expiresAt)
   const redrawAll = () => Promise.all([redraw($), update($, DEMO, d => d && { ...d })])
-  // Desktop redraws once, when Undo ends: while the terminal's steps redrew every 213 ms there, clicks on the
-  // pane's Buttons, Undo among them, did nothing.
+  // Desktop redraws once at expiry; a redraw loop there blocked button clicks.
   if (paneState.paneLook === 'terminal' && !paneState.isUndoLoopRunning) {
     paneState.isUndoLoopRunning = true
     void (async () => {
@@ -1055,7 +1049,7 @@ async function upgradeState($: EngineInterface): Promise<Ledger> {
     update($, TIMELINE_DETAIL_OPEN, upgradedTimelineDetailOpen),
     // A demo an earlier build seeded may lack a field this one draws, so it ends; /inbox demo seeds a new one.
     update($, DEMO, d => (d === null || isDemoCopy(d) ? d : null)),
-    // A draft saved as bare text began before now, so a row that closed before this load stays closed.
+    // Migrate legacy string drafts to the current shape.
     update($, DRAFTS, (d: Record<string, Draft | string>) =>
       Object.fromEntries(
         Object.entries(d).map(([id, draft]) => [id, typeof draft === 'string' ? { text: draft, since: now } : draft]),
@@ -1230,8 +1224,7 @@ async function showInbox($: EngineInterface, opening: ReturnType<typeof openInHe
 async function openInbox($: EngineInterface, isDemo: boolean) {
   const opening = isDemo ? null : openInHerdr(herdrCalls($))
   if (opening instanceof Promise && (await opening).isShown) return
-  // Opened before any other await unless the Herdr look is opening. After one, the engine no longer counts the press as
-  // asking for the pane, and below 144 columns, once the person has closed it, leaves it unplaced.
+  // Open before awaiting so a closed pane stays placed below 144 columns; Herdr opening is the exception.
   await openPane($)
   const { view } = await drawnState($)
   if (view.needsYou.count > 0) await writeRowTab($, 'needsYou')
@@ -1294,18 +1287,26 @@ async function writeRowTab($: EngineInterface, tab: Tab) {
   await syncShown($)
 }
 
-/** The page tab the pane shows, or null. A saved page this build does not draw reads as null and stays saved. */
 async function readPage($: EngineInterface): Promise<PageTab | null> {
   const page = await read($, PAGE)
-
-  return page !== null && drawnTabOf(page, mod.isNextBuild, true) === page ? page : null
+  return page !== null && drawnTabOf(page, mod.isNextBuild, true, paneState.paneLook === 'terminal') === page
+    ? page
+    : null
 }
 
-/** The shown row tab; null while the Status page shows, where no row is drawn, selected or scrolled to. */
 async function readRowTab($: EngineInterface): Promise<Tab | null> {
   const [page, tab] = await Promise.all([readPage($), read($, TAB)])
-
   return page === null ? tab : null
+}
+
+function followLocalAgents(isShown: boolean, isDemo: boolean, $: EngineInterface) {
+  if (!isShown || isDemo) return stopAgentsCheck(paneState)
+  watchLocalAgents(
+    paneState,
+    (ms, fn) => $.clock.every(ms, fn),
+    runOf(commandCalls($)),
+    () => redrawPane($),
+  )
 }
 
 async function showTab($: EngineInterface, tab: ShownTab) {
@@ -1342,7 +1343,6 @@ async function select($: EngineInterface, tab: Tab, id: string, index: number, s
   const openedAt = await $.clock.now()
   await update($, SELECTION, s => ({ ...s, [tab]: { id, index, openedAt } }))
   await update($, TYPING, t => (t === id ? t : null))
-  // The row's buttons draw dim while guarded. A render cannot write state, so a fresh value redraws them once the guard ends.
   later($, PRESS_GUARD_MS, () => update($, SELECTION, s => ({ ...s })))
   if (scroll) await scrollToRow($, id)
 }
@@ -1527,7 +1527,6 @@ async function openLeftRows($: EngineInterface) {
     ) as Record<Tab, Cursor>
     return isMoved ? moved : s
   })
-  // The opened row's buttons draw dim while guarded; a fresh value redraws them once the guard ends.
   if (isMoved) later($, PRESS_GUARD_MS, () => update($, SELECTION, s => ({ ...s })))
 }
 
@@ -1775,8 +1774,7 @@ async function runPress($: EngineInterface, p: RowPress | PrPress, surface: UiPr
   if (canRevealUndo) await keepUndoVisible($, undoKey, undoBlock, now, undoRevision)
   if (!isPrPress(p) && p.action === 'compare') void redrawAtCompareEnd($).catch(() => undefined)
   if (!isPrPress(p) && p.action === 'undo') await selectRestored($, p.id)
-  // A success note clears SETTLED_MS after its effects finish, when its result is stamped, and a message still on its
-  // way after QUEUED_AFTER_MS reads Queued from then. A fresh value is what redraws the pane at each.
+  // Success notes clear after effects finish; a queued message starts its age at QUEUED_AFTER_MS.
   if (sends) later($, QUEUED_AFTER_MS, () => redraw($))
   const outcome = await started.finish()
   if (outcome.wakesAfterSettle) later($, SETTLED_MS, () => wakeAfterSettle($))
@@ -2876,6 +2874,7 @@ export const register: Register = on => {
 
   on('ui.close', { id: PANE }, async ($, e, next) => {
     cancelUndoScroll()
+    stopAgentsCheck(paneState)
     clearDocument()
     const r = await next(e)
     void syncShown($, { isOpen: false }).then(() => syncLook($, false))
@@ -3074,14 +3073,17 @@ export const register: Register = on => {
     const tab: Tab = isShownTab(savedTab) && isRowTab(savedTab) ? savedTab : 'needsYou'
     const isStatusShown = savedPage === 'overview'
     const isTimelineShown = savedPage === 'timeline'
-    const isPageShown = isStatusShown || isTimelineShown
+    const isAgentsShown = look === 'terminal' && savedPage === 'agents'
+    const isPageShown = isStatusShown || isTimelineShown || isAgentsShown
+    paneState.agentsPageShown = isAgentsShown
     const shownTab: ShownTab = savedPage ?? tab
     const { document, ...reader } = documentActions(
       documentFile($),
       () => redrawPane($),
       by => scrollBy(by, () => $.ui.scroll({ in: PANE, to: 'end' })).catch(() => undefined),
     )
-    const tabList = shownTabs(mod.isNextBuild, true)
+    const tabList = shownTabs(mod.isNextBuild, true, look === 'terminal')
+    followLocalAgents(isAgentsShown, isDemo, $)
     if (look === 'terminal')
       animateRunningMarks(
         showsRunningMark(view, shownTab, isHelpShown, kind => unfolded.includes(kind)),
@@ -3375,6 +3377,16 @@ export const register: Register = on => {
       },
       handlers,
     )
+    const agentsView = paneAgents({
+      Box,
+      Text,
+      pal,
+      view,
+      e,
+      hasRail,
+      now,
+      isDemo,
+    })
 
     const openIds = openRowIds(view)
     const drawnIds = new Set([...openIds.needsYou, ...openIds.findings, ...prRowIds(shownPrs)])
@@ -3383,7 +3395,7 @@ export const register: Register = on => {
       .map(([, n]) => n)
       .sort((a, b) => b.at - a.at)[0]
 
-    const keyList = helpKeys(look, mod.isNextBuild, shownTab, statusPressRows.length > 0, true)
+    const keyList = helpKeys(look, mod.isNextBuild, shownTab, statusPressRows.length > 0, true, look === 'terminal')
     const keyColumn = Math.max(0, ...keyList.map(k => cellWidth(k.keys))) + 2
 
     const { banner, tabs, rail, statusBlock, footer, isTabRowFit, desktopTabLines } = paneFrame(
@@ -3587,6 +3599,7 @@ export const register: Register = on => {
     const { helpView } = paneHelp({
       isNextBuild: mod.isNextBuild,
       includeTimeline: true,
+      includeAgents: look === 'terminal',
       pal,
       keyList,
       Box,
@@ -3688,11 +3701,13 @@ export const register: Register = on => {
           ? statusView()
           : isTimelineShown
             ? timelineView
-            : tab === 'findings'
-              ? findingsView()
-              : tab === 'prs'
-                ? prsView()
-                : needsYouView()
+            : isAgentsShown
+              ? agentsView
+              : tab === 'findings'
+                ? findingsView()
+                : tab === 'prs'
+                  ? prsView()
+                  : needsYouView()
     const drawn = (
       <Box flexDirection="column" minHeight={e.props.scroll.bodyRows} backgroundColor={pal.body}>
         {showsDemoNotices ? (

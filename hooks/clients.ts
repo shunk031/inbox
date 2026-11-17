@@ -91,6 +91,7 @@ export type FeatureId =
   | 'task-tree-currentness'
   | 'task-status-mismatch'
   | 'timeline'
+  | 'agents-tab'
 
 type FeatureSupport = { kind: 'full' } | { kind: 'different' | 'unsupported'; reason: string }
 export type ClientSupport = { support: Record<FeatureId, FeatureSupport> }

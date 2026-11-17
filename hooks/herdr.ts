@@ -54,6 +54,8 @@ const HERDR_AGENT_LIST = ['herdr', 'agent', 'list']
  */
 export type HerdrStatus = 'idle' | 'working' | 'blocked' | 'done' | 'unknown'
 
+export type LocalAgent = { machine: string; name: string; status: HerdrStatus }
+
 const HERDR_STATUSES: readonly HerdrStatus[] = ['idle', 'working', 'blocked', 'done', 'unknown']
 
 /** What Herdr shows about an agent: what it does, and the focus its session publishes, if it runs the inbox. */
@@ -103,6 +105,16 @@ function herdrAgents(stdout: string): Map<string, HerdrAgent> | null {
     }
 
     return new Map(agents.filter(a => typeof a?.name === 'string').map(a => [a.name as string, agentOf(a)]))
+  } catch {
+    return null
+  }
+}
+
+export async function localAgentsInHerdr(run: Run): Promise<LocalAgent[] | null> {
+  try {
+    const result = await run(HERDR_AGENT_LIST, { cwd: '/', timeoutMs: HERDR_TIMEOUT_MS })
+    const agents = result.code === 0 ? herdrAgents(result.stdout) : null
+    return agents ? [...agents].map(([name, agent]) => ({ machine: 'local', name, status: agent.status })) : null
   } catch {
     return null
   }

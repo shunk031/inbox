@@ -22,6 +22,8 @@ Part of [the look map](../looks.md#files).
 | `hooks/pane-status-tops.ts` | Mod only. `Drawn`: a part of the Status with the terminal lines it takes, which each Status drawing function returns with its element, and how parts stack into each subject row's first line. |
 | `hooks/pane-status.tsx` | Mod only. The Status tab: each row and its buttons, Other work's rule, and the tab's page. |
 | `hooks/pane-timeline.tsx` | Mod only. The Timeline tab's tree, progress bars, task details and local PR or issue links in the terminal and desktop pane. |
+| `hooks/pane-agents.tsx` | Mod only. Draws the shared Agents page plan in the terminal pane. |
+| `hooks/mod-agents.ts` | Mod only. Refreshes local Herdr agents while the terminal Agents page is open. |
 | `hooks/timeline-state.ts` | Mod only. Upgrades the saved Timeline selection and folded task ids, defaulting absent or malformed values for older saves. |
 | `hooks/inbox-model.ts` | Mod only. The model the mod's ledger and Status calls ask, and the report each call gives its record. |
 | `hooks/pane-status-goal.tsx` | Mod only. The Status tab's goal section: its heading, the goal or the line that says none is set, its buttons, its text field, the Now line and the milestones. |

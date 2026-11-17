@@ -13,6 +13,7 @@ Part of [the look map](../looks.md#files).
 | `hooks/tabs.ts` | Shared module. The tabs each build shows, with their names, symbols and badges, how the tab bar fits them, and the `/inbox` command's description. |
 | `hooks/status-page.ts` | Shared module. `statusPage` builds the Status page's rows in order. Also the Last seen line, the merged line and the text before a stall. |
 | `hooks/timeline-page.ts` | Shared module. Builds Timeline rows, progress bars, details and link actions. |
+| `hooks/agents-page.ts` | Shared module. Builds clipped Agents rows from feeds, tasks and local Herdr agents. |
 | `hooks/status-page-parts.ts` | Shared module. The parts of the Status list that `statusPage` builds: subject and child rows in order, their Seen lines, folds after open or closed rows, counts by mark, and rules between rows. |
 | `hooks/action-plan.ts` | Shared module. A row's actions in order, from `actionsOf`; source-managed rows have none because their feed owns their lifecycle. Also the key plans `rowKeyPlan` and `statusKeyPlan`. `actionLines` wraps a row's buttons. `drawnLists` gives each tab's drawn rows, `rowAfterClose` the row that opens after a close, and `tabUndos` with `latestUndo` the Undo the undo key presses. |
 | `hooks/help.ts` | Shared module. The marks that rows and group titles draw, the Help legend, Help's labels, and the keys Help lists in each look. |
