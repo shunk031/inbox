@@ -16,6 +16,8 @@ const style: Style = {
   inverse: s => s,
   underline: s => s,
   tone: (_n, s) => s,
+  timelineChip: (_tone, s) => s,
+  timelineRow: s => s,
   banner: (_t, _p, s) => s,
 }
 const flush = () => new Promise(resolve => setTimeout(resolve, 0))

@@ -38,6 +38,170 @@
 .timeline-page .timeline-child-guide {
   top: calc(var(--status-row-pad) + 0.5lh);
 }
+.timeline-page .timeline-tree-item.alternate .timeline-node:not(.selected) {
+  background: color-mix(in srgb, var(--text) 4%, var(--bg));
+}
+.timeline-page .timeline-node > .content {
+  min-width: 0;
+}
+.timeline-task-line,
+.timeline-task-title,
+.timeline-row-progress,
+.timeline-status-line,
+.timeline-progress-head,
+.timeline-progress-line,
+.timeline-progress-meta,
+.timeline-detail-head {
+  display: flex;
+  align-items: center;
+}
+.timeline-task-line,
+.timeline-progress-head,
+.timeline-progress-line,
+.timeline-progress-meta,
+.timeline-detail-head {
+  justify-content: space-between;
+  gap: 10px;
+}
+.timeline-task-line {
+  align-items: flex-start;
+}
+.timeline-task-title {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.timeline-tree-prefix,
+.timeline-task-mark {
+  flex: 0 0 auto;
+  white-space: pre;
+}
+.timeline-task-mark {
+  align-self: flex-start;
+}
+.timeline-title {
+  display: block;
+  flex: 1 1 0;
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.timeline-title-link {
+  min-width: 0;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.timeline-row-progress {
+  flex: 0 0 auto;
+  gap: 8px;
+  font-family: var(--mono);
+  white-space: nowrap;
+}
+.timeline-status-line {
+  gap: 8px;
+  padding-left: 2ch;
+}
+.timeline-chip {
+  display: inline-block;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: color-mix(in srgb, currentColor 18%, var(--bg));
+  font-size: 12px;
+  line-height: 18px;
+}
+.timeline-progress-card {
+  margin: 0 14px 8px var(--text-x);
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--muted) 55%, var(--bg));
+  border-radius: 5px;
+}
+.timeline-progress-line,
+.timeline-progress-meta {
+  margin-top: 4px;
+}
+.timeline-progress-bar,
+.timeline-row-bar {
+  font-family: var(--mono);
+  white-space: nowrap;
+}
+.timeline-progress-bar,
+.timeline-percent,
+.timeline-chip {
+  flex: 0 0 auto;
+}
+.timeline-progress-meta {
+  color: var(--muted);
+}
+.timeline-detail-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 14px 8px var(--text-x);
+}
+.timeline-detail-head h1 {
+  flex: 1 1 12ch;
+  min-width: 0;
+  margin: 0;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.timeline-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.timeline-stat {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--muted) 45%, var(--bg));
+  border-radius: 5px;
+}
+.timeline-stat span,
+.timeline-detail-section > strong {
+  color: var(--muted);
+}
+.timeline-detail-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.timeline-detail-section {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--muted) 35%, var(--bg));
+  overflow-wrap: anywhere;
+}
+.timeline-detail-section p {
+  min-width: 0;
+  flex: 1 1 0;
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.timeline-detail-copy {
+  display: flex;
+  flex: 1 1 100%;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 6px;
+}
+.timeline-detail-prefix {
+  flex: 0 0 auto;
+  white-space: pre;
+  color: var(--muted);
+}
+.timeline-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 .status-page .mark {
   text-align: left;
 }

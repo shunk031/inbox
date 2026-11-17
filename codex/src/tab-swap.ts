@@ -37,6 +37,8 @@ function capturedState(): Kept {
     statusUnfolded: [...statusUnfolded],
     timelineSelection: tabState.timelineSelection,
     timelineFolded: [...timelineFolded],
+    timelineDetailOpen: tabState.timelineDetailOpen,
+    timelineScrollTop: tabState.timelineScrollTop,
   }
 }
 
@@ -69,6 +71,8 @@ export function restoreState(incoming?: Kept) {
     for (const fold of g === 'finding' ? (['issue', 'opportunity'] as const) : [g]) unfolded.add(fold)
   for (const id of kept.statusUnfolded ?? []) statusUnfolded.add(id)
   tabState.timelineSelection = kept.timelineSelection ?? null
+  tabState.timelineDetailOpen = kept.timelineDetailOpen ?? false
+  tabState.timelineScrollTop = kept.timelineScrollTop ?? 0
   for (const id of kept.timelineFolded ?? []) timelineFolded.add(id)
 }
 

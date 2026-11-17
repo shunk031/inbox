@@ -15,7 +15,7 @@ import { statusSelected } from '../../hooks/status-keys'
 import { seenSubjectIds } from '../../hooks/status-page'
 import type { Holds } from '../../hooks/timing'
 import type { ShownTab } from '../../hooks/tabs'
-import { bannerLines, boxed, drawLine, leadPaint, paintMark } from './panel-draw'
+import { bannerLines, boxed, drawLine, leadPaint, paintMark, timelineProgressLines } from './panel-draw'
 import type { Draw } from './panel-draw'
 import { PAGE_MARK_AT, PAGE_TEXT_AT, entriesOf } from './panel-entries'
 import { resolveSelected, withTab } from './panel-keys'
@@ -32,7 +32,11 @@ type HerdrAskPress = { action: 'herdr-ask'; isYes: boolean }
 /** Shows every option of a question whose options fold. The panel handles it, so no host sees it. */
 type OptionsPress = { action: 'all-options'; id: string }
 /** A Timeline button changes only panel navigation. */
-type TimelinePress = { action: 'timeline-select'; id: string } | { action: 'timeline-toggle'; id: string }
+type TimelinePress =
+  | { action: 'timeline-select'; id: string }
+  | { action: 'timeline-detail'; id: string }
+  | { action: 'timeline-back' }
+  | { action: 'timeline-toggle'; id: string }
 export type PanelPress = RowPress | PrPress | ResumePress | OptionsPress | HerdrAskPress | TimelinePress
 
 /** What the panel draws: the session's view and the host facts the shared view does not hold. */
@@ -57,7 +61,8 @@ export type PanelScreen = {
   timelineFolded?: string[]
 }
 
-export type Tone = ToneName | 'key' | 'accent' | 'sep'
+export type Tone = ToneName | 'key' | 'muted' | 'accent' | 'sep'
+type TimelineTone = 'done' | 'key' | 'error' | 'muted'
 
 /** The terminal styles the panel draws with. The host maps them onto the active omp theme. */
 export type Style = {
@@ -66,6 +71,8 @@ export type Style = {
   inverse(s: string): string
   underline(s: string): string
   tone(name: Tone, s: string): string
+  timelineChip(tone: TimelineTone, text: string): string
+  timelineRow(text: string, alternate: boolean): string
   /** A banner's border, or its fill behind `s`. */
   banner(tone: BannerTone, part: 'line' | 'fill', s: string): string
   link?: (url: string, text: string) => string
@@ -96,6 +103,10 @@ export type PanelUi = {
   timelineSelection: string | null
   /** Timeline branches the person folded, saved per session. */
   timelineFolded: string[]
+  /** Whether the selected Timeline task's detail view is open. */
+  timelineDetailOpen: boolean
+  /** The tree's scroll position while a Timeline detail view is open. */
+  timelineTreeTop: number
   /** A Resume press for the stop that began at `stopAt`. */
   resuming: { stopAt: number; is: 'sending' } | { stopAt: number; is: 'refused'; why: string } | null
   /** A handed-off row the person opened again with Enter. Moving the selection off it folds it again. */
@@ -137,6 +148,8 @@ export const INITIAL_UI: PanelUi = {
   statusUnfolded: [],
   timelineSelection: null,
   timelineFolded: [],
+  timelineDetailOpen: false,
+  timelineTreeTop: 0,
   resuming: null,
   opened: null,
   pageTop: 0,
@@ -267,13 +280,15 @@ export function drawPanel(
       )
     } else if (e.kind === 'note')
       body.push(
-        ...indented(
-          e.text,
-          e.indent ?? 1,
-          width,
-          e.isWhole ? Infinity : 3,
-          e.isStrong ? style.bold : e.isPlain ? (text: string) => text : style.dim,
-        ),
+        ...(e.timelineProgress
+          ? timelineProgressLines(e.timelineProgress, width, style)
+          : indented(
+              e.text,
+              e.indent ?? 1,
+              width,
+              e.isWhole ? Infinity : 3,
+              e.isStrong ? style.bold : e.isPlain ? (text: string) => text : style.dim,
+            )),
       )
     else {
       const isSelected = e.line.id === selected?.id
@@ -294,14 +309,16 @@ export function drawPanel(
   const selectedLines = selectedAt[1] - selectedAt[0] + 1
   const isDetailScrolling =
     !isPage &&
-    ((selected?.detail !== null && selected?.detail !== undefined) ||
+    (selected?.timeline?.kind === 'detail' ||
+      (selected?.detail !== null && selected?.detail !== undefined) ||
       (selected?.body !== null && selected?.body !== undefined)) &&
     selectedLines > roomBeside(footer(d, false)) - 2
   const foot = footer(d, isPageTaller, isDetailScrolling)
   const room = roomBeside(foot)
   const detailScrollMax =
     !isPage &&
-    ((selected?.detail !== null && selected?.detail !== undefined) ||
+    (selected?.timeline?.kind === 'detail' ||
+      (selected?.detail !== null && selected?.detail !== undefined) ||
       (selected?.body !== null && selected?.body !== undefined))
       ? Math.max(0, selectedLines - room + 2)
       : 0

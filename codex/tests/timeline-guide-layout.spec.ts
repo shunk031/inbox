@@ -28,6 +28,14 @@ test('the Codex Timeline guide stays on its connector stem column', () => {
   )
 })
 
+test('narrow Codex Timeline rows keep the tree lead, title wrap, status, and progress columns separate', () => {
+  const css = readFileSync(new URL('../src/tab-css/status-page.css', import.meta.url), 'utf8')
+  assert.match(css, /\.timeline-tree-prefix,[\s\S]*?\.timeline-task-mark\s*\{\s*flex:\s*0 0 auto;/)
+  assert.match(css, /\.timeline-row-progress\s*\{\s*flex:\s*0 0 auto;/)
+  assert.match(css, /\.timeline-title\s*\{[\s\S]*?min-width:\s*0;[\s\S]*?overflow-wrap:\s*anywhere;/)
+  assert.match(css, /\.timeline-detail-copy\s*\{[\s\S]*?min-width:\s*0;[\s\S]*?align-items:\s*flex-start;/)
+})
+
 test('a folded Codex Timeline branch has no visible child guide', async context => {
   const window = new Window()
   Object.assign(globalThis, {

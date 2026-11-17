@@ -168,7 +168,13 @@ export function createPanel(deps: PanelDeps): Panel {
     if (p.action === 'resume') return resume()
     if (p.action === 'herdr-ask') return source.answerHerdr?.(p.isYes).then(() => refresh())
     if (p.action === 'all-options') return
-    if (p.action === 'timeline-select' || p.action === 'timeline-toggle') return
+    if (
+      p.action === 'timeline-select' ||
+      p.action === 'timeline-detail' ||
+      p.action === 'timeline-back' ||
+      p.action === 'timeline-toggle'
+    )
+      return
     if (!isPrPress(p) && p.action === 'read-document') return showDocument(p.id)
     const rowId = pressRowId(p)
     const wasWaiting = screen !== null && isLineWaiting(screen, ui, rowId, deps.now())

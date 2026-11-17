@@ -1,132 +1,345 @@
 import type { PaneBase, PaneHandlers } from './pane-context'
+import { cellWidth, cutToCells } from './text'
 import { moveTimelineSelection, timelinePage, toggleTimelineBranch } from './timeline-page'
 
 type TimelinePaneBase = Pick<
   PaneBase,
-  'Box' | 'Button' | 'Text' | 'pal' | 'view' | 'now' | 'timelineSelection' | 'timelineFolded'
+  'Box' | 'Button' | 'Text' | 'pal' | 'look' | 'view' | 'timelineSelection' | 'timelineFolded' | 'timelineDetailOpen'
+> & { bodyColumns: number }
+type TimelinePaneHandlers = Pick<
+  PaneHandlers,
+  'runPress' | 'selectTimelineRow' | 'updateTimelineFolded' | 'openTimelineDetail' | 'closeTimelineDetail'
 >
-type TimelinePaneHandlers = Pick<PaneHandlers, 'runPress' | 'selectTimelineRow' | 'updateTimelineFolded'>
 
 export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHandlers) {
-  const { Box, Button, Text, pal, view, timelineSelection, timelineFolded } = context
-  const { selectTimelineRow, updateTimelineFolded, runPress } = handlers
-  const page = timelinePage(view.timeline, timelineSelection, timelineFolded, view.lastActions)
-  const tones = {
-    done: pal.tone.done ?? pal.muted,
-    stalled: pal.tone.issue ?? pal.muted,
-    working: pal.tone.needsYou ?? pal.muted,
-  }
-  const tone = (status: string) => tones[status as keyof typeof tones] ?? pal.muted
-  const marks: Record<string, string> = { done: '✓', stalled: '!', working: '●', 'waits-on-other': '◌' }
-  const bar = (parts: (typeof page.bars)[number]['parts']) =>
-    parts.map(part => <Text color={tone(part.state)}>{part.mark.repeat(part.count)}</Text>)
-
-  const timelineView = (
-    <Box flexDirection="column">
-      <Box flexDirection="row">
-        <Text color={pal.muted}>Task plan · {page.summary}</Text>
-        {page.bars[0]?.parts.length ? <Text color={pal.muted}> · </Text> : null}
-        {page.bars[0]?.parts.length ? bar(page.bars[0].parts) : null}
-      </Box>
-      {page.isEmpty ? (
-        <Box flexDirection="column">
-          <Text bold>{page.empty.title}</Text>
-          <Text color={pal.muted}>{page.empty.hint}</Text>
+  const { Box, Button, Text, pal, look, view, timelineSelection, timelineFolded, timelineDetailOpen } = context
+  const { selectTimelineRow, updateTimelineFolded, openTimelineDetail, closeTimelineDetail, runPress } = handlers
+  const page = timelinePage(
+    view.timeline,
+    timelineSelection,
+    timelineFolded,
+    view.lastActions,
+    look === 'terminal' && timelineDetailOpen,
+  )
+  if (look === 'desktop') {
+    const color = (tone: string) =>
+      tone === 'done'
+        ? (pal.tone.done ?? pal.muted)
+        : tone === 'error'
+          ? (pal.tone.issue ?? pal.muted)
+          : tone === 'key'
+            ? (pal.tone.needsYou ?? pal.muted)
+            : pal.muted
+    const bar = (parts: typeof page.progressCard.bar) =>
+      parts.map(part => <Text color={color(part.tone)}>{part.mark.repeat(part.count)}</Text>)
+    const timelineView = (
+      <Box flexDirection="column">
+        <Box flexDirection="row">
+          <Text color={pal.muted}>
+            {`Task plan · ${page.progressCard.percentLabel} complete · ${page.progressCard.leavesDone}/${page.progressCard.leavesTotal} leaf tasks`}
+          </Text>
+          {page.progressCard.bar.length ? <Text color={pal.muted}> · </Text> : null}
+          {bar(page.progressCard.bar)}
         </Box>
-      ) : null}
-      {page.bars.slice(1).map(item => (
-        <Box key={`bar-${item.id}`} flexDirection="row">
-          <Text color={pal.muted}>{item.label}: </Text>
-          {bar(item.parts)}
-        </Box>
-      ))}
-      {page.rows.map(row => {
-        const selected = row.task.id === page.selected?.row.task.id
-        const selection = selected ? page.selected : null
-        const selectAction = row.actions.find(action => action.action === 'select')
-        const detail = row.detailLead
-        return (
-          <Box key={`timeline-${row.task.id}`} flexDirection="column">
-            <Box flexDirection="row">
-              <Text color={tone(row.status)}>
-                {selected ? '> ' : '  '}
-                {row.prefix}
-                {marks[row.status] ?? '·'}{' '}
-              </Text>
-              {selectAction ? (
+        {page.isEmpty ? (
+          <Box flexDirection="column">
+            <Text bold>{page.empty.title}</Text>
+            <Text color={pal.muted}>{page.empty.hint}</Text>
+          </Box>
+        ) : null}
+        {page.rows.map(row => {
+          const selected = row.task.id === page.selected?.row.task.id
+          const selection = selected ? page.selected : null
+          return (
+            <Box key={`timeline-${row.task.id}`} flexDirection="column">
+              <Box flexDirection="row">
+                <Text color={color(row.tone)}>
+                  {selected ? '> ' : '  '}
+                  {row.prefix}
+                  {row.mark}{' '}
+                </Text>
                 <Button
                   plain
-                  key={`timeline-select-${row.task.id}`}
+                  key={`timeline-title-${row.task.id}`}
                   label={row.task.title}
-                  onPress={() => void selectTimelineRow(selectAction.id)}
+                  onPress={() => void selectTimelineRow(row.task.id)}
                 />
-              ) : (
-                <Text>{row.task.title}</Text>
+                <Text color={pal.muted}>{` · ${row.statusLabel} · ${row.percent}`}</Text>
+              </Box>
+              {row.warnings.map(warning => (
+                <Text color={pal.tone.issue ?? pal.muted}>{`${row.detailLead}⚠ ${warning}`}</Text>
+              ))}
+              {selection?.details.map(line =>
+                line.label === 'Links' ? (
+                  <Box flexDirection="row">
+                    <Text color={pal.muted}>{`${row.detailLead}Links · `}</Text>
+                    {line.actions.map(link => (
+                      <Box key={`${link.label}-${row.task.id}`} flexDirection="row">
+                        <Button
+                          label={link.result?.state === 'pending' ? 'Opening…' : link.label}
+                          dimColor={link.isOut}
+                          onPress={press => void runPress(link.press, press.surface)}
+                        />
+                        {link.result?.state === 'done' ? <Text color={pal.tone.done}>✓ Opened</Text> : null}
+                        {link.result?.state === 'failed' ? (
+                          <Text color={pal.tone.issue ?? pal.muted}>
+                            {link.result.parts.find(part => part.error)?.error}
+                          </Text>
+                        ) : null}
+                      </Box>
+                    ))}
+                  </Box>
+                ) : (
+                  <Text color={pal.muted}>{`${row.detailLead}${line.label} · ${line.text}`}</Text>
+                ),
               )}
-              <Text color={pal.muted}>
-                {' · '}
-                {row.statusLabel} · {row.measure}
-              </Text>
             </Box>
-            {row.warnings.map(warning => (
-              <Text color={pal.tone.issue ?? pal.muted}>
-                {detail}⚠ {warning}
-              </Text>
-            ))}
-            {selection?.details.map(line =>
-              line.label === 'Links' ? (
-                <Box flexDirection="row">
-                  <Text color={pal.muted}>{detail}Links · </Text>
-                  {line.actions.map(link => (
-                    <Box key={`${link.label}-${row.task.id}`} flexDirection="row">
-                      <Button
-                        label={link.result?.state === 'pending' ? 'Opening…' : link.label}
-                        dimColor={link.isOut}
-                        onPress={press => void runPress(link.press, press.surface)}
-                      />
-                      {link.result?.state === 'done' ? <Text color={pal.tone.done}>✓ Opened</Text> : null}
-                      {link.result?.state === 'failed' ? (
-                        <Text color={pal.tone.issue ?? pal.muted}>
-                          {link.result.parts.find(part => part.error)?.error}
-                        </Text>
-                      ) : null}
-                    </Box>
-                  ))}
-                </Box>
-              ) : (
-                <Text color={pal.muted}>
-                  {detail}
-                  {line.label} · {line.text}
-                </Text>
-              ),
-            )}
-          </Box>
-        )
-      })}
+          )
+        })}
+      </Box>
+    )
+    const branch = page.selected?.row.actions.find(action => action.action === 'toggle-branch')
+    const footer = branch ? (
+      <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
+        <Button
+          key={branch.action}
+          label={branch.label}
+          hotkey={branch.hotkey}
+          plain
+          onPress={() => void updateTimelineFolded(folded => toggleTimelineBranch(folded, branch.id))}
+        />
+      </Box>
+    ) : null
+    return {
+      view: timelineView,
+      footer,
+      move(step: number) {
+        const id = moveTimelineSelection(page.rows, timelineSelection, step)
+        if (id) void selectTimelineRow(id)
+      },
+    }
+  }
+  const widthForCells = (text: string) => cellWidth(text)
+  const bodyColumns = context.bodyColumns
+  const paneWidth = widthForCells(' '.repeat(bodyColumns))
+  const color = (tone: string) =>
+    tone === 'key' ? pal.key : tone === 'muted' ? pal.muted : (pal.tone[tone as 'done' | 'error'] ?? pal.muted)
+  const chip = (label: string, tone: string) => (
+    <Box backgroundColor={color(tone)} paddingX={1}>
+      <Text color="inverseText">{label}</Text>
     </Box>
   )
-  const footer = page.selected?.row.actions.length ? (
-    <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
-      {page.selected.row.actions.map(action => (
-        <Button
-          key={action.action}
-          label={action.label}
-          hotkey={action.hotkey === 'enter' ? undefined : action.hotkey}
-          plain
-          onPress={() =>
-            action.action === 'select'
-              ? void selectTimelineRow(action.id)
-              : void updateTimelineFolded(folded => toggleTimelineBranch(folded, action.id))
-          }
-        />
+  const bar = (parts: typeof page.progressCard.bar, emptyWidth = 10) =>
+    parts.length ? (
+      parts.map(part => <Text color={color(part.tone)}>{part.mark.repeat(part.count)}</Text>)
+    ) : (
+      <Text color={pal.muted}>{'─'.repeat(emptyWidth)}</Text>
+    )
+
+  const progressCard = (
+    <Box width={paneWidth} flexDirection="column" borderStyle="single" paddingX={1}>
+      <Box flexDirection={bodyColumns < 28 ? 'column' : 'row'} justifyContent="space-between">
+        <Box flexShrink={0}>
+          <Text bold>Progress</Text>
+        </Box>
+        <Box flexShrink={0}>{chip(page.progressCard.statusLabel, page.progressCard.tone)}</Box>
+      </Box>
+      <Box
+        key="timeline-progress-bar"
+        flexDirection={bodyColumns < 36 ? 'column' : 'row'}
+        justifyContent="space-between"
+      >
+        <Box flexDirection="row" flexShrink={0}>
+          {bar(page.progressCard.bar, 28)}
+        </Box>
+        <Box flexShrink={0}>
+          <Text bold>{page.progressCard.percentLabel}</Text>
+        </Box>
+      </Box>
+      <Box flexDirection={bodyColumns < 44 ? 'column' : 'row'} justifyContent="space-between">
+        <Text
+          color={pal.muted}
+        >{`${page.progressCard.leavesDone}/${page.progressCard.leavesTotal} leaf tasks completed`}</Text>
+        <Text color={pal.muted}>{`Elapsed: ${page.progressCard.elapsed}`}</Text>
+      </Box>
+    </Box>
+  )
+
+  const selected = page.selected
+  const detailTitle = selected
+    ? cellWidth(selected.row.task.title) > Math.max(1, bodyColumns - 26)
+      ? `${cutToCells(selected.row.task.title, Math.max(0, bodyColumns - 27))}…`
+      : selected.row.task.title
+    : ''
+  const detailView = selected ? (
+    <Box key="timeline-detail" width={paneWidth} flexDirection="column" gap={1}>
+      <Box flexDirection="row" alignItems="flex-start">
+        <Box flexShrink={0}>
+          <Button plain key="timeline-back" hotkey="b" label="‹ Back" onPress={() => void closeTimelineDetail()} />
+        </Box>
+        <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
+          <Text bold wrap="truncate-end">
+            {detailTitle}
+          </Text>
+        </Box>
+        <Box flexShrink={0}>{chip(selected.row.statusLabel, selected.row.tone)}</Box>
+      </Box>
+      <Box flexDirection="row" flexWrap="wrap" gap={1}>
+        {(
+          [
+            ['Progress', selected.stats.progress],
+            ['Weight', selected.stats.weight],
+            ['Completed units', selected.stats.completedUnits],
+          ] as const
+        ).map(([label, value]) => (
+          <Box key={label} flexDirection="column" flexGrow={1} borderStyle="single" paddingX={1}>
+            <Text color={pal.muted}>{label}</Text>
+            <Text bold>{value}</Text>
+          </Box>
+        ))}
+      </Box>
+      {selected.details.map((line, index) => (
+        <Box key={`timeline-detail-row-${index}`} flexDirection="row" alignItems="flex-start">
+          <Box key={`timeline-detail-lead-${index}`} width={widthForCells(selected.row.detailLead)} flexShrink={0}>
+            <Text>{selected.row.detailLead}</Text>
+          </Box>
+          {line.label === 'Links' ? (
+            <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
+              <Text color={pal.muted}>Links</Text>
+              <Box flexDirection="row" flexWrap="wrap" gap={1}>
+                {line.actions.map(link => (
+                  <Box key={`${link.label}-${selected.row.task.id}`} flexDirection="row">
+                    <Button
+                      label={link.result?.state === 'pending' ? 'Opening…' : link.label}
+                      dimColor={link.isOut}
+                      onPress={press => void runPress(link.press, press.surface)}
+                    />
+                    {link.result?.state === 'done' ? <Text color={pal.tone.done}>✓ Opened</Text> : null}
+                    {link.result?.state === 'failed' ? (
+                      <Text color={pal.tone.error ?? pal.muted}>
+                        {link.result.parts.find(part => part.error)?.error}
+                      </Text>
+                    ) : null}
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          ) : (
+            <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
+              <Text color={pal.muted}>{line.label}</Text>
+              <Text>{line.text}</Text>
+            </Box>
+          )}
+        </Box>
       ))}
     </Box>
   ) : null
+
+  const timelineView =
+    page.mode === 'detail' ? (
+      detailView
+    ) : (
+      <Box width={paneWidth} flexDirection="column" gap={1}>
+        {progressCard}
+        {page.isEmpty ? (
+          <Box flexDirection="column">
+            <Text bold>{page.empty.title}</Text>
+            <Text color={pal.muted}>{page.empty.hint}</Text>
+          </Box>
+        ) : null}
+        {page.rows.map(row => {
+          const selected = row.task.id === page.selected?.row.task.id
+          const backgroundColor = row.alternate ? (pal.card ?? pal.line) : undefined
+          const rowLead = `${selected ? '> ' : '  '}${row.prefix}${row.mark} `
+          const percentCells = cellWidth(` ${row.percent}`)
+          const availableWithBar = bodyColumns - 2 - cellWidth(rowLead) - 10 - percentCells
+          const showTaskBar = availableWithBar >= 20
+          const titleCells = Math.max(1, bodyColumns - 2 - cellWidth(rowLead) - percentCells - (showTaskBar ? 10 : 0))
+          const title =
+            cellWidth(row.task.title) > titleCells
+              ? `${cutToCells(row.task.title, Math.max(0, titleCells - 1))}…`
+              : row.task.title
+          return (
+            <Box
+              key={`timeline-${row.task.id}`}
+              width={paneWidth}
+              flexDirection="column"
+              paddingX={1}
+              backgroundColor={backgroundColor}
+            >
+              <Box flexDirection="row" alignItems="flex-start">
+                <Box width={widthForCells(rowLead)} flexShrink={0}>
+                  <Text color={color(row.tone)}>
+                    {selected ? '> ' : '  '}
+                    {row.prefix}
+                    {row.mark}{' '}
+                  </Text>
+                </Box>
+                <Box flexDirection="row" flexGrow={1} flexShrink={1} minWidth={0}>
+                  <Box flexGrow={1} flexShrink={1} minWidth={0}>
+                    <Button
+                      plain
+                      key={`timeline-title-${row.task.id}`}
+                      autoFocus={look === 'terminal' && selected ? true : undefined}
+                      onPress={() => void openTimelineDetail(row.task.id)}
+                    >
+                      {look === 'terminal' ? (
+                        <Text color={color(row.tone)} wrap="truncate-end">
+                          {title}
+                        </Text>
+                      ) : (
+                        title
+                      )}
+                    </Button>
+                  </Box>
+                  <Box flexDirection="row" flexShrink={0}>
+                    {showTaskBar ? <Box key={`timeline-row-bar-${row.task.id}`}>{bar(row.progressBar)}</Box> : null}
+                    <Box flexShrink={0}>
+                      <Text color={color(row.tone)}>{` ${row.percent}`}</Text>
+                    </Box>
+                  </Box>
+                </Box>
+              </Box>
+              <Box flexDirection="row" gap={1}>
+                <Text>{row.detailLead}</Text>
+                {chip(row.statusLabel, row.tone)}
+              </Box>
+              {row.warnings.map(warning => (
+                <Text color={pal.tone.error ?? pal.muted}>{`${row.detailLead}⚠ ${warning}`}</Text>
+              ))}
+            </Box>
+          )
+        })}
+      </Box>
+    )
+  const footer =
+    page.mode === 'detail' ? null : page.selected?.row.actions.length ? (
+      <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
+        {page.selected.row.actions.map(action => (
+          <Button
+            key={action.action}
+            label={action.label}
+            hotkey={action.hotkey === 'enter' ? undefined : action.hotkey}
+            plain
+            onPress={() =>
+              action.action === 'detail'
+                ? void openTimelineDetail(action.id)
+                : action.action === 'select'
+                  ? void selectTimelineRow(action.id)
+                  : action.action === 'back'
+                    ? void closeTimelineDetail()
+                    : void updateTimelineFolded(folded => toggleTimelineBranch(folded, action.id))
+            }
+          />
+        ))}
+      </Box>
+    ) : null
 
   return {
     view: timelineView,
     footer,
     move(step: number) {
+      if (page.mode !== 'tree') return
       const id = moveTimelineSelection(page.rows, timelineSelection, step)
       if (id) void selectTimelineRow(id)
     },

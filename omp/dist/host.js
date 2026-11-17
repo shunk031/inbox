@@ -7816,11 +7816,18 @@ function applyTaskPrFacts(tree, states, at) {
 
 // ../hooks/timeline-page.ts
 var BAR_MARKS = {
-  done: "\u25A0",
-  working: "\u25CF",
-  stalled: "!",
-  waiting: "\u25CC",
-  queued: "\xB7"
+  done: "\u2501",
+  working: "\u2501",
+  stalled: "\u2501",
+  waiting: "\u2501",
+  queued: "\u2500"
+};
+var BAR_TONES = {
+  done: "done",
+  working: "key",
+  stalled: "error",
+  waiting: "error",
+  queued: "muted"
 };
 var BAR_STATES = Object.keys(BAR_MARKS);
 var HISTORY_TEXT = {
@@ -7842,19 +7849,80 @@ function timelineTask(task, now) {
     history: history.map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) }))
   };
 }
-function timelineBar(segments, id, label, width = 16) {
+function percent(value) {
+  const rounded = Math.round(value * 1e4) / 100;
+  return { value: rounded, label: `${rounded.toFixed(2)}%` };
+}
+function timelineBar(segments, width) {
   if (segments.total <= 0)
-    return { id, label, parts: [] };
+    return [];
   let cumulative = 0;
   let drawn = 0;
-  const parts = BAR_STATES.flatMap((state) => {
+  return BAR_STATES.flatMap((state) => {
     cumulative += segments[state];
     const end = Math.round(cumulative / segments.total * width);
     const count = Math.max(0, end - drawn);
     drawn = end;
-    return count > 0 ? [{ state, mark: BAR_MARKS[state], count }] : [];
+    return count > 0 ? [{ state, mark: BAR_MARKS[state], count, tone: BAR_TONES[state] }] : [];
   });
-  return { id, label, parts };
+}
+function taskStatus(task, stalled) {
+  if (stalled.has(task.id))
+    return "stalled";
+  if (task.status === "done" || task.status === "dropped")
+    return task.status;
+  return task.status === "working" ? "working" : task.status === "waits-on-other" ? "waiting" : "queued";
+}
+function statusPresentation(status) {
+  switch (status) {
+    case "done":
+      return { label: "Completed", tone: "done", mark: "\u25CF" };
+    case "working":
+      return { label: "In progress", tone: "key", mark: "\u25D0" };
+    case "waiting":
+      return { label: "Waiting", tone: "error", mark: "\u2715" };
+    case "stalled":
+      return { label: "Stalled", tone: "error", mark: "\u2715" };
+    case "dropped":
+      return { label: "Dropped", tone: "muted", mark: "\u25CB" };
+    default:
+      return { label: "Not started", tone: "muted", mark: "\u25CB" };
+  }
+}
+function completedLeaves(tree, rootIds) {
+  const children = new Map;
+  for (const task of tree)
+    children.set(task.parentId, [...children.get(task.parentId) ?? [], task]);
+  const count = { done: 0, total: 0 };
+  const visit = (task, isDone) => {
+    if (task.status === "dropped")
+      return;
+    const done = isDone || task.status === "done";
+    const activeChildren = (children.get(task.id) ?? []).filter((child) => child.status !== "dropped");
+    if (activeChildren.length === 0) {
+      count.total++;
+      if (done)
+        count.done++;
+      return;
+    }
+    for (const child of activeChildren)
+      visit(child, done);
+  };
+  const roots = rootIds === undefined ? children.get(null) ?? [] : tree.filter((task) => Array.isArray(rootIds) ? rootIds.includes(task.id) : task.id === rootIds);
+  for (const root of roots)
+    visit(root, false);
+  return count;
+}
+function progressStatus(segments) {
+  if (segments.stalled > 0)
+    return "stalled";
+  if (segments.working > 0 || segments.done > 0 && segments.done < segments.total)
+    return "working";
+  if (segments.waiting > 0)
+    return "waiting";
+  if (segments.total > 0 && segments.done >= segments.total)
+    return "done";
+  return "queued";
 }
 function timelineData(tree, segments, stalledSince, warnings, now) {
   const children = new Map;
@@ -7867,10 +7935,10 @@ function timelineData(tree, segments, stalledSince, warnings, now) {
       const childrenOfTask = children.get(task.id) ?? [];
       const hasLaterSibling = index < siblings.length - 1;
       const connector = depth === 0 ? "" : hasLaterSibling ? "\u251C\u2500 " : "\u2514\u2500 ";
-      const stalledAt = stalledSince[task.id];
-      const status = stalledAt === undefined ? task.status : "stalled";
-      const progress = Math.round(weightedTaskProgress(tree, task.id) * 100);
-      const current = currentTaskText(task);
+      const status = taskStatus(task, stalled);
+      const presentation = statusPresentation(status);
+      const progress = percent(weightedTaskProgress(tree, task.id));
+      const completedUnits = completedLeaves(tree, task.id);
       rows.push({
         task: timelineTask(task, now),
         depth,
@@ -7878,30 +7946,41 @@ function timelineData(tree, segments, stalledSince, warnings, now) {
         prefix: `${guides.join("")}${connector}`,
         hasLaterSibling,
         hasChildren: childrenOfTask.length > 0,
-        progress,
-        measure: `${childrenOfTask.length ? `${progress}%` : `w${task.weight}`}${current ? ` \xB7 ${current.text}` : ""}`,
+        progress: progress.value,
+        percent: progress.label,
+        progressBar: timelineBar(weightedTaskProgressSegments(tree, stalled, task.id), 10),
+        completedUnits,
         status,
-        statusLabel: stalledAt !== undefined ? `stalled ${shortAgo(now - stalledAt)}` : status === "waits-on-other" ? "waiting on others" : status,
-        stalledAge: stalledAt === undefined ? null : shortAgo(now - stalledAt),
+        statusLabel: presentation.label,
+        tone: presentation.tone,
+        mark: presentation.mark,
+        alternate: rows.length % 2 === 1,
         warnings: warnings.filter((warning) => warning.taskId === task.id).map((warning) => warning.message)
       });
       visit(childrenOfTask, depth + 1, depth === 0 ? guides : [...guides, hasLaterSibling ? "\u2502  " : "   "]);
     });
   };
   visit(children.get(null) ?? [], 0, []);
-  const roots = children.get(null) ?? [];
-  const streams = new Set(roots.flatMap((task) => task.streamId ? [task.streamId] : []));
-  const summary = streams.size > 1 ? `${streams.size} streams` : segments.total > 0 ? `${Math.round(segments.done / segments.total * 100)}% complete \xB7 ${Number(segments.done.toFixed(1))}/${Number(segments.total.toFixed(1))} weight` : "no tasks yet";
-  const bars = [timelineBar(segments, "tree", "Task plan")];
-  if (streams.size > 1)
-    for (const root of roots)
-      bars.push(timelineBar(weightedTaskProgressSegments(tree, stalled, root.id), root.id, root.title));
+  const overall = percent(weightedTaskProgress(tree));
+  const state = progressStatus(segments);
+  const presentation = statusPresentation(state);
+  const leaves = completedLeaves(tree);
+  const firstCreated = tree.reduce((first, task) => first === null ? task.createdAt : Math.min(first, task.createdAt), null);
   return {
     isEmpty: tree.length === 0,
     empty: { title: "Timeline", hint: "No tasks have been recorded for this session." },
-    summary,
-    rows,
-    bars
+    progressCard: {
+      status: state,
+      statusLabel: presentation.label,
+      tone: presentation.tone,
+      percent: overall.value,
+      percentLabel: overall.label,
+      leavesDone: leaves.done,
+      leavesTotal: leaves.total,
+      elapsed: firstCreated === null ? "\u2014" : shortAgo(now - firstCreated),
+      bar: timelineBar(segments, 28)
+    },
+    rows
   };
 }
 function timelineLinkPlan(task, lastActions) {
@@ -7923,7 +8002,7 @@ function timelineLinkPlan(task, lastActions) {
     ];
   });
 }
-function timelinePage(data, selectedId, folded, lastActions = {}) {
+function timelinePage(data, selectedId, folded, lastActions = {}, isDetailOpen = false) {
   const nodes = new Map(data.rows.map((row) => [row.task.id, row]));
   const foldedIds = new Set(folded);
   const visibleRows = data.rows.filter((row) => {
@@ -7952,9 +8031,28 @@ function timelinePage(data, selectedId, folded, lastActions = {}) {
   }
   selected ??= rows[0];
   const drawnRows = rows.map((row) => {
+    const isSelected = row.task.id === selected?.task.id;
     const isFolded = foldedIds.has(row.task.id);
-    const actions = [
-      ...row.task.id !== selected?.task.id ? [
+    const actions = isDetailOpen && isSelected ? [
+      {
+        action: "back",
+        id: row.task.id,
+        label: "Back to timeline",
+        hotkey: "b",
+        kind: "view",
+        emphasis: "normal"
+      }
+    ] : [
+      ...isSelected ? [
+        {
+          action: "detail",
+          id: row.task.id,
+          label: "Open details",
+          hotkey: "enter",
+          kind: "view",
+          emphasis: "normal"
+        }
+      ] : [
         {
           action: "select",
           id: row.task.id,
@@ -7963,8 +8061,8 @@ function timelinePage(data, selectedId, folded, lastActions = {}) {
           kind: "view",
           emphasis: "normal"
         }
-      ] : [],
-      ...row.task.id === selected?.task.id && row.hasChildren ? [
+      ],
+      ...isSelected && row.hasChildren ? [
         {
           action: "toggle-branch",
           id: row.task.id,
@@ -7987,7 +8085,6 @@ function timelinePage(data, selectedId, folded, lastActions = {}) {
       }
     ] : [],
     ...selectedRow.task.detail ? [{ label: "Detail", text: selectedRow.task.detail }] : [],
-    { label: "Updated", text: selectedRow.task.updatedAgo },
     ...selectedRow.task.notes.map((text) => ({ label: "Note", text })),
     ...selectedRow.task.history.map((event) => ({
       label: "History",
@@ -7995,10 +8092,18 @@ function timelinePage(data, selectedId, folded, lastActions = {}) {
     })),
     ...selectedLinks.length ? [{ label: "Links", actions: selectedLinks }] : []
   ] : [];
+  const taskProgress = selectedRow ? percent(selectedRow.progress / 100) : null;
+  const units = selectedRow?.completedUnits ?? null;
+  const stats = selectedRow && taskProgress && units ? {
+    progress: taskProgress.label,
+    weight: String(Number(selectedRow.task.weight.toFixed(1))),
+    completedUnits: `${units.done} / ${units.total}`
+  } : null;
   return {
     ...data,
+    mode: isDetailOpen && selectedRow ? "detail" : "tree",
     rows: drawnRows,
-    selected: selectedRow ? { row: selectedRow, details, links: selectedLinks } : null
+    selected: selectedRow && stats ? { row: selectedRow, stats, details, links: selectedLinks } : null
   };
 }
 function moveTimelineSelection(rows, selectedId, step) {
@@ -9213,7 +9318,6 @@ var isSelectable = (line) => line.settled === null && !line.isStatic;
 var isShut = (line, ui) => line.isFolded && ui.opened !== line.id;
 
 // src/panel-entries.ts
-var TIMELINE_MARKS = { done: "\u2713", working: "\u25CF", stalled: "!", "waits-on-other": "\u25CC" };
 function herdrAskEntries(screen) {
   const banner = herdrAskBanner(screen.herdrAsk ?? null);
   if (!banner)
@@ -9540,20 +9644,40 @@ function helpEntries(screen, tab) {
   ];
 }
 function timelineEntries(screen, ui) {
-  const page = timelinePage(screen.view.timeline, ui.timelineSelection, ui.timelineFolded, screen.view.lastActions);
-  const [taskPlanBar, ...streamBars] = page.bars;
-  const taskPlan = taskPlanBar?.parts.map((part) => part.mark.repeat(part.count)).join("") ?? "";
-  const out = [
-    {
-      kind: "note",
-      text: `Task plan \xB7 ${page.summary}${taskPlan ? ` \xB7 ${taskPlan}` : ""}`,
-      isPlain: true
-    },
-    ...streamBars.map((bar) => ({
-      kind: "note",
-      text: `${bar.label}: ${bar.parts.map((part) => part.mark.repeat(part.count)).join("")}`
-    }))
-  ];
+  const page = timelinePage(screen.view.timeline, ui.timelineSelection, ui.timelineFolded, screen.view.lastActions, ui.timelineDetailOpen);
+  if (page.mode === "detail" && page.selected) {
+    const buttons = page.selected.row.actions.map((action) => ({
+      label: action.label,
+      key: action.hotkey ?? null,
+      press: { action: "timeline-back" },
+      isRecommended: false,
+      isFollowUp: false
+    }));
+    for (const link of page.selected.links)
+      buttons.push({
+        label: link.result?.state === "pending" ? "Opening\u2026" : link.label,
+        key: null,
+        press: link.press,
+        isRecommended: false,
+        isFollowUp: false,
+        isOut: link.isOut,
+        result: link.result
+      });
+    return [
+      {
+        kind: "row",
+        line: {
+          ...blankLine(page.selected.row.task.id),
+          lead: null,
+          title: page.selected.row.task.title,
+          buttons,
+          timeline: { kind: "detail", selected: page.selected },
+          isWaiting: false
+        }
+      }
+    ];
+  }
+  const out = [{ kind: "note", text: "", timelineProgress: page.progressCard }];
   if (page.isEmpty)
     return [
       ...out,
@@ -9561,59 +9685,30 @@ function timelineEntries(screen, ui) {
       { kind: "note", text: page.empty.hint, isWhole: true }
     ];
   for (const row of page.rows) {
-    const selected = page.selected?.row.task.id === row.task.id ? page.selected : null;
     const buttons = row.actions.map((action) => ({
       label: action.label,
       key: action.hotkey ?? null,
-      press: { action: action.action === "select" ? "timeline-select" : "timeline-toggle", id: action.id },
+      press: {
+        action: action.action === "select" ? "timeline-select" : action.action === "detail" ? "timeline-detail" : "timeline-toggle",
+        id: action.id
+      },
       isRecommended: false,
       isFollowUp: false,
       isQuiet: action.emphasis === "quiet"
     }));
-    const detailLines = selected?.details ?? [];
-    const body = detailLines.map((line) => line.label === "Links" ? "Links \xB7" : `${line.label} \xB7 ${line.text}`).join(`
-`);
-    for (const line of detailLines)
-      if (line.label === "Links")
-        buttons.push(...line.actions.map((link) => ({
-          label: link.result?.state === "pending" ? "Opening\u2026" : link.label,
-          key: null,
-          press: link.press,
-          isRecommended: false,
-          isFollowUp: false,
-          isOut: link.isOut,
-          result: link.result
-        })));
-    const marker = TIMELINE_MARKS[row.status] ?? "\xB7";
     out.push({
       kind: "row",
       line: {
         ...blankLine(row.task.id),
         depth: 0,
         selectionMark: ">",
-        lead: {
-          text: `${row.prefix}${marker}`,
-          tone: row.status === "stalled" ? "error" : row.status === "done" ? "done" : "needsYou",
-          padMark: false
-        },
-        timelineDetailLead: ` ${row.detailLead}`,
+        lead: null,
         title: row.task.title,
-        status: { text: `${row.statusLabel} \xB7 ${row.measure}`, tone: null, rest: "", separator: " \xB7 " },
-        body: body || null,
+        timeline: { kind: "tree", row },
         buttons,
         isWaiting: false
       }
     });
-    out.push(...row.warnings.map((warning, index) => ({
-      kind: "row",
-      line: {
-        ...blankLine(`${row.task.id}:warning:${index}`),
-        depth: 0,
-        lead: { text: `${row.detailLead}\u26A0`, tone: "error", padMark: false },
-        title: warning,
-        isStatic: true
-      }
-    })));
   }
   return out;
 }
@@ -9685,6 +9780,29 @@ function activate(screen, ui, line, button, now) {
         ...ui,
         selectedId: press.id,
         timelineSelection: press.id,
+        detailTop: 0,
+        focus: null
+      }
+    };
+  if (press.action === "timeline-detail")
+    return {
+      ui: {
+        ...ui,
+        selectedId: press.id,
+        timelineSelection: press.id,
+        timelineDetailOpen: true,
+        timelineTreeTop: ui.pageTop,
+        pageTop: 0,
+        detailTop: 0,
+        focus: null
+      }
+    };
+  if (press.action === "timeline-back")
+    return {
+      ui: {
+        ...ui,
+        timelineDetailOpen: false,
+        pageTop: ui.timelineTreeTop,
         detailTop: 0,
         focus: null
       }
@@ -9818,10 +9936,24 @@ function handleKey(screen, ui, key, now, text) {
 }
 function pageKey(screen, ui, key, now) {
   if (ui.tab === "timeline") {
-    const page = timelinePage(screen.view.timeline, ui.timelineSelection, ui.timelineFolded, screen.view.lastActions);
+    const page = timelinePage(screen.view.timeline, ui.timelineSelection, ui.timelineFolded, screen.view.lastActions, ui.timelineDetailOpen);
     const row = page.selected?.row;
     if (!row)
       return null;
+    if (page.mode === "detail") {
+      const line = linesOf(entriesOf(screen, ui, ui.tab, now)).find((item) => item.id === row.task.id);
+      if (!line)
+        return null;
+      const back = line.buttons.find((button) => button.press.action === "timeline-back");
+      if ((key === "b" || key === "escape") && back)
+        return activate(screen, ui, line, back, now);
+      if (key === "left" || key === "right") {
+        const index = steppedIndex(focusOf2(line, ui), key === "left" ? -1 : 1, line.buttons.length);
+        return { ui: { ...ui, focus: { rowId: line.id, index } } };
+      }
+      const button = key === "enter" ? line.buttons[focusOf2(line, ui)] : line.buttons.find((item) => item.key === key);
+      return button ? activate(screen, ui, line, button, now) : null;
+    }
     if (key === "j" || key === "k") {
       const id = moveTimelineSelection(page.rows, ui.timelineSelection, key === "k" ? -1 : 1);
       const target = linesOf(entriesOf(screen, ui, ui.tab, now)).find((item) => item.id === id);
@@ -9881,6 +10013,127 @@ function pageKey(screen, ui, key, now) {
 var pageFocus = (target, ui) => ui.focus?.rowId === target.id ? Math.min(ui.focus.index, target.keys.length - 1) : 0;
 
 // src/panel-draw.ts
+function takeTimelineCells(text, width) {
+  const chars = Array.from(text);
+  let used = 0;
+  let count = 0;
+  while (count < chars.length) {
+    const cells = visibleLength(chars[count]);
+    if (count > 0 && used + cells > width)
+      break;
+    if (used + cells > width)
+      return { shown: chars[count], rest: chars.slice(count + 1).join("") };
+    used += cells;
+    count++;
+  }
+  return { shown: chars.slice(0, count).join(""), rest: chars.slice(count).join("") };
+}
+function wrapTimelineText(text, width) {
+  const lines = [];
+  for (const paragraph of text.split(`
+`)) {
+    let rest = paragraph;
+    while (visibleLength(rest) > width) {
+      const { shown, rest: tail } = takeTimelineCells(rest, width);
+      const split = shown.lastIndexOf(" ");
+      if (split > 0) {
+        lines.push(shown.slice(0, split));
+        rest = `${shown.slice(split + 1)}${tail}`;
+      } else {
+        lines.push(shown);
+        rest = tail;
+      }
+    }
+    lines.push(rest);
+  }
+  return lines;
+}
+function timelineBox(lines, width, s) {
+  const room = Math.max(1, width - 4);
+  const border = (text) => s.tone("muted", text);
+  const line = (text) => {
+    const fitted = fit(text, room);
+    return `${border("\u2502")} ${fitted}${" ".repeat(Math.max(0, room - visibleLength(fitted)))} ${border("\u2502")}`;
+  };
+  return [
+    border(`\u256D${"\u2500".repeat(Math.max(0, width - 2))}\u256E`),
+    ...lines.map(line),
+    border(`\u2570${"\u2500".repeat(Math.max(0, width - 2))}\u256F`)
+  ];
+}
+function timelineProgressLines(progress, width, s) {
+  const room = Math.max(1, width - 6);
+  const bar = progress.bar.map((part) => s.tone(part.tone, part.mark.repeat(part.count))).join("") || s.tone("muted", "\u2500".repeat(10));
+  const head = `${s.bold("Progress")}  ${s.timelineChip(progress.tone, progress.statusLabel)}`;
+  const percent = s.bold(progress.percentLabel);
+  const barLine = visibleLength(bar) + visibleLength(percent) + 2 <= room ? [spread(bar, percent, room)] : [bar, percent];
+  const meta = `${progress.leavesDone}/${progress.leavesTotal} leaf tasks completed   Elapsed: ${progress.elapsed}`;
+  return timelineBox([head, ...barLine, s.dim(meta)], width, s);
+}
+function timelineStatsLines(stats, width, s) {
+  const values = [
+    ["Progress", stats.progress],
+    ["Weight", stats.weight],
+    ["Completed units", stats.completedUnits]
+  ];
+  const cardWidth = Math.floor((width - 6) / values.length);
+  if (cardWidth < 14)
+    return values.flatMap(([label, value]) => timelineBox([s.dim(label), s.bold(value)], width, s));
+  const cards = values.map(([label, value]) => timelineBox([s.dim(label), s.bold(value)], cardWidth, s));
+  return cards[0].map((_, row) => cards.map((card) => card[row]).join("  "));
+}
+function timelineLine(line, plan, isSelected, d) {
+  const { ui, width, style: s } = d;
+  if (plan.kind === "tree") {
+    const row = plan.row;
+    const bar = row.progressBar.map((part) => s.tone(part.tone, part.mark.repeat(part.count))).join("") || s.tone("muted", "\u2500".repeat(10));
+    const lead = ` ${isSelected ? s.tone("accent", "\u276F") : " "} ${row.prefix}${s.tone(row.tone, row.mark)} `;
+    const metrics = `${bar} ${s.tone(row.tone, row.percent)}`;
+    const firstRoom = Math.max(1, width - visibleLength(lead) - visibleLength(metrics) - 2);
+    const firstTitle = takeTimelineCells(row.task.title, firstRoom);
+    const continuationRoom = Math.max(1, width - visibleLength(lead));
+    const titleLines = [firstTitle.shown];
+    let remaining = firstTitle.rest;
+    while (remaining) {
+      const next = takeTimelineCells(remaining, continuationRoom);
+      titleLines.push(next.shown);
+      remaining = next.rest;
+    }
+    const first = spread(`${lead}${s.tone(row.tone, s.bold(titleLines[0]))}`, metrics, width);
+    const toggle = line.buttons.find((button) => button.press.action === "timeline-toggle");
+    const second = `     ${s.timelineChip(row.tone, row.statusLabel)}${toggle ? `  ${s.dim(`${toggle.key ?? ""} ${toggle.label}`)}` : ""}`;
+    const titleRest = titleLines.slice(1).map((text) => `${" ".repeat(visibleLength(lead))}${s.tone(row.tone, s.bold(text))}`);
+    const warnings = row.warnings.flatMap((warning) => wrapTimelineText(warning, Math.max(1, width - 8)).map((text, index) => `${" ".repeat(index === 0 ? 5 : 8)}${index === 0 ? `${s.tone("error", "\u26A0")} ` : ""}${text}`));
+    return [first, ...titleRest, second, ...warnings].map((text) => s.timelineRow(fit(text, width), row.alternate));
+  }
+  const { selected } = plan;
+  const row = selected.row;
+  const back = line.buttons[0];
+  const backText = back ? buttonCell(back, isSelected && focusOf2(line, ui) === 0, s) : "";
+  const status = s.timelineChip(row.tone, row.statusLabel);
+  const detailIndent = visibleLength(row.detailLead);
+  const titleWidth = Math.max(1, width - visibleLength(backText) - visibleLength(status) - 2);
+  const title = wrapTimelineText(row.task.title, titleWidth);
+  const head = `${backText} ${s.bold(title[0] ?? "")} ${status}`;
+  const out = [
+    fit(head, width),
+    ...title.slice(1).map((text) => `${" ".repeat(visibleLength(backText) + 1)}${s.bold(text)}`),
+    ...timelineStatsLines(selected.stats, width, s)
+  ];
+  for (const detail of selected.details) {
+    if (detail.label === "Links") {
+      out.push(`${row.detailLead}${s.dim("Links")}`);
+      const start = line.buttons.findIndex((button) => button.press.action === "pr-open");
+      for (let index = start;index >= 0 && index < line.buttons.length; index++)
+        out.push(`${row.detailLead}${buttonCell(line.buttons[index], isSelected && focusOf2(line, ui) === index, s)}`);
+    } else {
+      out.push(`${row.detailLead}${s.dim(detail.label)}`);
+      const indent = detailIndent + 2;
+      out.push(...wrapTimelineText(detail.text, Math.max(1, width - indent)).map((text) => `${" ".repeat(indent)}${text}`));
+    }
+  }
+  return out;
+}
 function boxed(inner, tone, width, s) {
   const room = width - 4;
   const fill = (l) => s.banner(tone, "fill", ` ${l}${" ".repeat(Math.max(0, room - visibleLength(l)))} `);
@@ -9967,6 +10220,8 @@ function paintMark(m, now, s) {
 }
 function drawLine(line, isSelected, d) {
   const { ui, width, now, style: s } = d;
+  if (line.timeline)
+    return timelineLine(line, line.timeline, isSelected, d);
   if (line.isTabButtons) {
     const cursor = isSelected ? s.tone("accent", "\u276F") : " ";
     const cells = line.buttons.map((b, i) => buttonCell(b, isSelected && i === focusOf2(line, ui), s));
@@ -10180,6 +10435,8 @@ var INITIAL_UI = {
   statusUnfolded: [],
   timelineSelection: null,
   timelineFolded: [],
+  timelineDetailOpen: false,
+  timelineTreeTop: 0,
   resuming: null,
   opened: null,
   pageTop: 0,
@@ -10257,7 +10514,7 @@ function drawPanel(screen, ui, width, now, style, height, minHeight = 0) {
       const mark = paintMark(e.entry, now, style);
       body.push(...indented(e.entry.words, PAGE_TEXT_AT, width, Infinity, style.dim).map((l, n) => n === 0 ? `${" ".repeat(PAGE_MARK_AT)}${mark} ${l.trimStart()}` : l));
     } else if (e.kind === "note")
-      body.push(...indented(e.text, e.indent ?? 1, width, e.isWhole ? Infinity : 3, e.isStrong ? style.bold : e.isPlain ? (text) => text : style.dim));
+      body.push(...e.timelineProgress ? timelineProgressLines(e.timelineProgress, width, style) : indented(e.text, e.indent ?? 1, width, e.isWhole ? Infinity : 3, e.isStrong ? style.bold : e.isPlain ? (text) => text : style.dim));
     else {
       const isSelected = e.line.id === selected?.id;
       const start = body.length;
@@ -10274,10 +10531,10 @@ function drawPanel(screen, ui, width, now, style, height, minHeight = 0) {
   const isPage = ui.isHelpShown || ui.tab === "overview";
   const isPageTaller = isPage && body.length > roomBeside(footer(d, false));
   const selectedLines = selectedAt[1] - selectedAt[0] + 1;
-  const isDetailScrolling = !isPage && (selected?.detail !== null && selected?.detail !== undefined || selected?.body !== null && selected?.body !== undefined) && selectedLines > roomBeside(footer(d, false)) - 2;
+  const isDetailScrolling = !isPage && (selected?.timeline?.kind === "detail" || selected?.detail !== null && selected?.detail !== undefined || selected?.body !== null && selected?.body !== undefined) && selectedLines > roomBeside(footer(d, false)) - 2;
   const foot = footer(d, isPageTaller, isDetailScrolling);
   const room = roomBeside(foot);
-  const detailScrollMax = !isPage && (selected?.detail !== null && selected?.detail !== undefined || selected?.body !== null && selected?.body !== undefined) ? Math.max(0, selectedLines - room + 2) : 0;
+  const detailScrollMax = !isPage && (selected?.timeline?.kind === "detail" || selected?.detail !== null && selected?.detail !== undefined || selected?.body !== null && selected?.body !== undefined) ? Math.max(0, selectedLines - room + 2) : 0;
   const blanks = (shown) => Array(Math.max(0, minHeight - head.length - shown.length - foot.length)).fill("");
   const isOverflowing = body.length > room;
   const [first = 0, last = 0] = pageSelectedAt ?? [];
@@ -10406,7 +10663,7 @@ function createPanel(deps) {
       return source.answerHerdr?.(p.isYes).then(() => refresh());
     if (p.action === "all-options")
       return;
-    if (p.action === "timeline-select" || p.action === "timeline-toggle")
+    if (p.action === "timeline-select" || p.action === "timeline-detail" || p.action === "timeline-back" || p.action === "timeline-toggle")
       return;
     if (!isPrPress(p) && p.action === "read-document")
       return showDocument(p.id);
@@ -12667,6 +12924,10 @@ function truecolor(hex, text) {
 function truecolorFill(hex, text) {
   return `${ESC}48;2;${rgbOf(hex)}m${text}${ESC}49m`;
 }
+var TIMELINE_FILLS = {
+  dark: { done: "#294431", key: "#2b3b57", error: "#4a2c33", muted: "#393939" },
+  light: { done: "#e5f3e7", key: "#e9edff", error: "#f7e8eb", muted: "#e9e9e9" }
+};
 function styleOf(theme, link) {
   const tones = theme.isLight ? LIGHT_TONES : DARK_TONES;
   const tints = theme.isLight ? LIGHT_BANNER_TINTS : DARK_BANNER_TINTS;
@@ -12675,7 +12936,9 @@ function styleOf(theme, link) {
     dim: (text) => `${ESC}2m${text}${ESC}22m`,
     inverse: theme.inverse.bind(theme),
     underline: theme.underline.bind(theme),
-    tone: (name, text) => name === "sep" || name === "accent" ? theme.fg(name === "sep" ? "statusLineSep" : "accent", text) : truecolor(tones[name], text),
+    tone: (name, text) => name === "sep" || name === "accent" ? theme.fg(name === "sep" ? "statusLineSep" : "accent", text) : name === "muted" ? `${ESC}2m${text}${ESC}22m` : truecolor(tones[name], text),
+    timelineChip: (tone, text) => truecolorFill(TIMELINE_FILLS[theme.isLight ? "light" : "dark"][tone], ` ${truecolor(tone === "muted" ? theme.isLight ? "#595959" : "#bdbdbd" : tones[tone], text)} `),
+    timelineRow: (text, alternate) => alternate ? truecolorFill(theme.isLight ? "#f4f4f4" : "#242424", text) : text,
     banner: (tone, part, text) => part === "line" ? truecolor(tints[tone].line, text) : truecolorFill(tints[tone].fill, text),
     ...link ? { link } : {}
   };

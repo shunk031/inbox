@@ -4,6 +4,8 @@ import type { On } from 'claude-code'
 import type { TabsProps } from '../hooks/tabs-client'
 import { prMarkId } from '../hooks/pr-rows'
 import { applyPrPress } from '../hooks/pr-tab'
+import { taskOwnerKey } from '../hooks/task-facts'
+import { cellWidth } from '../hooks/text'
 import type { Session } from '../types'
 import { w, world } from './hooks-world'
 import { PANE } from './hooks-helpers'
@@ -73,9 +75,11 @@ async function showsGheTimelineLink($: Engine, on: On, surface: 'terminal' | 'de
     await pane.press({ key: 'tab-key-timeline' })
   }
   await clock.settle()
+  await pane.press({ key: 'timeline-title-ghe' })
+  await clock.settle()
 
   const buttons = await pane.findAll({ type: 'Button' })
-  expect((await pane.findAll({ type: 'Text' })).some(line => line.text.includes('Links ·'))).toBe(true)
+  expect((await pane.findAll({ type: 'Text' })).some(line => line.text.includes('Links'))).toBe(true)
   expect(buttons.filter(button => button.props.label === 'Opening…')).toHaveLength(2)
   expect((await pane.findAll({ type: 'Text' })).filter(line => line.text === '✓ Opened')).toHaveLength(0)
 
@@ -97,6 +101,7 @@ test('the Timeline selection and folds upgrade to defaults in an older save', as
   world($, on, [])
   let selection: unknown
   let folded: unknown
+  let detailOpen: unknown
   on('state.set', { plugin: 'inbox', key: 'timelineSelection' } as const, (_$, event, next) => {
     selection = event.value
     return next(event)
@@ -105,11 +110,15 @@ test('the Timeline selection and folds upgrade to defaults in an older save', as
     folded = event.value
     return next(event)
   })
-
+  on('state.set', { plugin: 'inbox', key: 'timelineDetailOpen' } as const, (_$, event, next) => {
+    detailOpen = event.value
+    return next(event)
+  })
   await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
 
   expect(selection).toBe(null)
   expect(folded).toEqual([])
+  expect(detailOpen).toBe(false)
 })
 
 test('the next-build pane draws Timeline with its saved selection and folded branch', async ($, on) => {
@@ -149,20 +158,14 @@ test('the next-build pane draws Timeline with its saved selection and folded bra
     'Timeline tab',
   ).toBe(true)
   expect(text, 'the saved selection row').toContain('Other')
-  expect(text, 'the saved selection marker').toContain('> · ')
+  expect(text, 'the saved selection marker').toContain('> ○ ')
   expect(text, 'the saved folded branch').not.toContain('Child')
 })
 
-test('Timeline puts the selected row actions in the footer without offering Select for it', async ($, on) => {
+test('Timeline opens a selected task detail and returns to the selected tree row', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   world($, on, [])
   w.files = ['/.next-build']
-  on('state.get', { plugin: 'inbox', key: 'timelineSelection' } as const, () => {
-    return { value: { value: 'plan', version: 1 } as never }
-  })
-  on('state.get', { plugin: 'inbox', key: 'timelineFolded' } as const, () => {
-    return { value: { value: [], version: 1 } as never }
-  })
 
   await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
   await $.tool.call({
@@ -185,19 +188,174 @@ test('Timeline puts the selected row actions in the footer without offering Sele
   await clock.settle()
 
   const buttons = (await pane.findAll({ type: 'Button' })).map(button => button.props)
-  expect(buttons.some(button => button.label === 'Close branch' && button.hotkey === 'h')).toBe(true)
+  expect(
+    buttons.some(button => button.label === 'Close branch' && button.hotkey === 'h'),
+    'branch action is available',
+  ).toBe(true)
   expect(buttons.some(button => button.label === 'Select')).toBe(false)
   const text = (await pane.findAll({ type: 'Text' })).map(node => node.text)
   expect(text).toContain('A flow 21%')
-  expect(text.some(line => line.includes('Detail · Build the review flow'))).toBe(true)
-  expect(text).toContain('  │  Detail · Build the review flow')
-  expect(text).toContain('  └─ · ')
-  expect(text.some(line => line.includes('Updated · '))).toBe(true)
-  expect(text.some(line => line.includes('Note · Keep the row short'))).toBe(true)
-  expect(text.some(line => line.includes('History · '))).toBe(true)
+  expect(text.some(line => line.includes('Build the review flow'))).toBe(false)
+  expect(
+    text.some(line => line.includes('Not started')),
+    'the status is visible in the tree',
+  ).toBe(true)
+
+  expect((await pane.find({ key: 'timeline-title-plan' }))?.props.autoFocus).toBe(true)
+  await pane.press({ key: 'timeline-title-plan' })
+  await clock.settle()
+  let detail = (await pane.findAll({ type: 'Text' })).map(node => node.text)
+  expect(detail, 'the detail view includes the task detail').toContain('Build the review flow')
+  expect(detail).toContain('Keep the row short')
+  expect(detail.some(line => line.includes('Task created'))).toBe(true)
+  expect(detail).toContain('Weight')
+  expect(detail).toContain('Completed units')
+
+  await pane.press({ key: 'timeline-back' })
+  await clock.settle()
+  detail = (await pane.findAll({ type: 'Text' })).map(node => node.text)
+  expect(detail).toContain('A flow 21%')
+  expect(detail).not.toContain('Build the review flow')
+  expect((await pane.findAll({ type: 'Button' })).some(button => button.props.label === 'Close branch')).toBe(true)
 })
 
-test('the desktop Timeline draws every planned row action as one button per action', async ($, on) => {
+test('terminal Timeline keeps Japanese titles, row metadata and detail guides at a narrow dock width', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  world($, on, [])
+  w.files = ['/.next-build']
+  const longTitle = '長い日本語のタスクタイトルが狭い端末幅でも状態や進捗率を押し出さないことを確認する'.repeat(2)
+  const longDetail = '長い日本語の詳細が折り返されても親のツリーガイドの内側から揃うことを確認する。'.repeat(3)
+
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  await $.tool.call({
+    tool: 'mcp__inbox__tasks',
+    operation: 'add',
+    task_id: 'long-root',
+    title: longTitle,
+    status: 'queued',
+  })
+  await $.tool.call({
+    tool: 'mcp__inbox__tasks',
+    operation: 'add',
+    task_id: 'child-a',
+    parent_id: 'long-root',
+    title: '子タスクの詳細を幅の狭い端末で確認する',
+    detail: longDetail,
+    status: 'working',
+  })
+  await $.tool.call({
+    tool: 'mcp__inbox__tasks',
+    operation: 'add',
+    task_id: 'child-b',
+    parent_id: 'long-root',
+    title: '二つ目の子タスク',
+    status: 'queued',
+  })
+
+  const pane = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 42 } })
+  await pane.press({ key: 'tab-key-timeline' })
+  await clock.settle()
+
+  const title = await pane.find({ key: 'timeline-title-long-root' })
+  expect(title?.text.endsWith('…'), 'the long title is truncated with an ellipsis').toBe(true)
+  expect(title?.text).not.toContain(longTitle)
+  expect(cellWidth(title?.text ?? '')).toBeGreaterThanOrEqual(20)
+  expect(cellWidth(title?.text ?? '')).toBeLessThanOrEqual(30)
+  expect(
+    await pane.find({ key: 'timeline-row-bar-long-root' }),
+    'the bar is dropped to preserve title width',
+  ).not.toBeTruthy()
+  const lines = (await pane.findAll({ type: 'Text' })).map(line => line.text)
+  expect(
+    lines.some(line => line.startsWith('> ○ ')),
+    'the mark and tree prefix stay on the title line',
+  ).toBe(true)
+  expect(lines, 'the status chip keeps its label').toContain('Not started')
+  expect(
+    lines.some(line => line.trim() === '0.00%'),
+    'the row percentage keeps every character',
+  ).toBe(true)
+  expect((await pane.find({ key: 'timeline-progress-bar' }))?.props.flexDirection).toBe('row')
+
+  await pane.press({ key: 'timeline-title-child-a' })
+  await clock.settle()
+  const detailRow = await pane.find({ key: 'timeline-detail-row-0' })
+  const lead = await pane.find({ key: 'timeline-detail-lead-0' })
+  expect(lead?.text.includes('│')).toBe(true)
+  expect(lead?.props.flexShrink).toBe(0)
+  expect(typeof lead?.props.width).toBe('number')
+  expect(
+    detailRow?.children.some(child => typeof child === 'object' && (child as { type?: string }).type === 'Box'),
+  ).toBe(true)
+  expect((await pane.findAll({ type: 'Text' })).some(line => line.text === longDetail)).toBe(true)
+})
+
+test('terminal Timeline shows stalled and owner or PR warnings under their task rows', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  world($, on, [])
+  w.files = ['/.next-build']
+  const owner = { machine: 'local', agent: 'worker-1' }
+  const ownerKey = taskOwnerKey(owner)
+  const pr = 'https://github.com/example/project/pull/12'
+  on('state.set', { plugin: 'inbox', key: 'session' } as const, (_$, event, next) => {
+    const session = event.value as Session & { revision: number }
+    const taskTree = session.taskTree.map(task =>
+      task.id === 'owner-task' ? { ...task, links: { ...task.links, owner } } : task,
+    )
+    return next({
+      ...event,
+      value: {
+        ...session,
+        taskTree,
+        taskOwnerFacts: { ...session.taskOwnerFacts, [ownerKey]: { state: 'done', since: 940_000 } },
+        taskFactWarnings: [
+          ...session.taskFactWarnings,
+          { taskId: 'pr-task', pr, message: 'PR merged, task still open' as const },
+        ],
+      },
+    })
+  })
+
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  await $.tool.call({
+    tool: 'mcp__inbox__tasks',
+    operation: 'add',
+    task_id: 'owner-task',
+    title: 'Owner task',
+    status: 'working',
+  })
+  await $.tool.call({
+    tool: 'mcp__inbox__tasks',
+    operation: 'add',
+    task_id: 'pr-task',
+    title: 'Task with merged PR',
+    status: 'working',
+  })
+
+  const pane = await $.ui.mount(PANE)
+  await pane.press({ key: 'tab-key-timeline' })
+  await clock.settle()
+
+  const rows = await pane.findAll({ type: 'Text' })
+  expect(
+    rows.some(line => line.text === 'Stalled'),
+    'the stalled chip remains visible',
+  ).toBe(true)
+  expect(
+    rows.some(line => line.text.includes('✕')),
+    'the stalled mark remains on the task title line',
+  ).toBe(true)
+  expect(
+    rows.some(line => line.text.includes('⚠ Owner finished, task open')),
+    'the owner warning is under its task row',
+  ).toBe(true)
+  expect(
+    rows.some(line => line.text.includes('⚠ PR merged, task still open')),
+    'the PR warning is under its task row',
+  ).toBe(true)
+})
+
+test('the desktop Timeline keeps the existing inline tree while this look is pending', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   world($, on, [])
   w.files = ['/.next-build']
@@ -234,18 +392,15 @@ test('the desktop Timeline draws every planned row action as one button per acti
   await pane.pointer({ type: 'down', x: timelineAt, y: 1, button: 'left', in: 'tabs' })
   await clock.settle()
 
-  const plannedButtons = async () =>
-    (await pane.findAll({ type: 'Button' })).filter(
-      button => button.key === 'toggle-branch' || button.key?.startsWith('timeline-select-'),
-    )
-  let buttons = await plannedButtons()
-  expect(buttons.map(button => [button.key, button.props.label, button.props.plain])).toEqual([
-    ['timeline-select-branch', 'branch', true],
-    ['timeline-select-leaf', 'leaf', true],
-    ['toggle-branch', 'Close branch', true],
-  ])
+  const buttons = await pane.findAll({ type: 'Button' })
+  expect(buttons.some(button => button.key === 'detail')).toBe(false)
+  expect(buttons.some(button => button.key === 'toggle-branch' && button.props.label === 'Close branch')).toBe(true)
+  expect(
+    (await pane.findAll({ type: 'Button' })).filter(button => button.key?.startsWith('timeline-title-')),
+  ).toHaveLength(3)
   const text = (await pane.findAll({ type: 'Text' })).map(node => node.text)
-  expect(text).toContain('  │  Updated · now')
+  expect(text.some(line => line.includes('Task plan'))).toBe(true)
+  expect(text).not.toContain('Progress')
 })
 
 test('the terminal Timeline shows Opening and Opened for GitHub Enterprise PR and issue links', async ($, on) => {

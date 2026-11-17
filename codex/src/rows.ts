@@ -25,7 +25,13 @@ export function timelineRowForm(row: TimelineRow, visibleRow: TimelineRow = row)
 }
 
 export function timelinePageOf(view: TabView) {
-  return timelinePage(view.timeline, tabState.timelineSelection, [...timelineFolded], view.lastActions)
+  return timelinePage(
+    view.timeline,
+    tabState.timelineSelection,
+    [...timelineFolded],
+    view.lastActions,
+    tabState.timelineDetailOpen,
+  )
 }
 
 export function stepTimelineRows(view: TabView): Set<string> {
@@ -74,6 +80,22 @@ export function forgetTimelineRows() {
 export function selectTimelineRow(id: string) {
   tabState.timelineSelection = id
   tabState.draw()
+}
+
+export function openTimelineDetail(id: string) {
+  tabState.timelineScrollTop = document.scrollingElement?.scrollTop ?? window.scrollY
+  tabState.timelineSelection = id
+  tabState.timelineDetailOpen = true
+  tabState.draw()
+}
+
+export function closeTimelineDetail() {
+  tabState.timelineDetailOpen = false
+  tabState.draw()
+  requestAnimationFrame(() => {
+    if (document.scrollingElement) document.scrollingElement.scrollTop = tabState.timelineScrollTop
+    window.scrollTo(0, tabState.timelineScrollTop)
+  })
 }
 
 export function toggleTimelineFold(view: TabView, id: string) {

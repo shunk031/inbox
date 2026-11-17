@@ -125,6 +125,8 @@ export type Kept = {
   statusUnfolded?: string[]
   timelineSelection?: string | null
   timelineFolded?: string[]
+  timelineDetailOpen?: boolean
+  timelineScrollTop?: number
 }
 export type CandidatePage = {
   initialize: () => Promise<boolean>
@@ -169,6 +171,8 @@ class TabState {
   readAt = 0
   tab: ShownTab = 'needsYou'
   timelineSelection: string | null = null
+  timelineDetailOpen = false
+  timelineScrollTop = 0
   /** When this page began showing `tab`. A row that closes since then stays in place no longer than that, as `isSettledInPlace` says. */
   shownSince = Date.now()
   /** Whether Help shows in place of the tab's body. Switching tabs closes it. */

@@ -94,6 +94,7 @@ export type PaneBase = {
   statusUnfolded: string[]
   timelineSelection: string | null
   timelineFolded: string[]
+  timelineDetailOpen: boolean
   foldHover: string | null
   isHelpShown: boolean
   optionsShown: string[]
@@ -142,6 +143,8 @@ export type PaneHandlers = {
   startTyping: (id: string, seed?: string) => Promise<void>
   selectStatusRow: (id: string, focusKey?: string) => Promise<void>
   selectTimelineRow: (id: string) => Promise<unknown>
+  openTimelineDetail: (id: string) => Promise<unknown>
+  closeTimelineDetail: () => Promise<unknown>
   sendTyped: (id: string, text: string, surface: UiPressArgument['surface']) => Promise<void>
   select: (tab: Tab, id: string, index: number) => Promise<void>
   showTab: (tab: ShownTab) => Promise<void>

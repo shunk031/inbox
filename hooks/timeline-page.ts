@@ -7,8 +7,14 @@ import type { CurrentTaskText } from './task-text'
 import type { PrAction } from './pr-press'
 import type { ActionView } from './rows'
 
-type TimelineBarPart = { state: keyof Omit<TaskProgressSegments, 'total'>; mark: string; count: number }
-type TimelineBar = { id: string; label: string; parts: TimelineBarPart[] }
+type TimelineState = 'done' | 'working' | 'stalled' | 'waiting' | 'queued' | 'dropped'
+type TimelineTone = 'done' | 'key' | 'error' | 'muted'
+type TimelineBarPart = {
+  state: keyof Omit<TaskProgressSegments, 'total'>
+  mark: string
+  count: number
+  tone: TimelineTone
+}
 type TimelineHistoryEvent = Omit<TaskHistoryEvent, 'at'> & { time: string }
 type TimelineTask = Omit<TaskNode, 'createdAt' | 'updatedAt' | 'history'> & {
   updatedAgo: string
@@ -16,13 +22,14 @@ type TimelineTask = Omit<TaskNode, 'createdAt' | 'updatedAt' | 'history'> & {
   history: TimelineHistoryEvent[]
 }
 type TimelineRowAction = Pick<ActionView, 'label' | 'hotkey' | 'kind' | 'emphasis'> & {
-  action: 'select' | 'toggle-branch'
+  action: 'select' | 'detail' | 'toggle-branch' | 'back'
   id: string
 }
 type TimelineLinkAction = PrAction & { result: LastAction['result'] | null }
 type TimelineDetailLine =
   | { label: 'Current' | 'Detail' | 'Updated' | 'Note' | 'History'; text: string }
   | { label: 'Links'; actions: TimelineLinkAction[] }
+type TimelineStats = { progress: string; weight: string; completedUnits: string }
 type TimelineNode = {
   task: TimelineTask
   depth: number
@@ -33,27 +40,59 @@ type TimelineNode = {
   hasChildren: boolean
   hasVisibleChildren: boolean
   progress: number
-  measure: string
-  status: string
+  percent: string
+  progressBar: TimelineBarPart[]
+  completedUnits: { done: number; total: number }
+  status: TimelineState
   statusLabel: string
-  stalledAge: string | null
+  tone: TimelineTone
+  mark: string
+  alternate: boolean
   warnings: string[]
   actions: TimelineRowAction[]
 }
-type TimelineBase = { isEmpty: boolean; empty: { title: string; hint: string }; summary: string; bars: TimelineBar[] }
+type TimelineProgressCard = {
+  status: TimelineState
+  statusLabel: string
+  tone: TimelineTone
+  percent: number
+  percentLabel: string
+  leavesDone: number
+  leavesTotal: number
+  elapsed: string
+  bar: TimelineBarPart[]
+}
+type TimelineBase = {
+  isEmpty: boolean
+  empty: { title: string; hint: string }
+  progressCard: TimelineProgressCard
+}
 type TimelineDataRow = Omit<TimelineNode, 'actions' | 'detailLead' | 'hasVisibleChildren'>
 export type TimelineData = TimelineBase & { rows: TimelineDataRow[] }
 export type TimelinePage = TimelineBase & {
+  mode: 'tree' | 'detail'
   rows: TimelineNode[]
-  selected: { row: TimelineNode; details: TimelineDetailLine[]; links: TimelineLinkAction[] } | null
+  selected: {
+    row: TimelineNode
+    stats: TimelineStats
+    details: TimelineDetailLine[]
+    links: TimelineLinkAction[]
+  } | null
 }
 
 const BAR_MARKS: Record<TimelineBarPart['state'], string> = {
-  done: '■',
-  working: '●',
-  stalled: '!',
-  waiting: '◌',
-  queued: '·',
+  done: '━',
+  working: '━',
+  stalled: '━',
+  waiting: '━',
+  queued: '─',
+}
+const BAR_TONES: Record<TimelineBarPart['state'], TimelineTone> = {
+  done: 'done',
+  working: 'key',
+  stalled: 'error',
+  waiting: 'error',
+  queued: 'muted',
 }
 const BAR_STATES = Object.keys(BAR_MARKS) as TimelineBarPart['state'][]
 const HISTORY_TEXT: Record<TaskHistoryEvent['kind'], string> = {
@@ -77,18 +116,76 @@ function timelineTask(task: TaskNode, now: number): TimelineTask {
   }
 }
 
-function timelineBar(segments: TaskProgressSegments, id: string, label: string, width = 16): TimelineBar {
-  if (segments.total <= 0) return { id, label, parts: [] }
+function percent(value: number): { value: number; label: string } {
+  const rounded = Math.round(value * 10000) / 100
+  return { value: rounded, label: `${rounded.toFixed(2)}%` }
+}
+
+function timelineBar(segments: TaskProgressSegments, width: number): TimelineBarPart[] {
+  if (segments.total <= 0) return []
   let cumulative = 0
   let drawn = 0
-  const parts = BAR_STATES.flatMap(state => {
+  return BAR_STATES.flatMap(state => {
     cumulative += segments[state]
     const end = Math.round((cumulative / segments.total) * width)
     const count = Math.max(0, end - drawn)
     drawn = end
-    return count > 0 ? [{ state, mark: BAR_MARKS[state], count }] : []
+    return count > 0 ? [{ state, mark: BAR_MARKS[state], count, tone: BAR_TONES[state] }] : []
   })
-  return { id, label, parts }
+}
+
+function taskStatus(task: TaskNode, stalled: ReadonlySet<string>): TimelineState {
+  if (stalled.has(task.id)) return 'stalled'
+  if (task.status === 'done' || task.status === 'dropped') return task.status
+  return task.status === 'working' ? 'working' : task.status === 'waits-on-other' ? 'waiting' : 'queued'
+}
+
+function statusPresentation(status: TimelineState): { label: string; tone: TimelineTone; mark: string } {
+  switch (status) {
+    case 'done':
+      return { label: 'Completed', tone: 'done', mark: '●' }
+    case 'working':
+      return { label: 'In progress', tone: 'key', mark: '◐' }
+    case 'waiting':
+      return { label: 'Waiting', tone: 'error', mark: '✕' }
+    case 'stalled':
+      return { label: 'Stalled', tone: 'error', mark: '✕' }
+    case 'dropped':
+      return { label: 'Dropped', tone: 'muted', mark: '○' }
+    default:
+      return { label: 'Not started', tone: 'muted', mark: '○' }
+  }
+}
+
+function completedLeaves(tree: TaskTree, rootIds?: string | readonly string[]): { done: number; total: number } {
+  const children = new Map<string | null, TaskNode[]>()
+  for (const task of tree) children.set(task.parentId, [...(children.get(task.parentId) ?? []), task])
+  const count = { done: 0, total: 0 }
+  const visit = (task: TaskNode, isDone: boolean) => {
+    if (task.status === 'dropped') return
+    const done = isDone || task.status === 'done'
+    const activeChildren = (children.get(task.id) ?? []).filter(child => child.status !== 'dropped')
+    if (activeChildren.length === 0) {
+      count.total++
+      if (done) count.done++
+      return
+    }
+    for (const child of activeChildren) visit(child, done)
+  }
+  const roots =
+    rootIds === undefined
+      ? (children.get(null) ?? [])
+      : tree.filter(task => (Array.isArray(rootIds) ? rootIds.includes(task.id) : task.id === rootIds))
+  for (const root of roots) visit(root, false)
+  return count
+}
+
+function progressStatus(segments: TaskProgressSegments): TimelineState {
+  if (segments.stalled > 0) return 'stalled'
+  if (segments.working > 0 || (segments.done > 0 && segments.done < segments.total)) return 'working'
+  if (segments.waiting > 0) return 'waiting'
+  if (segments.total > 0 && segments.done >= segments.total) return 'done'
+  return 'queued'
 }
 
 export function timelineData(
@@ -107,10 +204,10 @@ export function timelineData(
       const childrenOfTask = children.get(task.id) ?? []
       const hasLaterSibling = index < siblings.length - 1
       const connector = depth === 0 ? '' : hasLaterSibling ? '├─ ' : '└─ '
-      const stalledAt = stalledSince[task.id]
-      const status = stalledAt === undefined ? task.status : 'stalled'
-      const progress = Math.round(weightedTaskProgress(tree, task.id) * 100)
-      const current = currentTaskText(task)
+      const status = taskStatus(task, stalled)
+      const presentation = statusPresentation(status)
+      const progress = percent(weightedTaskProgress(tree, task.id))
+      const completedUnits = completedLeaves(tree, task.id)
       rows.push({
         task: timelineTask(task, now),
         depth,
@@ -118,16 +215,15 @@ export function timelineData(
         prefix: `${guides.join('')}${connector}`,
         hasLaterSibling,
         hasChildren: childrenOfTask.length > 0,
-        progress,
-        measure: `${childrenOfTask.length ? `${progress}%` : `w${task.weight}`}${current ? ` · ${current.text}` : ''}`,
+        progress: progress.value,
+        percent: progress.label,
+        progressBar: timelineBar(weightedTaskProgressSegments(tree, stalled, task.id), 10),
+        completedUnits,
         status,
-        statusLabel:
-          stalledAt !== undefined
-            ? `stalled ${shortAgo(now - stalledAt)}`
-            : status === 'waits-on-other'
-              ? 'waiting on others'
-              : status,
-        stalledAge: stalledAt === undefined ? null : shortAgo(now - stalledAt),
+        statusLabel: presentation.label,
+        tone: presentation.tone,
+        mark: presentation.mark,
+        alternate: rows.length % 2 === 1,
         warnings: warnings.filter(warning => warning.taskId === task.id).map(warning => warning.message),
       })
       visit(childrenOfTask, depth + 1, depth === 0 ? guides : [...guides, hasLaterSibling ? '│  ' : '   '])
@@ -135,25 +231,30 @@ export function timelineData(
   }
   visit(children.get(null) ?? [], 0, [])
 
-  const roots = children.get(null) ?? []
-  const streams = new Set(roots.flatMap(task => (task.streamId ? [task.streamId] : [])))
-  const summary =
-    streams.size > 1
-      ? `${streams.size} streams`
-      : segments.total > 0
-        ? `${Math.round((segments.done / segments.total) * 100)}% complete · ${Number(segments.done.toFixed(1))}/${Number(segments.total.toFixed(1))} weight`
-        : 'no tasks yet'
-  const bars = [timelineBar(segments, 'tree', 'Task plan')]
-  if (streams.size > 1)
-    for (const root of roots)
-      bars.push(timelineBar(weightedTaskProgressSegments(tree, stalled, root.id), root.id, root.title))
+  const overall = percent(weightedTaskProgress(tree))
+  const state = progressStatus(segments)
+  const presentation = statusPresentation(state)
+  const leaves = completedLeaves(tree)
+  const firstCreated = tree.reduce<number | null>(
+    (first, task) => (first === null ? task.createdAt : Math.min(first, task.createdAt)),
+    null,
+  )
 
   return {
     isEmpty: tree.length === 0,
     empty: { title: 'Timeline', hint: 'No tasks have been recorded for this session.' },
-    summary,
+    progressCard: {
+      status: state,
+      statusLabel: presentation.label,
+      tone: presentation.tone,
+      percent: overall.value,
+      percentLabel: overall.label,
+      leavesDone: leaves.done,
+      leavesTotal: leaves.total,
+      elapsed: firstCreated === null ? '—' : shortAgo(now - firstCreated),
+      bar: timelineBar(segments, 28),
+    },
     rows,
-    bars,
   }
 }
 
@@ -184,6 +285,7 @@ export function timelinePage(
   selectedId: string | null,
   folded: readonly string[],
   lastActions: Record<string, LastAction> = {},
+  isDetailOpen = false,
 ): TimelinePage {
   const nodes = new Map(data.rows.map(row => [row.task.id, row]))
   const foldedIds = new Set(folded)
@@ -212,33 +314,55 @@ export function timelinePage(
   }
   selected ??= rows[0]
   const drawnRows = rows.map(row => {
+    const isSelected = row.task.id === selected?.task.id
     const isFolded = foldedIds.has(row.task.id)
-    const actions: TimelineRowAction[] = [
-      ...(row.task.id !== selected?.task.id
+    const actions: TimelineRowAction[] =
+      isDetailOpen && isSelected
         ? [
             {
-              action: 'select' as const,
+              action: 'back',
               id: row.task.id,
-              label: 'Select',
-              hotkey: 'enter',
-              kind: 'view' as const,
-              emphasis: 'normal' as const,
+              label: 'Back to timeline',
+              hotkey: 'b',
+              kind: 'view',
+              emphasis: 'normal',
             },
           ]
-        : []),
-      ...(row.task.id === selected?.task.id && row.hasChildren
-        ? [
-            {
-              action: 'toggle-branch' as const,
-              id: row.task.id,
-              label: isFolded ? 'Open branch' : 'Close branch',
-              hotkey: isFolded ? 'l' : 'h',
-              kind: 'view' as const,
-              emphasis: 'quiet' as const,
-            },
+        : [
+            ...(isSelected
+              ? [
+                  {
+                    action: 'detail' as const,
+                    id: row.task.id,
+                    label: 'Open details',
+                    hotkey: 'enter',
+                    kind: 'view' as const,
+                    emphasis: 'normal' as const,
+                  },
+                ]
+              : [
+                  {
+                    action: 'select' as const,
+                    id: row.task.id,
+                    label: 'Select',
+                    hotkey: 'enter',
+                    kind: 'view' as const,
+                    emphasis: 'normal' as const,
+                  },
+                ]),
+            ...(isSelected && row.hasChildren
+              ? [
+                  {
+                    action: 'toggle-branch' as const,
+                    id: row.task.id,
+                    label: isFolded ? 'Open branch' : 'Close branch',
+                    hotkey: isFolded ? 'l' : 'h',
+                    kind: 'view' as const,
+                    emphasis: 'quiet' as const,
+                  },
+                ]
+              : []),
           ]
-        : []),
-    ]
     return { ...row, actions }
   })
   const selectedRow = selected ? drawnRows.find(row => row.task.id === selected!.task.id)! : null
@@ -254,7 +378,6 @@ export function timelinePage(
             ]
           : []),
         ...(selectedRow.task.detail ? [{ label: 'Detail' as const, text: selectedRow.task.detail }] : []),
-        { label: 'Updated', text: selectedRow.task.updatedAgo },
         ...selectedRow.task.notes.map(text => ({ label: 'Note' as const, text })),
         ...selectedRow.task.history.map(event => ({
           label: 'History' as const,
@@ -263,11 +386,22 @@ export function timelinePage(
         ...(selectedLinks.length ? [{ label: 'Links' as const, actions: selectedLinks }] : []),
       ]
     : []
+  const taskProgress = selectedRow ? percent(selectedRow.progress / 100) : null
+  const units = selectedRow?.completedUnits ?? null
+  const stats =
+    selectedRow && taskProgress && units
+      ? {
+          progress: taskProgress.label,
+          weight: String(Number(selectedRow.task.weight.toFixed(1))),
+          completedUnits: `${units.done} / ${units.total}`,
+        }
+      : null
 
   return {
     ...data,
+    mode: isDetailOpen && selectedRow ? 'detail' : 'tree',
     rows: drawnRows,
-    selected: selectedRow ? { row: selectedRow, details, links: selectedLinks } : null,
+    selected: selectedRow && stats ? { row: selectedRow, stats, details, links: selectedLinks } : null,
   }
 }
 
