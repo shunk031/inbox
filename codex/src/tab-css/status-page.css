@@ -8,9 +8,18 @@
   padding-bottom: var(--status-row-pad);
 }
 .timeline-page .timeline-detail {
-  grid-column: 2 / -1;
-  padding: 4px 14px 8px var(--text-x);
+  grid-column: 1 / -1;
+  padding: 4px 14px 8px 0;
   overflow-wrap: anywhere;
+}
+.timeline-page .timeline-node {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.timeline-page .timeline-node > .content {
+  grid-column: 1 / -1;
+}
+.timeline-page .timeline-tree-prefix {
+  white-space: pre;
 }
 .status-page .mark {
   text-align: left;

@@ -47,15 +47,15 @@ test('Timeline draws the shared empty state, task details and planned buttons, a
   expect(detailPositions).toEqual([...detailPositions].sort((left, right) => left - right))
   expect(detailed).not.toContain('Updated 1m')
   const drawnRows = strip(detailed)
-  const detailRows = drawnRows.split('\n').filter(line => /└─ (Detail|Updated|Note|History|Links) ·/.test(line))
+  const detailRows = drawnRows.split('\n').filter(line => /│  (Detail|Updated|Note|History|Links) ·/.test(line))
   expect(detailRows.slice(0, 4).map(line => line.trimStart())).toEqual([
-    '└─ Detail · Keep the task-tree view compact.',
-    '└─ Updated · 1m',
-    '└─ Note · Preserve the title.',
-    '└─ History · 1m · agent · Added the panel view.',
+    '│  Detail · Keep the task-tree view compact.',
+    '│  Updated · 1m',
+    '│  Note · Preserve the title.',
+    '│  History · 1m · agent · Added the panel view.',
   ])
   const linksLine = detailRows.at(-1)!
-  expect(linksLine.trimStart()).toContain('└─ Links ·')
+  expect(linksLine.trimStart()).toContain('│  Links ·')
   expect(linksLine.indexOf('Open PR')).toBeLessThan(linksLine.indexOf('Open issue'))
   expect(drawnRows.split('\n').filter(line => line.includes('Open PR'))).toHaveLength(1)
   expect(drawnRows.split('\n').filter(line => line.includes('Open issue'))).toHaveLength(1)
@@ -73,7 +73,7 @@ test('Timeline draws the shared empty state, task details and planned buttons, a
   expect(shown).toContain('├─ ✓ Read the design')
   expect(shown).toContain('└─ · Draw the panel')
   const narrowRows = strip(shown).split('\n')
-  const narrowLinks = narrowRows.find(line => line.includes('└─ Links ·'))!
+  const narrowLinks = narrowRows.find(line => line.includes('Links ·'))!
   expect(narrowLinks.indexOf('Open PR')).toBeLessThan(narrowLinks.indexOf('Open issue'))
   expect(narrowRows.every(line => line.length <= 42)).toBe(true)
 

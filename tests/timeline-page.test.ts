@@ -157,6 +157,39 @@ test('folding a selected parent hides its children and keeps the parent selected
   expect(page.selected?.row.task.id).toBe('root')
 })
 
+test('Timeline plans joined guides through deep branches and aligns both detail examples', () => {
+  const tree = [
+    task('root', { detail: 'Coordinate the review.' }),
+    task('first', { parentId: 'root', status: 'done', detail: 'Draw the task plan header.' }),
+    task('middle', { parentId: 'root', status: 'working', detail: '選択した項目を復元する。' }),
+    task('leaf-one', { parentId: 'middle', status: 'done' }),
+    task('leaf-two', { parentId: 'middle', status: 'queued' }),
+    task('last', { parentId: 'root', status: 'queued' }),
+  ]
+  const data = timelineData(tree, segments, {}, [], now)
+  const root = timelinePage(data, 'root', [])
+  const child = timelinePage(data, 'first', [])
+
+  expect(root.rows.map(row => [row.task.id, row.guides, row.prefix])).toEqual([
+    ['root', [], ''],
+    ['first', [], '├─ '],
+    ['middle', [], '├─ '],
+    ['leaf-one', ['│  '], '│  ├─ '],
+    ['leaf-two', ['│  '], '│  └─ '],
+    ['last', [], '└─ '],
+  ])
+  expect(child.rows.map(row => [row.task.id, row.prefix])).toEqual(root.rows.map(row => [row.task.id, row.prefix]))
+  expect(root.selected?.row.detailLead).toBe('  │  ')
+  expect(child.selected?.row.detailLead).toBe('  │     ')
+  expect(timelinePage(data, 'middle', []).selected?.row.detailLead).toBe('  │  │  ')
+  expect(timelinePage(data, 'root', ['middle']).rows.map(row => [row.task.id, row.detailLead])).toEqual([
+    ['root', '  │  '],
+    ['first', '  │     '],
+    ['middle', '  │     '],
+    ['last', '        '],
+  ])
+})
+
 test('Timeline offers Select only for unselected rows and keeps planned action order', () => {
   const tree = [task('root'), task('branch', { parentId: 'root' }), task('leaf', { parentId: 'branch' })]
   const page = timelinePage(timelineData(tree, segments, {}, [], now), 'root', [])
