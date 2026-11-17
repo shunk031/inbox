@@ -148,6 +148,23 @@ describe('task-tree projection', () => {
     expect(imported.find(task => task.id === 'new-working')?.status).toBe('working')
   })
 
+  test('keeps non-empty task text when an imported entry has different text', () => {
+    const tree = [node('existing', 'working', { detail: 'Current tree text' })]
+    const imported = mergeProjectedTasks(
+      tree,
+      taskFeed({
+        key: 'existing',
+        kind: 'task',
+        state: 'blocked',
+        title: 'Feed title',
+        detail: 'Older feed text',
+        at: 10,
+      }),
+    )
+
+    expect(imported[0]).toMatchObject({ status: 'working', detail: 'Current tree text' })
+  })
+
   test('writes an adjacent temporary file before renaming it into place', async () => {
     const calls: string[] = []
     await writeProjectionAtomically('/feed/meta-open-items.json', '{snapshot}', {

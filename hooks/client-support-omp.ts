@@ -122,7 +122,11 @@ export const OMP_SUPPORT: ClientSupport['support'] = {
   'task-owner-facts': { kind: 'full' },
   'task-reminder': { kind: 'full' },
   'task-tree-currentness': { kind: 'full' },
-  'task-tree-projection': { kind: 'full' },
+  'task-tree-projection': {
+    kind: 'unsupported',
+    reason:
+      'Only the meta root session on Claude Code writes the task-tree projection; omp keeps its task tree and continues reading configured feeds.',
+  },
   'task-status-mismatch': { kind: 'full' },
   timeline: { kind: 'full' },
   'agents-tab': { kind: 'different', reason: 'Agents is not drawn in this look yet.' },

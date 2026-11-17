@@ -153,4 +153,48 @@ describe('the mod feed poller', () => {
     await poll('s1')
     expect([reads, ledger]).toEqual([0, EMPTY])
   })
+
+  test('skips a projected file through relative and symlinked paths', async () => {
+    const linked = '/tmp/feed/linked'
+    const text = JSON.stringify({
+      version: 1,
+      source: 'meta-open-items',
+      writtenAt: 1,
+      entries: [{ key: 'task-1', kind: 'task', state: 'working', title: 'Task', detail: 'Work', at: 1 }],
+    })
+    const resolvedPaths: string[] = []
+    const fs = [
+      async (path: string) => ({
+        kind: path === linked ? ('dir' as const) : ('file' as const),
+        isLink: false,
+        mtimeMs: 1,
+        size: text.length,
+      }),
+      async () => [{ name: 'meta-open-items.json' }],
+      async () => true,
+      async () => text,
+      async (path: string) => {
+        resolvedPaths.push(path)
+        return { realPath: '/tmp/feed/actual/meta-open-items.json' }
+      },
+    ] as const
+
+    for (const configured of [
+      '../../tmp/feed/actual/meta-open-items.json',
+      './../../tmp/feed/actual/meta-open-items.json',
+    ]) {
+      let ledger = EMPTY
+      const poll = feedPoll(
+        linked,
+        [...fs],
+        async () => 2,
+        async change => void (ledger = change(ledger)),
+        [configured],
+      )
+      await poll('meta')
+      expect(ledger.items).toEqual([])
+      expect(resolvedPaths).toContain(configured)
+      expect(resolvedPaths).toContain(`${linked}/meta-open-items.json`)
+    }
+  })
 })

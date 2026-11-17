@@ -168,6 +168,24 @@ function normalizedPath(path: string): string {
   return path.replace(/\\/g, '/').replace(/\/+$/, '')
 }
 
+/** Resolves configured and discovered paths before deciding which feed is the task projection. */
+export async function skippedFeedPaths(
+  files: FeedFile[],
+  skippedPaths: string[],
+  paths: { resolve(path: string): string | Promise<string>; realpath(path: string): Promise<string | null> },
+): Promise<string[]> {
+  if (skippedPaths.length === 0) return []
+  const canonical = async (path: string) => {
+    const absolute = await paths.resolve(path)
+    return (await paths.realpath(absolute).catch(() => null)) ?? absolute
+  }
+  const skipped = new Set(await Promise.all(skippedPaths.map(canonical)))
+  const aliases = new Set(skippedPaths.map(normalizedPath))
+  for (const path of skipped) aliases.add(normalizedPath(path))
+  for (const file of files) if (skipped.has(await canonical(file.path))) aliases.add(normalizedPath(file.path))
+  return [...aliases]
+}
+
 export function applyFeedFiles(
   ledger: Ledger,
   root: string,

@@ -84,8 +84,7 @@ import { prBlockRows, threadSentIn } from './pr-rows'
 import { prNeedsYou } from './prs'
 import { EMPTY, isBlankLedger } from './ledger'
 import { closeItem } from './ledger-close'
-import { FEED_POLL_MS } from './mod-feed'
-import { startModFeedForMod } from './mod-feed-start'
+import { FEED_POLL_MS, startModFeed } from './mod-feed'
 import { tasksRunBy } from './reply-parse'
 import { CLAUDE_CODE, guidedCloseDescription } from './model-text'
 import { tasksDescription } from './tool-descriptions'
@@ -2085,7 +2084,7 @@ async function readVersion($: EngineInterface) {
 }
 
 function startFeed($: EngineInterface) {
-  return startModFeedForMod(
+  return startModFeed(
     [
       $.env.get('INBOX_FEED'),
       $.env.get('HOME'),
@@ -2094,7 +2093,13 @@ function startFeed($: EngineInterface) {
       $.env.get('INBOX_TASK_PROJECTION_PATH'),
     ],
     processRun($),
-    [p => $.fs.stat(p), p => $.fs.list(p), p => $.fs.exists(p), p => $.fs.read(p)],
+    [
+      p => $.fs.stat(p),
+      p => $.fs.list(p),
+      p => $.fs.exists(p),
+      p => $.fs.read(p),
+      p => $.fs.stat(p, { resolve: true }),
+    ],
     () => $.clock.now(),
     update => commitLedger($, update, currentOwner()),
     () => $.session.id(),

@@ -102,13 +102,7 @@ export function panelCalls(context: HostContext, sessions: SessionCalls, herdrAs
         if (!feed) return
         const id = sessionIdOf(ctx)
         await change(id, s => {
-          const ledger = applyFeedFiles(
-            s.ledger,
-            feed.root,
-            feed.files,
-            deps.now(),
-            deps.taskProjectionPath ? [deps.taskProjectionPath] : [],
-          )
+          const ledger = applyFeedFiles(s.ledger, feed.root, feed.files, deps.now())
 
           return ledger === s.ledger ? s : { ...s, ledger }
         })

@@ -1,6 +1,9 @@
 // @bun
 // Built by omp/build.ts with Bun 1.4.4 from omp/src and hooks/. Do not edit.
 
+// src/host.ts
+import { randomUUID } from "crypto";
+
 // ../hooks/gh.ts
 var CANDIDATES = ["gh", "/opt/homebrew/bin/gh", "/usr/local/bin/gh"];
 var GH_TIMEOUT_MS = 20000;
@@ -1272,7 +1275,11 @@ function urlRef(json) {
 var GH_TIMED_OUT_TEXT = `gh did not answer within ${GH_TIMEOUT_MS / 1000} seconds`;
 
 // src/host.ts
+import { existsSync } from "fs";
 import { stat as stat6 } from "fs/promises";
+import { homedir as homedir2 } from "os";
+import { dirname as dirname3, join as join5 } from "path";
+import { fileURLToPath as fileURLToPath2 } from "url";
 // package.json
 var version = "0.4.0";
 
@@ -1889,6 +1896,22 @@ function applyFeed(ledger, feed, now, source = "") {
 }
 function normalizedPath(path) {
   return path.replace(/\\/g, "/").replace(/\/+$/, "");
+}
+async function skippedFeedPaths(files, skippedPaths, paths) {
+  if (skippedPaths.length === 0)
+    return [];
+  const canonical = async (path) => {
+    const absolute = await paths.resolve(path);
+    return await paths.realpath(absolute).catch(() => null) ?? absolute;
+  };
+  const skipped = new Set(await Promise.all(skippedPaths.map(canonical)));
+  const aliases = new Set(skippedPaths.map(normalizedPath));
+  for (const path of skipped)
+    aliases.add(normalizedPath(path));
+  for (const file of files)
+    if (skipped.has(await canonical(file.path)))
+      aliases.add(normalizedPath(file.path));
+  return [...aliases];
 }
 function applyFeedFiles(ledger, root, files, now, skippedPaths = []) {
   const skipped = new Set(skippedPaths.map(normalizedPath));
@@ -11808,7 +11831,10 @@ var OMP_SUPPORT = {
   "task-owner-facts": { kind: "full" },
   "task-reminder": { kind: "full" },
   "task-tree-currentness": { kind: "full" },
-  "task-tree-projection": { kind: "full" },
+  "task-tree-projection": {
+    kind: "unsupported",
+    reason: "Only the meta root session on Claude Code writes the task-tree projection; omp keeps its task tree and continues reading configured feeds."
+  },
   "task-status-mismatch": { kind: "full" },
   timeline: { kind: "full" },
   "agents-tab": { kind: "different", reason: "Agents is not drawn in this look yet." }
@@ -14305,184 +14331,25 @@ function ompHerdrAsk(target, memory, changed) {
 }
 
 // ../feed-reader.ts
-import { randomUUID } from "crypto";
-import { mkdir as mkdir3, readdir as readdir3, readFile as readFile3, rename as rename3, rmdir, stat as stat3, unlink as unlink2, writeFile as writeFile3 } from "fs/promises";
-import { dirname as dirname2, join as join3, resolve } from "path";
-
-// ../hooks/task-projection.ts
-var TASK_PROJECTION_VERSION = 1;
-var taskState = (status) => status === "done" || status === "dropped" ? "done" : status === "waits-on-other" ? "blocked" : "working";
-function projectedTaskEntries(tree) {
-  return tree.flatMap((task) => {
-    if (task.status === "done" || task.status === "dropped")
-      return [];
-    const current = currentTaskText(task);
-    return [
-      {
-        key: task.id,
-        kind: "task",
-        state: taskState(task.status),
-        title: task.title,
-        detail: current?.text ?? "",
-        at: current?.at ?? task.createdAt,
-        ...task.links?.owner ? { owner: { ...task.links.owner } } : {}
-      }
-    ];
-  });
-}
-function taskProjectionFeed(tree, now) {
-  return { version: 1, source: "meta-open-items", writtenAt: now, entries: projectedTaskEntries(tree) };
-}
-function importedStatus(state) {
-  return state === "done" ? "done" : state === "blocked" ? "waits-on-other" : state;
-}
-function mergeProjectedTasks(tree, feed) {
-  let next = tree;
-  for (const entry of feed.entries) {
-    const current = next.find((task) => task.id === entry.key);
-    if (current) {
-      const fillText = currentTaskText(current) === null && entry.detail !== "";
-      if ((!entry.owner || current.links?.owner) && !fillText)
-        continue;
-      next = next.map((task) => task.id === current.id ? {
-        ...task,
-        ...fillText ? {
-          detail: entry.detail,
-          updatedAt: Math.max(task.updatedAt, entry.at),
-          history: [
-            ...task.history.slice(-(TASK_HISTORY_LIMIT - 1)),
-            { at: entry.at, source: "meta-open-items", kind: "detail", detail: entry.detail }
-          ]
-        } : {},
-        links: { ...task.links, ...entry.owner && !task.links?.owner ? { owner: { ...entry.owner } } : {} }
-      } : task);
-      continue;
-    }
-    if (next.length >= TASK_NODE_LIMIT)
-      throw new Error("the task tree is full; the projection import was not saved");
-    const task = {
-      id: entry.key,
-      parentId: null,
-      status: importedStatus(entry.state),
-      weight: 1,
-      title: entry.title,
-      detail: entry.detail,
-      notes: [],
-      createdAt: entry.at,
-      updatedAt: entry.at,
-      history: [{ at: entry.at, source: "meta-open-items", kind: "imported", detail: entry.detail }],
-      ...entry.owner ? { links: { owner: { ...entry.owner } } } : {}
-    };
-    next = [...next, task];
-  }
-  return next;
-}
-function keepCurrentTasks(projected, current) {
-  const currentById = new Map(current.map((task) => [task.id, task]));
-  const kept = projected.map((task) => {
-    const latest = currentById.get(task.id);
-    if (!latest)
-      return task;
-    currentById.delete(task.id);
-    return {
-      ...task,
-      ...latest,
-      links: {
-        ...task.links,
-        ...latest.links,
-        ...!latest.links?.owner && task.links?.owner ? { owner: task.links.owner } : {}
-      }
-    };
-  });
-  return [...kept, ...current.filter((task) => currentById.has(task.id))];
-}
-function importedFeed(text) {
-  const feed = parseFeed(text);
-  if (!feed || feed.source !== "meta-open-items")
-    throw new Error("the projection file is not a valid meta-open-items feed");
-  return feed;
-}
-function createTaskProjection(files) {
-  const held = new Map;
-  const bySession = new Map;
-  const tails = new Map;
-  const ordered = (path, run) => {
-    const result = (tails.get(path) ?? Promise.resolve()).then(run);
-    const tail = result.catch(() => {
-      return;
-    });
-    tails.set(path, tail);
-    tail.then(() => {
-      if (tails.get(path) === tail)
-        tails.delete(path);
-    });
-    return result;
-  };
-  const releaseNow = async (sessionId) => {
-    const path = bySession.get(sessionId);
-    if (!path || held.get(path) !== sessionId)
-      return;
-    bySession.delete(sessionId);
-    held.delete(path);
-    await files.releaseLock(path, sessionId).catch(() => {
-      return;
-    });
-  };
-  const release = async (sessionId) => {
-    const path = bySession.get(sessionId);
-    if (!path)
-      return;
-    await ordered(path, () => releaseNow(sessionId));
-  };
-  return {
-    sync(sessionId, session, now) {
-      const path = session.taskTreeProjectionPath;
-      if (!path)
-        return Promise.resolve({ kind: "disabled" });
-      if (session.taskTreeProjectionConflictReported)
-        return Promise.resolve({ kind: "conflict" });
-      return ordered(path, async () => {
-        const previous = bySession.get(sessionId);
-        try {
-          if (previous && previous !== path)
-            await releaseNow(sessionId);
-          if (held.get(path) !== sessionId) {
-            if (held.has(path) || !await files.acquireLock(path, sessionId))
-              return { kind: "conflict" };
-            held.set(path, sessionId);
-            bySession.set(sessionId, path);
-          }
-          let taskTree = session.taskTree;
-          if (session.taskTreeProjectionVersion < TASK_PROJECTION_VERSION) {
-            const existing = await files.read(path);
-            if (existing !== null)
-              taskTree = mergeProjectedTasks(taskTree, importedFeed(existing));
-          }
-          const feed = taskProjectionFeed(taskTree, now);
-          await files.writeAtomic(path, `${JSON.stringify(feed, null, 2)}
-`);
-          return { kind: "written", taskTree, version: TASK_PROJECTION_VERSION };
-        } catch (error) {
-          return { kind: "failed", reason: error instanceof Error ? error.message : String(error) };
-        }
-      });
-    },
-    release
-  };
-}
-
-// ../feed-reader.ts
+import { readdir as readdir3, readFile as readFile3, realpath, stat as stat3 } from "fs/promises";
+import { join as join3, resolve } from "path";
 var feedIo = {
   resolve,
+  realpath: async (path) => realpath(path).catch(() => null),
   join: join3,
   stat: stat3,
   list: (root) => readdir3(root, { withFileTypes: true }),
   read: (path) => readFile3(path, "utf8")
 };
-async function readFeedFiles(path, io = feedIo) {
+async function readFeedFiles(path, io = feedIo, skipPaths = []) {
   if (!path)
     return null;
   const root = io.resolve(path);
+  const result = async (files) => ({
+    root,
+    files,
+    skippedPaths: await skippedFeedPaths(files, skipPaths, io)
+  });
   const read = async (path, size) => ({
     path,
     feed: size > MAX_FEED_FILE_BYTES ? null : parseFeed(await io.read(path))
@@ -14490,7 +14357,7 @@ async function readFeedFiles(path, io = feedIo) {
   try {
     const info = await io.stat(root);
     if (info.isFile())
-      return { root, files: [await read(root, info.size)] };
+      return result([await read(root, info.size)]);
     if (!info.isDirectory())
       return null;
     const files = [];
@@ -14505,49 +14372,12 @@ async function readFeedFiles(path, io = feedIo) {
           files.push({ path: file, feed: null });
       }
     }
-    return { root, files };
+    return result(files);
   } catch (error) {
-    return missing(error) ? { root, files: [] } : null;
+    return missing(error) ? result([]) : null;
   }
 }
 var missing = (error) => !!error && typeof error === "object" && ("code" in error) && error.code === "ENOENT";
-function nodeTaskProjection() {
-  return createTaskProjection({
-    acquireLock: async (path) => {
-      await mkdir3(dirname2(path), { recursive: true });
-      try {
-        await mkdir3(`${path}.lock`);
-        return true;
-      } catch (error) {
-        if (error.code === "EEXIST")
-          return false;
-        throw error;
-      }
-    },
-    releaseLock: async (path) => {
-      await rmdir(`${path}.lock`).catch(() => {
-        return;
-      });
-    },
-    read: async (path) => readFile3(path, "utf8").catch((error) => {
-      if (error.code === "ENOENT")
-        return null;
-      throw error;
-    }),
-    writeAtomic: async (path, text) => {
-      const temporary = `${path}.${process.pid}-${randomUUID()}.tmp`;
-      try {
-        await writeFile3(temporary, text, { flag: "wx" });
-        await rename3(temporary, path);
-      } catch (error) {
-        await unlink2(temporary).catch(() => {
-          return;
-        });
-        throw error;
-      }
-    }
-  });
-}
 
 // src/host-panel.ts
 function panelCalls(context, sessions, herdrAsk) {
@@ -14596,7 +14426,7 @@ function panelCalls(context, sessions, herdrAsk) {
           return;
         const id = sessionIdOf(ctx);
         await change(id, (s) => {
-          const ledger = applyFeedFiles(s.ledger, feed.root, feed.files, deps.now(), deps.taskProjectionPath ? [deps.taskProjectionPath] : []);
+          const ledger = applyFeedFiles(s.ledger, feed.root, feed.files, deps.now());
           return ledger === s.ledger ? s : { ...s, ledger };
         });
       } catch {
@@ -14680,8 +14510,8 @@ function panelCalls(context, sessions, herdrAsk) {
 }
 
 // src/host-sessions.ts
-import { mkdir as mkdir4, readFile as readFile4, readdir as readdir4, rename as rename4, rm as rm2, rmdir as rmdir2, writeFile as writeFile4 } from "fs/promises";
-import { dirname as dirname3, join as join4 } from "path";
+import { mkdir as mkdir3, readFile as readFile4, readdir as readdir4, rename as rename3, rm as rm2, rmdir, writeFile as writeFile3 } from "fs/promises";
+import { dirname as dirname2, join as join4 } from "path";
 
 // ../hooks/conversation.ts
 var NL6 = `
@@ -14733,21 +14563,21 @@ function sessionIdInFile(file) {
 }
 var publishFiles = {
   write: async (path, text) => {
-    await mkdir4(dirname3(path), { recursive: true });
-    await writeFile4(path, text);
+    await mkdir3(dirname2(path), { recursive: true });
+    await writeFile3(path, text);
   },
-  move: (from, to) => rename4(from, to),
+  move: (from, to) => rename3(from, to),
   remove: (path) => rm2(path, { force: true }),
   removeFolder: (path) => rm2(path, { recursive: true, force: true })
 };
 var recordFiles = {
   write: async (path, text) => {
-    await mkdir4(dirname3(path), { recursive: true });
-    await writeFile4(path, text);
+    await mkdir3(dirname2(path), { recursive: true });
+    await writeFile3(path, text);
   },
   list: (folder) => readdir4(folder).catch(() => []),
   removeFiles: async (paths) => void await Promise.all(paths.map((p) => rm2(p, { force: true }))),
-  removeFolder: (path) => rmdir2(path)
+  removeFolder: (path) => rmdir(path)
 };
 var statusRecords = (dir, sessionId) => ({
   host: "omp",
@@ -14990,10 +14820,6 @@ function turnHandlers(context, sessions) {
     memory.shownCwd = () => ctx.cwd;
     reportCounts(id, left === id ? undefined : left);
     context.presses.follow(ctx);
-    await change(id, (s) => {
-      const taskTreeProjectionPath = context.memory.taskProjectionSessionId === id ? deps.taskProjectionPath || null : null;
-      return s.taskTreeProjectionPath === taskTreeProjectionPath ? s : { ...s, taskTreeProjectionPath };
-    });
     const saved = await readState(dir, id).catch(() => null);
     const isCutOff = saved?.presence.isTurnRunning || saved?.ledger.overview?.children.some((c) => c.endedAt === null);
     if (isCutOff)
@@ -15161,11 +14987,11 @@ function turnHandlers(context, sessions) {
 
 // src/host-document.ts
 import { constants as constants2 } from "fs";
-import { open, realpath, stat as stat5 } from "fs/promises";
+import { open, realpath as realpath2, stat as stat5 } from "fs/promises";
 var BLOCKED_DOCUMENT_LINK = "inbox-blocked-document-link";
 var documentFile = {
   stat: async (path) => {
-    const target = await realpath(path);
+    const target = await realpath2(path);
     const info = await stat5(target);
     return { path: target, isFile: info.isFile(), size: info.size };
   },
@@ -15214,55 +15040,6 @@ function runtimeFeedPath(setting, paneId, run) {
   return memoizedFeedPath(typeof setting === "function" ? setting : () => resolveInboxFeedPath(configured, process.env.HOME || homedir(), { paneId: paneId ?? undefined, binPath: process.env.HERDR_BIN_PATH }, run));
 }
 
-// src/host-model.ts
-function byNewestRevision(a, b) {
-  const parts = (m) => (m.identity.revision ?? "0.0.0").split(".").map(Number);
-  const [x, y] = [parts(a), parts(b)];
-  const differing = x.findIndex((n, i) => n !== y[i]);
-  return differing === -1 ? 0 : (y[differing] ?? 0) - (x[differing] ?? 0);
-}
-function inboxModel(models, resolve) {
-  const sonnets = models.filter((m) => m.identity.family === "sonnet").toSorted(byNewestRevision);
-  const sonnet = sonnets.find((m) => m.provider === "anthropic") ?? sonnets[0];
-  return resolve("@inbox") ?? sonnet ?? resolve("@smol") ?? null;
-}
-
-// ../hooks/task-projection-host.ts
-async function afterTaskTreeUpdate2(projection, sessionId, session, now, save) {
-  const result = await projection.sync(sessionId, session, now);
-  if (result.kind === "written")
-    return {
-      session: await save((current) => ({
-        ...current,
-        taskTree: keepCurrentTasks(result.taskTree, current.taskTree),
-        taskTreeProjectionVersion: result.version
-      })),
-      message: null
-    };
-  if (result.kind === "conflict" && !session.taskTreeProjectionConflictReported)
-    return {
-      session: await save((current) => ({ ...current, taskTreeProjectionConflictReported: true })),
-      message: "The task tree was saved, but another session already owns its projection path. This session will not write there."
-    };
-  if (result.kind === "failed")
-    return { session, message: `The task tree was saved, but its projection failed: ${result.reason}` };
-  return { session, message: null };
-}
-
-// src/host-task-projection.ts
-var ompTaskProjection = nodeTaskProjection;
-function claimTaskProjectionSession(memory, path, sessionId, unattended) {
-  if (!unattended && !memory.taskProjectionSessionId && path)
-    memory.taskProjectionSessionId = sessionId;
-}
-
-// src/host-defaults.ts
-import { randomUUID as randomUUID2 } from "crypto";
-import { existsSync } from "fs";
-import { homedir as homedir2 } from "os";
-import { dirname as dirname4, join as join5 } from "path";
-import { fileURLToPath as fileURLToPath2 } from "url";
-
 // src/host-clipboard.ts
 async function copyToClipboard(text) {
   const candidates = process.platform === "darwin" ? [["pbcopy"]] : process.platform === "win32" ? [["clip"]] : [["wl-copy"], ["xclip", "-selection", "clipboard"]];
@@ -15278,30 +15055,17 @@ async function copyToClipboard(text) {
   return `no clipboard command started (${candidates.map((c) => c[0]).join(", ")})`;
 }
 
-// src/host-defaults.ts
-function defaultHostDeps(options) {
-  return {
-    stateDir: (pi) => join5(pi.pi.getAgentDir(), "inbox"),
-    configHome: process.env.XDG_CONFIG_HOME || join5(homedir2(), ".config"),
-    now: Date.now,
-    newId: randomUUID2,
-    settleWindowMs: SETTLED_MS,
-    home: homedir2(),
-    isNextBuild: existsSync(join5(dirname4(dirname4(fileURLToPath2(import.meta.url))), NEXT_BUILD_MARK)),
-    comparePage: join5(dirname4(fileURLToPath2(import.meta.url)), COMPARE_PAGE_FILE),
-    complete: options.complete,
-    copy: copyToClipboard,
-    background: (work) => void work.catch(() => {
-      return;
-    }),
-    after: (ms, fn) => void setTimeout(fn, ms).unref(),
-    isUsageLimit: options.isUsageLimit,
-    herdrTarget: options.herdrTarget,
-    herdrPane: process.env.HERDR_PANE_ID || null,
-    recordedItemsOnly: process.env.INBOX_RECORDED_ITEMS_ONLY,
-    taskProjectionPath: process.env.INBOX_TASK_PROJECTION_PATH,
-    feedPath: options.feedPath ?? process.env.INBOX_FEED
-  };
+// src/host-model.ts
+function byNewestRevision(a, b) {
+  const parts = (m) => (m.identity.revision ?? "0.0.0").split(".").map(Number);
+  const [x, y] = [parts(a), parts(b)];
+  const differing = x.findIndex((n, i) => n !== y[i]);
+  return differing === -1 ? 0 : (y[differing] ?? 0) - (x[differing] ?? 0);
+}
+function inboxModel(models, resolve) {
+  const sonnets = models.filter((m) => m.identity.family === "sonnet").toSorted(byNewestRevision);
+  const sonnet = sonnets.find((m) => m.provider === "anthropic") ?? sonnets[0];
+  return resolve("@inbox") ?? sonnet ?? resolve("@smol") ?? null;
 }
 
 // src/host.ts
@@ -15322,15 +15086,30 @@ async function isUsageLimitOutcome(status, message) {
   const ai = await import("@oh-my-pi/pi-ai");
   return ai.isUsageLimitOutcome(status, message);
 }
-var defaultDeps = defaultHostDeps({
+var defaultDeps = {
+  stateDir: (pi) => join5(pi.pi.getAgentDir(), "inbox"),
+  configHome: process.env.XDG_CONFIG_HOME || join5(homedir2(), ".config"),
+  now: Date.now,
+  newId: randomUUID,
+  settleWindowMs: SETTLED_MS,
+  home: homedir2(),
+  isNextBuild: existsSync(join5(dirname3(dirname3(fileURLToPath2(import.meta.url))), NEXT_BUILD_MARK)),
+  comparePage: join5(dirname3(fileURLToPath2(import.meta.url)), COMPARE_PAGE_FILE),
   complete: defaultComplete,
+  copy: copyToClipboard,
+  background: (work) => void work.catch(() => {
+    return;
+  }),
+  after: (ms, fn) => void setTimeout(fn, ms).unref(),
   isUsageLimit: isUsageLimitOutcome,
-  herdrTarget: herdrTarget(process.env)
-});
+  herdrTarget: herdrTarget(process.env),
+  herdrPane: process.env.HERDR_PANE_ID || null,
+  recordedItemsOnly: process.env.INBOX_RECORDED_ITEMS_ONLY,
+  feedPath: process.env.INBOX_FEED
+};
 var messageOf = (err) => err instanceof Error ? err.message : String(err);
 function createInbox(pi, deps = defaultDeps) {
   const dir = deps.stateDir(pi);
-  const taskProjection = ompTaskProjection();
   const run = async (args, { cwd, timeoutMs }) => {
     const [file = "", ...rest] = args;
     try {
@@ -15433,7 +15212,6 @@ function createInbox(pi, deps = defaultDeps) {
       isGhMissing: false,
       prShared: NO_PR_SHARED,
       shownId: null,
-      taskProjectionSessionId: null,
       framesFor: null,
       shownCwd: null,
       herdrModFailure: null,
@@ -15463,11 +15241,6 @@ function createInbox(pi, deps = defaultDeps) {
   let isHerdrStarted = false;
   const startSession = async (ctx, parentFile) => {
     stopFeedTimer();
-    const previous = context.memory.shownId;
-    const next = sessionIdOf(ctx);
-    if (previous && previous !== next)
-      await taskProjection.release(previous);
-    claimTaskProjectionSession(context.memory, deps.taskProjectionPath, next, isUnattended(ctx));
     if (!isHerdrStarted) {
       startOmpInHerdrApp(deps.herdrTarget, run, logHerdr).then((result) => herdrAsk.started(result)).catch(() => {
         return;
@@ -15488,7 +15261,6 @@ function createInbox(pi, deps = defaultDeps) {
   pi.on("session_branch", (event, ctx) => startSession(ctx, event.previousSessionFile));
   pi.on("session_shutdown", (event, ctx) => {
     stopFeedTimer();
-    taskProjection.release(sessionIdOf(ctx));
     return turns.onSessionShutdown(event, ctx);
   });
   pi.on("before_agent_start", turns.onBeforeAgentStart);
@@ -15517,23 +15289,11 @@ function createInbox(pi, deps = defaultDeps) {
           return { content: [{ type: "text", text: "The inbox is not shown in this session." }] };
         let answer = { result: "", personLine: null };
         const input = name === "record" ? await withDocumentPreview(args, documentFile) : args;
-        const id = sessionIdOf(ctx);
-        let didChangeTaskTree = false;
-        let saved = await change(id, (s) => {
+        await change(sessionIdOf(ctx), (s) => {
           const r = recorded(OMP, s, name, input, deps.now(), TOOL_FIELDS);
           answer = r;
-          didChangeTaskTree = name === "tasks" && r.state.taskTree !== s.taskTree;
           return r.state;
         });
-        let projectionMessage = null;
-        if (didChangeTaskTree && saved.taskTreeProjectionPath) {
-          const result = await afterTaskTreeUpdate2(taskProjection, id, saved, deps.now(), (update) => change(id, update));
-          saved = result.session;
-          projectionMessage = result.message;
-        }
-        if (projectionMessage)
-          answer = { ...answer, result: `${answer.result}
-${projectionMessage}` };
         const details = { personLine: answer.personLine };
         return { content: [{ type: "text", text: answer.result }], details };
       },

@@ -77,8 +77,6 @@ export const SHARED = [
   'pr-checks',
   'session-files',
   'task-tree',
-  'task-projection',
-  'task-projection-host',
   'task-mismatches',
   'task-reminder',
   'saved-check-keys',

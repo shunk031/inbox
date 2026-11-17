@@ -5,8 +5,6 @@ Part of [the look map](../looks.md#files).
 | File | Role |
 | --- | --- |
 | `omp/src/host.ts` | omp host. The only file that imports omp's packages. It binds the calls that need omp's types into a `HostContext`, wires omp's events to the `host-*.ts` handlers, polls the configured feed or the default directory for the Herdr `meta` agent, registers the tools and `/inbox` command, reads recorded reports, supplies pi-tui's native Markdown renderer, and shows the band and panel. |
-| `omp/src/host-task-projection.ts` | omp host. The Node filesystem adapter and shared post-save projection flow for tasks. |
-| `omp/src/host-defaults.ts` | omp host defaults that use Node APIs without importing omp package types. |
 | `omp/src/host-clipboard.ts` | omp host. Copies text to the clipboard using the host's platform support. |
 | `omp/src/host-document.ts` | omp host. Reads safe local report files, renders Markdown with pi-tui when available, and builds safe panel links without importing omp packages. |
 | `omp/src/host-feed.ts` | omp host. Resolves the inbox feed directory from omp's environment or its default location. |

@@ -1,7 +1,7 @@
 // Built by codex/build.mjs from codex/src and hooks/. Do not edit.
 
 // src/hook-main.ts
-import { dirname as dirname5, join as join6 } from "node:path";
+import { dirname as dirname4, join as join6 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/detached-update.ts
@@ -5261,6 +5261,18 @@ function applyFeed(ledger, feed, now, source = "") {
 function normalizedPath(path) {
   return path.replace(/\\/g, "/").replace(/\/+$/, "");
 }
+async function skippedFeedPaths(files, skippedPaths, paths) {
+  if (skippedPaths.length === 0) return [];
+  const canonical = async (path) => {
+    const absolute = await paths.resolve(path);
+    return await paths.realpath(absolute).catch(() => null) ?? absolute;
+  };
+  const skipped = new Set(await Promise.all(skippedPaths.map(canonical)));
+  const aliases = new Set(skippedPaths.map(normalizedPath));
+  for (const path of skipped) aliases.add(normalizedPath(path));
+  for (const file of files) if (skipped.has(await canonical(file.path))) aliases.add(normalizedPath(file.path));
+  return [...aliases];
+}
 function applyFeedFiles(ledger, root, files, now, skippedPaths = []) {
   const skipped = new Set(skippedPaths.map(normalizedPath));
   let next = ledger;
@@ -5361,25 +5373,31 @@ var sourceUnder = (source, root) => {
 var detailOf = (entry) => entry.state === "blocked" ? `Blocked: ${entry.detail}` : entry.detail;
 
 // ../feed-reader.ts
-import { mkdir as mkdir3, readdir as readdir3, readFile as readFile2, rename as rename3, rmdir as rmdir2, stat as stat5, unlink as unlink2, writeFile as writeFile3 } from "node:fs/promises";
-import { dirname as dirname4, join as join4, resolve as resolve3 } from "node:path";
+import { readdir as readdir3, readFile as readFile2, realpath as realpath2, stat as stat5 } from "node:fs/promises";
+import { join as join4, resolve as resolve3 } from "node:path";
 var feedIo = {
   resolve: resolve3,
+  realpath: async (path) => realpath2(path).catch(() => null),
   join: join4,
   stat: stat5,
   list: (root) => readdir3(root, { withFileTypes: true }),
   read: (path) => readFile2(path, "utf8")
 };
-async function readFeedFiles(path, io = feedIo) {
+async function readFeedFiles(path, io = feedIo, skipPaths = []) {
   if (!path) return null;
   const root = io.resolve(path);
+  const result = async (files) => ({
+    root,
+    files,
+    skippedPaths: await skippedFeedPaths(files, skipPaths, io)
+  });
   const read = async (path2, size) => ({
     path: path2,
     feed: size > MAX_FEED_FILE_BYTES ? null : parseFeed(await io.read(path2))
   });
   try {
     const info = await io.stat(root);
-    if (info.isFile()) return { root, files: [await read(root, info.size)] };
+    if (info.isFile()) return result([await read(root, info.size)]);
     if (!info.isDirectory()) return null;
     const files = [];
     for (const entry of await io.list(root)) {
@@ -5391,9 +5409,9 @@ async function readFeedFiles(path, io = feedIo) {
         if (!missing(error)) files.push({ path: file, feed: null });
       }
     }
-    return { root, files };
+    return result(files);
   } catch (error) {
-    return missing(error) ? { root, files: [] } : null;
+    return missing(error) ? result([]) : null;
   }
 }
 var missing = (error) => !!error && typeof error === "object" && "code" in error && error.code === "ENOENT";
@@ -5447,7 +5465,11 @@ async function handleHook(input, deps) {
     { paneId: env.HERDR_PANE_ID, binPath: env.HERDR_BIN_PATH },
     deps.run
   );
-  const feed = await readFeedFiles(feedPath);
+  const feed = await readFeedFiles(
+    feedPath,
+    void 0,
+    deps.env.INBOX_TASK_PROJECTION_PATH ? [deps.env.INBOX_TASK_PROJECTION_PATH] : []
+  );
   const cliPath = namedCli(env);
   const withCli = (s) => cliPath && s.cliPath !== cliPath ? { ...s, cliPath } : s;
   const rolloutPath = input.agent_id ? null : input.transcript_path;
@@ -5455,13 +5477,7 @@ async function handleHook(input, deps) {
   const withHost = (s) => withRollout(withCli(s));
   const withFeed = (s) => {
     if (!feed) return s;
-    const ledger = applyFeedFiles(
-      s.ledger,
-      feed.root,
-      feed.files,
-      now(),
-      deps.env.INBOX_TASK_PROJECTION_PATH ? [deps.env.INBOX_TASK_PROJECTION_PATH] : []
-    );
+    const ledger = applyFeedFiles(s.ledger, feed.root, feed.files, now(), feed.skippedPaths);
     return ledger === s.ledger ? s : { ...s, ledger };
   };
   const write = (change) => updateState2(async (s) => withFeed(await change(s)));
@@ -5678,8 +5694,8 @@ function exitCodeOf(err) {
 async function main() {
   let raw = "";
   for await (const chunk of process.stdin) raw += chunk;
-  const dist = dirname5(fileURLToPath(import.meta.url));
-  const dir = dataDir(process.env, dirname5(dist));
+  const dist = dirname4(fileURLToPath(import.meta.url));
+  const dir = dataDir(process.env, dirname4(dist));
   const startUpdate = detachedUpdate(dir, process.env, join6(dist, "update.mjs"));
   const out = await handleHook(JSON.parse(raw), {
     dir,

@@ -23,8 +23,6 @@ export type Memory = {
   prShared: PrShared
   /** The session omp shows now. Only it reports to the pane. */
   shownId: string | null
-  /** The one session allowed to write the process-configured task projection. */
-  taskProjectionSessionId: string | null
   /** The session the main agent runs. A `task:subagent:*` frame names no session, and only the main agent's own subagents send one here. */
   framesFor: string | null
   /** The working folder of the session omp shows, read when asked, which its presses open paths against. */

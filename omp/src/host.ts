@@ -1,5 +1,10 @@
+import { randomUUID } from 'node:crypto'
 import { NO_PR_SHARED } from '../../hooks/pr-fetch'
+import { existsSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { version } from '../package.json'
 
@@ -14,6 +19,7 @@ import { herdrReporter, herdrTarget } from '../../hooks/herdr'
 import type { HerdrTarget } from '../../hooks/herdr'
 import { herdrPanelOpener } from '../../hooks/herdr-open'
 import type { Run } from '../../hooks/gh'
+import { COMPARE_PAGE_FILE } from '../../hooks/press-messages'
 import { recorded } from '../../hooks/session-presses'
 import { readDocument, withDocumentPreview } from '../../hooks/document'
 import { prFetchTracker } from '../../hooks/host-prs'
@@ -21,7 +27,8 @@ import type { SessionHost } from '../../hooks/session-host'
 import { agentTools } from '../../hooks/tools'
 import { TOOL_FIELDS } from '../../hooks/tool-schemas'
 import type { AgentTool, ToolAnswer } from '../../hooks/tools'
-import { NO_HOLDS } from '../../hooks/timing'
+import { NEXT_BUILD_MARK } from '../../hooks/banners'
+import { NO_HOLDS, SETTLED_MS } from '../../hooks/timing'
 import { inboxCommandText } from '../../hooks/tabs'
 import { createPanel } from './controller'
 import { demoSource } from './demo'
@@ -49,9 +56,8 @@ import {
   panelLink as findPanelLink,
 } from './host-document'
 import { runtimeFeedPath } from './host-feed'
+import { copyToClipboard } from './host-clipboard'
 import { inboxModel } from './host-model'
-import { afterTaskTreeUpdate, claimTaskProjectionSession, ompTaskProjection } from './host-task-projection'
-import { defaultHostDeps } from './host-defaults'
 
 const INBOX_MODEL_TIMEOUT_MS = 120_000
 
@@ -104,8 +110,6 @@ export type HostDeps = {
   herdrPane: string | null
   /** The value of `INBOX_RECORDED_ITEMS_ONLY`, which `isRecordedItemsOnly` reads. */
   recordedItemsOnly: string | undefined
-  /** Feed path excluded from feed-row import. */
-  taskProjectionPath?: string
   feedPath?: FeedPathSetting
 }
 
@@ -125,17 +129,30 @@ async function isUsageLimitOutcome(status: number | undefined, message: string):
   return ai.isUsageLimitOutcome(status, message)
 }
 
-const defaultDeps: HostDeps = defaultHostDeps({
+const defaultDeps: HostDeps = {
+  stateDir: pi => join(pi.pi.getAgentDir(), 'inbox'),
+  configHome: process.env.XDG_CONFIG_HOME || join(homedir(), '.config'),
+  now: Date.now,
+  newId: randomUUID,
+  settleWindowMs: SETTLED_MS,
+  home: homedir(),
+  isNextBuild: existsSync(join(dirname(dirname(fileURLToPath(import.meta.url))), NEXT_BUILD_MARK)),
+  comparePage: join(dirname(fileURLToPath(import.meta.url)), COMPARE_PAGE_FILE),
   complete: defaultComplete,
+  copy: copyToClipboard,
+  background: work => void work.catch(() => undefined),
+  after: (ms, fn) => void setTimeout(fn, ms).unref(),
   isUsageLimit: isUsageLimitOutcome,
   herdrTarget: herdrTarget(process.env),
-})
+  herdrPane: process.env.HERDR_PANE_ID || null,
+  recordedItemsOnly: process.env.INBOX_RECORDED_ITEMS_ONLY,
+  feedPath: process.env.INBOX_FEED,
+}
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
 export function createInbox(pi: ExtensionAPI, deps: HostDeps = defaultDeps): Inbox {
   const dir = deps.stateDir(pi)
-  const taskProjection = ompTaskProjection()
 
   const run: Run = async (args, { cwd, timeoutMs }) => {
     const [file = '', ...rest] = args
@@ -264,7 +281,6 @@ export function createInbox(pi: ExtensionAPI, deps: HostDeps = defaultDeps): Inb
       isGhMissing: false,
       prShared: NO_PR_SHARED,
       shownId: null,
-      taskProjectionSessionId: null,
       framesFor: null,
       shownCwd: null,
       herdrModFailure: null,
@@ -294,10 +310,6 @@ export function createInbox(pi: ExtensionAPI, deps: HostDeps = defaultDeps): Inb
   let isHerdrStarted = false
   const startSession = async (ctx: ExtensionContext, parentFile?: string) => {
     stopFeedTimer()
-    const previous = context.memory.shownId
-    const next = sessionIdOf(ctx)
-    if (previous && previous !== next) await taskProjection.release(previous)
-    claimTaskProjectionSession(context.memory, deps.taskProjectionPath, next, isUnattended(ctx))
     if (!isHerdrStarted) {
       void startOmpInHerdrApp(deps.herdrTarget, run, logHerdr)
         .then(result => herdrAsk.started(result))
@@ -322,7 +334,6 @@ export function createInbox(pi: ExtensionAPI, deps: HostDeps = defaultDeps): Inb
   pi.on('session_branch', (event, ctx) => startSession(ctx, event.previousSessionFile))
   pi.on('session_shutdown', (event, ctx) => {
     stopFeedTimer()
-    void taskProjection.release(sessionIdOf(ctx))
     return turns.onSessionShutdown(event, ctx)
   })
   pi.on('before_agent_start', turns.onBeforeAgentStart)
@@ -353,22 +364,12 @@ export function createInbox(pi: ExtensionAPI, deps: HostDeps = defaultDeps): Inb
         let answer: Omit<ToolAnswer, 'ledger'> = { result: '', personLine: null }
         const input =
           name === 'record' ? await withDocumentPreview(args as Record<string, unknown>, documentFile) : args
-        const id = sessionIdOf(ctx)
-        let didChangeTaskTree = false
-        let saved = await change(id, s => {
+        await change(sessionIdOf(ctx), s => {
           const r = recorded(OMP, s, name, input as Record<string, unknown>, deps.now(), TOOL_FIELDS)
           answer = r
-          didChangeTaskTree = name === 'tasks' && r.state.taskTree !== s.taskTree
 
           return r.state
         })
-        let projectionMessage: string | null = null
-        if (didChangeTaskTree && saved.taskTreeProjectionPath) {
-          const result = await afterTaskTreeUpdate(taskProjection, id, saved, deps.now(), update => change(id, update))
-          saved = result.session
-          projectionMessage = result.message
-        }
-        if (projectionMessage) answer = { ...answer, result: `${answer.result}\n${projectionMessage}` }
         const details: ToolDetails = { personLine: answer.personLine }
 
         return { content: [{ type: 'text', text: answer.result }], details }

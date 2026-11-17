@@ -73,11 +73,6 @@ export function turnHandlers(context: HostContext, sessions: SessionCalls) {
     memory.shownCwd = () => ctx.cwd
     reportCounts(id, left === id ? undefined : left)
     context.presses.follow(ctx)
-    await change(id, s => {
-      const taskTreeProjectionPath =
-        context.memory.taskProjectionSessionId === id ? deps.taskProjectionPath || null : null
-      return s.taskTreeProjectionPath === taskTreeProjectionPath ? s : { ...s, taskTreeProjectionPath }
-    })
     // Subagents run in this process, so the ones a saved session lists running ended with the process that ran them.
     const saved = await readState(dir, id).catch(() => null)
     const isCutOff = saved?.presence.isTurnRunning || saved?.ledger.overview?.children.some(c => c.endedAt === null)
