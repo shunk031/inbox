@@ -11,7 +11,7 @@ export function timelineToneColor(pal: PaneBase['pal'], tone: string) {
 
 export function timelineChip({ Box, Text, pal }: TimelineStyle, label: string, tone: string, key?: string) {
   return (
-    <Box key={key} backgroundColor={timelineToneColor(pal, tone)} paddingX={1}>
+    <Box key={key} backgroundColor={timelineToneColor(pal, tone)} paddingX={1} flexShrink={0}>
       <Text color="inverseText">{label}</Text>
     </Box>
   )
@@ -285,19 +285,19 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
             const selected = row.task.id === page.selected?.row.task.id
             const rowLead = timelineRowLead(row, selected)
             const titleLeadWidth = cellWidth(rowLead)
-            const chipLeadWidth = titleLeadWidth
-            const chipLead = terminalTreeLead(row, chipLeadWidth)
             const warningLead = terminalTreeLead(row, titleLeadWidth)
             const percent = row.percent.padStart(7)
             const percentCells = cellWidth(` ${percent}`)
             const availableWithBar = bodyColumns - 2 - cellWidth(rowLead) - 12 - percentCells
             const showTaskBar = availableWithBar >= 20
             const titleCells = Math.max(1, bodyColumns - 2 - cellWidth(rowLead) - percentCells - (showTaskBar ? 12 : 0))
-            const title =
-              cellWidth(row.task.title) > titleCells
-                ? `${cutToCells(row.task.title, Math.max(0, titleCells - 1))}…`
-                : row.task.title
-            const [firstTitleLine = '', ...continuationTitleLines] = title.split('\n')
+            const chipCells = cellWidth(row.statusLabel) + 2
+            const titleTextCells = Math.max(1, titleCells - chipCells - 1)
+            const [sourceFirstTitleLine = '', ...continuationTitleLines] = row.task.title.split('\n')
+            const firstTitleLine =
+              cellWidth(sourceFirstTitleLine) > titleTextCells
+                ? `${cutToCells(sourceFirstTitleLine, Math.max(0, titleTextCells - 1))}…`
+                : sourceFirstTitleLine
             return (
               <Box
                 key={`timeline-${row.task.id}`}
@@ -315,21 +315,28 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
                     </Text>
                   </Box>
                   <Box flexDirection="row" flexGrow={1} flexShrink={1} minWidth={0}>
-                    <Box key={`timeline-title-area-${row.task.id}`} width={titleCells} flexShrink={1} minWidth={0}>
-                      <Button
-                        plain
-                        key={`timeline-title-${row.task.id}`}
-                        autoFocus={look === 'terminal' && selected ? true : undefined}
-                        onPress={() => void openTimelineDetail(row.task.id)}
-                      >
-                        {look === 'terminal' ? (
+                    <Box
+                      key={`timeline-title-area-${row.task.id}`}
+                      width={titleCells}
+                      flexDirection="row"
+                      flexShrink={0}
+                    >
+                      <Box key={`timeline-title-text-${row.task.id}`} width={titleTextCells} flexShrink={0}>
+                        <Button
+                          plain
+                          key={`timeline-title-${row.task.id}`}
+                          autoFocus={look === 'terminal' && selected ? true : undefined}
+                          onPress={() => void openTimelineDetail(row.task.id)}
+                        >
                           <Text color={color(row.tone)} wrap="truncate-end">
                             {firstTitleLine}
                           </Text>
-                        ) : (
-                          firstTitleLine
-                        )}
-                      </Button>
+                        </Button>
+                      </Box>
+                      <Box key={`timeline-chip-gap-${row.task.id}`} width={1} flexShrink={0}>
+                        <Text> </Text>
+                      </Box>
+                      {chip(row.statusLabel, row.tone, `timeline-chip-${row.task.id}`)}
                     </Box>
                     <Box flexDirection="row" flexShrink={0}>
                       {showTaskBar ? (
@@ -364,12 +371,6 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
                     </Box>
                   </Box>
                 ))}
-                <Box key={`timeline-status-line-${row.task.id}`} flexDirection="row">
-                  <Box key={`timeline-chip-lead-${row.task.id}`} width={chipLeadWidth} flexShrink={0}>
-                    <Text>{chipLead}</Text>
-                  </Box>
-                  {chip(row.statusLabel, row.tone, `timeline-chip-${row.task.id}`)}
-                </Box>
                 {row.warnings.map(warning => (
                   <Text color={pal.tone.error ?? pal.muted}>{`${warningLead}⚠ ${warning}`}</Text>
                 ))}

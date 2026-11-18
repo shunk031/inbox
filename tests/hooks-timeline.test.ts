@@ -261,10 +261,27 @@ test('terminal Timeline keeps Japanese titles, row metadata and detail guides at
   await clock.settle()
 
   const title = await pane.find({ key: 'timeline-title-long-root' })
+  const titleArea = await pane.find({ key: 'timeline-title-area-long-root' })
+  const titleLead = await pane.find({ key: 'timeline-title-lead-long-root' })
+  const titleTextArea = await pane.find({ key: 'timeline-title-text-long-root' })
+  const chipGap = await pane.find({ key: 'timeline-chip-gap-long-root' })
+  const statusChip = await pane.find({ key: 'timeline-chip-long-root' })
+  const percent = await pane.find({ key: 'timeline-row-percent-long-root' })
   expect(title?.text.endsWith('…'), 'the long title is truncated with an ellipsis').toBe(true)
   expect(title?.text).not.toContain(longTitle)
-  expect(cellWidth(title?.text ?? '')).toBeGreaterThanOrEqual(20)
-  expect(cellWidth(title?.text ?? '')).toBeLessThanOrEqual(30)
+  expect(cellWidth(title?.text ?? '')).toBeGreaterThan(0)
+  expect(cellWidth(title?.text ?? '')).toBeLessThanOrEqual(Number(titleTextArea?.props.width))
+  expect(chipGap?.props.width, 'the title keeps one cell before its full status chip').toBe(1)
+  const chipWidth = cellWidth(statusChip?.text ?? '') + 2 * Number(statusChip?.props.paddingX)
+  expect(Number(titleTextArea?.props.width) + Number(chipGap?.props.width) + chipWidth).toBe(titleArea?.props.width)
+  expect(
+    cellWidth(title?.text ?? '') + Number(chipGap?.props.width) + chipWidth,
+    'the shortened title and whole chip fit before the percent',
+  ).toBeLessThanOrEqual(Number(titleArea?.props.width))
+  expect(
+    cellWidth(titleLead?.text ?? '') + Number(titleArea?.props.width) + cellWidth(percent?.text ?? ''),
+    'the whole title line and percent fit at the narrow dock width',
+  ).toBeLessThanOrEqual(42 - 4)
   expect(
     await pane.find({ key: 'timeline-row-bar-long-root' }),
     'the bar is dropped to preserve title width',

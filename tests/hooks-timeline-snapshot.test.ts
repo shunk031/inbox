@@ -59,15 +59,36 @@ for (const bodyColumns of [110, 200] as const) {
       const title = await pane.find({ key: `timeline-title-${id}` })
       const status = await pane.find({ key: `timeline-chip-${id}` })
       const titleLead = await pane.find({ key: `timeline-title-lead-${id}` })
-      const chipLead = await pane.find({ key: `timeline-chip-lead-${id}` })
+      const titleTextArea = await pane.find({ key: `timeline-title-text-${id}` })
+      const chipGap = await pane.find({ key: `timeline-chip-gap-${id}` })
       const titleArea = await pane.find({ key: `timeline-title-area-${id}` })
       const bar = await pane.find({ key: `timeline-row-bar-${id}` })
       const gap = await pane.find({ key: `timeline-row-bar-gap-${id}` })
       const percent = await pane.find({ key: `timeline-row-percent-${id}` })
-      expect(chipLead?.props.width, `${id} chip begins in the title's first cell`).toBe(titleLead?.props.width)
       expect(cellWidth(titleLead?.text ?? ''), `${id} title lead uses its measured cells`).toBe(titleLead?.props.width)
-      expect(cellWidth(chipLead?.text ?? ''), `${id} chip lead fills the title column`).toBe(titleLead?.props.width)
+      expect(titleArea?.props.flexDirection, `${id} puts title and chip in one horizontal row`).toBe('row')
       expect(titleArea?.props.flexGrow, `${id} keeps its measured title budget fixed`).toBeUndefined()
+      expect(chipGap?.props.width, `${id} leaves one cell between title and chip`).toBe(1)
+      expect(cellWidth(chipGap?.text ?? ''), `${id} renders the title-to-chip gap`).toBe(1)
+      const chipWidth = cellWidth(status?.text ?? '') + 2 * Number(status?.props.paddingX)
+      expect(
+        cellWidth(title?.text ?? '') + Number(chipGap?.props.width) + chipWidth,
+        `${id} keeps the title, gap and whole chip inside its row budget`,
+      ).toBeLessThanOrEqual(Number(titleArea?.props.width))
+      expect(
+        Number(titleTextArea?.props.width) + Number(chipGap?.props.width) + chipWidth,
+        `${id} assigns a fixed title width before its whole chip`,
+      ).toBe(Number(titleArea?.props.width))
+      const titleAreaChildren = (titleArea?.children ?? []).filter(
+        (child): child is { props?: Record<string, unknown>; text?: string } =>
+          typeof child === 'object' && child !== null,
+      )
+      expect(titleAreaChildren, `${id} draws title, gap, then chip on one line`).toHaveLength(3)
+      expect(titleAreaChildren[0]?.props?.width, `${id} puts the title first`).toBe(titleTextArea?.props.width)
+      expect(titleAreaChildren[1]?.props?.width, `${id} puts the one-cell gap second`).toBe(1)
+      expect(titleAreaChildren[2]?.props?.paddingX, `${id} puts the whole chip last`).toBe(1)
+      expect(status?.text, `${id} keeps its status label visible`).toBeTruthy()
+      expect(await pane.find({ key: `timeline-status-line-${id}` }), `${id} has no separate chip row`).toBeFalsy()
       const rowEnd =
         cellWidth(titleLead?.text ?? '') +
         Number(titleArea?.props.width) +
@@ -76,14 +97,16 @@ for (const bodyColumns of [110, 200] as const) {
         cellWidth(percent?.text ?? '')
       expect(rowEnd, `${id} title, bar and percent fit in the row budget`).toBeLessThanOrEqual(bodyColumns - 4)
       rowEnds.push(rowEnd)
-      for (const line of [titleLead?.text ?? '', chipLead?.text ?? '']) {
-        expect(line).not.toContain('|')
-        expect(line).not.toContain('│ │')
-        expect(line.at(-1), `${id} leaves a cell before the chip`).toBe(' ')
-        for (const match of line.matchAll(/│/g)) {
-          expect(Number(match.index) % 3).toBe(2)
-          expect(Number(match.index), `${id} guide does not touch the chip`).toBeLessThan(line.length - 1)
-        }
+      if (bar) {
+        expect(gap?.props.width, `${id} keeps two cells between its chip and bar`).toBe(2)
+      }
+      const line = titleLead?.text ?? ''
+      expect(line).not.toContain('|')
+      expect(line).not.toContain('│ │')
+      expect(line.at(-1), `${id} leaves a cell between its guide and title`).toBe(' ')
+      for (const match of line.matchAll(/│/g)) {
+        expect(Number(match.index) % 3).toBe(2)
+        expect(Number(match.index), `${id} guide does not touch the title`).toBeLessThan(line.length - 1)
       }
       if (title?.text.endsWith('…') && bar) {
         expect(gap?.props.width, `${id} has a two-cell gap after its truncated title`).toBeGreaterThanOrEqual(2)
@@ -107,8 +130,9 @@ for (const bodyColumns of [110, 200] as const) {
     snapshot.unshift(['heading', labels.includes('Progress') ? 'Progress' : null])
     const titleArea = await pane.find({ key: 'timeline-title-area-scene-long' })
     const longTask = nestedTasks.find(task => task.id === 'scene-long')!
+    const longTitleCells = Number(titleArea?.props.width) - cellWidth('In progress') - 2 - 1
     const longTitle =
-      bodyColumns === 110 ? `${cutToCells(longTask.title, (titleArea?.props.width as number) - 1)}…` : longTask.title
+      cellWidth(longTask.title) > longTitleCells ? `${cutToCells(longTask.title, longTitleCells - 1)}…` : longTask.title
     expect(snapshot).toEqual([
       ['heading', 'Progress'],
       ['scene-root', 'Review task tree', 'In progress'],
