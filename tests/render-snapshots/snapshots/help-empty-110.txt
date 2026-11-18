@@ -1,0 +1,45 @@
+                                     ✕
+
+   Keys
+   1 2 3 4     Switch tabs
+   j k         Select the next or
+               previous row
+   u           Undo the last close
+   j k ↑ ↓     Select a row or scroll
+               a report
+   v           Read the selected
+               report, if available
+   b           Return to the inbox
+               from a report
+   ctrl+x tab  Move focus to the line
+               above the prompt, then
+               the pane, then the
+               prompt
+
+
+   Marks
+   ●  Working. It moves while the work
+      runs or your message is on its
+      way.
+   ◆  Waits on you
+   ✓  Done, or handed to the agent
+   ⊘  Stopped before it finished:
+      dropped work
+   ✕  Dismissed by you
+   ▲  Something is wrong: an issue or
+      a failing check
+   ⊘  Stopped before it finished: a
+      cancelled check, which needs
+      another run
+   ✦  Opportunity: something that
+      could be better
+   ↻  Progress reported by the feed
+
+
+   Tabs
+   🙋          Asks
+   ◷           Timeline
+   ♟           Agents
+   🔀          PRs
+
+  ✕ Close help                 v0.4.0

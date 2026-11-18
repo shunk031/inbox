@@ -19,3 +19,9 @@ jobs:
       - run: npm ci --prefix codex
       - run: npm install --global @anthropic-ai/claude-code@2.1.321
       - run: claude plugin test .
+      - name: Install tmux
+        run: sudo apt-get update && sudo apt-get install --yes tmux
+      - name: Check live terminal snapshots
+        run: |
+          node --experimental-strip-types --test scripts/render-snapshots.test.mjs
+          node --experimental-strip-types scripts/render-snapshots.mjs

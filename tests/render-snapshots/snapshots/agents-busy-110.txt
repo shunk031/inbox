@@ -1,0 +1,45 @@
+                                     ✕
+ ▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄▄ ▄▄▄▄▄
+  Asks 2   Timeline 3   Agents   PRs
+─▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀─▀▀▀▀▀──
+
+ Herdr agent list unavailable; local
+ agent status is not current.
+   Orchestrators
+   │
+   └─   No open orchestrators
+
+
+   Meta tasks · 4
+   │
+    ○ This session · meta · 50% comple…
+
+    ◐ 50% · No owner · Sn… In progress
+
+      ◐ 0% · No owner · S… In progress
+
+        ✕ 0% · No owner · 深…  Waiting
+
+
+   Local agents
+   │
+   └─   No open local agents
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  Help                         v0.4.0

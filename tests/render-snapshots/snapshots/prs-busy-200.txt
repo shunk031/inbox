@@ -1,0 +1,45 @@
+                                                                                       ✕
+ ▄▄▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄
+   Asks 2     Timeline 3     Agents     PRs
+─▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀────────────────────────────────────────────
+
+ ╭─────────────────────────────────────────────────────────────────────────────────────╮
+ │ Could not read the PRs: gh is disabled in render snapshot fixtures. They show as    │
+ │ last read.                                                                          │
+ ╰─────────────────────────────────────────────────────────────────────────────────────╯
+
+
+  Refresh PRs
+
+
+  #24 Snapshot pull request with an invented CJK summary Waiting · needs approval
+
+  [ Open PR ]  Dismiss
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  Help                                                                           v0.4.0
