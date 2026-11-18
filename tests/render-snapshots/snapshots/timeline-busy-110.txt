@@ -11,14 +11,14 @@
  │ Elapsed: 1m                       │
  └───────────────────────────────────┘
 
-  > ◐ Snapshot root 日本語の…  50.00%
-    │  In progress
-    ├─ ● 折り返し用の日本語…  100.00%
-    │     Completed
-    └─ ◐ Snapshot long 表示…    0.00%
-       │  In progress
-       └─ ✕ 深い階層の待機中…   0.00%
-             Waiting
+  > ◐  In progress  Snapshot…  50.00%
+    ├─ ●  Completed    折り…  100.00%
+    └─ ◐  In progress  Snaps…   0.00%
+       └─ ✕  Waiting      深…   0.00%
+
+
+
+
 
 
 

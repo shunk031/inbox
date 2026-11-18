@@ -4,6 +4,8 @@ import { moveTimelineSelection, timelinePage, toggleTimelineBranch } from './tim
 import type { TimelinePage } from './timeline-page'
 
 type TimelineStyle = Pick<PaneBase, 'Box' | 'Text' | 'pal'>
+const TREE_STATUS_LABEL_CELLS = 11
+const TREE_STATUS_CHIP_CELLS = TREE_STATUS_LABEL_CELLS + 2
 
 export function timelineToneColor(pal: PaneBase['pal'], tone: string) {
   return tone === 'key' ? pal.key : tone === 'muted' ? pal.muted : (pal.tone[tone as 'done' | 'error'] ?? pal.muted)
@@ -158,6 +160,8 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
   const paneWidth = widthForCells(' '.repeat(bodyColumns))
   const color = (tone: string) => timelineToneColor(pal, tone)
   const chip = (label: string, tone: string, key?: string) => timelineChip({ Box, Text, pal }, label, tone, key)
+  const treeChip = (label: string, tone: string, key: string) =>
+    timelineChip({ Box, Text, pal }, label.padEnd(TREE_STATUS_LABEL_CELLS), tone, key)
   const bar = (parts: typeof page.progressCard.bar, emptyWidth = 10) =>
     parts.length ? (
       parts.map(part => <Text color={color(part.tone)}>{part.mark.repeat(part.count)}</Text>)
@@ -285,14 +289,23 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
             const selected = row.task.id === page.selected?.row.task.id
             const rowLead = timelineRowLead(row, selected)
             const titleLeadWidth = cellWidth(rowLead)
-            const chipLeadWidth = titleLeadWidth
-            const chipLead = terminalTreeLead(row, chipLeadWidth)
             const warningLead = terminalTreeLead(row, titleLeadWidth)
             const percent = row.percent.padStart(7)
             const percentCells = cellWidth(` ${percent}`)
-            const availableWithBar = bodyColumns - 2 - cellWidth(rowLead) - 12 - percentCells
+            const chipGapCells = 1
+            const availableWithBar =
+              bodyColumns - 2 - cellWidth(rowLead) - TREE_STATUS_CHIP_CELLS - chipGapCells - 12 - percentCells
             const showTaskBar = availableWithBar >= 20
-            const titleCells = Math.max(1, bodyColumns - 2 - cellWidth(rowLead) - percentCells - (showTaskBar ? 12 : 0))
+            const titleCells = Math.max(
+              1,
+              bodyColumns -
+                2 -
+                cellWidth(rowLead) -
+                TREE_STATUS_CHIP_CELLS -
+                chipGapCells -
+                percentCells -
+                (showTaskBar ? 12 : 0),
+            )
             const title =
               cellWidth(row.task.title) > titleCells
                 ? `${cutToCells(row.task.title, Math.max(0, titleCells - 1))}…`
@@ -313,6 +326,10 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
                       {row.prefix}
                       {row.mark}{' '}
                     </Text>
+                  </Box>
+                  {treeChip(row.statusLabel, row.tone, `timeline-chip-${row.task.id}`)}
+                  <Box key={`timeline-chip-title-gap-${row.task.id}`} width={chipGapCells} flexShrink={0}>
+                    <Text> </Text>
                   </Box>
                   <Box flexDirection="row" flexGrow={1} flexShrink={1} minWidth={0}>
                     <Box key={`timeline-title-area-${row.task.id}`} width={titleCells} flexShrink={1} minWidth={0}>
@@ -364,12 +381,6 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
                     </Box>
                   </Box>
                 ))}
-                <Box key={`timeline-status-line-${row.task.id}`} flexDirection="row">
-                  <Box key={`timeline-chip-lead-${row.task.id}`} width={chipLeadWidth} flexShrink={0}>
-                    <Text>{chipLead}</Text>
-                  </Box>
-                  {chip(row.statusLabel, row.tone, `timeline-chip-${row.task.id}`)}
-                </Box>
                 {row.warnings.map(warning => (
                   <Text color={pal.tone.error ?? pal.muted}>{`${warningLead}⚠ ${warning}`}</Text>
                 ))}

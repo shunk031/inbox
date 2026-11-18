@@ -261,10 +261,20 @@ test('terminal Timeline keeps Japanese titles, row metadata and detail guides at
   await clock.settle()
 
   const title = await pane.find({ key: 'timeline-title-long-root' })
+  const chip = await pane.find({ key: 'timeline-chip-long-root' })
+  const chipTitleGap = await pane.find({ key: 'timeline-chip-title-gap-long-root' })
   expect(title?.text.endsWith('…'), 'the long title is truncated with an ellipsis').toBe(true)
   expect(title?.text).not.toContain(longTitle)
-  expect(cellWidth(title?.text ?? '')).toBeGreaterThanOrEqual(20)
+  expect(cellWidth(title?.text ?? '')).toBeGreaterThanOrEqual(11)
   expect(cellWidth(title?.text ?? '')).toBeLessThanOrEqual(30)
+  expect(cellWidth(chip?.text ?? ''), 'the tree chip uses the longest status label width').toBe(11)
+  expect(chip?.text?.trimEnd(), 'the chip retains the complete queued label').toBe('Not started')
+  expect(chip?.props.paddingX, 'the status tone remains a colored background chip').toBe(1)
+  expect(chipTitleGap?.props.width, 'one cell separates the chip from its title').toBe(1)
+  const rowText = (await pane.find({ key: 'timeline-long-root' }))?.text ?? ''
+  expect(rowText.indexOf('Not started'), 'the chip appears before the title on its row').toBeLessThan(
+    rowText.indexOf(title?.text ?? ''),
+  )
   expect(
     await pane.find({ key: 'timeline-row-bar-long-root' }),
     'the bar is dropped to preserve title width',
@@ -376,6 +386,9 @@ test('terminal Timeline aligns percentages, strips rows, and separates only top-
     ['zero', 'forty', 'hundred'].map(async id => (await pane.find({ key: `timeline-row-bar-${id}` }))?.text ?? ''),
   )
   expect(bars.map(text => cellWidth(text))).toEqual([12, 12, 12])
+  const droppedChip = await pane.find({ key: 'timeline-chip-dropped' })
+  expect(cellWidth(droppedChip?.text ?? '') + 2, 'Dropped uses the same fixed chip width').toBe(13)
+  expect(droppedChip?.text?.trimEnd()).toBe('Dropped')
   const text = (await pane.findAll({ type: 'Text' })).map(node => node.text)
   expect(
     text.some(line => line.trim() === '3'),

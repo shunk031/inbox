@@ -77,6 +77,7 @@ export function ready(entry, frame) {
   if (entry.view === 'prs') return has(marker(entry)) && !has('Refreshing PRs')
   if (entry.view === 'agents')
     return has(marker(entry)) && has('Herdr agent list unavailable; local agent status is not current.')
+  if (entry.view === 'timeline') return has('Progress') && has(marker(entry))
   if (entry.view === 'timeline-detail') return has('Snapshot') && has('Back')
   if (entry.view === 'asks-detail')
     return (
@@ -229,8 +230,7 @@ export async function capture(entry, pluginDir, root, socket, claude) {
       frame => pageMarker(frame, initial),
       `initial inbox pane for ${entry.fixture}`,
     )
-    const timelineDetail = frame =>
-      pageMarker(frame, entry.scenario === 'empty' ? 'Snapshot detail empty' : 'Snapshot root')
+    const timelineDetail = frame => pageMarker(frame, 'Progress') && pageMarker(frame, 'Snapshot')
     const steps = {
       timeline: [['2', frame => ready(entry, frame)]],
       'timeline-detail': [

@@ -55,34 +55,44 @@ for (const bodyColumns of [110, 200] as const) {
     const ids = ['scene-root', 'scene-wrap', 'scene-long', 'scene-deep']
     const snapshot = []
     const rowEnds = []
-    for (const id of ids) {
+    const titleColumns = []
+    const expectedLabels = ['In progress', 'Completed', 'In progress', 'Waiting']
+    for (const [index, id] of ids.entries()) {
       const title = await pane.find({ key: `timeline-title-${id}` })
       const status = await pane.find({ key: `timeline-chip-${id}` })
       const titleLead = await pane.find({ key: `timeline-title-lead-${id}` })
-      const chipLead = await pane.find({ key: `timeline-chip-lead-${id}` })
+      const chipGap = await pane.find({ key: `timeline-chip-title-gap-${id}` })
       const titleArea = await pane.find({ key: `timeline-title-area-${id}` })
       const bar = await pane.find({ key: `timeline-row-bar-${id}` })
       const gap = await pane.find({ key: `timeline-row-bar-gap-${id}` })
       const percent = await pane.find({ key: `timeline-row-percent-${id}` })
-      expect(chipLead?.props.width, `${id} chip begins in the title's first cell`).toBe(titleLead?.props.width)
       expect(cellWidth(titleLead?.text ?? ''), `${id} title lead uses its measured cells`).toBe(titleLead?.props.width)
-      expect(cellWidth(chipLead?.text ?? ''), `${id} chip lead fills the title column`).toBe(titleLead?.props.width)
+      expect(cellWidth(status?.text ?? ''), `${id} chip label is padded to the longest status`).toBe(11)
+      expect(status?.text?.trimEnd(), `${id} keeps its complete status label`).toBe(expectedLabels[index])
+      expect(status?.props.paddingX, `${id} retains the colored chip padding`).toBe(1)
+      expect(chipGap?.props.width, `${id} has one cell between chip and title`).toBe(1)
+      titleColumns.push(
+        Number(titleLead?.props.width) + cellWidth(status?.text ?? '') + 2 + Number(chipGap?.props.width),
+      )
       expect(titleArea?.props.flexGrow, `${id} keeps its measured title budget fixed`).toBeUndefined()
       const rowEnd =
         cellWidth(titleLead?.text ?? '') +
+        cellWidth(status?.text ?? '') +
+        2 +
+        Number(chipGap?.props.width) +
         Number(titleArea?.props.width) +
         Number(gap?.props.width ?? 0) +
         (bar ? 10 : 0) +
         cellWidth(percent?.text ?? '')
       expect(rowEnd, `${id} title, bar and percent fit in the row budget`).toBeLessThanOrEqual(bodyColumns - 4)
       rowEnds.push(rowEnd)
-      for (const line of [titleLead?.text ?? '', chipLead?.text ?? '']) {
+      for (const line of [titleLead?.text ?? '']) {
         expect(line).not.toContain('|')
         expect(line).not.toContain('│ │')
         expect(line.at(-1), `${id} leaves a cell before the chip`).toBe(' ')
         for (const match of line.matchAll(/│/g)) {
           expect(Number(match.index) % 3).toBe(2)
-          expect(Number(match.index), `${id} guide does not touch the chip`).toBeLessThan(line.length - 1)
+          expect(Number(match.index), `${id} guide stays in the tree prefix`).toBeLessThan(line.length - 1)
         }
       }
       if (title?.text.endsWith('…') && bar) {
@@ -95,9 +105,15 @@ for (const bodyColumns of [110, 200] as const) {
       const continuation = (await pane.findAll({ type: 'Text' })).find(line => line.text === '次の行も表示する')
       const displayedTitle =
         id === 'scene-wrap' ? `${title?.text ?? ''}\n${continuation?.text ?? ''}` : (title?.text ?? '')
-      snapshot.push([id, displayedTitle, status?.text ?? null])
+      snapshot.push([id, displayedTitle, status?.text?.trimEnd() ?? null])
     }
     expect(new Set(rowEnds).size, 'every percent shares the same ending column').toBe(1)
+    expect(titleColumns[1], 'the two depth-one titles start in one column after their fixed chips').toBe(
+      titleColumns[2],
+    )
+    expect(Number(titleColumns[0]), 'deeper tree titles start after their additional guide columns').toBeLessThan(
+      Number(titleColumns[1]),
+    )
     const labels = (await pane.findAll({ type: 'Text' })).map(line => line.text)
     const renderedText = await pane.findAll({ type: 'Text' })
     const continuationIndex = renderedText.findIndex(line => line.text === '次の行も表示する')
