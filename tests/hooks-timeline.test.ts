@@ -270,10 +270,12 @@ test('terminal Timeline keeps Japanese titles, row metadata and detail guides at
   expect(title?.text.endsWith('…'), 'the long title is truncated with an ellipsis').toBe(true)
   expect(title?.text).not.toContain(longTitle)
   expect(cellWidth(title?.text ?? '')).toBeGreaterThan(0)
-  expect(cellWidth(title?.text ?? '')).toBeLessThanOrEqual(Number(titleTextArea?.props.width))
+  expect(Number(titleTextArea?.props.width)).toBe(cellWidth(title?.text ?? ''))
   expect(chipGap?.props.width, 'the title keeps one cell before its full status chip').toBe(1)
   const chipWidth = cellWidth(statusChip?.text ?? '') + 2 * Number(statusChip?.props.paddingX)
-  expect(Number(titleTextArea?.props.width) + Number(chipGap?.props.width) + chipWidth).toBe(titleArea?.props.width)
+  expect(Number(titleTextArea?.props.width) + Number(chipGap?.props.width) + chipWidth).toBeLessThanOrEqual(
+    Number(titleArea?.props.width),
+  )
   expect(
     cellWidth(title?.text ?? '') + Number(chipGap?.props.width) + chipWidth,
     'the shortened title and whole chip fit before the percent',

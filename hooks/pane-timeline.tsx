@@ -292,12 +292,13 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
             const showTaskBar = availableWithBar >= 20
             const titleCells = Math.max(1, bodyColumns - 2 - cellWidth(rowLead) - percentCells - (showTaskBar ? 12 : 0))
             const chipCells = cellWidth(row.statusLabel) + 2
-            const titleTextCells = Math.max(1, titleCells - chipCells - 1)
+            const titleTextBudget = Math.max(1, titleCells - chipCells - 1)
             const [sourceFirstTitleLine = '', ...continuationTitleLines] = row.task.title.split('\n')
             const firstTitleLine =
-              cellWidth(sourceFirstTitleLine) > titleTextCells
-                ? `${cutToCells(sourceFirstTitleLine, Math.max(0, titleTextCells - 1))}…`
+              cellWidth(sourceFirstTitleLine) > titleTextBudget
+                ? `${cutToCells(sourceFirstTitleLine, Math.max(0, titleTextBudget - 1))}…`
                 : sourceFirstTitleLine
+            const titleTextCells = Math.max(1, cellWidth(firstTitleLine))
             return (
               <Box
                 key={`timeline-${row.task.id}`}

@@ -108,8 +108,13 @@ test('terminal Timeline aligns every status chip with its title and keeps warnin
     expect(cellWidth(titleLead?.text ?? ''), `${id} title begins after its measured lead`).toBe(titleLead?.props.width)
     expect(titleArea?.props.flexDirection, `${id} title and chip share a line`).toBe('row')
     expect(chipGap?.props.width, `${id} leaves one cell between title and chip`).toBe(1)
+    expect(Number(titleTextArea?.props.width), `${id} title box ends at the displayed title`).toBe(
+      cellWidth(titleText?.text ?? ''),
+    )
     const chipWidth = cellWidth(statusChip?.text ?? '') + 2 * Number(statusChip?.props.paddingX)
-    expect(Number(titleTextArea?.props.width) + Number(chipGap?.props.width) + chipWidth).toBe(titleArea?.props.width)
+    expect(Number(titleTextArea?.props.width) + Number(chipGap?.props.width) + chipWidth).toBeLessThanOrEqual(
+      Number(titleArea?.props.width),
+    )
     expect(
       cellWidth(titleText?.text ?? '') + Number(chipGap?.props.width) + chipWidth,
       `${id} title, gap and full chip fit before the row's bar and percent`,
@@ -209,7 +214,7 @@ for (const bodyColumns of [48, 49] as const) {
     expect(chipGap?.props.width).toBe(1)
     expect(
       Number(titleTextArea?.props.width) + Number(chipGap?.props.width) + cellWidth(statusChip?.text ?? '') + 2,
-    ).toBe(titleArea?.props.width)
+    ).toBeLessThanOrEqual(titleArea?.props.width as number)
     expect(
       cellWidth(title?.text ?? '') + Number(chipGap?.props.width) + cellWidth(statusChip?.text ?? '') + 2,
       'the truncated CJK title and full chip stay inside the title column',

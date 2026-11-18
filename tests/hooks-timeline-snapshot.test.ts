@@ -26,6 +26,11 @@ const nestedTasks: { id: string; parent_id?: string; title: string; status: 'wor
       title: 'ログと結果を見て仕上がりを確かめる',
       status: 'waits-on-other',
     },
+    {
+      id: 'scene-warning',
+      title: '表示を今朝の行に戻す（⚠️ だけ足す）。個人の上限は今のまま',
+      status: 'done',
+    },
   ]
 
 async function openTree($: Engine, on: On, bodyColumns: number) {
@@ -52,7 +57,7 @@ async function openTree($: Engine, on: On, bodyColumns: number) {
 for (const bodyColumns of [110, 200] as const) {
   test(`terminal Timeline tree text snapshot at ${bodyColumns} columns`, async ($, on) => {
     const { pane } = await openTree($, on, bodyColumns)
-    const ids = ['scene-root', 'scene-wrap', 'scene-long', 'scene-deep']
+    const ids = ['scene-root', 'scene-wrap', 'scene-long', 'scene-deep', 'scene-warning']
     const snapshot = []
     const rowEnds = []
     for (const id of ids) {
@@ -71,14 +76,17 @@ for (const bodyColumns of [110, 200] as const) {
       expect(chipGap?.props.width, `${id} leaves one cell between title and chip`).toBe(1)
       expect(cellWidth(chipGap?.text ?? ''), `${id} renders the title-to-chip gap`).toBe(1)
       const chipWidth = cellWidth(status?.text ?? '') + 2 * Number(status?.props.paddingX)
+      expect(Number(titleTextArea?.props.width), `${id} title box ends at the displayed title`).toBe(
+        cellWidth(title?.text ?? ''),
+      )
       expect(
         cellWidth(title?.text ?? '') + Number(chipGap?.props.width) + chipWidth,
         `${id} keeps the title, gap and whole chip inside its row budget`,
       ).toBeLessThanOrEqual(Number(titleArea?.props.width))
       expect(
         Number(titleTextArea?.props.width) + Number(chipGap?.props.width) + chipWidth,
-        `${id} assigns a fixed title width before its whole chip`,
-      ).toBe(Number(titleArea?.props.width))
+        `${id} leaves free space after the chip for the fixed bar column`,
+      ).toBeLessThanOrEqual(Number(titleArea?.props.width))
       const titleAreaChildren = (titleArea?.children ?? []).filter(
         (child): child is { props?: Record<string, unknown>; text?: string } =>
           typeof child === 'object' && child !== null,
@@ -133,12 +141,21 @@ for (const bodyColumns of [110, 200] as const) {
     const longTitleCells = Number(titleArea?.props.width) - cellWidth('In progress') - 2 - 1
     const longTitle =
       cellWidth(longTask.title) > longTitleCells ? `${cutToCells(longTask.title, longTitleCells - 1)}…` : longTask.title
+    const warningTask = nestedTasks.find(task => task.id === 'scene-warning')!
+    const warningArea = await pane.find({ key: 'timeline-title-area-scene-warning' })
+    const warningTitleCells = Number(warningArea?.props.width) - cellWidth('Completed') - 2 - 1
+    const warningTitle =
+      cellWidth(warningTask.title) > warningTitleCells
+        ? `${cutToCells(warningTask.title, warningTitleCells - 1)}…`
+        : warningTask.title
+    expect(cellWidth('⚠️'), 'the warning emoji presentation sequence uses two cells').toBe(2)
     expect(snapshot).toEqual([
       ['heading', 'Progress'],
       ['scene-root', 'Review task tree', 'In progress'],
       ['scene-wrap', '折り返し用の日本語タイトル\n次の行も表示する', 'Completed'],
       ['scene-long', longTitle, 'In progress'],
       ['scene-deep', 'ログと結果を見て仕上がりを確かめる', 'Waiting'],
+      ['scene-warning', warningTitle, 'Completed'],
     ])
   })
 }
