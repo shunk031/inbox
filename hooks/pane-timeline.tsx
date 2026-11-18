@@ -333,12 +333,12 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
                     </Box>
                     <Box flexDirection="row" flexShrink={0}>
                       {showTaskBar ? (
-                        <>
+                        <Box key={`timeline-row-bar-${row.task.id}`} flexDirection="row" flexShrink={0}>
                           <Box key={`timeline-row-bar-gap-${row.task.id}`} width={2} flexShrink={0}>
                             <Text>{'  '}</Text>
                           </Box>
-                          <Box key={`timeline-row-bar-${row.task.id}`}>{bar(row.progressBar)}</Box>
-                        </>
+                          {bar(row.progressBar)}
+                        </Box>
                       ) : null}
                       <Box flexShrink={0}>
                         <Text key={`timeline-row-percent-${row.task.id}`} color={color(row.tone)}>{` ${percent}`}</Text>

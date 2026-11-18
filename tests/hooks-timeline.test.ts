@@ -375,7 +375,7 @@ test('terminal Timeline aligns percentages, strips rows, and separates only top-
   const bars = await Promise.all(
     ['zero', 'forty', 'hundred'].map(async id => (await pane.find({ key: `timeline-row-bar-${id}` }))?.text ?? ''),
   )
-  expect(bars.map(text => cellWidth(text))).toEqual([10, 10, 10])
+  expect(bars.map(text => cellWidth(text))).toEqual([12, 12, 12])
   const text = (await pane.findAll({ type: 'Text' })).map(node => node.text)
   expect(
     text.some(line => line.trim() === '3'),
