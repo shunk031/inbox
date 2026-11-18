@@ -429,6 +429,7 @@ test('the desktop Timeline keeps the existing inline tree while this look is pen
   const buttons = await pane.findAll({ type: 'Button' })
   expect(buttons.some(button => button.key === 'detail')).toBe(false)
   expect(buttons.some(button => button.key === 'toggle-branch' && button.props.label === 'Close branch')).toBe(true)
+  expect(buttons.some(button => button.key === 'next' || button.key === 'previous')).toBe(false)
   expect(
     (await pane.findAll({ type: 'Button' })).filter(button => button.key?.startsWith('timeline-title-')),
   ).toHaveLength(3)
