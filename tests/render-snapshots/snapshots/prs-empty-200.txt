@@ -1,0 +1,45 @@
+                                                                                       ✕
+ ▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄
+   Asks     Timeline 0     Agents     PRs
+─▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀──────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                          No PRs
+
+                               Could not read the PRs: gh is
+                                disabled in render snapshot
+                             fixtures. They show as last read.
+
+                                        Refresh PRs
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  Help                                                                           v0.4.0

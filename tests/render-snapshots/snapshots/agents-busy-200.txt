@@ -1,0 +1,45 @@
+                                                                                       ✕
+ ▄▄▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄
+   Asks 2     Timeline 3     Agents     PRs
+─▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀────────────────────────────────────────────
+
+ Herdr agent list unavailable; local agent status is not current.
+   Orchestrators
+   │
+   └─   No open orchestrators
+
+
+   Meta tasks · 4
+   │
+    ○ This session · meta · 50% complete · 0.5/1.0 weight
+
+    ◐ 50% · No owner · Snapshot root 日本語のレイアウト確認 日本語のレイア…  In progress
+
+      ◐ 0% · No owner · Snapshot long 表示幅とセル位置を確かめる 表示幅とセ… In progress
+
+        ✕ 0% · No owner · 深い階層の待機中タスク                                 Waiting
+
+
+   Local agents
+   │
+   └─   No open local agents
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  Help                                                                           v0.4.0

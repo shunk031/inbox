@@ -1,0 +1,5 @@
+# Snapshot report
+
+This invented report checks that a long CJK paragraph stays inside the docked terminal pane.
+
+The capture uses stable fixture text. It contains no session transcript, account name, or network data.

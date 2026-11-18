@@ -1,0 +1,45 @@
+                                                                                       ✕
+ ▄▄▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄
+   Asks 1     Timeline 3     Agents     PRs
+─▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀────────────────────────────────────────────
+
+ b: ‹ Back Snapshot root 日本語のレイアウト確認 日本語のレイアウト確認…     In progress
+
+ ┌─────────────────────────┐ ┌──────────────────────┐ ┌────────────────────────────────┐
+ │ Progress                │ │ Weight               │ │ Completed units                │
+ │ 50.00%                  │ │ 1                    │ │ 1 / 2                          │
+ └─────────────────────────┘ └──────────────────────┘ └────────────────────────────────┘
+
+      Current
+      The root task has a stable note. · 1m
+
+      Detail
+      An invented root task with a long CJK title.
+
+      Note
+      The root task has a stable note.
+
+      History
+      1m · fixture · Task created
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  Help                                                                           v0.4.0
