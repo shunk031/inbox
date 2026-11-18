@@ -1,8 +1,49 @@
 import assert from 'node:assert/strict'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import test from 'node:test'
 import { checkFrame } from './render-snapshots-checks.mjs'
-import { cropInboxPane, ready, stripAnsi } from './render-snapshots-live.mjs'
-import { fixtureState, registry } from './render-snapshots-fixtures.mjs'
+import { cropInboxPane, isolate, ready, storeKeys, stripAnsi } from './render-snapshots-live.mjs'
+import { fixtureState, PLUGIN_STORE, registry } from './render-snapshots-fixtures.mjs'
+
+test('isolation accepts a missing real config path and still refuses unsafe paths', t => {
+  const scratch = mkdtempSync(path.join(os.tmpdir(), 'render-snapshot-isolation-'))
+  t.after(() => rmSync(scratch, { recursive: true, force: true }))
+  const root = path.join(scratch, 'runner-temp')
+  const home = path.join(root, 'home')
+  const config = path.join(root, 'config')
+  const realHome = path.join(scratch, 'real-home')
+  mkdirSync(home, { recursive: true })
+  mkdirSync(config, { recursive: true })
+  mkdirSync(realHome)
+
+  assert.equal(existsSync(path.join(realHome, '.claude')), false)
+  assert.doesNotThrow(() => isolate(root, home, config, { HOME: realHome }))
+  assert.throws(() => isolate(root, home, config, { HOME: home }), /refusing to run/u)
+  assert.throws(() => isolate(root, home, config, { HOME: realHome, CLAUDE_CONFIG_DIR: config }), /refusing to run/u)
+
+  const outside = path.join(scratch, 'outside')
+  mkdirSync(outside)
+  assert.throws(() => isolate(root, outside, config, { HOME: realHome }), /outside the runner temp/u)
+})
+
+test('store key inventory follows CLAUDE_CONFIG_DIR and treats missing store as empty', t => {
+  const scratch = mkdtempSync(path.join(os.tmpdir(), 'render-snapshot-store-'))
+  t.after(() => rmSync(scratch, { recursive: true, force: true }))
+  const home = path.join(scratch, 'home')
+  const config = path.join(scratch, 'config')
+  const defaultStore = path.join(home, '.claude', 'plugins', 'store')
+  const configuredStore = path.join(config, 'plugins', 'store')
+  mkdirSync(defaultStore, { recursive: true })
+  mkdirSync(configuredStore, { recursive: true })
+  writeFileSync(path.join(defaultStore, PLUGIN_STORE), JSON.stringify({ fallback: {} }))
+  writeFileSync(path.join(configuredStore, PLUGIN_STORE), JSON.stringify({ configured: {} }))
+
+  assert.deepEqual(storeKeys({ HOME: home, CLAUDE_CONFIG_DIR: config }), new Set(['configured']))
+  assert.deepEqual(storeKeys({ HOME: home }), new Set(['fallback']))
+  assert.deepEqual(storeKeys({ HOME: home, CLAUDE_CONFIG_DIR: path.join(scratch, 'missing') }), new Set())
+})
 
 test('registry covers every terminal view, scenario, and width once', () => {
   assert.equal(registry.length, 28)

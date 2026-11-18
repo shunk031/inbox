@@ -130,8 +130,9 @@ function writeConfig(config, home, pluginDir, sessionId, fixture) {
   chmodSync(fakeGh, 0o755)
   return bin
 }
-function storeKeys() {
-  const store = path.join(process.env.HOME || os.homedir(), '.claude/plugins/store')
+export function storeKeys(env = process.env) {
+  const config = env.CLAUDE_CONFIG_DIR || path.join(env.HOME || os.homedir(), '.claude')
+  const store = path.join(config, 'plugins', 'store')
   const keys = new Set()
   if (!existsSync(store)) return keys
   for (const name of readdirSync(store).filter(name => /^inbox_inline-.*\.json$/u.test(name))) {
@@ -141,12 +142,21 @@ function storeKeys() {
   }
   return keys
 }
-function isolate(root, home, config) {
-  const realHome = realpathSync(process.env.HOME || os.homedir())
-  const realConfig = realpathSync(process.env.CLAUDE_CONFIG_DIR || path.join(realHome, '.claude'))
-  const temp = `${realpathSync(root)}${path.sep}`
-  const h = realpathSync(home)
-  const c = realpathSync(config)
+const realPathOrResolve = value => {
+  try {
+    return realpathSync(value)
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error
+    return path.resolve(value)
+  }
+}
+export function isolate(root, home, config, env = process.env) {
+  const homePath = env.HOME || os.homedir()
+  const realHome = realPathOrResolve(homePath)
+  const realConfig = realPathOrResolve(env.CLAUDE_CONFIG_DIR || path.join(homePath, '.claude'))
+  const temp = `${realPathOrResolve(root)}${path.sep}`
+  const h = realPathOrResolve(home)
+  const c = realPathOrResolve(config)
   if ([realHome, realConfig].includes(h) || [realHome, realConfig].includes(c))
     throw Error('refusing to run with a real HOME or CLAUDE_CONFIG_DIR')
   if (![h, c].every(value => value.startsWith(temp)))
