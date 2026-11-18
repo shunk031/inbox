@@ -265,7 +265,7 @@ import {
   type LoadedBy,
   withoutRowActions,
 } from './mod-sessions'
-import { cancelUndoScroll, mod, paneState, sessionState, suspendUndoReveal } from './mod-state'
+import { cancelUndoScroll, mod, paneState, resetTurn, sessionState, suspendUndoReveal } from './mod-state'
 import { noteStatusDrawn, takeShownRows } from './pane-status-shown'
 import { desktopSpaceLines } from './pane-status-tops'
 import { changeSaved, isLastSaveRefused, readSaved, readSettled, save, type SaveEngine } from './mod-saves'
@@ -340,13 +340,7 @@ let taskProjection: ModTaskProjection | null = null
 
 const PANE = 'inbox'
 
-function resetTurn() {
-  sessionState.stepTexts = []
-  sessionState.turnBox = null
-  sessionState.isDialogDismissed = false
-}
-
-/** Adds the person's words to the turn, as a shell command row does. */
+/** Adds the person's words to the turn, as a shell command does. */
 function notePerson($: EngineInterface, line: string) {
   return commit($, currentOwner(), s => ({
     ...s,
@@ -3190,7 +3184,10 @@ export const register: Register = on => {
       discardReply: id => discardReply($, id),
       startTyping: (id, seed) => startTyping($, id, seed),
       selectStatusRow: (id, focusKey) => selectStatusRow($, id, focusKey),
-      selectTimelineRow: id => update($, TIMELINE_SELECTION, () => id),
+      selectTimelineRow: (id, key) =>
+        update($, TIMELINE_SELECTION, () => id).then(() =>
+          key ? $.ui.focus({ requestId: PANE, key }).catch(() => {}) : undefined,
+        ),
       openTimelineDetail: async id => {
         if (timelineSelection !== id) await update($, TIMELINE_SELECTION, () => id)
         return update($, TIMELINE_DETAIL_OPEN, () => true)

@@ -220,6 +220,12 @@ test('Timeline opens a selected task detail and returns to the selected tree row
   expect(detail).toContain('A flow 21%')
   expect(detail).not.toContain('Build the review flow')
   expect((await pane.findAll({ type: 'Button' })).some(button => button.props.label === 'Close branch')).toBe(true)
+
+  await pane.press({ key: 'next' })
+  await clock.settle()
+  expect((await pane.find({ key: 'timeline-title-plan' }))?.props.autoFocus).toBeUndefined()
+  expect((await pane.find({ key: 'timeline-title-child' }))?.props.autoFocus).toBe(true)
+  expect((await pane.find({ key: 'timeline-title-lead-child' }))?.text.startsWith('> ')).toBe(true)
 })
 
 test('terminal Timeline keeps Japanese titles, row metadata and detail guides at a narrow dock width', async ($, on) => {
