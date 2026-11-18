@@ -11,9 +11,9 @@
  │ Elapsed: 1m                       │
  └───────────────────────────────────┘
 
-  > ◐ Snapshot root 日本語の…  50.00%
+    ◐ Snapshot root 日本語の…  50.00%
     │  In progress
-    ├─ ● 折り返し用の日本語…  100.00%
+  > ├─ ● 折り返し用の日本語…  100.00%
     │     Completed
     └─ ◐ Snapshot long 表示…    0.00%
        │  In progress
@@ -41,5 +41,5 @@
 
 
 
- Open details h: Close branch
+ Open details
   Help                         v0.4.0

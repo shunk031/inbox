@@ -5,7 +5,13 @@ import os from 'node:os'
 import path from 'node:path'
 import { registry, SCENARIOS, VIEWS } from './render-snapshots-fixtures.mjs'
 import { capture, removeTemporaryTree, tmux } from './render-snapshots-live.mjs'
-import { checkFrame, failure, inventoryErrors, runMutationProofs } from './render-snapshots-checks.mjs'
+import {
+  checkFrame,
+  checkTimelineFocus,
+  failure,
+  inventoryErrors,
+  runMutationProofs,
+} from './render-snapshots-checks.mjs'
 
 async function main() {
   const plugin = realpathSync(process.env.INBOX_SNAPSHOT_PLUGIN_DIR || process.cwd())
@@ -48,6 +54,7 @@ async function main() {
         errors.push(failure(item.entry, 'baseline', 'same pane frame', 'different', 'frame differs'))
     }
     errors.push(...checkFrame(item.entry, item.frame, item.paneWidth))
+    errors.push(...checkTimelineFocus(item.entry, item.frame, item.ansiFrame))
   }
   errors.push(
     ...inventoryErrors(

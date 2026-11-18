@@ -405,10 +405,10 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
   return {
     view: timelineView,
     footer,
-    move(step: number) {
+    async move(step: number) {
       if (page.mode !== 'tree') return
       const id = moveTimelineSelection(page.rows, timelineSelection, step)
-      if (id) void selectTimelineRow(id)
+      if (id) await selectTimelineRow(id, `timeline-title-${id}`)
     },
   }
 }

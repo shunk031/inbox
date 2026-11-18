@@ -1,6 +1,7 @@
 import { cellWidth } from '../hooks/text.ts'
 import { registry } from './render-snapshots-fixtures.mjs'
 
+const stripAnsi = text => text.replace(/\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))/g, '')
 export const marker = entry =>
   ({
     asks: entry.scenario === 'empty' ? 'Nothing needed' : 'Snapshot question',
@@ -13,6 +14,39 @@ export const marker = entry =>
   })[entry.view]
 
 export const pageMarker = (frame, text) => frame.replace(/\s+/gu, ' ').includes(text)
+const taskMarkers = ['Snapshot root', '折り返し用', 'Snapshot long', '深い階層']
+const inverseVideo = line => {
+  let inverse = false
+  for (const match of line.matchAll(/\x1b\[([\d;]*)m|([^\x1b])/gu)) {
+    if (match[1] !== undefined) {
+      for (const code of match[1].split(';').map(Number)) {
+        if (code === 0 || code === 27) inverse = false
+        if (code === 7) inverse = true
+      }
+    } else if (inverse) return true
+  }
+  return false
+}
+export function checkTimelineFocus(entry, frame, ansiFrame) {
+  if (entry.view !== 'timeline' || entry.scenario !== 'busy') return []
+  const errors = []
+  for (const marker of taskMarkers) {
+    const row = frame.split('\n').find(line => line.includes(marker))
+    const ansiRow = ansiFrame.split('\n').find(line => stripAnsi(line).includes(marker))
+    if (!row || !ansiRow) continue
+    if (!row.slice(0, row.indexOf(marker)).includes('>') && inverseVideo(ansiRow))
+      errors.push(
+        failure(
+          entry,
+          `focus:${marker}`,
+          'cursor row or no inverse',
+          'inverse',
+          'inverse-video focus remains on a task row after the cursor moved',
+        ),
+      )
+  }
+  return errors
+}
 const col = (line, index) => cellWidth(line.slice(0, index))
 const detailColumns = { 110: [19, 21], 200: [27, 29, 52, 54] }
 export const failure = (entry, row, expected, actual, reason) =>
@@ -126,6 +160,7 @@ export function runMutationProofs(frames) {
   const chip = lines.findIndex(line => /^\s+│\s+In progress\s*$/u.test(line))
   if (chip >= 0) lines[chip] = lines[chip].replace(/^ /u, '')
   const long = timeline.frame.split('\n').find(line => line.includes('Snapshot long'))
+  const focusMutation = timeline.ansiFrame.replace('Snapshot long', '\x1b[7mSnapshot long\x1b[27m')
   const asks = frames.get('asks-empty-110.txt')
   const names = new Set(registry.map(entry => entry.file))
   const missing = new Set(names)
@@ -154,6 +189,7 @@ export function runMutationProofs(frames) {
     ],
     ['baseline deleted', inventoryErrors(names, missing).find(line => line.includes('timeline-busy-200.txt'))],
     ['extra baseline added', inventoryErrors(names, extra).find(line => line.includes('unreferenced baseline'))],
+    ['focus left on another task', checkTimelineFocus(timeline.entry, timeline.frame, focusMutation)[0]],
   ]
   for (const [name, line] of proofs) {
     if (!line) throw Error(`mutation proof did not fail: ${name}`)

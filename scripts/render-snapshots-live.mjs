@@ -231,8 +231,12 @@ export async function capture(entry, pluginDir, root, socket, claude) {
     )
     const timelineDetail = frame =>
       pageMarker(frame, entry.scenario === 'empty' ? 'Snapshot detail empty' : 'Snapshot root')
+    const childSelected = frame => {
+      const row = frame.split('\n').find(line => line.includes('折り返し用'))
+      return row?.slice(0, row.indexOf('折り返し用')).includes('>') ?? false
+    }
     const steps = {
-      timeline: [['2', frame => ready(entry, frame)]],
+      timeline: [['2', frame => ready(entry, frame)], ...(entry.scenario === 'busy' ? [['j', childSelected]] : [])],
       'timeline-detail': [
         ['2', timelineDetail],
         ['Enter', frame => ready(entry, frame)],
@@ -242,7 +246,7 @@ export async function capture(entry, pluginDir, root, socket, claude) {
       'asks-detail': [['v', frame => ready(entry, frame)]],
     }
     for (const [key, predicate] of steps[entry.view] ?? [])
-      await press(socket, session, entry.width, key, predicate, `${entry.view} ${entry.scenario}`)
+      await press(socket, session, entry.width, key, predicate, `${entry.view} ${entry.scenario} ${key}`)
     if (entry.view === 'help') {
       await focusHelp(socket, session)
       send(socket, session, 'Enter')
@@ -254,8 +258,9 @@ export async function capture(entry, pluginDir, root, socket, claude) {
       frame => ready(entry, frame),
       `${entry.view} ${entry.scenario}`,
     )
+    const ansiFrame = tmux(socket, 'capture-pane', '-e', '-p', '-t', `${session}:0.0`)
     process.stdout.write(`CAPTURE ${entry.file}\n`)
-    return { entry, frame: crop.text, paneWidth: crop.paneWidth }
+    return { entry, frame: crop.text, ansiFrame, paneWidth: crop.paneWidth }
   } finally {
     try {
       tmux(socket, 'kill-session', '-t', session)
