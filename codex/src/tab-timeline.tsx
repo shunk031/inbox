@@ -1,23 +1,16 @@
 import type { JSX } from 'preact'
 import { prMarkId } from '../../hooks/pr-rows'
-import { COMPLETED_FOLD_ID, timelinePage } from '../../hooks/timeline-page'
+import { timelinePage } from '../../hooks/timeline-page'
 import type { TabView } from './core'
 import { pendingLocal, act } from './tab-rows'
 import { closingFolds, drawnRows, timelineFolded } from './tab-state'
 import { outPending } from './tab-press'
-import {
-  closeTimelineDetail,
-  openTimelineDetail,
-  timelinePageOf,
-  timelineRowForm,
-  toggleTimelineDoneFold,
-  toggleTimelineFold,
-} from './rows'
+import { closeTimelineDetail, openTimelineDetail, timelinePageOf, timelineRowForm, toggleTimelineFold } from './rows'
 
 export function TimelineTab({ view }: { view: TabView }) {
   const page = timelinePageOf(view)
   const detail = page.selected
-  const all = timelinePage(view.timeline, null, [COMPLETED_FOLD_ID], view.lastActions, false).rows
+  const all = timelinePage(view.timeline, null, [], view.lastActions).rows
   const visible = new Map(page.rows.map(row => [row.task.id, row]))
   const hidden = new Set([...timelineFolded].filter(id => !closingFolds.has(`timeline-${id}`)))
   const children = (parentId: string | null) =>
@@ -26,19 +19,6 @@ export function TimelineTab({ view }: { view: TabView }) {
     const id = `timeline:${row.task.id}`
     const track = drawnRows.get(id)?.track
     const selected = page.selected?.row.task.id === row.task.id
-    if (row.isCompletedFold)
-      return (
-        <section class="timeline-tree-item completed-fold" key={row.task.id}>
-          <div class={`row timeline-node${selected ? ' selected' : ''}`} data-motion={id}>
-            <div class="content tight">
-              <button class="timeline-title tone-done" type="button" onClick={toggleTimelineDoneFold}>
-                <span class="timeline-task-mark tone-done">{visible.get(row.task.id)?.mark ?? row.mark} </span>
-                {row.task.title}
-              </button>
-            </div>
-          </div>
-        </section>
-      )
     const branchAction = visible.get(row.task.id)?.actions.find(action => action.action === 'toggle-branch')
     const form = timelineRowForm(row, visible.get(row.task.id))
     const isClosing = track?.state === 'closing' || track?.state === 'leaving'
@@ -225,22 +205,7 @@ export function TimelineTab({ view }: { view: TabView }) {
           <p>{page.empty.hint}</p>
         </div>
       ) : (
-        <div class="list timeline-list">
-          {all
-            .filter(
-              row => row.task.parentId === null && !row.isCompletedFold && !page.completedRootIds.includes(row.task.id),
-            )
-            .map(drawRow)}
-          {all.filter(row => row.isCompletedFold).map(drawRow)}
-          <div data-motion="closed-timeline-completed">
-            {page.rows.some(row => page.completedRootIds.includes(row.task.id)) ||
-            closingFolds.has('timeline-completed')
-              ? all
-                  .filter(row => row.task.parentId === null && page.completedRootIds.includes(row.task.id))
-                  .map(drawRow)
-              : null}
-          </div>
-        </div>
+        <div class="list timeline-list">{children(null).map(drawRow)}</div>
       )}
     </main>
   )

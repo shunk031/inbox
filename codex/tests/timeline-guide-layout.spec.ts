@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
-import { h, render } from 'preact'
 import { Window } from 'happy-dom'
 import type { TaskNode, TaskProgressSegments } from '../../types'
 
@@ -42,39 +41,18 @@ test('a folded Codex Timeline branch has no visible child guide', async context 
   Object.assign(globalThis, {
     window,
     document: window.document,
-    Element: window.Element,
+    Event: window.Event,
     matchMedia: window.matchMedia.bind(window),
   })
   context.after(() => window.happyDOM.close())
 
-  Object.assign(window, { __inboxHandoff: { ready() {} } })
-  document.body.innerHTML = '<div id="app"></div>'
   const { timelineData, timelinePage } = await import('../../hooks/timeline-page')
   const { timelineRowForm } = await import('../src/rows')
-  const tasks = [task('root'), task('child', 'root'), task('finished')]
-  tasks[2]!.status = 'done'
-  const data = timelineData(tasks, segments, {}, [], now)
+  const data = timelineData([task('root'), task('child', 'root')], segments, {}, [], now)
   const expandedRoot = timelinePage(data, 'root', []).rows[0]!
   const foldedRoot = timelinePage(data, 'root', ['root']).rows[0]!
 
   assert.equal(foldedRoot.hasChildren, true)
   assert.equal(foldedRoot.hasVisibleChildren, false)
   assert.equal(timelineRowForm(expandedRoot, foldedRoot).childGuide, null)
-
-  const { tabState, timelineFolded, root } = await import('../src/tab-state')
-  const { TimelineTab } = await import('../src/tab-timeline')
-  await import('../src/tab')
-  const view = { timeline: data, lastActions: {} } as never
-  Object.assign(tabState, { view, tab: 'timeline', isActive: true, timelineSelection: 'child' })
-  tabState.draw = () => render(h(TimelineTab, { view }), root)
-  tabState.draw()
-  assert.doesNotMatch(root.textContent ?? '', /finished/)
-  const press = (key: string) =>
-    document.body.dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true }) as unknown as Event)
-  press('j')
-  assert.equal(tabState.timelineSelection, timelinePage(data, null, []).rows.at(-1)?.task.id)
-  press('Enter')
-  assert.match(root.textContent ?? '', /finished/)
-  press('Enter')
-  assert.ok(!timelinePage(data, null, [...timelineFolded]).rows.some(row => row.task.id === 'finished'))
 })

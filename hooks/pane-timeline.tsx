@@ -54,6 +54,7 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
     timelineFolded,
     view.lastActions,
     look === 'terminal' && timelineDetailOpen,
+    true,
   )
   const selectOrToggleDone = (id: string, isCompletedFold: boolean) => {
     void selectTimelineRow(id)

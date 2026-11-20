@@ -203,11 +203,11 @@ test('Timeline folds completed roots after open roots and restores selection whe
     task('three', { status: 'waits-on-other', streamId: 's3' }),
   ]
   const data = timelineData(roots, segments, {}, [], now)
-  const page = timelinePage(data, 'one', upgradedTimelineFolded(undefined))
+  const page = timelinePage(data, 'one', upgradedTimelineFolded(undefined), {}, false, true)
 
   expect(page.rows.map(row => row.task.id)).toEqual(['two', 'two-child', 'three', COMPLETED_FOLD_ID])
   expect([page.mode, page.selected?.row.task.id]).toEqual(['tree', COMPLETED_FOLD_ID])
-  const expanded = timelinePage(data, 'one', [COMPLETED_FOLD_ID])
+  const expanded = timelinePage(data, 'one', [COMPLETED_FOLD_ID], {}, false, true)
   expect(expanded.rows.slice(-3).map(row => row.task.id)).toEqual([COMPLETED_FOLD_ID, 'one', 'one-child'])
   expect(expanded.selected?.row.task.id).toBe('one')
   expect(moveTimelineSelection(page.rows, 'three', 1)).toBe(COMPLETED_FOLD_ID)
@@ -217,10 +217,25 @@ test('Timeline folds completed roots after open roots and restores selection whe
 
 test('Timeline hides no open roots and shows one row when all roots are finished', () => {
   const page = (tree: TaskTree) =>
-    timelinePage(timelineData(tree, segments, {}, [], now), null, upgradedTimelineFolded(undefined))
+    timelinePage(timelineData(tree, segments, {}, [], now), null, upgradedTimelineFolded(undefined), {}, false, true)
   expect(page([task('open')]).rows.some(row => row.isCompletedFold)).toBe(false)
   const finished = page([task('done', { status: 'done' }), task('dropped', { status: 'dropped' })])
   expect(finished.rows.map(row => row.task.id)).toEqual([COMPLETED_FOLD_ID])
+})
+
+test('Timeline keeps finished roots inline unless the completed fold is enabled', () => {
+  const data = timelineData(
+    [task('open'), task('done', { status: 'done' }), task('dropped', { status: 'dropped' })],
+    segments,
+    {},
+    [],
+    now,
+  )
+  const page = timelinePage(data, null, upgradedTimelineFolded(undefined))
+
+  expect(page.rows.map(row => row.task.id)).toEqual(['open', 'done', 'dropped'])
+  expect(page.rows.some(row => row.isCompletedFold)).toBe(false)
+  expect(page.completedRootIds).toEqual([])
 })
 
 test('folding a selected parent hides its children and keeps the parent selected', () => {

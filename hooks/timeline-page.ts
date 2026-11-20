@@ -312,17 +312,20 @@ export function timelinePage(
   folded: readonly string[],
   lastActions: Record<string, LastAction> = {},
   isDetailOpen = false,
+  foldCompleted = false,
 ): TimelinePage {
   const nodes = new Map(data.rows.map(row => [row.task.id, row]))
   const foldedIds = new Set(folded)
-  const completedFolded = timelineCompletedFolded(folded)
+  const completedFolded = foldCompleted && timelineCompletedFolded(folded)
   const rootById = new Map<string, string>()
   const finishedByRoot = new Map<string, boolean>()
-  for (const row of data.rows) {
-    const root = row.depth ? rootById.get(row.task.parentId!)! : row.task.id
-    rootById.set(row.task.id, root)
-    const finished = row.task.status === 'done' || row.task.status === 'dropped'
-    finishedByRoot.set(root, (finishedByRoot.get(root) ?? true) && finished)
+  if (foldCompleted) {
+    for (const row of data.rows) {
+      const root = row.depth ? rootById.get(row.task.parentId!)! : row.task.id
+      rootById.set(row.task.id, root)
+      const finished = row.task.status === 'done' || row.task.status === 'dropped'
+      finishedByRoot.set(root, (finishedByRoot.get(root) ?? true) && finished)
+    }
   }
   const completedRootIds = [...finishedByRoot].flatMap(([id, done]) => (done ? [id] : []))
   const completedRoots = new Set(completedRootIds)
@@ -362,7 +365,9 @@ export function timelinePage(
         isCompletedFold: true,
       }
     : null
-  const orderedRows = [...activeRows, ...(summary ? [summary] : []), ...(completedFolded ? [] : completedRows)]
+  const orderedRows = foldCompleted
+    ? [...activeRows, ...(summary ? [summary] : []), ...(completedFolded ? [] : completedRows)]
+    : data.rows
   const visibleRows = orderedRows.filter(row => {
     if (row.isCompletedFold) return true
     let parent = row.task.parentId

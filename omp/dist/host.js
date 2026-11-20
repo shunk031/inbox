@@ -8022,17 +8022,19 @@ function timelineLinkPlan(task, lastActions) {
     ];
   });
 }
-function timelinePage(data, selectedId, folded, lastActions = {}, isDetailOpen = false) {
+function timelinePage(data, selectedId, folded, lastActions = {}, isDetailOpen = false, foldCompleted = false) {
   const nodes = new Map(data.rows.map((row) => [row.task.id, row]));
   const foldedIds = new Set(folded);
-  const completedFolded = timelineCompletedFolded(folded);
+  const completedFolded = foldCompleted && timelineCompletedFolded(folded);
   const rootById = new Map;
   const finishedByRoot = new Map;
-  for (const row of data.rows) {
-    const root = row.depth ? rootById.get(row.task.parentId) : row.task.id;
-    rootById.set(row.task.id, root);
-    const finished = row.task.status === "done" || row.task.status === "dropped";
-    finishedByRoot.set(root, (finishedByRoot.get(root) ?? true) && finished);
+  if (foldCompleted) {
+    for (const row of data.rows) {
+      const root = row.depth ? rootById.get(row.task.parentId) : row.task.id;
+      rootById.set(row.task.id, root);
+      const finished = row.task.status === "done" || row.task.status === "dropped";
+      finishedByRoot.set(root, (finishedByRoot.get(root) ?? true) && finished);
+    }
   }
   const completedRootIds = [...finishedByRoot].flatMap(([id, done]) => done ? [id] : []);
   const completedRoots = new Set(completedRootIds);
@@ -8070,7 +8072,7 @@ function timelinePage(data, selectedId, folded, lastActions = {}, isDetailOpen =
     warnings: [],
     isCompletedFold: true
   } : null;
-  const orderedRows = [...activeRows, ...summary ? [summary] : [], ...completedFolded ? [] : completedRows];
+  const orderedRows = foldCompleted ? [...activeRows, ...summary ? [summary] : [], ...completedFolded ? [] : completedRows] : data.rows;
   const visibleRows = orderedRows.filter((row) => {
     if (row.isCompletedFold)
       return true;
@@ -10195,10 +10197,6 @@ function timelineLine(line, plan, isSelected, d) {
   const { ui, width, style: s } = d;
   if (plan.kind === "tree") {
     const row = plan.row;
-    if (row.isCompletedFold) {
-      const lead = ` ${isSelected ? s.tone("accent", "\u276F") : " "} ${s.tone("done", row.mark)} `;
-      return [s.timelineRow(fit(`${lead}${s.tone("done", s.bold(row.task.title))}`, width), false)];
-    }
     const bar = row.progressBar.map((part) => s.tone(part.tone, part.mark.repeat(part.count))).join("") || s.tone("muted", "\u2500".repeat(10));
     const lead = ` ${isSelected ? s.tone("accent", "\u276F") : " "} ${row.prefix}${s.tone(row.tone, row.mark)} `;
     const metrics = `${bar} ${s.tone(row.tone, row.percent)}`;
@@ -11628,6 +11626,7 @@ var CLAUDE_CODE_SUPPORT = {
   "task-tree-export": { kind: "full" },
   "task-status-mismatch": { kind: "full" },
   timeline: { kind: "full" },
+  "timeline-completed-fold": { kind: "full" },
   "agents-tab": {
     kind: "different",
     reason: "The terminal draws Agents; the desktop pane does not draw this look yet."
@@ -11801,6 +11800,10 @@ var CODEX_SUPPORT = {
   },
   "task-status-mismatch": { kind: "full" },
   timeline: { kind: "full" },
+  "timeline-completed-fold": {
+    kind: "different",
+    reason: "Codex keeps finished Timeline roots inline while the terminal look ships the fold first."
+  },
   "agents-tab": { kind: "different", reason: "Agents is not drawn in this look yet." }
 };
 
@@ -11932,6 +11935,10 @@ var OMP_SUPPORT = {
   },
   "task-status-mismatch": { kind: "full" },
   timeline: { kind: "full" },
+  "timeline-completed-fold": {
+    kind: "different",
+    reason: "omp keeps finished Timeline roots inline while the terminal look ships the fold first."
+  },
   "agents-tab": { kind: "different", reason: "Agents is not drawn in this look yet." }
 };
 

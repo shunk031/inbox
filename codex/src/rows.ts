@@ -1,4 +1,4 @@
-import { COMPLETED_FOLD_ID, timelinePage } from '../../hooks/timeline-page'
+import { timelinePage } from '../../hooks/timeline-page'
 import { stepRow } from '../../hooks/row-motion'
 import type { TimelinePage } from '../../hooks/timeline-page'
 import type { TabView } from './core'
@@ -36,7 +36,7 @@ export function timelinePageOf(view: TabView) {
 
 export function stepTimelineRows(view: TabView): Set<string> {
   const now = Date.now()
-  const all = timelinePage(view.timeline, null, [COMPLETED_FOLD_ID], view.lastActions, false).rows
+  const all = timelinePage(view.timeline, null, [], view.lastActions).rows
   const page = timelinePageOf(view)
   const visible = new Set(page.rows.map(row => row.task.id))
   const nodes = new Map(all.map(row => [row.task.id, row]))
@@ -45,11 +45,6 @@ export function stepTimelineRows(view: TabView): Set<string> {
 
   for (const row of all) {
     let show = visible.has(row.task.id)
-    if (!show && !row.isCompletedFold) {
-      let root = row
-      while (root.task.parentId !== null && nodes.has(root.task.parentId)) root = nodes.get(root.task.parentId)!
-      if (page.completedRootIds.includes(root.task.id)) show = closingFolds.has('timeline-completed')
-    }
     let parent = row.task.parentId
     while (!show && parent !== null) {
       if (timelineFolded.has(parent)) {
@@ -104,15 +99,7 @@ export function closeTimelineDetail() {
 }
 
 export function toggleTimelineFold(view: TabView, id: string) {
-  if (id === COMPLETED_FOLD_ID) return toggleTimelineDoneFold()
   const shown = new Set(view.timeline.rows.map(row => row.task.id).filter(taskId => !timelineFolded.has(taskId)))
   timelineFolded.has(id) ? timelineFolded.delete(id) : timelineFolded.add(id)
   toggleFold(id, shown, `timeline-${id}`)
-}
-
-export function toggleTimelineDoneFold() {
-  tabState.timelineSelection = COMPLETED_FOLD_ID
-  const isFolded = !timelineFolded.has(COMPLETED_FOLD_ID)
-  isFolded ? timelineFolded.add(COMPLETED_FOLD_ID) : timelineFolded.delete(COMPLETED_FOLD_ID)
-  toggleFold(COMPLETED_FOLD_ID, new Set(isFolded ? [] : [COMPLETED_FOLD_ID]), 'timeline-completed')
 }

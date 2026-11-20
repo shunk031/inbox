@@ -234,7 +234,6 @@ document.addEventListener(
         }
       } else if (
         selected &&
-        !selected.isCompletedFold &&
         e.key === 'Enter' &&
         !isInteractiveTarget(e.target) &&
         !isInteractiveTarget(document.activeElement)
@@ -242,8 +241,7 @@ document.addEventListener(
         e.preventDefault()
         openTimelineDetail(selected.task.id)
       } else if (selected) {
-        const key = e.key === 'Enter' && !isInteractiveTarget(document.activeElement) ? 'enter' : e.key
-        const action = selected.actions.find(item => item.hotkey === key)
+        const action = selected.actions.find(item => item.hotkey === e.key)
         if (action) {
           e.preventDefault()
           if (action.action === 'toggle-branch') toggleTimelineFold(tabState.view, action.id)
