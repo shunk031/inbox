@@ -1,6 +1,6 @@
 import type { TaskNode } from '../types'
 
-export type CurrentTaskText = { text: string; at: number }
+type CurrentTaskText = { text: string; at: number }
 
 /** The newest task detail or note, with the time that text became current. */
 export function currentTaskText(

@@ -119,7 +119,7 @@ for (const bodyColumns of [110, 200] as const) {
   })
 }
 
-for (const bodyColumns of [110, 200] as const) {
+for (const bodyColumns of [87, 110, 200] as const) {
   test(`terminal Timeline empty and detail text snapshot at ${bodyColumns} columns`, async ($, on) => {
     const clock = mock.clock(on, { now: 1_000_000 })
     world($, on, [])
@@ -169,29 +169,54 @@ for (const bodyColumns of [110, 200] as const) {
     const detailText = (await emptyPane.findAll({ type: 'Text' })).map(line => line.text)
     expect(detailText).toContain('日本語の詳細を確認する')
     expect(detailText).toContain('Completed')
-    expect(detailText).toContain('最新の作業メモはここに表示する。 · now')
     expect(detailText).toContain('登録した説明はCurrentとは別に残る。')
-    const detailSnapshot = detailText.flatMap(text => {
-      if (['Current', 'Detail', 'History'].includes(text)) return [text]
-      if (text === '最新の作業メモはここに表示する。 · now') return ['Current: 最新の作業メモはここに表示する。 · now']
-      if (text === '登録した説明はCurrentとは別に残る。') return ['Detail: 登録した説明はCurrentとは別に残る。']
-      if (text.includes('Task created')) return ['History: Task created']
-      return []
-    })
-    expect(detailSnapshot).toEqual([
-      'Current',
-      'Current: 最新の作業メモはここに表示する。 · now',
-      'Detail',
-      'Detail: 登録した説明はCurrentとは別に残る。',
-      'History',
-      'History: Task created',
-      'History',
-    ])
+    const headings = detailText.filter(text => /^(Note|Detail|History)$/u.test(text))
+    expect(headings).toEqual(['Detail', 'Note', 'History'])
+    expect(detailText).toContain('最新の作業メモはここに表示する。')
     for (let index = 0; index < 4; index++) {
       const lead = await emptyPane.find({ key: `timeline-detail-lead-${index}` })
-      expect(lead?.text).not.toContain('|')
-      expect(lead?.text).not.toContain('│')
-      expect(cellWidth(lead?.text ?? '')).toBe(lead?.props.width)
+      expect(lead, `detail block ${index} starts at the page edge`).toBeFalsy()
     }
   })
 }
+
+test('desktop Timeline details start at the page edge', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  world($, on, [])
+  w.files = ['/.next-build']
+  await $.session.start({ cwd: '/tmp/project', surface: 'desktop', isInteractive: true })
+  await $.tool.call({
+    tool: 'mcp__inbox__tasks',
+    operation: 'add',
+    task_id: 'desktop-root',
+    title: 'Desktop root',
+    detail: 'A neutral desktop detail.',
+    status: 'working',
+  })
+  await $.tool.call({
+    tool: 'mcp__inbox__tasks',
+    operation: 'add',
+    task_id: 'desktop-child',
+    parent_id: 'desktop-root',
+    title: 'Desktop child',
+    detail: 'A neutral child detail.',
+    status: 'queued',
+  })
+  const pane = await $.ui.mount({ ...PANE, surface: 'desktop', props: { ...PANE.props, bodyColumns: 110 } })
+  const { tabs, gap } = (await pane.find({ key: 'tabs' }))?.props.props as {
+    tabs: { id: string; width: number }[]
+    gap: number
+  }
+  const timelineX = tabs
+    .slice(
+      0,
+      tabs.findIndex(tab => tab.id === 'timeline'),
+    )
+    .reduce((x, tab) => x + tab.width + gap, 0)
+  await pane.pointer({ type: 'down', x: timelineX, y: 1, button: 'left', in: 'tabs' })
+  await clock.settle()
+
+  const lines = (await pane.findAll({ type: 'Text' })).map(line => line.text)
+  expect(lines).toContain('Detail · A neutral desktop detail.')
+  expect(lines).not.toContain('  │  Detail · A neutral desktop detail.')
+})

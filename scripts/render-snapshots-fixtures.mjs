@@ -4,6 +4,7 @@ export const HEIGHT = 50
 export const SCENARIOS = ['empty', 'busy']
 export const VIEWS = ['asks', 'timeline', 'agents', 'prs', 'timeline-detail', 'asks-detail', 'help']
 const widths = [200, 110]
+const timelineDetailWidths = [87, ...widths]
 const task = (id, parentId, title, status, detail = '', notes = []) => ({
   id,
   parentId,
@@ -149,6 +150,16 @@ export function fixtureState(fixture) {
       task('snapshot-agents-working', null, 'Snapshot working task', 'working'),
       task('snapshot-agents-waiting', null, 'Snapshot waiting task', 'waits-on-other'),
     ]
+  } else if (fixture.startsWith('timeline-detail-layout')) {
+    const detail = '狭い画面でも左端と折り返し位置を確認する中立的な説明です。'.repeat(3)
+    const note = '配置確認用のメモです。',
+      split87 = fixture.at(-1) === '7'
+    const item = task('snapshot-detail-layout', null, 'Snapshot timeline detail', 'working', detail, [note])
+    item.history.push(
+      { at: NOW - (split87 ? 10_000 : 30_000), source: 'fixture', kind: 'note', detail: note },
+      { at: NOW - (split87 ? 30_000 : 10_000), source: 'fixture', kind: 'detail' },
+    )
+    state.taskTree = [item]
   } else if (fixture === 'agents-tree') {
     data.findings = ['A', 'B', 'C', 'D'].map(letter => ({
       id: `snapshot-feed-${letter}`,
@@ -209,3 +220,13 @@ export const registry = [
 ]
 const foldDone = { view: 'timeline', scenario: 'fold-done', fixture: 'fold-done' }
 registry.push(...widths.map(width => ({ ...foldDone, width, file: `timeline-fold-done-${width}.txt` })))
+registry.push(
+  ...timelineDetailWidths.map(width => ({
+    view: 'timeline-detail',
+    scenario: 'layout',
+    fixture: width === 87 ? 'timeline-detail-layout-87' : 'timeline-detail-layout',
+    width,
+    ...(width === 87 ? { terminalWidth: 196 } : {}),
+    file: `timeline-detail-layout-${width}.txt`,
+  })),
+)

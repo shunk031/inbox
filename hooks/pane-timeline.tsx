@@ -117,7 +117,7 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
               {selection?.details.map(line =>
                 line.label === 'Links' ? (
                   <Box flexDirection="row">
-                    <Text color={pal.muted}>{`${row.detailLead}Links · `}</Text>
+                    <Text color={pal.muted}>Links · </Text>
                     {line.actions.map(link => (
                       <Box key={`${link.label}-${row.task.id}`} flexDirection="row">
                         <Button
@@ -134,8 +134,13 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
                       </Box>
                     ))}
                   </Box>
+                ) : line.label === 'History' ? (
+                  <Box flexDirection="column">
+                    <Text color={pal.muted}>History</Text>
+                    <Text color={pal.muted}>{line.text}</Text>
+                  </Box>
                 ) : (
-                  <Text color={pal.muted}>{`${row.detailLead}${line.label} · ${line.text}`}</Text>
+                  <Text color={pal.muted}>{`${line.label} · ${line.text}`}</Text>
                 ),
               )}
             </Box>
@@ -206,7 +211,6 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
   )
 
   const selected = page.selected
-  const detailLead = selected ? ' '.repeat(cellWidth(selected.row.detailLead)) : ''
   const detailTitle = selected
     ? cellWidth(selected.row.task.title) > Math.max(1, bodyColumns - 27)
       ? `${cutToCells(selected.row.task.title, Math.max(0, bodyColumns - 28))}…`
@@ -244,9 +248,6 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
       </Box>
       {selected.details.map((line, index) => (
         <Box key={`timeline-detail-row-${index}`} flexDirection="row" alignItems="flex-start">
-          <Box key={`timeline-detail-lead-${index}`} width={widthForCells(detailLead)} flexShrink={0}>
-            <Text>{detailLead}</Text>
-          </Box>
           {line.label === 'Links' ? (
             <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
               <Text color={pal.muted}>Links</Text>

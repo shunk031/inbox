@@ -61,6 +61,7 @@ test('Timeline draws the shared card and two-line rows, then opens and returns f
   expect(opened.timelineTreeTop).toBe(3)
   expect(opened.pageTop).toBe(0)
   const detail = strip(text(screen, opened, 100))
+  expect([detail.match(/History/g)?.length, detail.split('\n').includes('Current')]).toEqual([1, false])
   const labels = ['Progress', 'Weight', 'Completed units', 'Detail', 'Note', 'History', 'Links']
   const positions = labels.map(label => detail.indexOf(label))
   expect(positions.every(position => position >= 0)).toBe(true)
@@ -68,7 +69,10 @@ test('Timeline draws the shared card and two-line rows, then opens and returns f
   expect(detail).toContain('Build the view')
   expect(detail).toContain('Keep the task-tree view compact.')
   expect(detail).toContain('Preserve the title.')
-  expect(detail).toContain('Added the panel view.')
+  const noteEvent = detail.split('\n').find(line => line.includes('Note added')) ?? ''
+  expect(noteEvent).toContain('Note added')
+  expect(noteEvent).not.toContain('Preserve the title.')
+  expect(detail.split('\n').filter(line => /Added the panel view\.|Note added/.test(line))).toHaveLength(2)
   expect(detail).toContain('Open PR')
   expect(detail).toContain('Open issue')
   expect(detail).not.toContain('Read the design')
