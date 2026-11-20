@@ -73,6 +73,15 @@ test('tree trunks stay continuous through descendant and wrapped rows', () => {
   assert.ok(check('Local agents\n   │\n   └─ A\n      │').some(error => error.includes('orphan-trunk-column=6')))
 })
 
+test('Timeline tree checks ignore paired box borders and reject orphan trunks', () => {
+  const frame = 'Progress\n ┌──┐\n │  │\n └──┘\n      │\n      └─ child'
+  assert.deepEqual(checkTreeText(frame, { view: 'timeline' }), [])
+  const broken = frame.replace('      │\n      └─ child', '     │\n      └─ child')
+  assert.ok(checkTreeText(broken, { view: 'timeline' }).some(error => error.includes('orphan-trunk-column=5')))
+  const outsideBorder = frame.replace('      │\n      └─ child', '    │\n      └─ child')
+  assert.ok(checkTreeText(outsideBorder, { view: 'timeline' }).some(error => error.includes('orphan-trunk-column=4')))
+})
+
 test('Help snapshots open through the existing footer control', () => {
   for (const scenario of ['empty', 'busy']) {
     const entry = registry.find(candidate => candidate.view === 'help' && candidate.scenario === scenario)

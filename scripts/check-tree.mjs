@@ -28,6 +28,35 @@ const glyphColumns = (line, pattern) =>
 const hasTreeAt = (line, column) =>
   [...line.matchAll(/│|├─|└─/gu)].some(match => cellWidth(line.slice(0, match.index)) === column)
 
+function boxBorders(lines) {
+  const tops = []
+  const bottoms = []
+  const rows = new Set()
+  lines.forEach((line, index) => {
+    const corners = glyphColumns(line, /[┌┐└┘]/gu)
+    const topLeft = corners.find(({ text }) => text === '┌')
+    const topRight = corners.find(({ text }) => text === '┐')
+    const bottomLeft = corners.find(({ text }) => text === '└')
+    const bottomRight = corners.find(({ text }) => text === '┘')
+    if (topLeft && topRight) tops.push({ line: index, left: topLeft.column, right: topRight.column })
+    if (bottomLeft && bottomRight) bottoms.push({ line: index, left: bottomLeft.column, right: bottomRight.column })
+  })
+  const edges = new Set()
+  for (const top of tops) {
+    const bottom = bottoms.find(
+      candidate => candidate.line > top.line && candidate.left === top.left && candidate.right === top.right,
+    )
+    if (!bottom) continue
+    rows.add(top.line)
+    rows.add(bottom.line)
+    for (let line = top.line + 1; line < bottom.line; line++) {
+      edges.add(`${line}:${top.left}`)
+      edges.add(`${line}:${top.right}`)
+    }
+  }
+  return { edges, rows }
+}
+
 const viewOf = (lines, requested) =>
   requested !== 'auto'
     ? requested
@@ -56,11 +85,13 @@ export function checkTreeText(text, { view = 'auto', source = 'frame', requireTr
   const kind = viewOf(lines, view)
   const errors = []
   let trees = 0
+  const timelineBorders = kind === 'timeline' ? boxBorders(lines) : { edges: new Set(), rows: new Set() }
   const fail = (block, line, detail) => errors.push(`FAIL ${source} tree=${block} line=${line + 1} ${detail}`)
 
   for (const block of blocks(lines, kind)) {
     const rows = []
     for (let index = block.start; index < block.end; index++) {
+      if (timelineBorders.rows.has(index)) continue
       for (const glyph of glyphColumns(lines[index] ?? '', GLYPHS)) rows.push({ ...glyph, line: index })
     }
     if (!rows.length) continue
@@ -106,7 +137,8 @@ export function checkTreeText(text, { view = 'auto', source = 'frame', requireTr
     for (let line = block.start; line < block.end; line++) {
       const row = lines[line] ?? ''
       for (const { column } of glyphColumns(row, /│/gu)) {
-        if (kind !== 'timeline' && !rows.some(candidate => candidate.line > line && candidate.column === column))
+        if (kind === 'timeline' && timelineBorders.edges.has(`${line}:${column}`)) continue
+        if (!rows.some(candidate => candidate.line > line && candidate.column === column))
           fail(block.name, line, `orphan-trunk-column=${column}`)
       }
     }
