@@ -26,35 +26,25 @@ const send = (socket, session, key, literal = false) =>
 const stripAnsi = text => text.replace(ANSI, '').replace(/\r/g, '')
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
 function cropInboxPane(capture, width) {
-  const lines = stripAnsi(capture).split('\n')
-  if (lines.at(-1) === '') lines.pop()
+  const lines = stripAnsi(capture).replace(/\n$/u, '').split('\n')
   const counts = new Map()
   for (const line of lines)
     for (const m of line.matchAll(/│/g)) {
       const col = cellWidth(line.slice(0, m.index))
       if (col >= Math.floor(width / 3) && col < width - 20) counts.set(col, (counts.get(col) ?? 0) + 1)
     }
-  const [divider, rows] = [...counts].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0] ?? []
-  const minRows = width <= 87 ? 12 : 20
-  if (!divider || rows < minRows) {
-    const frame = lines.filter(line => line.startsWith('│') && line.endsWith('│') && cellWidth(line) === width)
-    if (width <= 87 && frame.length >= minRows)
-      return {
-        text: frame.map(line => line.slice(1, -1).replace(/ +$/u, '')).join('\n'),
-        paneWidth: width - 2,
-        dividerColumn: 0,
-      }
-    return null
-  }
-  const paneWidth = width - divider - 1
-  const frame = lines.flatMap(line => {
+  const candidate = [...counts].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0]?.[0]
+  const singlePane = width <= 87 && candidate === undefined
+  const divider = singlePane ? 0 : (candidate ?? -1)
+  const paneWidth = singlePane ? width - 2 : divider < 0 ? width : width - divider - 1
+  const frame = lines.map(line => {
+    if (singlePane && line.startsWith('│') && line.endsWith('│') && cellWidth(line) === width)
+      return line.slice(1, -1).replace(/ +$/u, '')
     const prefix = cutToCells(line, divider + 1)
-    return cellWidth(prefix) === divider + 1 && prefix.endsWith('│')
-      ? [line.slice(prefix.length).replace(/ +$/u, '')]
-      : []
+    return divider >= 0 && cellWidth(prefix) === divider + 1 && prefix.endsWith('│')
+      ? line.slice(prefix.length).replace(/ +$/u, '')
+      : line
   })
-  while (frame.at(-1) === '') frame.pop()
-  if (frame.length < minRows) return null
   return { text: frame.join('\n'), paneWidth, dividerColumn: divider }
 }
 const focusedHelp = frame => {
@@ -135,7 +125,15 @@ export async function wait(
       : tmux(socket, 'capture-pane', '-N', '-e', '-p', '-t', `${session}:0.0`)
     lastCapture = capture
     const crop =
-      mode === 'pane' ? cropInboxPane(capture, width) : { text: mode === 'raw' ? stripAnsi(capture) : capture }
+      mode === 'pane'
+        ? cropInboxPane(capture, width)
+        : mode === 'raw'
+          ? { text: stripAnsi(capture) }
+          : mode === 'ansi'
+            ? { text: capture }
+            : (() => {
+                throw Error(`unknown capture mode: ${mode}`)
+              })()
     if (crop && predicate(crop.text) && capture === previous) return { ...crop, capture }
     previous = capture
     await pause(125)
@@ -309,8 +307,9 @@ export async function capture(entry, pluginDir, root, socket, claude, { feedSour
       agents: [['3', frame => ready(entry, frame)]],
       prs: [['4', frame => ready(entry, frame)]],
       'asks-detail': [['v', frame => ready(entry, frame)]],
+      help: [],
     }
-    for (const [key, predicate] of steps[entry.view] ?? [])
+    for (const [key, predicate] of steps[entry.view])
       await press(
         socket,
         session,
@@ -337,7 +336,7 @@ export async function capture(entry, pluginDir, root, socket, claude, { feedSour
     )
     const ansiFrame = crop.capture
     process.stdout.write(`CAPTURE ${entry.file}\n`)
-    return { entry, frame: crop.text, ansiFrame, paneWidth: crop.paneWidth }
+    return { entry, frame: crop.text, ansiFrame, paneWidth: crop.paneWidth, dividerColumn: crop.dividerColumn }
   } finally {
     try {
       tmux(socket, 'kill-session', '-t', session)

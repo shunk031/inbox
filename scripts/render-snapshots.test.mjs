@@ -16,6 +16,8 @@ import {
 } from './render-snapshots-live.mjs'
 import { fixtureState, PLUGIN_STORE, registry } from './render-snapshots-fixtures.mjs'
 
+const paneOnly = (text, options = {}) => checkTreeText(text, { ...options, inputMode: 'pane-only' })
+
 test('isolation accepts a missing real config path and still refuses unsafe paths', t => {
   const scratch = mkdtempSync(path.join(os.tmpdir(), 'render-snapshot-isolation-'))
   t.after(() => rmSync(scratch, { recursive: true, force: true }))
@@ -70,71 +72,61 @@ test('registry covers every terminal view, scenario, and width once', () => {
 
 test('tree trunks stay continuous through descendant and wrapped rows', () => {
   const frame = 'Local agents\n   │\n   ├─ A\n   │  ├─ C1\n   │  │  wrap\n   │  └─ C2\n   │\n   └─ B'
-  const check = text => checkTreeText(text, { view: 'agents' })
-  const broken = (from, to, expected = 'missing-continuity-column=3') =>
-    assert.ok(check(frame.replace(from, to)).some(error => error.includes(expected)))
+  const check = text => paneOnly(text, { view: 'agents' })
   assert.deepEqual(check(frame), [])
-  broken('   │  ├─ C1', '      ├─ C1')
-  broken('   │  │  wrap', '      │  wrap')
-  broken('   │\n   └─ B', '   \n   └─ B')
+  for (const [from, to] of [
+    ['   │  ├─ C1', '      ├─ C1'],
+    ['   │  │  wrap', '      │  wrap'],
+    ['   │\n   └─ B', '   \n   └─ B'],
+  ])
+    assert.ok(check(frame.replace(from, to)).some(error => error.includes('missing-continuity-column=3')))
   assert.ok(check('Local agents\n   │\n   └─ A\n      │').some(error => error.includes('orphan-trunk-column=6')))
 })
 
 test('tree checks require recognized headings and reject orphan trunks and shifted connectors', () => {
-  const check = text => checkTreeText(text, { view: 'agents' })
-  const rejects = (text, detail) => assert.ok(check(text).some(error => error.includes(detail)))
+  const rejects = (text, detail, view = 'agents') =>
+    assert.ok(paneOnly(text, { view }).some(error => error.includes(detail)))
   const oneChild = 'Local agents\n   │\n   └─ A'
   const empty = oneChild.replace('\n   └─ A', '')
-  rejects('   ├─ stray\nLocal agents\n   │\n   └─ A', 'connector-without-recognized-heading')
-  rejects(empty, 'orphan-trunk-column=3')
-  rejects(oneChild.replace('   └─ A', '   └─ A\n   │'), 'orphan-trunk-column=3')
-  rejects(oneChild.replace('   └─ A', '   └─ A\n      │'), 'orphan-trunk-column=6')
   const siblings = 'Local agents\n   │\n   ├─ A\n   │\n   └─ B'
-  const offColumn = siblings.replace('   │\n   └─ B', '    │\n   └─ B')
-  rejects(offColumn, 'orphan-trunk-column=4')
-  rejects('Local agents\n   │\n   └─ A\n         └─ shifted child', 'connector-parent-column=6 actual=9')
-  const asks = checkTreeText('Summary\n   └─ orphan\nQuestions\n   │\n   └─ valid', { view: 'asks' })
-  assert.ok(asks.some(error => error.includes('line=2 connector-without-recognized-heading')))
+  for (const [text, detail, view] of [
+    ['   ├─ stray\nLocal agents\n   │\n   └─ A', 'connector-without-recognized-heading'],
+    [empty, 'orphan-trunk-column=3'],
+    [oneChild.replace('   └─ A', '   └─ A\n   │'), 'orphan-trunk-column=3'],
+    [oneChild.replace('   └─ A', '   └─ A\n      │'), 'orphan-trunk-column=6'],
+    [siblings.replace('   │\n   └─ B', '    │\n   └─ B'), 'orphan-trunk-column=4'],
+    ['Local agents\n   │\n   └─ A\n         └─ shifted child', 'connector-parent-column=6 actual=9'],
+    ['Summary\n   └─ orphan\nQuestions\n   │\n   └─ valid', 'line=2 connector-without-recognized-heading', 'asks'],
+  ])
+    rejects(text, detail, view || 'agents')
 })
 
-test('pane extraction ignores sidebar rows but checks the pane tree', () => {
-  const makeRows = () =>
-    Array.from({ length: 30 }, (_, index) =>
-      `${' '.repeat(40)}│${['Local agents', '   │', '   ├─ A', '   │', '   └─ B'][index] ?? ''}`.padEnd(92),
-    )
-  const rows = makeRows()
-  const check = () => checkTreeText(['Sidebar\n   │\n   └─ A', ...rows].join('\n'), { view: 'agents' })
-  assert.deepEqual(check(), [])
+test('raw terminal checks reject missing divider rows without a row-count threshold', () => {
+  const check = (frame, dividerColumn, paneWidth) =>
+    checkTreeText(frame, { view: 'agents', inputMode: 'pane-in-terminal', dividerColumn, paneWidth })
+  const rows = Array.from({ length: 30 }, (_, index) =>
+    `${' '.repeat(40)}│${['Local agents', '   │', '   ├─ A', '   │', '   └─ B'][index] ?? ''}`.padEnd(92),
+  )
+  assert.deepEqual(check(rows.join('\n'), 40, 51), [])
   rows[2] = `${rows[2].slice(0, 40)} ${rows[2].slice(41)}`
-  assert.ok(check().some(error => error.includes('line=6 unclassified line')))
+  assert.ok(check(rows.join('\n'), 40, 51).some(error => error.includes('line=3 unclassified line')))
+  assert.equal(cropInboxPane(rows.join('\n'), 92).text.split('\n').length, 30)
   rows[29] = `${rows[4].slice(0, 40)} ${rows[4].slice(41)}`
-  assert.ok(check().some(error => error.includes('line=33 unclassified line')))
-  const frame = makeRows()
-  frame[29] = ''
-  const errors = checkTreeText(['Sidebar', ...frame, 'unframed text'].join('\n'), { view: 'agents' })
-  assert.ok(['line=31', 'line=32'].every(line => errors.some(error => error.includes(`${line} unclassified line`))))
+  assert.ok(check(rows.join('\n'), 40, 51).some(error => error.includes('line=30 unclassified line')))
+  const short = '   │Local agents\n   │   │\n      ├─ A\n   │   └─ B'
+  assert.ok(check(short, 3, 15).some(error => error.includes('line=3 unclassified line')))
 })
 
 test('Timeline root and paired square or rounded box borders are explicit', () => {
   const frame = 'Progress\n ┌──┐\n │  │\n └──┘\n    ◐ root\n    │  In progress\n    └─ child'
-  const rejects = (text, view, expected) =>
-    assert.ok(checkTreeText(text, { view }).some(error => error.includes(expected)))
-  assert.deepEqual(checkTreeText(frame, { view: 'timeline' }), [])
+  const rejects = (text, view, expected) => assert.ok(paneOnly(text, { view }).some(error => error.includes(expected)))
+  assert.deepEqual(paneOnly(frame, { view: 'timeline' }), [])
   const outsideBorder = frame.replace('    │  In progress', '   │  In progress')
   rejects(outsideBorder, 'timeline', 'orphan-trunk-column=3')
   const asksBox = 'Questions · 1\n   │\n   └─ Q\n ╭──╮\n │  │\n ╰──╯'
-  assert.deepEqual(checkTreeText(asksBox, { view: 'asks' }), [])
+  assert.deepEqual(paneOnly(asksBox, { view: 'asks' }), [])
   rejects(asksBox.replace(' ╰──╯', ' ╰─╯'), 'asks', 'orphan-trunk')
   rejects(frame.replace('    ◐ root\n', ''), 'timeline', 'connector-without-timeline-root')
-})
-
-test('current tree snapshots pass the geometry checker', () => {
-  for (const entry of registry.filter(
-    candidate => ['asks', 'timeline', 'agents'].includes(candidate.view) && candidate.fixture !== 'agents-busy',
-  )) {
-    const file = path.join(process.cwd(), 'tests/render-snapshots/snapshots', entry.file)
-    assert.deepEqual(checkTreeText(readFileSync(file, 'utf8'), { view: entry.view, source: entry.file }), [])
-  }
 })
 
 test('list gutters allow deeper guides only for Agents', () => {
@@ -223,7 +215,8 @@ test('pane crop preserves leading and interior spaces while removing the dock di
   assert.equal(cropped.dividerColumn, 40)
   assert.equal(cropped.paneWidth, 39)
   assert.equal(cropped.text.split('\n')[12], '  x  y')
-  assert.equal(cropped.text.endsWith('\n'), false)
+  assert.equal(cropped.text.split('\n').length, 30)
+  assert.equal(cropped.text.endsWith('\n'), true)
 })
 
 test('pane crop handles the 87-column single-pane border', () => {

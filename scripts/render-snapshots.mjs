@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpath
 import os from 'node:os'
 import path from 'node:path'
 import { registry, SCENARIOS, VIEWS } from './render-snapshots-fixtures.mjs'
-import { capture, removeTemporaryTree, saveRawTimeoutFrame, tmux } from './render-snapshots-live.mjs'
+import { capture, removeTemporaryTree, saveRawTimeoutFrame, stripAnsi, tmux } from './render-snapshots-live.mjs'
 import { checkTreeText } from './check-tree.mjs'
 import {
   checkFrame,
@@ -54,31 +54,29 @@ async function main() {
   )
   mkdirSync(baseline, { recursive: true })
   const errors = []
-  const oldAgents = path.join(baseline, 'agents-busy-110.txt')
-  if (checkTreeText(readFileSync(oldAgents, 'utf8'), { view: 'agents' }).length === 0)
-    errors.push(`FAIL ${oldAgents} legacy negative fixture unexpectedly passes`)
   for (const [name, item] of frames) {
     const file = path.join(baseline, name)
     const rendered = `${item.frame}\n`
-    let snapshotFrame = item.frame
-    // The old Agents busy fixture predates the connector change; compare the new tree baselines.
-    if (item.entry.fixture !== 'agents-busy') {
-      if (process.env.UPDATE_SNAPSHOTS === '1') writeFileSync(file, rendered)
-      else if (!existsSync(file))
-        errors.push(failure(item.entry, 'snapshot inventory', name, 'missing', 'baseline missing'))
-      else {
-        snapshotFrame = readFileSync(file, 'utf8').replace(/\n$/u, '')
-        if (snapshotFrame !== item.frame)
-          errors.push(failure(item.entry, 'baseline', 'same pane frame', 'different', 'frame differs'))
-      }
-      if (['asks', 'timeline', 'agents'].includes(item.entry.view))
-        errors.push(...checkTreeText(snapshotFrame, { view: item.entry.view, source: `snapshot:${name}` }))
-    }
+    if (process.env.UPDATE_SNAPSHOTS === '1') writeFileSync(file, rendered)
+    else if (!existsSync(file))
+      errors.push(failure(item.entry, 'snapshot inventory', name, 'missing', 'baseline missing'))
+    const snapshotFrame =
+      process.env.UPDATE_SNAPSHOTS === '1' ? item.frame : readFileSync(file, 'utf8').replace(/\n$/u, '')
+    if (snapshotFrame !== item.frame)
+      errors.push(failure(item.entry, 'baseline', 'same pane frame', 'different', 'frame differs'))
     errors.push(...checkFrame(item.entry, item.frame, item.paneWidth))
     errors.push(...checkChipBoxes(item.entry, item.ansiFrame, item.paneWidth))
     errors.push(...checkTimelineFocus(item.entry, item.frame, item.ansiFrame))
     if (['asks', 'timeline', 'agents'].includes(item.entry.view))
-      errors.push(...checkTreeText(item.frame, { view: item.entry.view, source: name }))
+      errors.push(
+        ...checkTreeText(stripAnsi(item.ansiFrame), {
+          view: item.entry.view,
+          inputMode: 'pane-in-terminal',
+          dividerColumn: item.dividerColumn,
+          paneWidth: item.paneWidth,
+          source: name,
+        }),
+      )
   }
   errors.push(
     ...inventoryErrors(

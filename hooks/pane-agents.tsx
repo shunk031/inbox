@@ -4,6 +4,7 @@ import type { PaneRowParts } from './pane-row-parts'
 import { timelineChip, timelineRowBackground, timelineToneColor } from './pane-timeline'
 import { timelineStatusPresentation, type TimelineState } from './timeline-page'
 import { TREE_LINE_AT } from './pane-sizes'
+import { treeGlyph } from './pane-row-lines'
 import { cellWidth } from './text'
 import { paneState } from './mod-state'
 
@@ -62,7 +63,7 @@ export function paneAgents({
     return (
       <Box key={`bridge-${group}-${index}`} flexDirection="row">
         <Box width={cellWidth(prefix)} flexShrink={0}>
-          <Text color={pal.line}>{prefix}</Text>
+          {treeGlyph(Text, pal.line, prefix)}
         </Box>
       </Box>
     )
@@ -84,7 +85,9 @@ export function paneAgents({
       const status = timelineStatusPresentation(timelineState(row.status))
       const connector = row.hasLaterSibling ? '├─ ' : '└─ '
       const rawPrefix = `${row.guides.join('')}${connector}`
-      const mark = ` ${rawPrefix}${status.mark} `
+      const treePrefix = ` ${rawPrefix}`
+      const statusMark = `${status.mark} `
+      const mark = `${treePrefix}${statusMark}`
       const label = chipLabel(row.status, status.label)
       const backgroundColor = timelineRowBackground(pal, false)
       const color = timelineToneColor(pal, status.tone)
@@ -100,7 +103,8 @@ export function paneAgents({
         >
           <Box flexDirection="row" alignItems="flex-start">
             <Box width={cellWidth(mark)} flexShrink={0}>
-              <Text color={color}>{mark}</Text>
+              {treeGlyph(Text, pal.line, treePrefix)}
+              <Text color={color}>{statusMark}</Text>
             </Box>
             <Box flexDirection="row" flexGrow={1} flexShrink={1} minWidth={0}>
               <Box
