@@ -242,7 +242,8 @@ document.addEventListener(
         e.preventDefault()
         openTimelineDetail(selected.task.id)
       } else if (selected) {
-        const action = selected.actions.find(item => item.hotkey === e.key)
+        const key = e.key === 'Enter' && !isInteractiveTarget(document.activeElement) ? 'enter' : e.key
+        const action = selected.actions.find(item => item.hotkey === key)
         if (action) {
           e.preventDefault()
           if (action.action === 'toggle-branch') toggleTimelineFold(tabState.view, action.id)

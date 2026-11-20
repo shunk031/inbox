@@ -127,10 +127,8 @@ export function fixtureState(fixture) {
       batchTurn: 1,
       nextId: 2,
     })
-    state.taskTree =
-      fixture === 'fold-done'
-        ? [...tasks, task('snapshot-finished-root', null, 'Snapshot finished root', 'done')]
-        : tasks
+    const finished = task('snapshot-finished-root', null, 'Snapshot finished root', 'done')
+    state.taskTree = fixture === 'fold-done' ? [...tasks, finished] : tasks
     state.prViews = { ...state.prViews, views: { [pr.ref]: pr }, isGhMissing: false }
   } else if (fixture === 'detail-empty' || fixture === 'detail-busy') {
     const empty = fixture === 'detail-empty'
@@ -151,12 +149,5 @@ export const registry = VIEWS.flatMap(view =>
     })),
   ),
 )
-registry.push(
-  ...widths.map(width => ({
-    view: 'timeline',
-    scenario: 'fold-done',
-    width,
-    fixture: 'fold-done',
-    file: `timeline-fold-done-${width}.txt`,
-  })),
-)
+const foldDone = { view: 'timeline', scenario: 'fold-done', fixture: 'fold-done' }
+registry.push(...widths.map(width => ({ ...foldDone, width, file: `timeline-fold-done-${width}.txt` })))
