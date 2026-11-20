@@ -1,5 +1,5 @@
 // Built by herdr/build.ts with Bun 1.4.4 from herdr/src and hooks/. Do not edit.
-// Built at 2026-11-20T05:59:58.423Z. 226879 characters follow.
+// Built at 2026-11-20T10:55:29.738Z. 226968 characters follow.
 
 // src/main.ts
 import { View, div as div5 } from "gpui-kit";
@@ -3517,6 +3517,7 @@ function perTurnStatus(isUpdating, recovery) {
 var OWNER_IDLE_WARNING = "Owner idle 15m+";
 var OWNER_FINISHED_WARNING = "Owner finished, task open";
 var OWNER_IDLE_AFTER_MS = 15 * 60000;
+var OWNER_FINISHED_AFTER_MS = 2 * 60000;
 function taskOwnerKey(owner) {
   return JSON.stringify([owner.machine, owner.agent]);
 }
@@ -3531,7 +3532,7 @@ function applyTaskOwnerFacts(tree, facts, at) {
     stalledSince[task.id] = fact.since;
     if (at - fact.since >= OWNER_IDLE_AFTER_MS)
       warnings.push({ taskId: task.id, owner, message: OWNER_IDLE_WARNING });
-    if (fact.state === "done" || fact.state === "idle")
+    if ((fact.state === "done" || fact.state === "idle") && at - fact.since >= OWNER_FINISHED_AFTER_MS)
       warnings.push({ taskId: task.id, owner, message: OWNER_FINISHED_WARNING });
   }
   const segments = weightedTaskProgressSegments(tree, new Set(Object.keys(stalledSince)));

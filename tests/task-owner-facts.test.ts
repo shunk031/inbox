@@ -37,12 +37,17 @@ test('unknown owner state adds no marker or warning', () => {
   expect(applyTaskOwnerFacts([task()], {}, NOW)).toMatchObject({ stalledSince: {}, warnings: [] })
 })
 
-test('a finished owner warns while its task remains working', () => {
-  const facts = { [taskOwnerKey(owner)]: { state: 'done' as const, since: NOW } }
+test('a finished owner warns at the two-minute grace period', () => {
+  const facts = { [taskOwnerKey(owner)]: { state: 'done' as const, since: NOW - 120_000 } }
   const result = applyTaskOwnerFacts([task()], facts, NOW)
 
-  expect(result.stalledSince).toEqual({ 'task-1': NOW })
+  expect(result.stalledSince).toEqual({ 'task-1': NOW - 120_000 })
   expect(result.warnings).toEqual([{ taskId: 'task-1', owner, message: 'Owner finished, task open' }])
+})
+
+test('a finished owner does not warn before the two-minute grace period', () => {
+  const facts = { [taskOwnerKey(owner)]: { state: 'done' as const, since: NOW - 119_999 } }
+  expect(applyTaskOwnerFacts([task()], facts, NOW).warnings).toEqual([])
 })
 
 test('a repeated non-working observation retains its start time', () => {

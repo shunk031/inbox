@@ -57,8 +57,8 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
     true,
   )
   const selectOrToggleDone = (id: string, isCompletedFold: boolean) => {
-    void selectTimelineRow(id)
     if (isCompletedFold) void updateTimelineFolded(folded => toggleTimelineBranch(folded, id))
+    else void selectTimelineRow(id)
   }
   if (look === 'desktop') {
     const color = (tone: string) =>

@@ -166,7 +166,7 @@ test('the next-build pane draws Timeline with its saved selection and folded bra
   expect(text, 'the saved folded branch').not.toContain('Child')
 })
 
-test('k and j navigate from the summary when saved selection is hidden', async ($, on) => {
+test('the summary button and key action preserve hidden selection and j/k navigation', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   world($, on, [])
   w.files = ['/.next-build']
@@ -191,6 +191,14 @@ test('k and j navigate from the summary when saved selection is hidden', async (
   await pane.press({ key: 'tab-key-timeline' })
   await clock.settle()
 
+  expect((await pane.find({ key: `timeline-title-${COMPLETED_FOLD_ID}` }))?.props.autoFocus).toBe(true)
+  await pane.press({ key: 'toggle-branch' })
+  await clock.settle()
+  expect(selection.value).toBe('finished')
+  expect((await pane.find({ key: 'timeline-title-finished' }))?.props.autoFocus).toBe(true)
+  await pane.press({ key: `timeline-title-${COMPLETED_FOLD_ID}` })
+  await clock.settle()
+  expect(selection.value).toBe('finished')
   expect((await pane.find({ key: `timeline-title-${COMPLETED_FOLD_ID}` }))?.props.autoFocus).toBe(true)
   await pane.press({ key: 'previous' })
   await clock.settle()
