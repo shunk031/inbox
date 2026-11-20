@@ -96,6 +96,23 @@ test('Asks tree reconstruction enforces continuity, parent columns and recognize
   rejects('Summary\n   └─ orphan\nQuestions\n   │\n   └─ valid', 'connector-without-recognized-heading')
 })
 
+test('exact empty states pass only without tree rows', () => {
+  const asks = "Nothing needed\nClaude's questions and the tasks\nonly you can do show up here."
+  const timeline = 'Timeline\nNo tasks have been recorded for this session.'
+  assert.deepEqual(paneOnly(asks, { view: 'asks' }), [])
+  assert.deepEqual(paneOnly(timeline, { view: 'timeline' }), [])
+  assert.ok(
+    paneOnly('Nothing needed\nNot the empty hint', { view: 'asks' }).some(error =>
+      error.includes('missing-recognized-heading'),
+    ),
+  )
+  assert.ok(
+    paneOnly(`${asks}\n   └─ stray`, { view: 'asks' }).some(error =>
+      error.includes('connector-without-recognized-heading'),
+    ),
+  )
+})
+
 test('terminal tree checks classify every row and require the detected divider', () => {
   const check = (frame, dividerColumn, paneWidth) =>
     checkTreeText(frame, { view: 'asks', inputMode: 'pane-in-terminal', dividerColumn, paneWidth })

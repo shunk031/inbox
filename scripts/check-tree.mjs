@@ -10,10 +10,27 @@ const HEADINGS = {
 const CONNECTORS = /├─|└─/gu
 const TIMELINE_ROOT_COLUMN = 4
 const TIMELINE_ROOT = new RegExp(`^(?: {${TIMELINE_ROOT_COLUMN}}| {2}> )([●◐✕○▸▾]) \\S`, 'u')
+const EMPTY_STATES = {
+  asks: ['Nothing needed', "Claude's questions and the tasks only you can do show up here."],
+  timeline: ['Timeline', 'No tasks have been recorded for this session.'],
+}
 const heading = (line, view) => line.replace(HEADING_PREFIX, '').match(HEADINGS[view])
 const glyphs = (line, pattern) =>
   [...line.matchAll(pattern)].map(match => ({ column: cellWidth(line.slice(0, match.index)) }))
 const atCell = (line, column) => glyphs(line, /│/gu).some(glyph => glyph.column === column)
+function hasEmptyState(lines, view) {
+  const [title, hint] = EMPTY_STATES[view]
+  const content = lines.map(line => line.trim()).filter(Boolean)
+  const start = content.indexOf(title)
+  if (start < 0) return false
+  let wrapped = ''
+  for (const line of content.slice(start + 1)) {
+    wrapped = wrapped ? `${wrapped} ${line}` : line
+    if (wrapped === hint) return true
+    if (!hint.startsWith(wrapped)) return false
+  }
+  return false
+}
 const paneRow = (line, divider, width) =>
   divider === 0 && line.startsWith('│') && line.endsWith('│') && cellWidth(line) === width + 2
     ? cutToCells(line.slice(1), width).trimEnd()
@@ -91,6 +108,8 @@ export function checkTreeText(text, { view, source = 'frame', inputMode, divider
         ]
       : []
   })
+  if (!sections.length && hasEmptyState(lines, view) && !connectors.length && !guides.length && !unclassified.length)
+    return errors
   if (!sections.length) fail(0, view === 'timeline' ? 'missing-timeline-root' : 'missing-recognized-heading')
   else if (!connectors.length) fail(sections[0].line, 'recognized-heading-without-connectors', sections[0].name)
   for (const section of sections) {
