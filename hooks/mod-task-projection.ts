@@ -12,7 +12,7 @@ type ModProjectionFs = {
   write(path: string, text: string): Promise<void>
   home(): Promise<string | undefined>
   now(): Promise<number>
-  updateSession(change: (session: Session) => Session): Promise<Session>
+  updateSession(sessionId: string, change: (session: Session) => Session): Promise<Session>
   log(text: string): void
 }
 

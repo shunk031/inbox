@@ -14,7 +14,7 @@ export function modTaskTreeExport(deps: {
   now: () => Promise<number>
   write: (path: string, text: string) => Promise<void>
   run: Run
-  updateSession: (change: (session: Session) => Session) => Promise<Session>
+  updateSession: (sessionId: string, change: (session: Session) => Session) => Promise<Session>
   nonce: () => string
   log: (text: string) => void
 }) {
@@ -63,7 +63,7 @@ export function modTaskTreeExport(deps: {
         if (refreshed.length > 0) {
           const checkedAt = await deps.now().catch(() => savedAt)
           current = await deps
-            .updateSession(saved => {
+            .updateSession(sessionId, saved => {
               const taskOwnerFacts: TaskOwnerFacts = { ...saved.taskOwnerFacts }
               for (const [key, state] of refreshed)
                 taskOwnerFacts[key] = observedTaskOwnerFact(taskOwnerFacts[key], state, checkedAt)

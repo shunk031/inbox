@@ -27,7 +27,7 @@ const exportTreeWith = (changes: Partial<Parameters<typeof modTaskTreeExport>[0]
     now: async () => 10,
     write: async () => {},
     run: async () => ({ code: 0, stdout: '', stderr: '' }),
-    updateSession: async change => change(emptySession()),
+    updateSession: async (_sessionId, change) => change(emptySession()),
     nonce: () => 'unique',
     log: () => {},
     ...changes,
@@ -145,7 +145,7 @@ describe('task-tree export', () => {
           stderr: '',
         }
       },
-      updateSession: async change => {
+      updateSession: async (_sessionId, change) => {
         const next = change({ ...session, taskOwnerFacts: savedFacts })
         savedFacts = next.taskOwnerFacts
         return next
@@ -181,7 +181,7 @@ describe('task-tree export', () => {
       now: async () => 121_000,
       run: async args =>
         args[0] === 'herdr' ? { code: 1, stdout: '', stderr: 'unavailable' } : { code: 0, stdout: '', stderr: '' },
-      updateSession: async change => {
+      updateSession: async (_sessionId, change) => {
         const next = change({ ...session, taskOwnerFacts: savedFacts })
         savedFacts = next.taskOwnerFacts
         return next
