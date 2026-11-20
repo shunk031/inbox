@@ -61,8 +61,11 @@ test('while the store is full, a typed reply and an answer button still reach Cl
   w.storeLimit = storedLength()
 
   const pane = await $.ui.mount(PANE)
-  await pane.press({ key: 'answer-i1-0' })
+  const answer = pane.press({ key: 'answer-i1-0' })
+  w.inFlight.push(answer)
   await clock.advance(SETTLED_MS)
+  await Promise.all(w.inFlight)
+  w.inFlight = []
   expect(w.sent).toEqual(['Re "Use Node or Python?": Node'])
 
   await pane.press({ key: 'typekey-i2' })

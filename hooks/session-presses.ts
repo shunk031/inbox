@@ -77,6 +77,7 @@ export type SendOutcome =
   /** `entered` is the text the agent got, when another plugin changed the message on its way. */
   | { state: 'accepted'; queuedId: string | null; entered?: string }
   | { state: 'rejected'; reason: string }
+  | { state: 'deferred'; reason: string }
   | { state: 'unconfirmed'; reason: string }
 
 export function completedAttempt<S extends Session>(state: S, deliveryId: string, outcome: SendOutcome): S {
@@ -97,7 +98,7 @@ export function completedAttempt<S extends Session>(state: S, deliveryId: string
         )
   const earlierUnknown = state.sent
     .slice(0, index)
-    .some(s => s.text === text && (s.phase === 'attempting' || s.phase === 'uncertain'))
+    .some(s => s.text === text && (s.phase === 'attempting' || s.phase === 'uncertain' || s.phase === 'deferred'))
   if (outcome.state === 'accepted' && !earlierUnknown) {
     for (const [id, action] of delivered) lastActions = withAcceptedSend(lastActions, [id], action.at, text, deliveryId)
   }
@@ -111,7 +112,12 @@ export function completedAttempt<S extends Session>(state: S, deliveryId: string
         ? {
             ...s,
             text,
-            phase: outcome.state === 'accepted' ? ('accepted' as const) : ('uncertain' as const),
+            phase:
+              outcome.state === 'accepted'
+                ? ('accepted' as const)
+                : outcome.state === 'deferred'
+                  ? ('deferred' as const)
+                  : ('uncertain' as const),
             queuedId: outcome.state === 'accepted' ? outcome.queuedId : null,
           }
         : s,
