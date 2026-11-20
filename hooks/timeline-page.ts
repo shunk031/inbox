@@ -465,7 +465,7 @@ export function timelinePage(
   const selectedLinks = selectedRow ? timelineLinkPlan(selectedRow.task, lastActions) : []
   const details: TimelineDetailLine[] = selectedRow
     ? [
-        ...(selectedRow.task.currentText
+        ...(selectedRow.task.currentText && selectedRow.task.currentText.text !== selectedRow.task.detail
           ? [
               {
                 label: 'Current' as const,
@@ -477,7 +477,7 @@ export function timelinePage(
         ...selectedRow.task.notes.map(text => ({ label: 'Note' as const, text })),
         ...selectedRow.task.history.map(event => ({
           label: 'History' as const,
-          text: `${event.time} · ${event.source} · ${event.detail ?? HISTORY_TEXT[event.kind]}`,
+          text: `${event.time} · ${event.source} · ${event.kind === 'note' ? HISTORY_TEXT.note : (event.detail ?? HISTORY_TEXT[event.kind])}`,
         })),
         ...(selectedLinks.length ? [{ label: 'Links' as const, actions: selectedLinks }] : []),
       ]

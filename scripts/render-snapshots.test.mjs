@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { checkChipBoxes, checkFrame, stripChipRightPadding } from './render-snapshots-checks.mjs'
+import { checkChipBoxes, checkFrame, checkLeftEdges, stripChipRightPadding } from './render-snapshots-checks.mjs'
 import { cropInboxPane, isolate, ready, storeKeys, stripAnsi } from './render-snapshots-live.mjs'
 import { fixtureState, PLUGIN_STORE, registry } from './render-snapshots-fixtures.mjs'
 
@@ -46,9 +46,20 @@ test('store key inventory follows CLAUDE_CONFIG_DIR and treats missing store as 
 })
 
 test('registry covers every terminal view, scenario, and width once', () => {
-  assert.equal(registry.length, 30)
+  assert.equal(registry.length, 33)
   assert.equal(new Set(registry.map(entry => entry.file)).size, registry.length)
-  assert.deepEqual(new Set(registry.map(entry => entry.width)), new Set([110, 200]))
+  assert.deepEqual(new Set(registry.map(entry => entry.width)), new Set([87, 110, 200]))
+})
+
+test('left-edge check catches a Timeline detail body indented from its header and stats box', () => {
+  const entry = registry.find(candidate => candidate.file === 'timeline-detail-layout-87.txt')
+  const aligned = `    Asks        b: ‹ Back Snapshot In progress\n${' '.repeat(16)}┌─────────────┐\n${' '.repeat(16)}│ Progress    │\n${' '.repeat(16)}Current\n${' '.repeat(16)}Newest text`
+  assert.deepEqual(checkLeftEdges(entry, aligned), [])
+
+  const indented = aligned.replace('Current\n', '       Current\n').replace('Newest text', '       Newest text')
+  const failures = checkLeftEdges(entry, indented)
+  assert.ok(failures.some(line => line.includes('body heading does not start at the page left edge')))
+  assert.ok(failures.some(line => line.includes('body text does not start at the page left edge')))
 })
 
 test('Help snapshots open through the existing footer control', () => {
@@ -95,6 +106,14 @@ test('pane crop preserves leading and interior spaces while removing the dock di
   assert.equal(cropped.paneWidth, 39)
   assert.equal(cropped.text.split('\n')[12], '  x  y')
   assert.equal(cropped.text.endsWith('\n'), false)
+})
+
+test('pane crop removes the side borders of a narrow full-width inbox overlay', () => {
+  const capture = Array.from({ length: 10 }, (_, index) => `│${`row-${index}`.padEnd(38)}│`).join('\n')
+  const cropped = cropInboxPane(capture, 40)
+  assert.equal(cropped.dividerColumn, 0)
+  assert.equal(cropped.paneWidth, 38)
+  assert.equal(cropped.text.split('\n')[5], 'row-5')
 })
 
 test('ANSI stripping removes CSI and OSC control sequences', () => {

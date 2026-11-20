@@ -4,6 +4,7 @@ export const HEIGHT = 50
 export const SCENARIOS = ['empty', 'busy']
 export const VIEWS = ['asks', 'timeline', 'agents', 'prs', 'timeline-detail', 'asks-detail', 'help']
 const widths = [200, 110]
+const timelineDetailWidths = [87, ...widths]
 const task = (id, parentId, title, status, detail = '', notes = []) => ({
   id,
   parentId,
@@ -149,6 +150,19 @@ export function fixtureState(fixture) {
       task('snapshot-agents-working', null, 'Snapshot working task', 'working'),
       task('snapshot-agents-waiting', null, 'Snapshot waiting task', 'waits-on-other'),
     ]
+  } else if (fixture === 'timeline-detail-layout') {
+    const detail =
+      'この説明はレイアウト確認用に新しく書いた中立的な文章です。狭い画面でも左端と折り返し位置を見やすくするため、内容を続けて記します。'.repeat(
+        2,
+      )
+    const note = '配置と折り返しを確認するための中立的なメモです。'
+    const item = task('snapshot-detail-layout', null, 'Snapshot timeline detail', 'working', detail, [note])
+    item.history = [
+      { at: NOW - 60_000, source: 'fixture', kind: 'created' },
+      { at: NOW - 30_000, source: 'fixture', kind: 'note', detail: note },
+      { at: NOW - 10_000, source: 'fixture', kind: 'detail' },
+    ]
+    state.taskTree = [item]
   } else if (fixture === 'detail-empty' || fixture === 'detail-busy') {
     const empty = fixture === 'detail-empty'
     state.taskTree = empty ? [task('snapshot-detail-empty', null, 'Snapshot detail empty', 'working')] : tasks
@@ -176,3 +190,12 @@ export const registry = VIEWS.flatMap(view =>
 )
 const foldDone = { view: 'timeline', scenario: 'fold-done', fixture: 'fold-done' }
 registry.push(...widths.map(width => ({ ...foldDone, width, file: `timeline-fold-done-${width}.txt` })))
+registry.push(
+  ...timelineDetailWidths.map(width => ({
+    view: 'timeline-detail',
+    scenario: 'layout',
+    fixture: 'timeline-detail-layout',
+    width,
+    file: `timeline-detail-layout-${width}.txt`,
+  })),
+)

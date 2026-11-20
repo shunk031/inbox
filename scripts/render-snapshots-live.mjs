@@ -28,6 +28,29 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
 function cropInboxPane(capture, width) {
   const lines = stripAnsi(capture).split('\n')
   if (lines.at(-1) === '') lines.pop()
+  const cropFullWidthOverlay = () => {
+    const edges = new Map()
+    for (const line of lines)
+      for (const match of line.matchAll(/│/g)) {
+        const column = cellWidth(line.slice(0, match.index))
+        edges.set(column, (edges.get(column) ?? 0) + 1)
+      }
+    const left = [...edges].find(([column, rows]) => column <= 1 && rows >= 5)?.[0]
+    const right = [...edges]
+      .filter(([column, rows]) => column >= width - 2 && rows >= 5)
+      .map(([column]) => column)
+      .at(-1)
+    if (left === undefined || right === undefined || right <= left) return null
+    const frame = lines.flatMap(line => {
+      const bars = [...line.matchAll(/│/g)]
+      const leftBar = bars.find(match => cellWidth(line.slice(0, match.index)) === left)
+      const rightBar = bars.find(match => cellWidth(line.slice(0, match.index)) === right)
+      return leftBar && rightBar ? [line.slice(leftBar.index + 1, rightBar.index).replace(/ +$/u, '')] : []
+    })
+    while (frame.at(-1) === '') frame.pop()
+    if (frame.length < 5) return null
+    return { text: frame.join('\n'), paneWidth: right - left - 1, dividerColumn: left }
+  }
   const counts = new Map()
   for (const line of lines)
     for (const m of line.matchAll(/│/g)) {
@@ -35,7 +58,7 @@ function cropInboxPane(capture, width) {
       if (col >= Math.floor(width / 3)) counts.set(col, (counts.get(col) ?? 0) + 1)
     }
   const [divider, rows] = [...counts].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0] ?? []
-  if (!divider || rows < 20) return null
+  if (!divider || rows < 20) return cropFullWidthOverlay()
   const paneWidth = width - divider - 1
   const frame = lines.flatMap(line => {
     const prefix = cutToCells(line, divider + 1)
@@ -44,7 +67,7 @@ function cropInboxPane(capture, width) {
       : []
   })
   while (frame.at(-1) === '') frame.pop()
-  if (frame.length < 20) return null
+  if (frame.length < 20) return cropFullWidthOverlay()
   return { text: frame.join('\n'), paneWidth, dividerColumn: divider }
 }
 const focusedHelp = frame => {
@@ -94,14 +117,18 @@ export function ready(entry, frame) {
 }
 async function wait(socket, session, width, predicate, label, mode = 'pane', timeout = 45_000) {
   const end = Date.now() + timeout
+  let last = ''
   while (Date.now() < end) {
     const capture = tmux(socket, 'capture-pane', ...(mode === 'ansi' ? ['-e'] : []), '-p', '-t', `${session}:0.0`)
     const crop =
       mode === 'pane' ? cropInboxPane(capture, width) : { text: mode === 'raw' ? stripAnsi(capture) : capture }
-    if (crop && predicate(crop.text)) return crop
+    last = crop?.text ?? stripAnsi(capture).slice(-1600)
+    if (crop) {
+      if (predicate(crop.text)) return crop
+    }
     await pause(125)
   }
-  throw Error(`timed out waiting for ${label}`)
+  throw Error(`timed out waiting for ${label}${last ? `\nLast frame:\n${last}` : ''}`)
 }
 async function press(socket, session, width, key, predicate, label, timeout = 15_000) {
   const end = Date.now() + timeout
@@ -228,13 +255,15 @@ export async function capture(entry, pluginDir, root, socket, claude) {
     send(socket, session, '/inbox', true)
     send(socket, session, 'Enter')
     const initial =
-      entry.fixture === 'detail-empty'
-        ? 'Snapshot empty report'
-        : entry.fixture === 'detail-busy'
-          ? 'Snapshot report'
-          : entry.fixture === 'agents-busy' || entry.fixture.endsWith('empty')
-            ? 'Nothing needed'
-            : 'Snapshot question'
+      entry.fixture === 'timeline-detail-layout'
+        ? 'Timeline'
+        : entry.fixture === 'detail-empty'
+          ? 'Snapshot empty report'
+          : entry.fixture === 'detail-busy'
+            ? 'Snapshot report'
+            : entry.fixture === 'agents-busy' || entry.fixture.endsWith('empty')
+              ? 'Nothing needed'
+              : 'Snapshot question'
     await wait(
       socket,
       session,
@@ -243,7 +272,14 @@ export async function capture(entry, pluginDir, root, socket, claude) {
       `initial inbox pane for ${entry.fixture}`,
     )
     const timelineDetail = frame =>
-      pageMarker(frame, entry.scenario === 'empty' ? 'Snapshot detail empty' : 'Snapshot root')
+      pageMarker(
+        frame,
+        entry.fixture === 'timeline-detail-layout'
+          ? 'Snapshot timeline'
+          : entry.scenario === 'empty'
+            ? 'Snapshot detail empty'
+            : 'Snapshot root',
+      )
     const childSelected = frame => {
       const row = frame.split('\n').find(line => line.includes('折り返し用'))
       return row?.slice(0, row.indexOf('折り返し用')).includes('>') ?? false

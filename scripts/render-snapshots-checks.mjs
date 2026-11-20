@@ -48,10 +48,63 @@ export function checkTimelineFocus(entry, frame, ansiFrame) {
   return errors
 }
 const col = (line, index) => cellWidth(line.slice(0, index))
-const detailColumns = { 110: [19, 21], 200: [27, 29, 52, 54] }
+const detailColumns = { 87: [18, 36, 38, 55, 57], 110: [19, 21], 200: [27, 29, 52, 54] }
 export const failure = (entry, row, expected, actual, reason) =>
   `FAIL view=${entry.view} scenario=${entry.scenario} width=${entry.width} row=${row} ` +
   `expected-column=${expected} actual-column=${actual} ${reason}`
+
+const detailHeadings = new Set(['Current', 'Detail', 'Updated', 'Note', 'History', 'Links'])
+export function checkLeftEdges(entry, frame) {
+  if (entry.view !== 'timeline-detail') return []
+  const lines = frame.split('\n')
+  const errors = []
+  const header = lines.find(line => line.includes('Back') && line.includes('Snapshot'))
+  const box = lines.find(line => line.includes('┌'))
+  if (!header || !box)
+    return [failure(entry, 'left-edge reference', 'header and box', 'missing', 'reference row absent')]
+
+  const action = header.indexOf('b: ‹ Back')
+  const headerStart = action >= 0 ? action : header.indexOf('‹ Back')
+  const boxStart = box.indexOf('┌')
+  const edge = col(box, boxStart)
+  if (col(header, headerStart) !== edge)
+    errors.push(
+      failure(entry, 'detail header', edge, col(header, headerStart), 'header and stats box do not share a left edge'),
+    )
+
+  for (let row = 0; row < lines.length; row++) {
+    const heading = lines[row].trim()
+    if (!detailHeadings.has(heading)) continue
+    const headingColumn = col(lines[row], lines[row].indexOf(heading))
+    if (headingColumn !== edge)
+      errors.push(
+        failure(
+          entry,
+          `line-${row + 1}:${heading}`,
+          edge,
+          headingColumn,
+          'body heading does not start at the page left edge',
+        ),
+      )
+    for (let body = row + 1; body < lines.length; body++) {
+      const text = lines[body].trim()
+      if (!text || detailHeadings.has(text)) break
+      const start = lines[body].search(/\S/u)
+      const textColumn = col(lines[body], start)
+      if (textColumn !== edge)
+        errors.push(
+          failure(
+            entry,
+            `line-${body + 1}:${heading} text`,
+            edge,
+            textColumn,
+            'body text does not start at the page left edge',
+          ),
+        )
+    }
+  }
+  return errors
+}
 
 export function checkFrame(entry, frame, width) {
   const errors = []
@@ -76,7 +129,7 @@ export function checkFrame(entry, frame, width) {
       const inTree = at >= 4 && at <= 14
       const listGuide = ['asks', 'agents'].includes(entry.view) && at === 3
       const statsRow = entry.view === 'timeline-detail' && /Progress|Weight|Completed units|%/u.test(line)
-      const statsDivider = statsRow && detailColumns[entry.width].includes(at)
+      const statsDivider = statsRow && (detailColumns[entry.width]?.includes(at) ?? false)
       const allowed = tree ? border || inTree : border || listGuide || statsDivider
       if (!allowed)
         add(

@@ -8212,7 +8212,7 @@ function timelinePage(data, selectedId, folded, lastActions = {}, isDetailOpen =
   const selectedRow = selected ? drawnRows.find((row) => row.task.id === selected.task.id) : null;
   const selectedLinks = selectedRow ? timelineLinkPlan(selectedRow.task, lastActions) : [];
   const details = selectedRow ? [
-    ...selectedRow.task.currentText ? [
+    ...selectedRow.task.currentText && selectedRow.task.currentText.text !== selectedRow.task.detail ? [
       {
         label: "Current",
         text: `${selectedRow.task.currentText.text} \xB7 ${selectedRow.task.currentText.ago}`
@@ -8222,7 +8222,7 @@ function timelinePage(data, selectedId, folded, lastActions = {}, isDetailOpen =
     ...selectedRow.task.notes.map((text) => ({ label: "Note", text })),
     ...selectedRow.task.history.map((event) => ({
       label: "History",
-      text: `${event.time} \xB7 ${event.source} \xB7 ${event.detail ?? HISTORY_TEXT[event.kind]}`
+      text: `${event.time} \xB7 ${event.source} \xB7 ${event.kind === "note" ? HISTORY_TEXT.note : event.detail ?? HISTORY_TEXT[event.kind]}`
     })),
     ...selectedLinks.length ? [{ label: "Links", actions: selectedLinks }] : []
   ] : [];

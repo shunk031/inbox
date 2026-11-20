@@ -173,6 +173,40 @@ test('the selected task plan orders labeled details and link actions', () => {
   expect(detail?.at(-1)).toMatchObject({ label: 'Links', actions: [{ label: 'Open PR' }] })
 })
 
+test('Timeline detail omits matching current text and keeps note text out of history', () => {
+  const note = 'A neutral note for the detail history test.'
+  const detail = 'A neutral task detail for the detail history test.'
+  const page = timelinePage(
+    timelineData(
+      [
+        task('history', {
+          detail,
+          notes: [note],
+          history: [
+            { at: now - 30_000, source: 'fixture', kind: 'note', detail: note },
+            { at: now - 10_000, source: 'fixture', kind: 'detail' },
+          ],
+        }),
+      ],
+      segments,
+      {},
+      [],
+      now,
+    ),
+    'history',
+    [],
+    {},
+    true,
+  ).selected?.details
+
+  expect(page?.map(line => line.label)).toEqual(['Detail', 'Note', 'History', 'History'])
+  expect(page?.find(line => line.label === 'Detail')).toEqual({ label: 'Detail', text: detail })
+  expect(page?.find(line => line.label === 'Note')).toEqual({ label: 'Note', text: note })
+  const history = page?.filter(line => line.label === 'History')
+  expect(history?.map(line => ('text' in line ? line.text.includes(note) : false))).toEqual([false, false])
+  expect(history?.[0] && 'text' in history[0] ? history[0].text : '').toContain('Note added')
+})
+
 test('Timeline rows show the newest task text, while selected details retain the full detail and every note', () => {
   const current = task('plan', {
     detail: 'The original plan',

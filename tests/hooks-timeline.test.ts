@@ -347,10 +347,7 @@ test('terminal Timeline keeps Japanese titles, row metadata and detail guides at
   await clock.settle()
   const detailRow = await pane.find({ key: 'timeline-detail-row-0' })
   const lead = await pane.find({ key: 'timeline-detail-lead-0' })
-  expect(lead?.text.includes('│')).toBe(false)
-  expect(lead?.text.includes('|')).toBe(false)
-  expect(lead?.props.flexShrink).toBe(0)
-  expect(typeof lead?.props.width).toBe('number')
+  expect(lead).toBeUndefined()
   expect((await pane.find({ key: 'timeline-back-gap' }))?.props.width).toBe(1)
   expect(
     detailRow?.children.some(child => typeof child === 'object' && (child as { type?: string }).type === 'Box'),
