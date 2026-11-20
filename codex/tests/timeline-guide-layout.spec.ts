@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
+import { h, render } from 'preact'
 import { Window } from 'happy-dom'
 import type { TaskNode, TaskProgressSegments } from '../../types'
 
@@ -41,18 +42,32 @@ test('a folded Codex Timeline branch has no visible child guide', async context 
   Object.assign(globalThis, {
     window,
     document: window.document,
-    Event: window.Event,
     matchMedia: window.matchMedia.bind(window),
   })
   context.after(() => window.happyDOM.close())
 
+  document.body.innerHTML = '<div id="app"></div>'
   const { timelineData, timelinePage } = await import('../../hooks/timeline-page')
   const { timelineRowForm } = await import('../src/rows')
-  const data = timelineData([task('root'), task('child', 'root')], segments, {}, [], now)
+  const data = timelineData(
+    [task('root'), task('child', 'root'), { ...task('finished'), status: 'done' }],
+    segments,
+    {},
+    [],
+    now,
+  )
   const expandedRoot = timelinePage(data, 'root', []).rows[0]!
   const foldedRoot = timelinePage(data, 'root', ['root']).rows[0]!
 
   assert.equal(foldedRoot.hasChildren, true)
   assert.equal(foldedRoot.hasVisibleChildren, false)
   assert.equal(timelineRowForm(expandedRoot, foldedRoot).childGuide, null)
+
+  const { tabState, root } = await import('../src/tab-state')
+  const { TimelineTab } = await import('../src/tab-timeline')
+  tabState.draw = () => render(h(TimelineTab, { view: { timeline: data, lastActions: {} } as never }), root)
+  tabState.draw()
+  assert.doesNotMatch(root.textContent ?? '', /finished/)
+  root.querySelector<HTMLButtonElement>('.completed-fold button')!.click()
+  assert.match(root.textContent ?? '', /finished/)
 })

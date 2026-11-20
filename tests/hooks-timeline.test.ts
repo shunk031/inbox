@@ -344,9 +344,10 @@ test('terminal Timeline aligns percentages, strips rows, and separates only top-
     tool: 'mcp__inbox__tasks',
     operation: 'add',
     task_id: 'dropped',
+    parent_id: 'forty-open',
     title: 'Dropped',
     status: 'dropped',
-  })
+  } as never)
 
   const pane = await $.ui.mount(PANE)
   await pane.press({ key: 'tab-key-timeline' })
@@ -358,6 +359,7 @@ test('terminal Timeline aligns percentages, strips rows, and separates only top-
     ['forty', 1],
     ['forty-done', 0],
     ['forty-open', 0],
+    ['dropped', 0],
   ] as const) {
     const element = await row(id)
     expect(element?.props.paddingTop, `${id} spacing`).toBe(paddingTop)

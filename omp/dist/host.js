@@ -7822,7 +7822,7 @@ function applyTaskPrFacts(tree, states, at) {
 }
 
 // ../hooks/timeline-state.ts
-var COMPLETED_FOLD_ID = "\x00inbox:timeline-completed-fold";
+var COMPLETED_FOLD_ID = "inbox:timeline:completed-fold".padEnd(101, "-");
 var timelineCompletedFolded = (folded) => !folded.includes(COMPLETED_FOLD_ID);
 
 // ../hooks/timeline-page.ts
@@ -8029,9 +8029,10 @@ function timelinePage(data, selectedId, folded, lastActions = {}, isDetailOpen =
   const rootById = new Map;
   const finishedByRoot = new Map;
   for (const row of data.rows) {
-    const root = row.depth === 0 ? row.task.id : rootById.get(row.task.parentId) ?? row.task.id;
+    const root = row.depth ? rootById.get(row.task.parentId) : row.task.id;
     rootById.set(row.task.id, root);
-    finishedByRoot.set(root, (finishedByRoot.get(root) ?? true) && (row.task.status === "done" || row.task.status === "dropped"));
+    const finished = row.task.status === "done" || row.task.status === "dropped";
+    finishedByRoot.set(root, (finishedByRoot.get(root) ?? true) && finished);
   }
   const completedRootIds = [...finishedByRoot].flatMap(([id, done]) => done ? [id] : []);
   const completedRoots = new Set(completedRootIds);

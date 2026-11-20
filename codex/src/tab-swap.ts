@@ -1,6 +1,7 @@
 import { isRowTab, isShownTab } from '../../hooks/tabs'
 import { ARRIVAL_TABS } from '../../hooks/arrivals'
 import { PRESS_TIMEOUT_MS } from '../../hooks/session-view'
+import { upgradedTimelineFolded } from '../../hooks/timeline-state'
 import {
   tabState,
   selection,
@@ -73,7 +74,7 @@ export function restoreState(incoming?: Kept) {
   tabState.timelineSelection = kept.timelineSelection ?? null
   tabState.timelineDetailOpen = kept.timelineDetailOpen ?? false
   tabState.timelineScrollTop = kept.timelineScrollTop ?? 0
-  for (const id of kept.timelineFolded ?? []) timelineFolded.add(id)
+  for (const id of upgradedTimelineFolded(kept.timelineFolded)) timelineFolded.add(id)
 }
 
 const PAGE_START_MS = 2_000

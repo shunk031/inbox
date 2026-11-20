@@ -233,7 +233,8 @@ export function TimelineTab({ view }: { view: TabView }) {
             .map(drawRow)}
           {all.filter(row => row.isCompletedFold).map(drawRow)}
           <div data-motion="closed-timeline-completed">
-            {!timelineFolded.has(COMPLETED_FOLD_ID) || closingFolds.has('timeline-completed')
+            {page.rows.some(row => page.completedRootIds.includes(row.task.id)) ||
+            closingFolds.has('timeline-completed')
               ? all
                   .filter(row => row.task.parentId === null && page.completedRootIds.includes(row.task.id))
                   .map(drawRow)

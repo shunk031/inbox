@@ -129,11 +129,7 @@ export function fixtureState(fixture) {
     })
     state.taskTree =
       fixture === 'fold-done'
-        ? [
-            ...tasks,
-            task('snapshot-finished-root', null, 'Snapshot finished root', 'done'),
-            task('snapshot-finished-child', 'snapshot-finished-root', 'Finished child', 'dropped'),
-          ]
+        ? [...tasks, task('snapshot-finished-root', null, 'Snapshot finished root', 'done')]
         : tasks
     state.prViews = { ...state.prViews, views: { [pr.ref]: pr }, isGhMissing: false }
   } else if (fixture === 'detail-empty' || fixture === 'detail-busy') {

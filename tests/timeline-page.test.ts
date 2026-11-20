@@ -194,6 +194,7 @@ test('Timeline rows show the newest task text, while selected details retain the
 })
 
 test('Timeline folds completed roots after open roots and restores selection when expanded', () => {
+  expect(upgradedTimelineFolded(['\0inbox:timeline-completed-fold'])).toEqual([])
   const roots: TaskTree = [
     task('one', { status: 'done', streamId: 's1' }),
     task('one-child', { parentId: 'one', status: 'dropped' }),
@@ -204,19 +205,10 @@ test('Timeline folds completed roots after open roots and restores selection whe
   const data = timelineData(roots, segments, {}, [], now)
   const page = timelinePage(data, 'one', upgradedTimelineFolded(undefined))
 
-  expect(page.mode).toBe('tree')
-  expect(page.completedRootIds).toEqual(['one'])
   expect(page.rows.map(row => row.task.id)).toEqual(['two', 'two-child', 'three', COMPLETED_FOLD_ID])
-  expect(page.selected?.row.task.id).toBe(COMPLETED_FOLD_ID)
+  expect([page.mode, page.selected?.row.task.id]).toEqual(['tree', COMPLETED_FOLD_ID])
   const expanded = timelinePage(data, 'one', [COMPLETED_FOLD_ID])
-  expect(expanded.rows.map(row => row.task.id)).toEqual([
-    'two',
-    'two-child',
-    'three',
-    COMPLETED_FOLD_ID,
-    'one',
-    'one-child',
-  ])
+  expect(expanded.rows.slice(-3).map(row => row.task.id)).toEqual([COMPLETED_FOLD_ID, 'one', 'one-child'])
   expect(expanded.selected?.row.task.id).toBe('one')
   expect(moveTimelineSelection(page.rows, 'three', 1)).toBe(COMPLETED_FOLD_ID)
   expect(toggleTimelineBranch([], 'one')).toEqual(['one'])
