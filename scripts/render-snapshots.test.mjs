@@ -83,40 +83,31 @@ test('tree trunks stay continuous through descendant and wrapped rows', () => {
 
 test('tree checks reject heading trunks without children, connectors without headings, and off-column trunks', () => {
   const check = text => checkTreeText(text, { view: 'agents' })
+  const rejects = (text, detail) => assert.ok(check(text).some(error => error.includes(detail)))
   const oneChild = 'Local agents\n   │\n   └─ A'
+  const empty = oneChild.replace('\n   └─ A', '')
   assert.deepEqual(check(oneChild), [])
-  assert.ok(check('   ├─ stray\nLocal agents\n   │\n   └─ A').length)
-  assert.ok(check(oneChild.replace('\n   └─ A', '')).some(error => error.includes('orphan-trunk-column=3')))
-  assert.ok(
-    checkTreeText(oneChild.replace('\n   └─ A', ''), { view: 'agents', requireTree: true }).some(error =>
-      error.includes('no-tree-found'),
-    ),
-  )
-  assert.ok(
-    check(oneChild.replace('Local agents\n   │\n', '')).some(error => error.includes('missing-heading-trunk-column=3')),
-  )
-  assert.ok(check(oneChild.replace('   └─ A', '   └─ A\n   │')).some(error => error.includes('orphan-trunk-column=3')))
-  assert.ok(
-    check(oneChild.replace('   └─ A', '   └─ A\n      │')).some(error => error.includes('orphan-trunk-column=6')),
-  )
+  rejects('   ├─ stray\nLocal agents\n   │\n   └─ A', 'missing-heading-trunk-column=3')
+  rejects(empty, 'orphan-trunk-column=3')
+  assert.ok(checkTreeText(empty, { view: 'agents', requireTree: true }).some(error => error.includes('no-tree-found')))
+  rejects(oneChild.replace('Local agents\n   │\n', ''), 'missing-heading-trunk-column=3')
+  rejects(oneChild.replace('   └─ A', '   └─ A\n   │'), 'orphan-trunk-column=3')
+  rejects(oneChild.replace('   └─ A', '   └─ A\n      │'), 'orphan-trunk-column=6')
   const siblings = 'Local agents\n   │\n   ├─ A\n   │\n   └─ B'
   const offColumn = siblings.replace('   │\n   └─ B', '    │\n   └─ B')
-  assert.ok(check(offColumn).some(error => error.includes('orphan-trunk-column=4')))
-})
-
-test('unframed captures still receive tree checks', () => {
-  const frame = 'Local agents\n   │\n   └─ A'
-  assert.deepEqual(checkTreeText(frame, { view: 'agents' }), [])
-  const broken = frame.replace('   └─ A', '   └─ A\n      │')
-  assert.ok(checkTreeText(broken, { view: 'agents' }).some(error => error.includes('orphan-trunk-column=6')))
+  rejects(offColumn, 'orphan-trunk-column=4')
 })
 
 test('pane extraction ignores sidebar rows but checks the pane tree', () => {
   const rows = Array.from({ length: 30 }, (_, index) =>
     `${' '.repeat(40)}│${['Local agents', '   │', '   ├─ A', '   │', '   └─ B'][index] ?? ''}`.padEnd(92),
   )
-  const frame = ['Sidebar\n   │\n   └─ A', ...rows].join('\n')
-  assert.deepEqual(checkTreeText(frame, { view: 'agents' }), [])
+  const check = () => checkTreeText(['Sidebar\n   │\n   └─ A', ...rows].join('\n'), { view: 'agents' })
+  assert.deepEqual(check(), [])
+  rows[2] = `${rows[2].slice(0, 40)} ${rows[2].slice(41)}`
+  assert.ok(check().some(error => error.includes('line=6 unclassified line')))
+  rows[29] = `${rows[4].slice(0, 40)} ${rows[4].slice(41)}`
+  assert.ok(check().some(error => error.includes('line=33 unclassified line')))
 })
 
 test('Timeline exempts only paired box borders and rejects edges outside them', () => {

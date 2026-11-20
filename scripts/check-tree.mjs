@@ -5,6 +5,7 @@ const ANSI = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))/gu
 const AGENT_HEADINGS = /^(?:Orchestrators|Meta tasks|Local agents)\b/u
 const ASKS_HEADINGS = /^(?:Questions|Tasks|Findings|Legacy findings|Potential issues|Ideas|Opportunities)\b/u
 const GLYPHS = /├─|└─/gu
+const treeLine = line => /[│├└]/u.test(line) || AGENT_HEADINGS.test(line.trim()) || ASKS_HEADINGS.test(line.trim())
 
 function paneLines(text) {
   const lines = text.replace(ANSI, '').replace(/\r/gu, '').split('\n')
@@ -16,14 +17,27 @@ function paneLines(text) {
       if (column >= Math.floor(width / 3) && column < width - 20) dividers.set(column, (dividers.get(column) ?? 0) + 1)
     }
   const [divider, count] = [...dividers].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0] ?? []
-  // A frame without a stable dock divider stays intact and is still checked as plain text.
-  if (!divider || count < 20) return lines
-  return lines.flatMap(line => {
+  if (!divider || count < 20) return { lines, lineNumbers: lines.map((_, i) => i + 1), unclassified: [] }
+  const at = line => {
     const prefix = cutToCells(line, divider + 1)
-    return cellWidth(prefix) === divider + 1 && prefix.endsWith('│') ? [line.slice(prefix.length).trimEnd()] : []
+    return cellWidth(prefix) === divider + 1 && prefix.endsWith('│')
+  }
+  const [first, last] = [lines.findIndex(at), lines.findLastIndex(at)]
+  const result = { lines: [], lineNumbers: [], unclassified: [] }
+  lines.forEach((line, index) => {
+    if (at(line)) {
+      const prefix = cutToCells(line, divider + 1)
+      result.lines.push(line.slice(prefix.length).trimEnd())
+      result.lineNumbers.push(index + 1)
+    } else if (
+      (index >= first && index <= last) ||
+      (index < first && line.slice(cutToCells(line, divider).length).trim()) ||
+      (index > last && treeLine(line))
+    )
+      result.unclassified.push(index + 1) // Missing divider inside the pane or on a tree-shaped row.
   })
+  return result
 }
-
 const glyphColumns = (line, pattern) =>
   [...line.matchAll(pattern)].map(match => ({ text: match[0], column: cellWidth(line.slice(0, match.index)) }))
 const hasTreeAt = (line, column) =>
@@ -42,9 +56,8 @@ function boxBorders(lines) {
     if (topLeft && topRight) tops.push({ line: index, left: topLeft.column, right: topRight.column })
     if (bottomLeft && bottomRight) bottoms.push({ line: index, left: bottomLeft.column, right: bottomRight.column })
   })
-  const edges = new Set()
-  const pairedBottoms = new Set()
-  // Only one-to-one top and bottom corners define a box edge exemption.
+  const edges = new Set(),
+    pairedBottoms = new Set()
   for (const top of tops) {
     const bottom = bottoms.find(
       candidate =>
@@ -65,7 +78,6 @@ function boxBorders(lines) {
   }
   return { edges, rows }
 }
-
 const viewOf = (lines, requested) =>
   requested !== 'auto'
     ? requested
@@ -80,7 +92,6 @@ function blocks(lines, view) {
   const heading = view === 'agents' ? AGENT_HEADINGS : ASKS_HEADINGS
   const starts = lines.flatMap((line, index) => (heading.test(line.trim()) ? [index] : []))
   if (!starts.length) return [{ start: 0, end: lines.length, name: view }]
-
   return [
     ...(starts[0] > 0 ? [{ start: 0, end: starts[0], name: view }] : []),
     ...starts.map((start, index) => ({
@@ -93,17 +104,17 @@ function blocks(lines, view) {
 
 /** Returns structural diagnostics only; it never includes the captured row text. */
 export function checkTreeText(text, { view = 'auto', source = 'frame', requireTree = false } = {}) {
-  const lines = paneLines(text)
+  const { lines, lineNumbers, unclassified } = paneLines(text)
   const kind = viewOf(lines, view)
-  const errors = []
+  const errors = unclassified.map(line => `FAIL ${source} line=${line} unclassified line`)
   let trees = 0
   const timelineBorders = kind === 'timeline' ? boxBorders(lines) : { edges: new Set(), rows: new Set() }
-  const fail = (block, line, detail) => errors.push(`FAIL ${source} tree=${block} line=${line + 1} ${detail}`)
+  const fail = (block, line, detail) =>
+    errors.push(`FAIL ${source} tree=${block} line=${lineNumbers[line] ?? line + 1} ${detail}`)
 
   for (const block of blocks(lines, kind)) {
     const rows = []
     for (let index = block.start; index < block.end; index++) {
-      // Paired box top and bottom rows contain corner glyphs, not tree connectors.
       if (!timelineBorders.rows.has(index))
         for (const glyph of glyphColumns(lines[index] ?? '', GLYPHS)) rows.push({ ...glyph, line: index })
     }
@@ -125,7 +136,6 @@ export function checkTreeText(text, { view = 'auto', source = 'frame', requireTr
           fail(block.name, row.line, `connector-column=${row.column} expected=${expectedBase}+3n`)
       }
 
-      // Timeline has no group headings; Asks and Agents require their heading trunk.
       if (kind !== 'timeline') {
         if (!headerTrunks.includes(expectedBase))
           fail(block.name, first.line, `missing-heading-trunk-column=${expectedBase}`)
@@ -144,7 +154,6 @@ export function checkTreeText(text, { view = 'auto', source = 'frame', requireTr
 
       for (let line = block.start; line < block.end; line++) {
         for (const { column } of glyphColumns(lines[line] ?? '', /│/gu)) {
-          // A paired box's interior edge is the only vertical guide exempt from the orphan check.
           const pairedBoxEdge = kind === 'timeline' && timelineBorders.edges.has(`${line}:${column}`)
           const hasLaterConnector = rows.some(candidate => candidate.line > line && candidate.column === column)
           if (!pairedBoxEdge && !hasLaterConnector) fail(block.name, line, `orphan-trunk-column=${column}`)
