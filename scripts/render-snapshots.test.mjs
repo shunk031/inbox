@@ -45,14 +45,10 @@ test('store key inventory follows CLAUDE_CONFIG_DIR and treats missing store as 
   assert.deepEqual(storeKeys({ HOME: home, CLAUDE_CONFIG_DIR: path.join(scratch, 'missing') }), new Set())
 })
 
-test('registry covers every terminal view, scenario, and width once', () => {
-  assert.equal(registry.length, 33)
+test('registry covers every remaining terminal view, scenario, and width once', () => {
+  assert.equal(registry.length, 26)
   assert.equal(new Set(registry.map(entry => entry.file)).size, registry.length)
-  assert.deepEqual(new Set(registry.map(entry => entry.width)), new Set([87, 110, 200]))
-  assert.deepEqual(
-    registry.filter(entry => entry.fixture === 'agents-tree').map(entry => entry.width),
-    [87, 110, 200],
-  )
+  assert.deepEqual(new Set(registry.map(entry => entry.width)), new Set([110, 200]))
   assert.deepEqual(
     registry.filter(entry => entry.fixture === 'fold-done').map(entry => entry.width),
     [200, 110],
@@ -79,16 +75,7 @@ test('PR readiness waits until remote refresh status settles', () => {
   assert.equal(ready(entry, 'Snapshot pull request\nPR status unavailable'), true)
 })
 
-test('Agents and report readiness wait for settled fixture content', () => {
-  const agents = registry.find(candidate => candidate.view === 'agents' && candidate.scenario === 'empty')
-  assert.equal(ready(agents, 'Orchestrators'), false)
-  assert.equal(ready(agents, 'Orchestrators\nHerdr agent list unavailable; local agent status is not current.'), true)
-  const agentsBusy = registry.find(candidate => candidate.fixture === 'agents-busy')
-  assert.equal(ready(agentsBusy, 'Meta tasks\nStale\nIn progress\nWaiting\nsnapshot-local…'), true)
-  const tree = registry.find(candidate => candidate.fixture === 'agents-tree' && candidate.width === 87)
-  const treeFrame = `Orchestrators\nMeta tasks\nLocal agents\nsnapshot-local-worker\nIn\nprogress\n${'├─\n'.repeat(11)}`
-  assert.equal(ready(tree, treeFrame.replace('snapshot-local-worker', '')), false)
-  assert.equal(ready(tree, treeFrame), true)
+test('report readiness waits for settled fixture content', () => {
   const report = registry.find(candidate => candidate.view === 'asks-detail' && candidate.scenario === 'busy')
   assert.equal(ready(report, 'Snapshot report\nBack to inbox\nOpening report…'), false)
   assert.equal(
@@ -135,10 +122,10 @@ test('cell checks report a shifted Timeline chip with its fixture column', () =>
 })
 
 test('chip box checks require one padded cell on each side and space before the pane edge', () => {
-  const entry = { view: 'agents', scenario: 'busy', width: 20 }
-  const frame = `${'\x1b[48;5;153m '}\x1b[38;5;16mStale\x1b[39m \x1b[49m `
+  const entry = { view: 'timeline', scenario: 'busy', width: 20 }
+  const frame = `${'\x1b[48;5;153m '}\x1b[38;5;16mIn progress\x1b[39m \x1b[49m `
   assert.deepEqual(checkChipBoxes(entry, frame, 20), [])
-  const missingRight = stripChipRightPadding(frame, entry, 20, 'Stale')
+  const missingRight = stripChipRightPadding(frame, entry, 20, 'In progress')
   assert.ok(checkChipBoxes(entry, missingRight, 20).some(line => line.includes('chip box padding')))
   assert.ok(checkChipBoxes(entry, frame.trimEnd(), 20).some(line => line.includes('chip box right margin')))
 })

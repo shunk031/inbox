@@ -1782,12 +1782,11 @@ var TAB_NAMES = [
   { id: "overview", label: "Status", symbol: "\uD83E\uDDED" },
   { id: "needsYou", label: "Asks", symbol: "\uD83D\uDE4B" },
   { id: "timeline", label: "Timeline", symbol: "\u25F7" },
-  { id: "agents", label: "Agents", symbol: "\u265F" },
   { id: "prs", label: "PRs", symbol: "\uD83D\uDD00" }
 ];
 var numbered = (tabs) => tabs.map((t, n) => ({ ...t, hotkey: String(n + 1) }));
-function shownTabs(isNextBuild, includeTimeline = false, includeAgents = false) {
-  return numbered(TAB_NAMES.filter((tab) => (isNextBuild || tab.id !== "overview") && (includeTimeline || tab.id !== "timeline") && (includeAgents || tab.id !== "agents")));
+function shownTabs(isNextBuild, includeTimeline = false) {
+  return numbered(TAB_NAMES.filter((tab) => (isNextBuild || tab.id !== "overview") && (includeTimeline || tab.id !== "timeline")));
 }
 function inboxCommandText(isNextBuild) {
   return isNextBuild ? "Show where this session stands and what waits on you" : "Show this session's questions, task plan and PRs";
@@ -1803,9 +1802,7 @@ function fitTabs(layouts, fits) {
         return { naming, layout };
   return { naming: "symbols", layout: layouts.at(-1) };
 }
-function tabBadge(id, counts, agentsAttentionCount = 0) {
-  if (id === "agents")
-    return agentsAttentionCount > 0 ? String(agentsAttentionCount) : null;
+function tabBadge(id, counts) {
   if (id === "timeline" && counts.timeline !== undefined)
     return String(counts.timeline);
   return isRowTab(id) && counts[id] > 0 ? String(counts[id]) : null;
@@ -3882,8 +3879,8 @@ function markLegend(isNextBuild) {
   return isNextBuild ? MARK_LEGEND : MARK_LEGEND.filter((m) => !STATUS_ONLY_MARKS.has(m.mark));
 }
 var HELP_COPY = { open: "Help", close: "\u2715 Close help", keys: "Keys", marks: "Marks", tabs: "Tabs" };
-function tabLegend(isNextBuild, includeTimeline = false, includeAgents = false) {
-  return shownTabs(isNextBuild, includeTimeline, includeAgents).map((t) => ({ keys: t.symbol, does: t.label }));
+function tabLegend(isNextBuild, includeTimeline = false) {
+  return shownTabs(isNextBuild, includeTimeline).map((t) => ({ keys: t.symbol, does: t.label }));
 }
 var UNDO_KEY = "u";
 var PR_TAB_HELP_KEYS = [
@@ -3894,8 +3891,8 @@ var DOCUMENT_KEYS = [
   { keys: "v", does: "Read the selected report, if available" },
   { keys: "b", does: "Return to the inbox from a report" }
 ];
-function helpKeys(look, isNextBuild, tab, hasStatusButtons, includeTimeline = false, includeAgents = false) {
-  const tabKeys = shownTabs(isNextBuild, includeTimeline, includeAgents).map((t) => t.hotkey).join(" ");
+function helpKeys(look, isNextBuild, tab, hasStatusButtons, includeTimeline = false) {
+  const tabKeys = shownTabs(isNextBuild, includeTimeline).map((t) => t.hotkey).join(" ");
   const hasRows = isRowTab(tab);
   const selectsTimelineRows = tab === "timeline";
   const hasDocumentRows = tab === "needsYou";
@@ -8286,7 +8283,7 @@ function updateRecovery(s) {
     return "unreadable";
   return presence.failedAttempts > 1 ? "failed-again" : "waiting";
 }
-function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timelineTaskTree = s.taskTree, agentOverrides = {}) {
+function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timelineTaskTree = s.taskTree) {
   const l = s.ledger;
   const lastActions = withoutStalePending(s.lastActions, now);
   const inbox = inboxView({
@@ -8324,15 +8321,6 @@ function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timel
     prs: prTabOf(s, lastActions, now, holds, settleWindowMs),
     statusPage: statusPage(s, now, new Set(Object.keys(taskOwnerView.stalledSince))),
     timeline: timelineData(timelineTaskTree, timelineOwnerView.segments, timelineOwnerView.stalledSince, taskTimelineWarnings(s, timelineTaskTree, now), now, s.taskStatusMismatches),
-    agents: {
-      feedRows: agentOverrides.feedRows ?? l.findings,
-      taskTree: timelineTaskTree,
-      ownerFacts: agentOverrides.ownerFacts ?? ownerFacts,
-      progress: timelineOwnerView.segments,
-      localAgents: agentOverrides.localAgents ?? [],
-      localAgentsUnavailable: agentOverrides.localAgentsUnavailable,
-      now
-    },
     taskProgressSegments: taskOwnerView.segments,
     taskStalledSince: taskOwnerView.stalledSince,
     feedStalledSince,
@@ -11037,39 +11025,8 @@ function subject(id, status, name, text, at, more = {}) {
   };
 }
 function demoView(now, agent) {
-  const agentFeedRows = [
-    {
-      id: "demo-root-feed",
-      kind: "progress",
-      title: "Root status",
-      detail: "Working on the saved view.",
-      path: null,
-      at: now - 3 * MIN2,
-      feedKey: "herdr/workstation/meta",
-      feedSource: "demo",
-      feedOwned: true,
-      owner: { machine: "workstation", agent: "meta" },
-      ownerFact: { state: "working", since: now - 3 * MIN2 }
-    },
-    {
-      id: "demo-feed-progress",
-      kind: "progress",
-      title: "Review the Japanese copy",
-      detail: "Blocked: waiting for the copy review.",
-      path: null,
-      at: now - 8 * MIN2,
-      feedKey: "subagent/demo/copy-review",
-      feedSource: "demo",
-      feedOwned: true
-    }
-  ];
   return {
     timelineTaskTree: demoTaskTree(now),
-    agentFeedRows,
-    localAgents: [
-      { machine: "workstation", name: "reviewer", status: "working" },
-      { machine: "workstation", name: "builder", status: "blocked" }
-    ],
     ledger: {
       overview: {
         head: { title: "Pinch to dismiss", description: "Adding a pinch that dismisses glances" },
@@ -11674,11 +11631,7 @@ var CLAUDE_CODE_SUPPORT = {
   "task-tree-export": { kind: "full" },
   "task-status-mismatch": { kind: "full" },
   timeline: { kind: "full" },
-  "timeline-completed-fold": { kind: "full" },
-  "agents-tab": {
-    kind: "different",
-    reason: "The terminal draws Agents; the desktop pane does not draw this look yet."
-  }
+  "timeline-completed-fold": { kind: "full" }
 };
 
 // ../hooks/client-support-codex.ts
@@ -11851,8 +11804,7 @@ var CODEX_SUPPORT = {
   "timeline-completed-fold": {
     kind: "different",
     reason: "Codex keeps finished Timeline roots inline while the terminal look ships the fold first."
-  },
-  "agents-tab": { kind: "different", reason: "Agents is not drawn in this look yet." }
+  }
 };
 
 // ../hooks/client-support-omp.ts
@@ -11986,8 +11938,7 @@ var OMP_SUPPORT = {
   "timeline-completed-fold": {
     kind: "different",
     reason: "omp keeps finished Timeline roots inline while the terminal look ships the fold first."
-  },
-  "agents-tab": { kind: "different", reason: "Agents is not drawn in this look yet." }
+  }
 };
 
 // ../hooks/client-support.ts

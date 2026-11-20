@@ -1,10 +1,10 @@
                                                                                        ✕
- ▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄
-   Asks     Timeline 0     Agents     PRs
-─▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀──────────────────────────────────────────────
+ ▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄
+   Asks     Timeline 0     PRs
+─▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀─────────────────────────────────────────────────────────
 
    Keys
-   1 2 3 4     Switch tabs
+   1 2 3       Switch tabs
    j k         Select the next or previous row
    u           Undo the last close
    j k ↑ ↓     Select a row or scroll a report
@@ -28,8 +28,8 @@
    Tabs
    🙋          Asks
    ◷           Timeline
-   ♟           Agents
    🔀          PRs
+
 
 
 

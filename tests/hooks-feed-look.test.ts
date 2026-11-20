@@ -4,7 +4,7 @@ import { w, world } from './hooks-world'
 import { PANE, SAVED_SESSION } from './hooks-helpers'
 
 for (const look of ['terminal', 'desktop'] as const)
-  test(`the ${look} look retains feed Progress outside Asks until the Agents tab is available`, async ($, on) => {
+  test(`the ${look} look retains feed Progress outside Asks while preserving its untracked-work banner`, async ($, on) => {
     const clock = mock.clock(on, { now: 1_000_000 })
     world($, on, [])
     w.stored.set(

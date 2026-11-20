@@ -1877,7 +1877,6 @@ var TAB_NAMES = [
   { id: "overview", label: "Status", symbol: "\u{1F9ED}" },
   { id: "needsYou", label: "Asks", symbol: "\u{1F64B}" },
   { id: "timeline", label: "Timeline", symbol: "\u25F7" },
-  { id: "agents", label: "Agents", symbol: "\u265F" },
   { id: "prs", label: "PRs", symbol: "\u{1F500}" }
 ];
 function isListedTab(tab) {
@@ -1888,6 +1887,11 @@ function isRowTab(tab) {
 }
 function isShownTab(raw) {
   return TAB_NAMES.some((t) => t.id === raw);
+}
+function upgradeShownTab(raw, fallback = "needsYou") {
+  if (raw === "agents") return "timeline";
+  if (raw === "findings") return "needsYou";
+  return isShownTab(raw) ? raw : fallback;
 }
 function screenTabOf(tab) {
   return { label: TAB_NAMES.find((t) => t.id === tab)?.label ?? tab, isPage: !isRowTab(tab) };
@@ -3762,7 +3766,7 @@ function updateRecovery(s) {
   if (s.pending.length === 0 && presence.isConversationUnreadable) return "unreadable";
   return presence.failedAttempts > 1 ? "failed-again" : "waiting";
 }
-function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timelineTaskTree = s.taskTree, agentOverrides = {}) {
+function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timelineTaskTree = s.taskTree) {
   const l = s.ledger;
   const lastActions = withoutStalePending(s.lastActions, now);
   const inbox = inboxView({
@@ -3807,15 +3811,6 @@ function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timel
       now,
       s.taskStatusMismatches
     ),
-    agents: {
-      feedRows: agentOverrides.feedRows ?? l.findings,
-      taskTree: timelineTaskTree,
-      ownerFacts: agentOverrides.ownerFacts ?? ownerFacts,
-      progress: timelineOwnerView.segments,
-      localAgents: agentOverrides.localAgents ?? [],
-      localAgentsUnavailable: agentOverrides.localAgentsUnavailable,
-      now
-    },
     taskProgressSegments: taskOwnerView.segments,
     taskStalledSince: taskOwnerView.stalledSince,
     feedStalledSince,
@@ -3984,7 +3979,7 @@ function upgraded(saved, sessionId) {
       turn,
       pending: (saved.pending ?? []).map(({ ex: { checks: _exChecks, ...ex }, ...p }) => ({ ...p, ex }))
     }),
-    shownTab: saved.shownTab === "findings" ? "needsYou" : isShownTab(saved.shownTab) ? saved.shownTab : base.shownTab,
+    shownTab: upgradeShownTab(saved.shownTab, base.shownTab),
     heard,
     ...saved.callFailures ? {} : { callFailures: withSavedFailure(saved) },
     coveredTurn: saved.coveredTurn !== void 0 ? saved.coveredTurn : coveredBefore(heard, turn.person ?? null)
