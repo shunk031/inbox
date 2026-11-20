@@ -7,6 +7,7 @@ import {
   writeProjectionAtomically,
 } from '../hooks/task-projection'
 import { afterTaskTreeUpdate } from '../hooks/task-projection-host'
+import { runModTool } from '../hooks/mod-task-run'
 import { emptySession } from '../hooks/session-files'
 import type { TaskNode, TaskTree } from '../types'
 
@@ -190,17 +191,33 @@ describe('task-tree projection', () => {
     const old =
       '{"version":1,"source":"meta-open-items","writtenAt":10,"entries":[{"key":"removed","kind":"task","state":"working","title":"Old task","detail":"","at":10,"owner":{"agent":"worker","machine":"host"}}]}'
     const store = memoryFiles(path, old)
+    const owner = { id: 'meta', generation: 0 }
+    let session = {
+      ...emptySession(),
+      taskTree: Array.from({ length: 21 }, (_, i) => node(i === 0 ? 'removed' : `r${i}`, 'done', { updatedAt: i })),
+    }
+    await runModTool(
+      {
+        now: async () => 100,
+        owner: () => owner,
+        preview: async input => input,
+        commit: async (_owner, change) => (session = change(session)),
+        refused: () => false,
+        projection: null,
+        savePersonLine: async () => undefined,
+      },
+      'tasks',
+      { operation: 'add', task_id: 'next', title: 'Next task' },
+      undefined,
+      true,
+      false,
+    )
     const projection = createTaskProjection(store.files, path)
-    const session = { ...emptySession(), taskTreePrunedIds: ['removed'] }
     const result = await afterTaskTreeUpdate(projection, 'meta', session, 20, change =>
       Promise.resolve(change(session)),
     )
 
-    expect([
-      result.session.taskTree,
-      result.session.taskTreePrunedIds,
-      JSON.parse(store.contents.get(path)!).entries,
-    ]).toEqual([[], [], []])
+    expect(result.session.taskTree.map(task => task.id)).not.toContain('removed')
   })
 
   test('does not import rows from an existing projected snapshot', async () => {

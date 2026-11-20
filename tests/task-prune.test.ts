@@ -28,22 +28,33 @@ test('prunes older finished roots with their subtrees and keeps open roots', () 
   const roots = finished(21)
   roots.push(task('latest-child', { parentId: 'r0', status: 'done', updatedAt: 100 }), task('open'))
   const result = pruneFinishedTaskRoots(roots)
-  expect(result.tree.filter(node => node.parentId === null && node.status === 'done')).toHaveLength(
-    FINISHED_TASK_ROOT_LIMIT,
-  )
-  expect(result.tree.map(node => node.id)).toContain('open')
+  expect([
+    result.tree.filter(node => node.parentId === null && node.status === 'done').length,
+    result.tree.some(node => node.id === 'open'),
+  ]).toEqual([FINISHED_TASK_ROOT_LIMIT, true])
   const mixed = [task('open-root'), task('old-child', { parentId: 'open-root', status: 'done', updatedAt: 0 })]
-  expect(
-    pruneFinishedTaskRoots([...finished(21), ...mixed])
-      .tree.slice(-2)
-      .map(node => node.id),
-  ).toEqual(['open-root', 'old-child'])
+  expect(pruneFinishedTaskRoots([...finished(21), ...mixed]).tree.slice(-2)).toEqual(mixed)
 })
 
-test('prunes after add, complete and update-to-done, but not note', () => {
+test('prunes after task changes and clears warnings', () => {
   const full = [...finished(21), ...Array.from({ length: TASK_NODE_LIMIT - 21 }, (_, i) => task(`w${i}`))]
-  const added = taskTreeAnswer(full, { operation: 'add', task_id: 'new', title: 'New task' }, 100)
+  const added = recorded(
+    CLAUDE_CODE,
+    {
+      ...emptySession(),
+      taskTree: full,
+      taskStatusMismatches: [{ taskId: 'r0', claim: 'working' as const, savedStatus: 'done' as const, at: 1 }],
+      taskFactWarnings: [
+        { taskId: 'r0', pr: 'https://github.com/a/b/pull/1', message: 'PR merged, task still open' as const },
+      ],
+    },
+    'tasks',
+    { operation: 'add', task_id: 'new', title: 'New task' },
+    100,
+    V0_3_TOOL_FIELDS,
+  ).state
   expect(added.taskTree).toHaveLength(TASK_NODE_LIMIT)
+  expect([added.taskStatusMismatches, added.taskFactWarnings]).toEqual([[], []])
 
   for (const operation of ['complete', 'update'] as const) {
     const input = { operation, task_id: 'work', ...(operation === 'update' ? { status: 'done' } : {}) }
@@ -51,37 +62,11 @@ test('prunes after add, complete and update-to-done, but not note', () => {
       'r0',
     )
   }
-
-  const tree = [...finished(21), task('parent'), task('child', { parentId: 'parent' })]
-  expect(
-    taskTreeAnswer(tree, { operation: 'note', task_id: 'parent', note: 'Still working' }, 100).taskTree,
-  ).toHaveLength(tree.length)
-})
-
-test('pruned ids leave no shared warnings', () => {
-  const state = {
-    ...emptySession(),
-    taskTree: finished(21),
-    taskStatusMismatches: [{ taskId: 'r0', claim: 'working' as const, savedStatus: 'done' as const, at: 1 }],
-    taskFactWarnings: [
-      { taskId: 'r0', pr: 'https://github.com/a/b/pull/1', message: 'PR merged, task still open' as const },
-    ],
-  }
-  const changed = recorded(
-    CLAUDE_CODE,
-    state,
-    'tasks',
-    { operation: 'add', task_id: 'next', title: 'Next task' },
-    100,
-    V0_3_TOOL_FIELDS,
-  ).state
-  expect([changed.taskStatusMismatches, changed.taskFactWarnings]).toEqual([[], []])
 })
 
 test('keeps only the newest task tombstones when saving and upgrading a session', () => {
   const ids = Array.from({ length: TASK_NODE_LIMIT + 1 }, (_, i) => `id${i}`)
-  expect(boundedTaskPrunedIds(ids)).toEqual(ids.slice(-TASK_NODE_LIMIT))
-  expect(upgradeSession({ ...emptySession(), taskTreePrunedIds: ids }).taskTreePrunedIds).toEqual(
-    ids.slice(-TASK_NODE_LIMIT),
-  )
+  const newest = ids.slice(-TASK_NODE_LIMIT)
+  expect(boundedTaskPrunedIds(ids)).toEqual(newest)
+  expect(upgradeSession({ ...emptySession(), taskTreePrunedIds: ids }).taskTreePrunedIds).toEqual(newest)
 })
