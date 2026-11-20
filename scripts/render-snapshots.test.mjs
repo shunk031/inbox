@@ -87,6 +87,7 @@ test('Asks tree reconstruction enforces continuity, parent columns and recognize
   const oneChild = 'Questions\n   │\n   └─ A'
   const siblings = 'Questions\n   │\n   ├─ A\n   │\n   └─ B'
   rejects('Questions\n   │', 'orphan-trunk-column=3')
+  rejects(frame.replaceAll(/\n   /gu, '\n      '), 'asks-guide-column=3 actual=6')
   rejects('Help tab has no tree', 'missing-recognized-heading')
   rejects('   ├─ stray\nQuestions\n   │\n   └─ A', 'connector-without-recognized-heading')
   rejects(`${oneChild}\n      │`, 'orphan-trunk-column=6')
@@ -120,6 +121,8 @@ test('terminal tree checks classify every row and require the detected divider',
   rows[2] = `${rows[2].slice(0, 40)} ${rows[2].slice(41)}`
   assert.ok(check(rows.join('\n'), 40, 51).some(error => error.includes('line=3 unclassified line')))
   rows[29] = `${rows[4].slice(0, 40)} ${rows[4].slice(41)}`
+  assert.ok(check(rows.join('\n'), 40, 51).some(error => error.includes('line=30 unclassified line')))
+  rows[29] = `${' '.repeat(40)}└─ Claude Code v`.padEnd(92)
   assert.ok(check(rows.join('\n'), 40, 51).some(error => error.includes('line=30 unclassified line')))
 })
 

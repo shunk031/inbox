@@ -8,7 +8,8 @@ const HEADINGS = {
   asks: /^(Questions|Tasks|Issues|Findings|Legacy findings|Opportunities|Progress)(?:\s*·\s*\d+)?\s*$/u,
 }
 const CONNECTORS = /├─|└─/gu
-const TIMELINE_ROOT = /^(?: {4}| {2}> )([●◐✕○▸▾]) \S/u
+const TIMELINE_ROOT_COLUMN = 4
+const TIMELINE_ROOT = new RegExp(`^(?: {${TIMELINE_ROOT_COLUMN}}| {2}> )([●◐✕○▸▾]) \\S`, 'u')
 const heading = (line, view) => line.replace(HEADING_PREFIX, '').match(HEADINGS[view])
 const glyphs = (line, pattern) =>
   [...line.matchAll(pattern)].map(match => ({ column: cellWidth(line.slice(0, match.index)) }))
@@ -23,15 +24,19 @@ function paneLines(text, inputMode, dividerColumn, paneWidth) {
   const lines = text.replace(ANSI, '').replace(/\r/gu, '').replace(/\n+$/u, '').split('\n')
   if (inputMode === 'pane-only') return { lines, unclassified: [] }
   if (inputMode !== 'pane-in-terminal') throw Error(`unknown pane input mode: ${inputMode}`)
-  const pane = { lines: [], unclassified: [], started: false }
+  const rows = lines.map(line => paneRow(line, dividerColumn, paneWidth))
+  const first = rows.findIndex(row => row !== null)
+  const last = rows.findLastIndex(row => row !== null)
+  const pane = { lines: [], unclassified: [] }
   lines.forEach((line, index) => {
-    const row = paneRow(line, dividerColumn, paneWidth)
-    if (row !== null) pane.started = true
-    else if (
-      !isTerminalChrome(line, dividerColumn === 0 ? paneWidth + 2 : dividerColumn + 1 + paneWidth) &&
-      (line || pane.started)
-    )
-      pane.unclassified.push(index + 1)
+    const row = rows[index]
+    const inside = index >= first && index <= last
+    const connector = /├─|└─/u.test(line)
+    const chrome =
+      !inside &&
+      !connector &&
+      isTerminalChrome(line, dividerColumn === 0 ? paneWidth + 2 : dividerColumn + 1 + paneWidth)
+    if (row === null && (connector || inside || (!chrome && line))) pane.unclassified.push(index + 1)
     pane.lines.push(row ?? '')
   })
   return pane
@@ -80,7 +85,7 @@ export function checkTreeText(text, { view, source = 'frame', inputMode, divider
           {
             line: index,
             name: view === 'timeline' ? 'Timeline root' : match[1],
-            column: view === 'timeline' ? cellWidth(line.slice(0, line.indexOf(match[1]))) : undefined,
+            column: view === 'timeline' ? TIMELINE_ROOT_COLUMN : undefined,
             children: [],
           },
         ]
@@ -93,8 +98,10 @@ export function checkTreeText(text, { view, source = 'frame', inputMode, divider
     const first = connectors.find(row => row.line > section.line && row.line < next)
     if (first && view === 'asks') {
       const trunk = guides.find(row => row.line > section.line && row.line < first.line)
-      section.column = trunk?.column
+      section.column = 3
       if (!trunk) fail(first.line, 'heading-requires-trunk-before-connectors', section.name)
+      else if (trunk.column !== section.column)
+        fail(trunk.line, `asks-guide-column=${section.column} actual=${trunk.column}`, section.name)
     }
   }
   for (const row of connectors) {

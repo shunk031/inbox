@@ -71,7 +71,7 @@ async function main() {
     errors.push(...checkLeftEdges(item.entry, item.frame))
     errors.push(...checkChipBoxes(item.entry, item.ansiFrame, item.paneWidth))
     errors.push(...checkTimelineFocus(item.entry, item.frame, item.ansiFrame))
-    if ((item.entry.view === 'asks' || item.entry.view === 'timeline') && item.entry.scenario === 'busy')
+    if (item.entry.view === 'asks' || item.entry.view === 'timeline')
       errors.push(
         ...checkTreeText(stripAnsi(item.ansiFrame), {
           view: item.entry.view,
