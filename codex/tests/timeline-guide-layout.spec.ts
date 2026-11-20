@@ -34,6 +34,7 @@ test('narrow Codex Timeline rows keep the tree lead, title wrap, status, and pro
   assert.match(css, /\.timeline-row-progress\s*\{\s*flex:\s*0 0 auto;/)
   assert.match(css, /\.timeline-title\s*\{[\s\S]*?min-width:\s*0;[\s\S]*?overflow-wrap:\s*anywhere;/)
   assert.match(css, /\.timeline-detail-copy\s*\{[\s\S]*?min-width:\s*0;[\s\S]*?align-items:\s*flex-start;/)
+  assert.match(css, /\.timeline-detail-section p\s*\{[\s\S]*?white-space:\s*pre-wrap;/)
 })
 
 test('a folded Codex Timeline branch has no visible child guide', async context => {

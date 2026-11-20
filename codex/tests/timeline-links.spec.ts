@@ -188,7 +188,8 @@ test('a Timeline Local open stays disabled while pending and draws its done or f
     const history = [...root.querySelectorAll('.timeline-detail-section')].find(
       section => section.querySelector('strong')?.textContent === 'History',
     )
-    assert.equal(history?.querySelectorAll('p').length, 2)
+    assert.equal(history?.querySelectorAll('p').length, 1)
+    assert.equal(history?.querySelector('p')?.textContent?.split('\n').length, 2)
 
     openButton()!.click()
     await until(() => openButton()?.textContent === 'Opening…')

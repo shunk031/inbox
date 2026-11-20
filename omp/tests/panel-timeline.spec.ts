@@ -72,7 +72,7 @@ test('Timeline draws the shared card and two-line rows, then opens and returns f
   const noteEvent = detail.split('\n').find(line => line.includes('Note added')) ?? ''
   expect(noteEvent).toContain('Note added')
   expect(noteEvent).not.toContain('Preserve the title.')
-  expect(detail).toContain('Added the panel view.')
+  expect(detail.split('\n').filter(line => /Added the panel view\.|Note added/.test(line))).toHaveLength(2)
   expect(detail).toContain('Open PR')
   expect(detail).toContain('Open issue')
   expect(detail).not.toContain('Read the design')
