@@ -91,12 +91,20 @@ export function paneAgents({
               <Text color={color}>{mark}</Text>
             </Box>
             <Box flexDirection="row" flexGrow={1} flexShrink={1} minWidth={0}>
-              <Box flexGrow={1} flexShrink={1} minWidth={0}>
+              <Box
+                width={Math.max(0, paneWidth - 2 - cellWidth(mark) - (label ? cellWidth(label) + 3 : 0))}
+                flexShrink={0}
+              >
                 <Text color={color} wrap="truncate-end">
                   {row.text}
                 </Text>
               </Box>
               {label ? <Box flexShrink={0}>{timelineChip({ Box, Text, pal }, label, status.tone)}</Box> : null}
+              {label ? (
+                <Box width={1}>
+                  <Text> </Text>
+                </Box>
+              ) : null}
             </Box>
           </Box>
         </Box>

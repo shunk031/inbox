@@ -45,6 +45,7 @@ export function modTaskProjection(fs: ModProjectionFs, run: Run, nonce: () => st
   }
   const exportTree = modTaskTreeExport({ home: fs.home, now: fs.now, write: fs.write, run, nonce, log: fs.log })
   return {
+    enabled: path !== null,
     ...createTaskProjection(files, path),
     exportTree,
     exportSnapshot: (sessionId: string, session: Parameters<typeof exportTree>[2]) =>

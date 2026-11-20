@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { checkFrame } from './render-snapshots-checks.mjs'
+import { checkChipBoxes, checkFrame, stripChipRightPadding } from './render-snapshots-checks.mjs'
 import { cropInboxPane, isolate, ready, storeKeys, stripAnsi } from './render-snapshots-live.mjs'
 import { fixtureState, PLUGIN_STORE, registry } from './render-snapshots-fixtures.mjs'
 
@@ -75,6 +75,8 @@ test('Agents and report readiness wait for settled fixture content', () => {
   const agents = registry.find(candidate => candidate.view === 'agents' && candidate.scenario === 'empty')
   assert.equal(ready(agents, 'Orchestrators'), false)
   assert.equal(ready(agents, 'Orchestrators\nHerdr agent list unavailable; local agent status is not current.'), true)
+  const agentsBusy = registry.find(candidate => candidate.fixture === 'agents-busy')
+  assert.equal(ready(agentsBusy, 'Meta tasks\nStale\nIn progress\nWaiting\nsnapshot-local…'), true)
   const report = registry.find(candidate => candidate.view === 'asks-detail' && candidate.scenario === 'busy')
   assert.equal(ready(report, 'Snapshot report\nBack to inbox\nOpening report…'), false)
   assert.equal(
@@ -110,4 +112,13 @@ test('cell checks report a shifted Timeline chip with its fixture column', () =>
   const failures = checkFrame(entry, frame, 70)
   assert.ok(failures.some(line => line.includes('chip does not start on its title column')))
   assert.ok(failures.some(line => line.includes('bar and percentage must share the title line')))
+})
+
+test('chip box checks require one padded cell on each side and space before the pane edge', () => {
+  const entry = { view: 'agents', scenario: 'busy', width: 20 }
+  const frame = `${'\x1b[48;5;153m '}\x1b[38;5;16mStale\x1b[39m \x1b[49m `
+  assert.deepEqual(checkChipBoxes(entry, frame, 20), [])
+  const missingRight = stripChipRightPadding(frame, entry, 20, 'Stale')
+  assert.ok(checkChipBoxes(entry, missingRight, 20).some(line => line.includes('chip box padding')))
+  assert.ok(checkChipBoxes(entry, frame.trimEnd(), 20).some(line => line.includes('chip box right margin')))
 })

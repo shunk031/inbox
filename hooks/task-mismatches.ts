@@ -1,4 +1,4 @@
-import type { TaskStatusMismatch, TaskStatus, TaskTree } from '../types'
+import type { TaskStatusMismatch, TaskStatus, TaskTree, Session } from '../types'
 import type { Op } from './status'
 
 const STATUSES: readonly TaskStatus[] = ['working', 'queued', 'waits-on-other', 'done', 'dropped']
@@ -31,11 +31,19 @@ export function applyTaskMismatchOps(
 }
 
 /** A successful task update clears claims it agrees with and refreshes the saved status on the rest. */
-export function afterTaskTreeUpdate(current: readonly TaskStatusMismatch[], tree: TaskTree): TaskStatusMismatch[] {
+function afterTaskTreeUpdate(current: readonly TaskStatusMismatch[], tree: TaskTree): TaskStatusMismatch[] {
   return current.flatMap(mismatch => {
     const task = tree.find(node => node.id === mismatch.taskId)
     return !task || task.status === mismatch.claim ? [] : [{ ...mismatch, savedStatus: task.status }]
   })
+}
+
+export function taskFactsAfterTreeUpdate(tree: TaskTree, facts: Session) {
+  const ids = new Set(tree.map(task => task.id))
+  return {
+    taskStatusMismatches: afterTaskTreeUpdate(facts.taskStatusMismatches, tree),
+    taskFactWarnings: facts.taskFactWarnings.filter(({ taskId }) => ids.has(taskId)),
+  }
 }
 
 /** Converts old saved sessions and drops malformed or no-longer-conflicting entries. */

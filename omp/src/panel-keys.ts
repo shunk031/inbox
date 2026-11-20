@@ -278,8 +278,8 @@ function pageKey(screen: PanelScreen, ui: PanelUi, key: string, now: number): Ke
       const button = key === 'enter' ? line.buttons[focusOf(line, ui)] : line.buttons.find(item => item.key === key)
       return button ? activate(screen, ui, line, button, now) : null
     }
-    if (key === 'j' || key === 'k') {
-      const id = moveTimelineSelection(page.rows, ui.timelineSelection, key === 'k' ? -1 : 1)
+    if (key === 'j' || key === 'k' || key === 'up' || key === 'down') {
+      const id = moveTimelineSelection(page.rows, ui.timelineSelection, key === 'k' || key === 'up' ? -1 : 1)
       const target = linesOf(entriesOf(screen, ui, ui.tab, now)).find(item => item.id === id)
       const select = target?.buttons.find(button => button.press.action === 'timeline-select' && button.press.id === id)
       if (target && select) return activate(screen, ui, target, select, now)

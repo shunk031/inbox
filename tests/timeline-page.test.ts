@@ -215,6 +215,22 @@ test('Timeline folds completed roots after open roots and restores selection whe
   expect(toggleTimelineBranch(['one'], 'one')).toEqual([])
 })
 
+test('Timeline keeps the whole tree and uses the first row for unknown selection moves', () => {
+  const roots: TaskTree = [
+    task('one', { status: 'done', streamId: 's1' }),
+    task('two', { status: 'working', streamId: 's2' }),
+    task('three', { status: 'waits-on-other', streamId: 's3' }),
+  ]
+  const page = timelinePage(timelineData(roots, segments, {}, [], now), 'missing', [])
+
+  expect(page.mode).toBe('tree')
+  expect(page.rows.map(row => row.task.id)).toEqual(['one', 'two', 'three'])
+  expect(page.selected?.row.task.id).toBe('one')
+  expect(moveTimelineSelection(page.rows, 'three', 1)).toBe('one')
+  expect(moveTimelineSelection(page.rows, 'missing', 1)).toBe('two')
+  expect(moveTimelineSelection(page.rows, 'missing', -1)).toBe('three')
+})
+
 test('Timeline hides no open roots and shows one row when all roots are finished', () => {
   const page = (tree: TaskTree) =>
     timelinePage(timelineData(tree, segments, {}, [], now), null, upgradedTimelineFolded(undefined), {}, false, true)
