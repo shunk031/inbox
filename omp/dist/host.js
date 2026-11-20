@@ -6848,10 +6848,15 @@ When one exists, link the PR, issue or owner agent so finished or stalled work c
 
 // ../hooks/task-prune.ts
 var FINISHED_TASK_ROOT_LIMIT = 20;
-function pruneFinishedTaskRoots(tree) {
+function pruneFinishedTaskRoots(tree, protectedId) {
   const children = new Map;
   for (const task of tree)
     children.set(task.parentId, [...children.get(task.parentId) ?? [], task]);
+  let protectedRoot = tree.find((task) => task.id === protectedId);
+  while (protectedRoot?.parentId) {
+    const parentId = protectedRoot.parentId;
+    protectedRoot = tree.find((task) => task.id === parentId);
+  }
   const visit = (task) => {
     const descendants = (children.get(task.id) ?? []).map(visit);
     return {
@@ -6870,7 +6875,8 @@ function pruneFinishedTaskRoots(tree) {
     deleted.add(task.id);
     (children.get(task.id) ?? []).forEach(remove);
   };
-  for (const { id } of finished.sort((a, b) => b.at - a.at || b.index - a.index).slice(FINISHED_TASK_ROOT_LIMIT))
+  const removeCount = finished.length - FINISHED_TASK_ROOT_LIMIT;
+  for (const { id } of finished.sort((a, b) => b.at - a.at || b.index - a.index).filter((root) => root.id !== protectedRoot?.id).slice(-removeCount))
     remove(tree.find((task) => task.id === id));
   return { tree: tree.filter((task) => !deleted.has(task.id)), deletedIds: [...deleted] };
 }
@@ -6952,12 +6958,8 @@ function taskTreeAnswer(tree, input, now, goalId) {
       ...linkInput.links ? { links: linkInput.links } : {}
     };
     result = createTask(tree, node, "agent");
-    if (!result.ok && result.reason === "limit" && tree.length >= TASK_NODE_LIMIT) {
-      const pruned = pruneFinishedTaskRoots(tree);
-      if (pruned.deletedIds.length) {
-        result = createTask(pruned.tree, node, "agent");
-      }
-    }
+    if (!result.ok && result.reason === "limit" && tree.length >= TASK_NODE_LIMIT)
+      result = createTask(pruneFinishedTaskRoots(tree, node.parentId ?? undefined).tree, node, "agent");
   } else if (operation === "update") {
     const current = tree.find((task) => task.id === id);
     if (!current)

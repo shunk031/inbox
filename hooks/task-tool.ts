@@ -112,12 +112,8 @@ export function taskTreeAnswer(tree: TaskTree, input: Record<string, unknown>, n
       ...(linkInput.links ? { links: linkInput.links } : {}),
     }
     result = createTask(tree, node, 'agent')
-    if (!result.ok && result.reason === 'limit' && tree.length >= TASK_NODE_LIMIT) {
-      const pruned = pruneFinishedTaskRoots(tree)
-      if (pruned.deletedIds.length) {
-        result = createTask(pruned.tree, node, 'agent')
-      }
-    }
+    if (!result.ok && result.reason === 'limit' && tree.length >= TASK_NODE_LIMIT)
+      result = createTask(pruneFinishedTaskRoots(tree, node.parentId ?? undefined).tree, node, 'agent')
   } else if (operation === 'update') {
     const current = tree.find(task => task.id === id)
     if (!current) return failure(tree, { ok: false, reason: 'unknown-task' }, id)

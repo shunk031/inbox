@@ -43,17 +43,19 @@ test('prunes after task changes and clears warnings', () => {
     {
       ...emptySession(),
       taskTree: full,
-      taskStatusMismatches: [{ taskId: 'r0', claim: 'working' as const, savedStatus: 'done' as const, at: 1 }],
+      taskStatusMismatches: [{ taskId: 'r1', claim: 'working' as const, savedStatus: 'done' as const, at: 1 }],
       taskFactWarnings: [
-        { taskId: 'r0', pr: 'https://github.com/a/b/pull/1', message: 'PR merged, task still open' as const },
+        { taskId: 'r1', pr: 'https://github.com/a/b/pull/1', message: 'PR merged, task still open' as const },
       ],
     },
     'tasks',
-    { operation: 'add', task_id: 'new', title: 'New task' },
+    { operation: 'add', task_id: 'child', title: 'Child', parent_id: 'r0' },
     100,
     V0_3_TOOL_FIELDS,
   ).state
   expect(added.taskTree).toHaveLength(TASK_NODE_LIMIT)
+  expect(added.taskTree.map(task => task.id)).toEqual(expect.arrayContaining(['child', 'r0']))
+  expect(added.taskTree.map(task => task.id)).not.toContain('r1')
   expect([added.taskStatusMismatches, added.taskFactWarnings]).toEqual([[], []])
 
   for (const operation of ['complete', 'update'] as const) {
