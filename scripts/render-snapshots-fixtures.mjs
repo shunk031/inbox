@@ -150,17 +150,18 @@ export function fixtureState(fixture) {
       task('snapshot-agents-working', null, 'Snapshot working task', 'working'),
       task('snapshot-agents-waiting', null, 'Snapshot waiting task', 'waits-on-other'),
     ]
-  } else if (fixture === 'timeline-detail-layout') {
+  } else if (fixture.startsWith('timeline-detail-layout')) {
     const detail =
       'この説明はレイアウト確認用に新しく書いた中立的な文章です。狭い画面でも左端と折り返し位置を見やすくするため、内容を続けて記します。'.repeat(
         2,
       )
-    const note = '配置と折り返しを確認するための中立的なメモです。'
+    const note = '配置確認用のメモです。',
+      split87 = fixture.at(-1) === '7'
     const item = task('snapshot-detail-layout', null, 'Snapshot timeline detail', 'working', detail, [note])
     item.history = [
       { at: NOW - 60_000, source: 'fixture', kind: 'created' },
-      { at: NOW - 30_000, source: 'fixture', kind: 'note', detail: note },
-      { at: NOW - 10_000, source: 'fixture', kind: 'detail' },
+      { at: NOW - (split87 ? 10_000 : 30_000), source: 'fixture', kind: 'note', detail: note },
+      { at: NOW - (split87 ? 30_000 : 10_000), source: 'fixture', kind: 'detail' },
     ]
     state.taskTree = [item]
   } else if (fixture === 'agents-tree') {
@@ -227,7 +228,7 @@ registry.push(
   ...timelineDetailWidths.map(width => ({
     view: 'timeline-detail',
     scenario: 'layout',
-    fixture: 'timeline-detail-layout',
+    fixture: width === 87 ? 'timeline-detail-layout-87' : 'timeline-detail-layout',
     width,
     ...(width === 87 ? { terminalWidth: 196 } : {}),
     file: `timeline-detail-layout-${width}.txt`,

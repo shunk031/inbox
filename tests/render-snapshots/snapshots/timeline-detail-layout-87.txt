@@ -10,6 +10,9 @@
  │ 0.00%                  │ │ 1                    │ │ 0 / 1                         │
  └────────────────────────┘ └──────────────────────┘ └───────────────────────────────┘
 
+ Current
+ 配置確認用のメモです。 · now
+
  Detail
  この説明はレイアウト確認用に新しく書いた中立的な文章です。狭い画面でも左端と折り返し
  位置を見やすくするため、内容を続けて記します。この説明はレイアウト確認用に新しく書い
@@ -17,15 +20,12 @@
  します。
 
  Note
- 配置と折り返しを確認するための中立的なメモです。
+ 配置確認用のメモです。
 
  History
  1m · fixture · Task created
- 1m · fixture · Note added
- now · fixture · Task detail updated
-
-
-
+ now · fixture · Note added
+ 1m · fixture · Task detail updated
 
 
 

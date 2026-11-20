@@ -26,13 +26,13 @@
  します。
 
  Note
- 配置と折り返しを確認するための中立的
- なメモです。
+ 配置確認用のメモです。
 
  History
  1m · fixture · Task created
  1m · fixture · Note added
  now · fixture · Task detail updated
+
 
 
 

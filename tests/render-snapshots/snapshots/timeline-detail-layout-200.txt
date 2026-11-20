@@ -17,7 +17,7 @@
  。
 
  Note
- 配置と折り返しを確認するための中立的なメモです。
+ 配置確認用のメモです。
 
  History
  1m · fixture · Task created

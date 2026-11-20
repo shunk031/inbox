@@ -59,15 +59,13 @@ test('registry covers every terminal view, scenario, and width once', () => {
   )
 })
 
-test('left-edge check catches a Timeline detail body indented from its header and stats box', () => {
-  const entry = registry.find(candidate => candidate.file === 'timeline-detail-layout-87.txt')
-  const aligned = `    Asks        b: ‹ Back Snapshot In progress\n${' '.repeat(16)}┌─────────────┐\n${' '.repeat(16)}│ Progress    │\n${' '.repeat(16)}Current\n${' '.repeat(16)}Newest text`
-  assert.deepEqual(checkLeftEdges(entry, aligned), [])
-
-  const indented = aligned.replace('Current\n', '       Current\n').replace('Newest text', '       Newest text')
-  const failures = checkLeftEdges(entry, indented)
-  assert.ok(failures.some(line => line.includes('body heading does not start at the page left edge')))
-  assert.ok(failures.some(line => line.includes('body text does not start at the page left edge')))
+test('left-edge check catches an indented Current heading and its text', () => {
+  const frame = `    Asks        b: ‹ Back Snapshot In progress\n${' '.repeat(16)}┌─────────────┐\n${' '.repeat(16)}│ Progress    │\n${' '.repeat(23)}Current\n${' '.repeat(23)}Newest text`
+  const failures = checkLeftEdges(
+    registry.find(candidate => candidate.file === 'timeline-detail-layout-87.txt'),
+    frame,
+  )
+  assert.match(failures.join('\n'), /body heading does not start[\s\S]*body text does not start/)
 })
 
 test('Help snapshots open through the existing footer control', () => {

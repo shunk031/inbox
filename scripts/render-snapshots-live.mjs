@@ -250,16 +250,15 @@ export async function capture(entry, pluginDir, root, socket, claude) {
     )
     send(socket, session, '/inbox', true)
     send(socket, session, 'Enter')
-    const initial =
-      entry.fixture === 'timeline-detail-layout'
-        ? 'Timeline'
-        : entry.fixture === 'detail-empty'
-          ? 'Snapshot empty report'
-          : entry.fixture === 'detail-busy'
-            ? 'Snapshot report'
-            : entry.fixture === 'agents-busy' || entry.fixture === 'agents-tree' || entry.fixture.endsWith('empty')
-              ? 'Nothing needed'
-              : 'Snapshot question'
+    const initial = entry.fixture.startsWith('timeline-detail-layout')
+      ? 'Timeline'
+      : entry.fixture === 'detail-empty'
+        ? 'Snapshot empty report'
+        : entry.fixture === 'detail-busy'
+          ? 'Snapshot report'
+          : entry.fixture === 'agents-busy' || entry.fixture === 'agents-tree' || entry.fixture.endsWith('empty')
+            ? 'Nothing needed'
+            : 'Snapshot question'
     await wait(
       socket,
       session,
@@ -270,7 +269,7 @@ export async function capture(entry, pluginDir, root, socket, claude) {
     const timelineDetail = frame =>
       pageMarker(
         frame,
-        entry.fixture === 'timeline-detail-layout'
+        entry.fixture.startsWith('timeline-detail-layout')
           ? 'Snapshot timeline'
           : entry.scenario === 'empty'
             ? 'Snapshot detail empty'
