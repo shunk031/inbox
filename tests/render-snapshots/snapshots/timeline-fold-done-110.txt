@@ -1,0 +1,45 @@
+                                     ✕
+ ▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄▄ ▄▄▄▄▄
+  Asks 2   Timeline 3   Agents   PRs
+─▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀─▀▀▀▀▀──
+
+ ┌───────────────────────────────────┐
+ │ Progress             In progress  │
+ │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━      │
+ │ 75.00%                            │
+ │ 2/3 leaf tasks completed          │
+ │ Elapsed: 1m                       │
+ └───────────────────────────────────┘
+
+  > ◐ Snapshot root 日本語の…  50.00%
+    │  In progress
+    ├─ ● 折り返し用の日本語…  100.00%
+    │     Completed
+    └─ ◐ Snapshot long 表示…    0.00%
+       │  In progress
+       └─ ✕ 深い階層の待機中…   0.00%
+             Waiting
+
+    ▸ 1 completed
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ Open details h: Close branch
+  Help                         v0.4.0

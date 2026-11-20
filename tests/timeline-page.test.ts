@@ -1,6 +1,13 @@
 import { expect, test } from 'claude-code/testing'
-import { moveTimelineSelection, timelineData, timelinePage, toggleTimelineBranch } from '../hooks/timeline-page'
+import {
+  COMPLETED_FOLD_ID,
+  moveTimelineSelection,
+  timelineData,
+  timelinePage,
+  toggleTimelineBranch,
+} from '../hooks/timeline-page'
 import type { TaskFactWarning, TaskNode, TaskProgressSegments, TaskTree } from '../types'
+import { upgradedTimelineFolded } from '../hooks/timeline-state'
 
 const now = 1_000_000
 const task = (id: string, change: Partial<TaskNode> = {}): TaskNode => ({
@@ -186,7 +193,29 @@ test('Timeline rows show the newest task text, while selected details retain the
   ])
 })
 
-test('Timeline keeps the whole tree, selection and branch folding in the shared plan', () => {
+test('Timeline folds completed roots after open roots and restores selection when expanded', () => {
+  expect(upgradedTimelineFolded(['\0inbox:timeline-completed-fold'])).toEqual([])
+  const roots: TaskTree = [
+    task('one', { status: 'done', streamId: 's1' }),
+    task('one-child', { parentId: 'one', status: 'dropped' }),
+    task('two', { status: 'working', streamId: 's2' }),
+    task('two-child', { parentId: 'two', status: 'done' }),
+    task('three', { status: 'waits-on-other', streamId: 's3' }),
+  ]
+  const data = timelineData(roots, segments, {}, [], now)
+  const page = timelinePage(data, 'one', upgradedTimelineFolded(undefined), {}, false, true)
+
+  expect(page.rows.map(row => row.task.id)).toEqual(['two', 'two-child', 'three', COMPLETED_FOLD_ID])
+  expect([page.mode, page.selected?.row.task.id]).toEqual(['tree', COMPLETED_FOLD_ID])
+  const expanded = timelinePage(data, 'one', [COMPLETED_FOLD_ID], {}, false, true)
+  expect(expanded.rows.slice(-3).map(row => row.task.id)).toEqual([COMPLETED_FOLD_ID, 'one', 'one-child'])
+  expect(expanded.selected?.row.task.id).toBe('one')
+  expect(moveTimelineSelection(page.rows, 'three', 1)).toBe(COMPLETED_FOLD_ID)
+  expect(toggleTimelineBranch([], 'one')).toEqual(['one'])
+  expect(toggleTimelineBranch(['one'], 'one')).toEqual([])
+})
+
+test('Timeline keeps the whole tree and uses the first row for unknown selection moves', () => {
   const roots: TaskTree = [
     task('one', { status: 'done', streamId: 's1' }),
     task('two', { status: 'working', streamId: 's2' }),
@@ -200,8 +229,48 @@ test('Timeline keeps the whole tree, selection and branch folding in the shared 
   expect(moveTimelineSelection(page.rows, 'three', 1)).toBe('one')
   expect(moveTimelineSelection(page.rows, 'missing', 1)).toBe('two')
   expect(moveTimelineSelection(page.rows, 'missing', -1)).toBe('three')
-  expect(toggleTimelineBranch([], 'one')).toEqual(['one'])
-  expect(toggleTimelineBranch(['one'], 'one')).toEqual([])
+})
+
+test('Timeline hides no open roots and shows one row when all roots are finished', () => {
+  const page = (tree: TaskTree) =>
+    timelinePage(timelineData(tree, segments, {}, [], now), null, upgradedTimelineFolded(undefined), {}, false, true)
+  expect(page([task('open')]).rows.some(row => row.isCompletedFold)).toBe(false)
+  const finished = page([task('done', { status: 'done' }), task('dropped', { status: 'dropped' })])
+  expect(finished.rows.map(row => row.task.id)).toEqual([COMPLETED_FOLD_ID])
+})
+
+test('Timeline keeps finished roots inline unless the completed fold is enabled', () => {
+  const tree = [task('open')]
+  const data = timelineData(
+    [task('open'), task('done', { status: 'done' }), task('dropped', { status: 'dropped' })],
+    segments,
+    {},
+    [],
+    now,
+  )
+  const page = timelinePage(data, null, upgradedTimelineFolded(undefined))
+  const mainRows = timelineData(tree, segments, {}, [], now).rows
+  const mainRowsWithoutFoldOption = mainRows.map(({ isCompletedFold: _isCompletedFold, ...row }) => ({
+    ...row,
+    hasVisibleChildren: false,
+    treeLead: '     ',
+    detailLead: '     ',
+    actions: [
+      {
+        action: 'detail',
+        id: 'open',
+        label: 'Open details',
+        hotkey: 'enter',
+        kind: 'view',
+        emphasis: 'normal',
+      },
+    ],
+  }))
+
+  expect(page.rows.map(row => row.task.id)).toEqual(['open', 'done', 'dropped'])
+  expect(page.rows.some(row => row.isCompletedFold)).toBe(false)
+  expect(page.completedRootIds).toEqual([])
+  expect(timelinePage(timelineData(tree, segments, {}, [], now), null, []).rows).toEqual(mainRowsWithoutFoldOption)
 })
 
 test('folding a selected parent hides its children and keeps the parent selected', () => {

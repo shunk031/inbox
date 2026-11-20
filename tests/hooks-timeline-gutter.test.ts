@@ -30,7 +30,6 @@ test('terminal Timeline aligns every status chip with its title and keeps warnin
       },
     })
   })
-
   await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
   for (const [task_id, parent_id, title] of [
     ['done-parent', undefined, 'Completed parent'],
@@ -45,7 +44,7 @@ test('terminal Timeline aligns every status chip with its title and keeps warnin
       task_id,
       ...(parent_id ? { parent_id } : {}),
       title,
-      status: 'done',
+      status: task_id === 'done-child-d' ? 'queued' : 'done',
     })
   }
   for (const [task_id, parent_id, status] of [

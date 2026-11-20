@@ -101,6 +101,7 @@ export const CLAUDE_CODE_SUPPORT: ClientSupport['support'] = {
   'task-tree-export': { kind: 'full' },
   'task-status-mismatch': { kind: 'full' },
   timeline: { kind: 'full' },
+  'timeline-completed-fold': { kind: 'full' },
   'agents-tab': {
     kind: 'different',
     reason: 'The terminal draws Agents; the desktop pane does not draw this look yet.',

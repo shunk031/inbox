@@ -1,5 +1,5 @@
 // Built by herdr/build.ts with Bun 1.4.4 from herdr/src and hooks/. Do not edit.
-// Built at 2026-11-20T07:33:05.190Z. 226831 characters follow.
+// Built at 2026-11-20T11:10:52.376Z. 226936 characters follow.
 
 // src/main.ts
 import { View, div as div5 } from "gpui-kit";
@@ -3538,6 +3538,9 @@ function applyTaskOwnerFacts(tree, facts, at) {
   const segments = weightedTaskProgressSegments(tree, new Set(Object.keys(stalledSince)));
   return { stalledSince, warnings, segments };
 }
+
+// ../hooks/timeline-state.ts
+var COMPLETED_FOLD_ID = "inbox:timeline:completed-fold".padEnd(101, "-");
 
 // ../hooks/timeline-page.ts
 var BAR_MARKS = {
