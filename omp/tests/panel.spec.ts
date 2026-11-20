@@ -27,6 +27,8 @@ import {
   plannedLabels,
   screenOf,
   strip,
+  taskNode,
+  taskScreen,
   text,
 } from './panel-harness'
 
@@ -66,6 +68,18 @@ test('a feed Progress row stays out of the omp Asks panel', () => {
   const lines = text(screen, INITIAL_UI)
   expect(lines).not.toContain('Progress')
   expect(lines).not.toContain('Implement the progress feed')
+})
+
+test('Timeline arrows move from the drawn row when the saved selection is stale', () => {
+  const screen = taskScreen([
+    taskNode('one', 'One', 'working'),
+    taskNode('two', 'Two', 'working'),
+    taskNode('three', 'Three', 'working'),
+  ])
+  const ui: PanelUi = { ...INITIAL_UI, tab: 'timeline', selectedId: 'pruned', timelineSelection: 'pruned' }
+
+  expect(handleKey(screen, ui, 'down', NOW).ui.timelineSelection).toBe('two')
+  expect(handleKey(screen, ui, 'up', NOW).ui.timelineSelection).toBe('three')
 })
 
 test('the panel draws untracked live work as a warning banner', () => {
