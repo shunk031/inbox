@@ -85,6 +85,7 @@ test('tree checks reject heading trunks without children, connectors without hea
   const check = text => checkTreeText(text, { view: 'agents' })
   const oneChild = 'Local agents\n   │\n   └─ A'
   assert.deepEqual(check(oneChild), [])
+  assert.ok(check('   ├─ stray\nLocal agents\n   │\n   └─ A').length)
   assert.ok(check(oneChild.replace('\n   └─ A', '')).some(error => error.includes('orphan-trunk-column=3')))
   assert.ok(
     checkTreeText(oneChild.replace('\n   └─ A', ''), { view: 'agents', requireTree: true }).some(error =>

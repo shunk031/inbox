@@ -79,14 +79,16 @@ function blocks(lines, view) {
   if (view === 'timeline') return [{ start: 0, end: lines.length, name: 'Timeline' }]
   const heading = view === 'agents' ? AGENT_HEADINGS : ASKS_HEADINGS
   const starts = lines.flatMap((line, index) => (heading.test(line.trim()) ? [index] : []))
-  // A connector without a recognized heading stays in a synthetic block and fails its heading-trunk check.
-  return starts.length
-    ? starts.map((start, index) => ({
-        start,
-        end: starts[index + 1] ?? lines.length,
-        name: lines[start].trim().split(/[·  ]/u, 1)[0] || view,
-      }))
-    : [{ start: 0, end: lines.length, name: view }]
+  if (!starts.length) return [{ start: 0, end: lines.length, name: view }]
+
+  return [
+    ...(starts[0] > 0 ? [{ start: 0, end: starts[0], name: view }] : []),
+    ...starts.map((start, index) => ({
+      start,
+      end: starts[index + 1] ?? lines.length,
+      name: lines[start].trim().split(/[·  ]/u, 1)[0] || view,
+    })),
+  ]
 }
 
 /** Returns structural diagnostics only; it never includes the captured row text. */
