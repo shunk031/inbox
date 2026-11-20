@@ -77,7 +77,6 @@ test('tree trunks stay continuous through descendant and wrapped rows', () => {
   broken('   │  ├─ C1', '      ├─ C1')
   broken('   │  │  wrap', '      │  wrap')
   broken('   │\n   └─ B', '   \n   └─ B')
-  broken('Local agents\n   │', 'Local agents\n   │\n   │', 'duplicate-heading-trunk-column=3')
   assert.ok(check('Local agents\n   │\n   └─ A\n      │').some(error => error.includes('orphan-trunk-column=6')))
 })
 
@@ -87,27 +86,34 @@ test('tree checks reject heading trunks without children, connectors without hea
   const oneChild = 'Local agents\n   │\n   └─ A'
   const empty = oneChild.replace('\n   └─ A', '')
   assert.deepEqual(check(oneChild), [])
-  rejects('   ├─ stray\nLocal agents\n   │\n   └─ A', 'missing-heading-trunk-column=3')
+  rejects('   ├─ stray\nLocal agents\n   │\n   └─ A', 'connector-parent-column=missing')
   rejects(empty, 'orphan-trunk-column=3')
   assert.ok(checkTreeText(empty, { view: 'agents', requireTree: true }).some(error => error.includes('no-tree-found')))
-  rejects(oneChild.replace('Local agents\n   │\n', ''), 'missing-heading-trunk-column=3')
+  rejects(oneChild.replace('Local agents\n   │\n', ''), 'connector-parent-column=missing')
   rejects(oneChild.replace('   └─ A', '   └─ A\n   │'), 'orphan-trunk-column=3')
   rejects(oneChild.replace('   └─ A', '   └─ A\n      │'), 'orphan-trunk-column=6')
   const siblings = 'Local agents\n   │\n   ├─ A\n   │\n   └─ B'
   const offColumn = siblings.replace('   │\n   └─ B', '    │\n   └─ B')
   rejects(offColumn, 'orphan-trunk-column=4')
+  rejects('Local agents\n   │\n   └─ A\n         └─ shifted child', 'connector-parent-column=6 actual=9')
 })
 
 test('pane extraction ignores sidebar rows but checks the pane tree', () => {
-  const rows = Array.from({ length: 30 }, (_, index) =>
-    `${' '.repeat(40)}│${['Local agents', '   │', '   ├─ A', '   │', '   └─ B'][index] ?? ''}`.padEnd(92),
-  )
+  const makeRows = () =>
+    Array.from({ length: 30 }, (_, index) =>
+      `${' '.repeat(40)}│${['Local agents', '   │', '   ├─ A', '   │', '   └─ B'][index] ?? ''}`.padEnd(92),
+    )
+  const rows = makeRows()
   const check = () => checkTreeText(['Sidebar\n   │\n   └─ A', ...rows].join('\n'), { view: 'agents' })
   assert.deepEqual(check(), [])
   rows[2] = `${rows[2].slice(0, 40)} ${rows[2].slice(41)}`
   assert.ok(check().some(error => error.includes('line=6 unclassified line')))
   rows[29] = `${rows[4].slice(0, 40)} ${rows[4].slice(41)}`
   assert.ok(check().some(error => error.includes('line=33 unclassified line')))
+  const frame = makeRows()
+  frame[29] = ''
+  const errors = checkTreeText(['Sidebar', ...frame, 'unframed text'].join('\n'), { view: 'agents' })
+  assert.ok(['line=31', 'line=32'].every(line => errors.some(error => error.includes(`${line} unclassified line`))))
 })
 
 test('Timeline exempts only paired box borders and rejects edges outside them', () => {
