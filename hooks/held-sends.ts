@@ -33,6 +33,75 @@ export async function releaseHeldSendEarly<S extends Session>(host: ReleaseHost<
   await releaseOne(host, id, true)
 }
 
+/** Holds an Answer's live UI press through Undo, then submits it while that press still vouches for it. */
+export async function releaseAnswerInPress<S extends Session>(
+  host: ReleaseHost<S>,
+  id: string,
+  sleep: (ms: number) => Promise<void>,
+  canDeliver: () => boolean,
+): Promise<void> {
+  const delivery = (await host.read()).lastActions[id]?.delivery
+  if (delivery?.state !== 'held') return
+  const remaining = delivery.until - (await host.now())
+  if (remaining > 0) await sleep(remaining)
+  if (canDeliver()) await releaseHeldSendEarly(host, id)
+}
+
+/** Retries stopped-session Answer sends once a later human prompt has cleared the host's stop latch. */
+export async function retryDeferredAnswers<S extends Session>(host: ReleaseHost<S>): Promise<void> {
+  const candidates = (await host.read()).sent.filter(s => s.phase === 'deferred' && s.press?.action === 'answer')
+  for (const candidate of candidates) {
+    type DeferredAttempt = { text: string; deliveryId: string; row: string; pressedAt: number }
+    let sending: DeferredAttempt | null = null
+    await host.update(s => {
+      sending = null
+      const attempt = s.sent.find(item => item.deliveryId === candidate.deliveryId && item.phase === 'deferred')
+      const last = attempt?.row ? s.lastActions[attempt.row] : undefined
+      if (
+        !attempt?.deliveryId ||
+        !attempt.row ||
+        attempt.pressedAt === null ||
+        last?.delivery?.state !== 'queued' ||
+        last.delivery.id !== attempt.deliveryId
+      )
+        return s
+      sending = { ...attempt, deliveryId: attempt.deliveryId, row: attempt.row, pressedAt: attempt.pressedAt }
+      return { ...s, sent: s.sent.map(item => (item === attempt ? { ...item, phase: 'attempting' as const } : item)) }
+    })
+    const claimed = sending as DeferredAttempt | null
+    if (!claimed) continue
+    const outcome: SendOutcome = await host
+      .deliver(await host.read(), claimed.text, claimed.deliveryId)
+      .catch((err: unknown) => ({ state: 'unconfirmed', reason: err instanceof Error ? err.message : String(err) }))
+    const finalOutcome = outcome.state === 'deferred' ? { state: 'rejected' as const, reason: outcome.reason } : outcome
+    await host.update(s => {
+      const after = completedAttempt(s, claimed.deliveryId, finalOutcome)
+      if (finalOutcome.state === 'unconfirmed')
+        return {
+          ...after,
+          lastActions: withUnconfirmed(after.lastActions, claimed.text, claimed.pressedAt, claimed.deliveryId),
+        }
+      if (finalOutcome.state !== 'rejected') return after
+      const lastActions = withFailure(
+        after.lastActions,
+        [claimed.row],
+        claimed.pressedAt,
+        finalOutcome.reason,
+        claimed.deliveryId,
+      )
+      const last = lastActions[claimed.row]
+      return {
+        ...after,
+        lastActions,
+        ledger:
+          last?.delivery?.state === 'failed' && last.kind === 'mark'
+            ? reopenOnFailure(after.ledger, claimed.row, claimed.pressedAt)
+            : after.ledger,
+      }
+    })
+  }
+}
+
 /** Marks a held row Not sent with `reason`, and reopens an answer it closed, as a refused send does. */
 function refusedHeld<S extends Session>(s: S, id: string, reason: string): S {
   const last = s.lastActions[id]
@@ -93,6 +162,7 @@ async function releaseOne<S extends Session>(host: ReleaseHost<S>, id: string, i
     .catch((err: unknown) => ({ state: 'unconfirmed', reason: err instanceof Error ? err.message : String(err) }))
   await host.update(s => {
     const after = completedAttempt(s, sending.deliveryId, outcome)
+    if (outcome.state === 'deferred') return after
     if (outcome.state === 'unconfirmed')
       return { ...after, lastActions: withUnconfirmed(after.lastActions, sending.text, sending.at, sending.deliveryId) }
     if (outcome.state !== 'rejected') return after

@@ -87,7 +87,12 @@ export type EffectHost = {
   send(
     e: Extract<Effect, { kind: 'send' }>,
     deliveryId: string,
-  ): Promise<{ state: 'accepted' } | { state: 'rejected'; reason: string } | { state: 'unconfirmed'; reason: string }>
+  ): Promise<
+    | { state: 'accepted' }
+    | { state: 'deferred'; reason: string }
+    | { state: 'rejected'; reason: string }
+    | { state: 'unconfirmed'; reason: string }
+  >
   deliveryId(): string
   saveLasts(change: (a: Record<string, LastAction>) => Record<string, LastAction>): Promise<Record<string, LastAction>>
   saveLedger(change: (l: Ledger) => Ledger): Promise<void>
@@ -136,7 +141,7 @@ export async function runSends(
     if (e.kind !== 'send') continue
     const deliveryId = host.deliveryId()
     const outcome = await host.send(e, deliveryId)
-    if (outcome.state === 'accepted') continue
+    if (outcome.state === 'accepted' || outcome.state === 'deferred') continue
     if (outcome.state === 'unconfirmed') {
       await host.saveLasts(a => withUnconfirmed(a, e.text, at, deliveryId))
       return outcome

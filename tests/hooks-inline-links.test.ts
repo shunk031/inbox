@@ -63,14 +63,16 @@ async function answersLinkedOption($: Engine, on: On, surface: 'terminal' | 'des
   await selectRow(pane, 'i1')
   expect((await pane.find({ key: 'answer-i1-0' }))?.props.label).toContain('PR 7171')
   expect((await pane.find({ key: 'answer-i1-0' }))?.props.label).not.toContain('[PR 7171]')
-  await pane.press({ key: 'answer-i1-0' })
-  await clock.settle()
+  const answer = pane.press({ key: 'answer-i1-0' })
+  w.inFlight.push(answer)
   expect(w.sent).toEqual([])
   expect((await pane.findAll({ type: 'Link' })).map(link => link.props)).toContainEqual(
     expect.objectContaining({ href: 'https://github.com/anthropics/claude-code/pull/7171', label: 'PR 7171' }),
   )
 
   await clock.advance(SETTLED_MS)
+  await Promise.all(w.inFlight)
+  w.inFlight = []
   if (surface === 'desktop') {
     const { tabs, gap } = (await pane.find({ key: 'tabs' }))?.props.props as {
       tabs: { id: string; width: number }[]

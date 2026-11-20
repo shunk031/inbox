@@ -73,6 +73,7 @@ import { prSharedStore } from './mod-pr-shared'
 import { refreshStatus, type StatusCall, type StatusRecords, type RecordFiles } from './status-records'
 import { upgradedTimelineDetailOpen, upgradedTimelineFolded, upgradedTimelineSelection } from './timeline-state'
 import { startPress, wakeAfterSettle as wakeSessionAfterSettle } from './host-press'
+import { releaseAnswerInPress, retryDeferredAnswers } from './held-sends'
 import type { Ask, CatchUpReply, SessionHost } from './session-host'
 import { callReport, MODEL } from './inbox-model'
 import { demoView, isDemoCopy } from './demo'
@@ -216,11 +217,11 @@ import {
 } from './pane-keys'
 import {
   arrived,
+  deliverPrompt,
   forgetStored,
   messageText,
   noteStored,
   settleRewrite,
-  stored,
   withLostSendsUncertain,
 } from './mod-delivery'
 import { NO_OLD_PRESENCE, NO_OLD_PR_VIEWS, sessionFromOldFields } from './mod-old-fields'
@@ -700,35 +701,32 @@ async function perform(
   }
 }
 
-/** Sends text as the person's prompt; Claude may store it early, and another plugin may rewrite it. */
+/** Sends as the person and reconciles any rewrite. */
 async function deliver($: EngineInterface, owner: Owner, text: string, deliveryId: string): Promise<SendOutcome> {
-  if (!isCurrent(owner)) return { state: 'rejected', reason: 'the conversation changed first' }
-  const since = stored.count
-  type Submitted = { entered: string } | { notSent: string }
-  const sent = await $.prompt.submit({ text, asUser: true }).then(
-    (r): Submitted => (r.drop === undefined ? { entered: r.text } : { notSent: r.drop }),
-    (err: unknown): Submitted =>
-      (stored.at.get(text) ?? 0) > since
-        ? { entered: text }
-        : { notSent: (err instanceof Error ? err.message : String(err)) || 'the session refused it' },
-  )
-  if ('notSent' in sent) return { state: 'rejected', reason: sent.notSent }
-  const entered = sent.entered
-  if (entered === text) return { state: 'accepted', queuedId: null }
-  let outcome: SendOutcome = { state: 'accepted', queuedId: null, entered }
-  const { heldRows } = await read($, SESSION)
-  await changeSession(
-    $,
-    owner,
-    s => {
-      const settled = settleRewrite(s, deliveryId, text, entered, since)
-      outcome = settled?.outcome ?? { state: 'accepted', queuedId: null, entered }
-      return settled?.state ?? s
+  return deliverPrompt(
+    {
+      isCurrent: () => isCurrent(owner),
+      read: () => read($, SESSION),
+      submit: () => $.prompt.submit({ text, asUser: true }),
+      rewrite: async (entered, since) => {
+        let outcome: SendOutcome = { state: 'accepted', queuedId: null, entered }
+        const { heldRows } = await read($, SESSION)
+        await changeSession(
+          $,
+          owner,
+          s => {
+            const settled = settleRewrite(s, deliveryId, text, entered, since)
+            outcome = settled?.outcome ?? { state: 'accepted', queuedId: null, entered }
+            return settled?.state ?? s
+          },
+          new Set(heldRows),
+        )
+        return outcome
+      },
     },
-    new Set(heldRows),
+    text,
+    deliveryId,
   )
-
-  return outcome
 }
 
 /** The shipped comparison template. */
@@ -1682,7 +1680,7 @@ async function pollPrs($: EngineInterface) {
 }
 
 /** Takes a dismissed PR off the tab once its row settles, unless it is still tracked or the Dismiss was undone. */
-/** Sends held answers and Fixes after Undo's settle window, then tells Claude about Done rows. */
+/** Releases held sends after Undo and tells Claude about Done rows. */
 async function wakeAfterSettle($: EngineInterface) {
   await wakeSessionAfterSettle(hostOf($, currentOwner()))
 }
@@ -1696,6 +1694,7 @@ async function wakeForHeldSends($: EngineInterface) {
 }
 
 async function runPress($: EngineInterface, p: RowPress | PrPress, surface: UiPressArgument['surface']) {
+  const owner = currentOwner()
   const mayStayOnRow = isPrPress(p)
     ? ['pr-open', 'pr-refresh', 'thread-open', 'log', 'check-rerun'].includes(p.action)
     : p.action === 'step'
@@ -1718,7 +1717,8 @@ async function runPress($: EngineInterface, p: RowPress | PrPress, surface: UiPr
     })
     await update($, TYPING, t => (t === p.id ? null : t))
   }
-  const started = await startPress(hostOf($, currentOwner(), surface), p, false, await readHolds($))
+  const pressHost = hostOf($, owner, surface)
+  const started = await startPress(pressHost, p, false, await readHolds($))
   const effects = started.effects
   if (!effects) {
     const outcome = await started.finish()
@@ -1758,7 +1758,14 @@ async function runPress($: EngineInterface, p: RowPress | PrPress, surface: UiPr
   // Clear success notes after effects; queued messages show Queued and age from QUEUED_AFTER_MS.
   if (sends) later($, QUEUED_AFTER_MS, () => redraw($))
   const outcome = await started.finish()
-  if (outcome.wakesAfterSettle) later($, SETTLED_MS, () => wakeAfterSettle($))
+  if (outcome.wakesAfterSettle && !isPrPress(p) && p.action === 'answer') {
+    await releaseAnswerInPress(
+      pressHost,
+      rowId,
+      ms => $.clock.sleep(ms),
+      () => isCurrent(owner),
+    )
+  } else if (outcome.wakesAfterSettle) later($, SETTLED_MS, () => wakeAfterSettle($))
   if (effects.some(effect => effect.kind !== 'send')) later($, SETTLED_MS, () => redraw($))
   if (!isPressConfirmed(outcome)) await keepReply()
   if (!outcome.isRowFailed) return
@@ -2466,7 +2473,9 @@ export const register: Register = on => {
       if (carry) notes.unshift(carry)
     }
 
-    return notes.length === 0 ? next(e) : next({ ...e, context: [...(e.context ?? []), ...notes] })
+    const result = await next(notes.length === 0 ? e : { ...e, context: [...(e.context ?? []), ...notes] })
+    if (isTyped) later($, 0, () => retryDeferredAnswers(hostOf($, currentOwner())))
+    return result
   })
 
   on('turn.start', async ($, e, next) => {

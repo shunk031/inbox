@@ -8305,7 +8305,7 @@ function completedAttempt(state, deliveryId, outcome) {
   const text = outcome.state === "accepted" ? outcome.entered ?? attempt.text : attempt.text;
   const delivered = Object.entries(state.lastActions).filter(([_id, action]) => action.delivery && ("id" in action.delivery) && action.delivery.id === deliveryId);
   let lastActions = text === attempt.text ? state.lastActions : delivered.reduce((actions, [id, action]) => withRewrite(actions, [id], action.at, attempt.text, text, deliveryId), state.lastActions);
-  const earlierUnknown = state.sent.slice(0, index).some((s) => s.text === text && (s.phase === "attempting" || s.phase === "uncertain"));
+  const earlierUnknown = state.sent.slice(0, index).some((s) => s.text === text && (s.phase === "attempting" || s.phase === "uncertain" || s.phase === "deferred"));
   if (outcome.state === "accepted" && !earlierUnknown) {
     for (const [id, action] of delivered)
       lastActions = withAcceptedSend(lastActions, [id], action.at, text, deliveryId);
@@ -8318,7 +8318,7 @@ function completedAttempt(state, deliveryId, outcome) {
     sent: state.sent.map((s) => s.deliveryId === deliveryId ? {
       ...s,
       text,
-      phase: outcome.state === "accepted" ? "accepted" : "uncertain",
+      phase: outcome.state === "accepted" ? "accepted" : outcome.state === "deferred" ? "deferred" : "uncertain",
       queuedId: outcome.state === "accepted" ? outcome.queuedId : null
     } : s)
   };
@@ -11940,7 +11940,7 @@ async function runSends(host, effects, rowId, rows, at) {
       continue;
     const deliveryId = host.deliveryId();
     const outcome = await host.send(e, deliveryId);
-    if (outcome.state === "accepted")
+    if (outcome.state === "accepted" || outcome.state === "deferred")
       continue;
     if (outcome.state === "unconfirmed") {
       await host.saveLasts((a) => withUnconfirmed(a, e.text, at, deliveryId));
@@ -13676,6 +13676,8 @@ async function releaseOne(host, id, isEarly) {
   const outcome = await host.deliver(await host.read(), sending.text, sending.deliveryId).catch((err) => ({ state: "unconfirmed", reason: err instanceof Error ? err.message : String(err) }));
   await host.update((s) => {
     const after = completedAttempt(s, sending.deliveryId, outcome);
+    if (outcome.state === "deferred")
+      return after;
     if (outcome.state === "unconfirmed")
       return { ...after, lastActions: withUnconfirmed(after.lastActions, sending.text, sending.at, sending.deliveryId) };
     if (outcome.state !== "rejected")
