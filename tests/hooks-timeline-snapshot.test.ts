@@ -28,7 +28,7 @@ const nestedTasks: { id: string; parent_id?: string; title: string; status: 'wor
     },
     {
       id: 'scene-warning',
-      title: '表示を今朝の行に戻す（⚠️ だけ足す）。個人の上限は今のまま',
+      title: '警告つきの長い題名を一行に収める（⚠️ を含む）例',
       status: 'done',
     },
   ]
