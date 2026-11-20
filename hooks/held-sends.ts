@@ -8,16 +8,22 @@ type ReleaseHost<S extends Session> = Pick<
   SessionHost<S>,
   'now' | 'read' | 'update' | 'deliver' | 'prepare' | 'newId' | 'isDeliveryHeldUntilRun'
 >
-const answerPressWaits = new Set<AbortController>()
+const answerPressWaits = new Set<{ id: string; wait: AbortController }>()
 
-export function withAnswerPressWait<T>(isAnswer: boolean, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+export function withAnswerPressWait<T>(
+  action: string,
+  id: string,
+  run: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  if (action === 'undo') abortAnswerPressWaits(id)
   const wait = new AbortController()
-  if (isAnswer) answerPressWaits.add(wait)
-  return run(wait.signal).finally(() => answerPressWaits.delete(wait))
+  const pending = action === 'answer' ? { id, wait } : null
+  if (pending) answerPressWaits.add(pending)
+  return run(wait.signal).finally(() => pending && answerPressWaits.delete(pending))
 }
 
-export function abortAnswerPressWaits(): void {
-  answerPressWaits.forEach(wait => wait.abort())
+export function abortAnswerPressWaits(id?: string): void {
+  answerPressWaits.forEach(p => (!id || p.id === id) && p.wait.abort())
 }
 
 /** The rows whose held message is due: Undo can no longer take its press back. */

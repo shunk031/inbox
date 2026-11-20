@@ -1691,7 +1691,7 @@ async function wakeForHeldSends($: EngineInterface) {
 }
 
 function runPress($: EngineInterface, p: RowPress | PrPress, surface: UiPressArgument['surface']) {
-  return withAnswerPressWait(!isPrPress(p) && p.action === 'answer', signal => runPressNow($, p, surface, signal))
+  return withAnswerPressWait(p.action, pressRowId(p), signal => runPressNow($, p, surface, signal))
 }
 
 async function runPressNow(

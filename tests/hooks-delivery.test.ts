@@ -217,6 +217,21 @@ test('Undo works while an Answer press is holding the host vouch, and cancels it
   expect(await pane.find({ key: 'answer-i1-0' })).toBeDefined()
 })
 
+test('Undo after a stopped-session latch returns the Answer press and leaves nothing to resend', async ($, on) => {
+  const { clock, pane } = await answerPane($, on)
+  w.submitAnswer = { drop: 'the session was stopped and nobody has sent input since' }
+  let returned = false
+  const answer = pane.press({ key: 'answer-i1-0' }).then(() => (returned = true))
+  await clock.advance(SETTLED_MS / 2)
+  await pane.press({ key: 'undo-i1' }).then(() => clock.settle())
+  const returnedBeforeExpiry = returned
+  await Promise.all([clock.advance(SETTLED_MS), answer])
+  expect(returnedBeforeExpiry).toBe(true)
+  w.submitAnswer = 'enter'
+  await $.prompt.submit({ text: 'continue', wait: false, origin: { kind: 'composer' } }).then(() => clock.settle())
+  expect(w.sent).toEqual([])
+})
+
 test('the exact host-stop refusal stays queued, then retries once after a human prompt', async ($, on) => {
   const { clock, pane } = await answerPane($, on)
   expect(await pane.find({ key: 'answer-i1-0' })).toBeDefined()
