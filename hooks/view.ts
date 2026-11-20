@@ -13,7 +13,9 @@ import type { ListInput } from './timing'
 import {
   closedRowState,
   optionDescriptionsOf,
+  optionEffectsOf,
   contextLineOf,
+  contextDisplayLineOf,
   isWaitingRow,
   outcomeLabel,
   closedMark,
@@ -241,9 +243,11 @@ export function inboxView({
       | 'feedback'
       | 'actions'
       | 'optionDescriptions'
+      | 'optionEffects'
       | 'holdsUpLine'
       | 'recLine'
       | 'contextLine'
+      | 'contextDisplayLine'
       | 'document'
       | 'documentPreview'
     >,
@@ -270,9 +274,11 @@ export function inboxView({
       feedback,
       actions,
       optionDescriptions: optionDescriptionsOf(row.item, actions),
+      optionEffects: optionEffectsOf(row.item, actions),
       holdsUpLine: held.length > 0 ? `${HOLDS_UP_TEXT} ${held.join(', ')}` : null,
       recLine: state.is === 'open' ? recLineOf(row.item) : null,
       contextLine: contextLineOf(row.type, row.item),
+      contextDisplayLine: contextDisplayLineOf(row.type, row.item),
     }
   }
   const itemRow = (item: Item): RowView => {

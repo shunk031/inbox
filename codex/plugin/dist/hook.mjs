@@ -1866,12 +1866,31 @@ function questionContextOf(item) {
   return item?.context || NO_BACKGROUND_GIVEN;
 }
 function contextLineOf(type, item) {
+  return type === "question" ? item?.context || null : null;
+}
+function contextDisplayLineOf(type, item) {
   return type === "question" ? questionContextOf(item) : null;
 }
 function recLineOf(item) {
   return item?.rec && item.recReason ? `Why ${item.rec}: ${item.recReason}` : null;
 }
 function optionDescriptionsOf(item, actions) {
+  if (!item) return [];
+  return actions.flatMap((a) => {
+    if (a.press.action !== "answer") return [];
+    const description = item.optionDescriptions?.[a.press.option];
+    if (!description) return [];
+    return [
+      {
+        label: clipLabel(linkLabel(a.press.option), OPTION_LABEL_CHARS),
+        description,
+        isMissing: false,
+        isFolded: a.isFolded
+      }
+    ];
+  });
+}
+function optionEffectsOf(item, actions) {
   if (!item) return [];
   return actions.flatMap((a) => {
     if (a.press.action !== "answer") return [];
@@ -3044,9 +3063,11 @@ function inboxView({
       feedback,
       actions,
       optionDescriptions: optionDescriptionsOf(row.item, actions),
+      optionEffects: optionEffectsOf(row.item, actions),
       holdsUpLine: held2.length > 0 ? `${HOLDS_UP_TEXT} ${held2.join(", ")}` : null,
       recLine: state.is === "open" ? recLineOf(row.item) : null,
-      contextLine: contextLineOf(row.type, row.item)
+      contextLine: contextLineOf(row.type, row.item),
+      contextDisplayLine: contextDisplayLineOf(row.type, row.item)
     };
   };
   const itemRow = (item) => {

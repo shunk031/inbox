@@ -7,7 +7,6 @@ import {
   replyHint,
   ROW_COPY,
   shortAgo,
-  optionDescriptionLine,
   shownOptionDescriptions,
 } from '../../hooks/rows'
 import { drawnLists, rowAfterClose } from '../../hooks/action-plan'
@@ -218,19 +217,12 @@ function itemRow(v: View, r: RowView): Row {
           body: (
             <div>
               {r.detail ? <p style={{ whiteSpace: 'pre-line' }}>{inlineHtml(r.detail)}</p> : null}
-              {described.map(o => {
-                const line = optionDescriptionLine(o)
-
-                return (
-                  <p
-                    class={`option-description${o.isMissing ? ' missing-effect' : ''}`}
-                    title={`${o.label}: ${o.description}`}
-                  >
-                    <span class={o.isMissing ? 'option-label' : ''}>{line.label}</span>
-                    <span class="muted">{line.suffix}</span>
-                  </p>
-                )
-              })}
+              {described.map(o => (
+                <p class="option-description" title={`${o.label}: ${o.description}`}>
+                  {o.label}
+                  <span class="muted">: {o.description}</span>
+                </p>
+              ))}
               {r.document ? <p class="document-preview">{documentPreviewLine(r)}</p> : null}
             </div>
           ),

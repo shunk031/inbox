@@ -332,7 +332,6 @@ function SettledView({ settled: r, panel }: { settled: RowView; panel: Row | und
             onUndo={() => void undo(r)}
           />
         </div>
-        {r.type === 'question' && r.contextLine ? <div class="settled-context">{inlineHtml(r.contextLine)}</div> : null}
         {panel ? <Panel row={panel} isClosing /> : null}
       </div>
     </div>

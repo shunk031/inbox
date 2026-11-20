@@ -4744,6 +4744,9 @@ function questionContextOf(item) {
   return item?.context || NO_BACKGROUND_GIVEN;
 }
 function contextLineOf(type, item) {
+  return type === "question" ? item?.context || null : null;
+}
+function contextDisplayLineOf(type, item) {
   return type === "question" ? questionContextOf(item) : null;
 }
 function recLineOf(item) {
@@ -4754,12 +4757,26 @@ function documentPreviewLine(row) {
     return null;
   return `Report preview: ${row.documentPreview || baseName(row.document) || "Markdown document"}`;
 }
-function optionDescriptionLine(option, fits) {
-  const suffix = `: ${option.description}`;
-  const label = option.isMissing && fits && !fits(`${option.label}${suffix}`) ? `${cutForEllipsis(option.label, (candidate) => fits(`${candidate}${suffix}`))}\u2026` : option.label;
-  return { label, suffix, suffixTone: option.isMissing ? "muted" : null };
-}
 function optionDescriptionsOf(item, actions) {
+  if (!item)
+    return [];
+  return actions.flatMap((a) => {
+    if (a.press.action !== "answer")
+      return [];
+    const description = item.optionDescriptions?.[a.press.option];
+    if (!description)
+      return [];
+    return [
+      {
+        label: clipLabel(linkLabel(a.press.option), OPTION_LABEL_CHARS),
+        description,
+        isMissing: false,
+        isFolded: a.isFolded
+      }
+    ];
+  });
+}
+function optionEffectsOf(item, actions) {
   if (!item)
     return [];
   return actions.flatMap((a) => {
@@ -7720,9 +7737,11 @@ function inboxView({
       feedback,
       actions,
       optionDescriptions: optionDescriptionsOf(row.item, actions),
+      optionEffects: optionEffectsOf(row.item, actions),
       holdsUpLine: held.length > 0 ? `${HOLDS_UP_TEXT} ${held.join(", ")}` : null,
       recLine: state.is === "open" ? recLineOf(row.item) : null,
-      contextLine: contextLineOf(row.type, row.item)
+      contextLine: contextLineOf(row.type, row.item),
+      contextDisplayLine: contextDisplayLineOf(row.type, row.item)
     };
   };
   const itemRow = (item) => {
@@ -10406,12 +10425,12 @@ function drawLine(line, isSelected, d) {
   const shownTitle = line.mark ? cutTitle(titleText, besideAge - visibleLength(head) - visibleLength(status) - visibleLength(after)) : titleText;
   const title = line.isDim ? s.dim(shownTitle) : line.titleTone ? s.tone(line.titleTone, s.bold(shownTitle)) : isSelected ? s.bold(shownTitle) : shownTitle;
   out.push(spread(fit(`${head}${title}${status}${after}`, besideAge), `${age} `, width));
-  const indent = (line.lead === null ? UNLED_INDENT : INDENT) + pad;
-  const contextLine = line.row?.type === "question" ? line.row.contextLine : null;
-  if (contextLine)
-    out.push(...indentedLinks(contextLine, indent, width, isSelected ? Infinity : 1, s.dim, s.link));
   if (line.settled || isShut(line, ui))
     return out;
+  const indent = (line.lead === null ? UNLED_INDENT : INDENT) + pad;
+  const contextLine = isSelected ? line.row?.contextLine : null;
+  if (contextLine)
+    out.push(...indentedLinks(contextLine, indent, width, Infinity, s.dim, s.link));
   const holdsUp = d.screen.isNextBuild === true ? line.row?.holdsUpLine : null;
   if (holdsUp)
     out.push(fit(`${" ".repeat(indent)}${s.tone(HELD_MARK.tone, HELD_MARK.mark)} ${s.dim(holdsUp)}`, width));
@@ -10426,10 +10445,8 @@ function drawLine(line, isSelected, d) {
     return out;
   if (line.file)
     out.push(" ".repeat(indent) + s.tone("accent", line.file));
-  for (const o of line.row?.optionDescriptions ?? []) {
-    const planned = optionDescriptionLine(o, (text) => visibleLength(text) <= width - indent);
-    out.push(fit(" ".repeat(indent) + planned.label + s.dim(planned.suffix), width));
-  }
+  for (const o of line.row?.optionDescriptions ?? [])
+    out.push(fit(" ".repeat(indent) + o.label + s.dim(`: ${o.description}`), width));
   const hasInlineLinks = line.selectionMark === ">" && line.body?.includes("Links \xB7") === true;
   const linkStart = hasInlineLinks ? line.buttons.findIndex((button) => button.press.action === "pr-open") : -1;
   if (line.buttons.length > 0 && ui.typing !== line.id)

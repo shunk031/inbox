@@ -55,7 +55,7 @@ test('registry covers every remaining terminal view, scenario, and width once', 
   )
   assert.deepEqual(
     registry.filter(entry => entry.view === 'asks').map(({ scenario, width }) => `${scenario}:${width}`),
-    'empty:200 empty:110 empty:87 busy:200 busy:110 busy:87'.split(' '),
+    'empty:200 empty:110 busy:200 busy:110 busy:87'.split(' '),
   )
   assert.deepEqual(
     registry

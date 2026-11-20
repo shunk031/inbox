@@ -485,14 +485,18 @@ export function paneRowParts(
           </Text>,
           r.type === 'question' ? (
             <Text wrap="truncate-end" color={pal.muted}>
-              {inlineText(r.contextLine ?? '')}
+              {inlineText(r.contextDisplayLine ?? '')}
             </Text>
           ) : null,
         ],
       })
     return (
       <Box key={`settled-${r.id}`} flexDirection="column" paddingY={space.settledPad}>
-        {treeRow(pos, null, settledContent(title, state, undo, mark, r.type === 'question' ? r.contextLine : null))}
+        {treeRow(
+          pos,
+          null,
+          settledContent(title, state, undo, mark, r.type === 'question' ? r.contextDisplayLine : null),
+        )}
       </Box>
     )
   }

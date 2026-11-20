@@ -20,7 +20,7 @@ import {
   TERMINAL_SIDE_CELLS,
   TREE_LINE_AT,
 } from './pane-sizes'
-import { DOT, ROW_COPY, optionDescriptionLine, shownOptionDescriptions } from './rows'
+import { DOT, ROW_COPY, optionDescriptionLine, shownOptionEffects } from './rows'
 import { lineCount, SELECTION_BAR, type TreePos } from './terminal-text'
 import { cellWidth, clipLabel } from './text'
 
@@ -200,7 +200,7 @@ export function paneRows(
         : null
     const body =
       bodyLines !== null && row.clippedBody && row.body ? row.clippedBody(bodyLines, textWidth) : (row.body ?? null)
-    const described = row.view ? shownOptionDescriptions(row.view, optionsShown.includes(row.id)) : []
+    const described = row.view ? shownOptionEffects(row.view, optionsShown.includes(row.id)) : []
     const descriptionsBlock =
       described.length > 0 ? (
         <Box flexDirection="column" marginTop={blankLine}>

@@ -159,23 +159,15 @@
 .row.selected .line .rec-line {
   white-space: normal;
 }
+/* Drawn while the row is open and while it closes, so collapse() measures the closed line without it. */
 .line .context-line {
-  display: block;
+  display: none;
   color: var(--muted);
   font-weight: 400;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.settled-context {
-  color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .row.selected .line .context-line,
 .row.closing .line .context-line {
-  white-space: normal;
+  display: block;
 }
 .row.closing .closed-only,
 .row.collapsed:not(.closing) .open-only {
@@ -208,21 +200,6 @@
 .body .option-description {
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.body .option-description.missing-effect {
-  display: flex;
-  min-width: 0;
-}
-.body .option-description.missing-effect .option-label {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.body .option-description.missing-effect .muted {
-  flex: 0 0 auto;
   white-space: nowrap;
 }
 .body .option-description + .option-description {

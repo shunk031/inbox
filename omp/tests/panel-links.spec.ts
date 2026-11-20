@@ -44,11 +44,7 @@ test('selected item explanations preserve paragraphs, links, and scroll at width
         ...source.view,
         needsYou: {
           ...source.view.needsYou,
-          questions: source.view.needsYou.questions.map(item =>
-            item.id === row.id
-              ? { ...item, detail, optionDescriptions: item.optionDescriptions.filter(o => !o.isMissing) }
-              : item,
-          ),
+          questions: source.view.needsYou.questions.map(item => (item.id === row.id ? { ...item, detail } : item)),
         },
       },
     }

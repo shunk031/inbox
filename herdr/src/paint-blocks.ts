@@ -110,20 +110,13 @@ const lineEl = (text: string, color: Theme[keyof Theme], indent: number = MARK_W
 
 /** A line under a row's title. Its mark, when it has one, as the holds-up line's, hangs in the mark column. */
 const bodyLineEl = (l: RowBlock['body'][number], t: Theme): Element =>
-  l.suffix
+  l.mark
     ? h_flex()
         .pt(LINE_GAP)
-        .pl(MARK_W)
-        .min_w(0)
-        .child(div().flex_1().min_w(0).truncate().text_color(colorOf(t, l.tone)).child(l.text))
-        .child(div().flex_none().text_color(colorOf(t, l.suffix.tone)).child(l.suffix.text))
-    : l.mark
-      ? h_flex()
-          .pt(LINE_GAP)
-          .items_start()
-          .child(markEl(l.mark, t))
-          .child(div().flex_1().min_w(0).whitespace_normal().text_color(colorOf(t, l.tone)).child(l.text))
-      : lineEl(l.text, colorOf(t, l.tone))
+        .items_start()
+        .child(markEl(l.mark, t))
+        .child(div().flex_1().min_w(0).whitespace_normal().text_color(colorOf(t, l.tone)).child(l.text))
+    : lineEl(l.text, colorOf(t, l.tone))
 
 function fieldEl(f: Field, p: Paint, indent: number, isInert = false): Element {
   const { t } = p

@@ -102,27 +102,6 @@ test('Codex shows a question explanation with paragraph breaks and linked labels
   assert.equal(root.querySelector('a')?.getAttribute('href'), 'https://example.com/release')
 })
 
-test('Codex draws a missing option effect as one muted suffix on the option line', async () => {
-  activateBrowser()
-  const { demoState } = await import('../src/demo')
-  const { viewOf } = await import('../src/core')
-  const { listsOf } = await import('../src/tab-rows')
-  const state = demoState(1000)
-  const item = state.ledger.items.find(candidate => candidate.kind === 'question')!
-  state.ledger.items = state.ledger.items.map(candidate =>
-    candidate.id === item.id ? { ...candidate, optionDescriptions: {} } : candidate,
-  )
-  const view = { ...viewOf(state, 1000), thread: 'test', devPage: '', isFetchingPrs: false, isGhMissing: false }
-  const row = listsOf(view, new Set()).byTab.needsYou.find(candidate => candidate.id === item.id)!
-  const root = document.createElement('div')
-  render(h('div', null, row.body), root)
-
-  const line = root.querySelector<HTMLParagraphElement>('.option-description.missing-effect')
-  assert.equal(line?.textContent, `${item.options[0]}: No effect given`)
-  assert.equal(line?.querySelector('.option-label')?.textContent, item.options[0])
-  assert.equal(line?.querySelector('.muted')?.textContent, ': No effect given')
-})
-
 test('Codex renders finding titles and details as links', async () => {
   activateBrowser()
   const { demoState } = await import('../src/demo')

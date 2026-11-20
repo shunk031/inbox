@@ -178,16 +178,8 @@ export const registry = [
                 : `base-${scenario}`,
         file: `${view}-${scenario}-${width}.txt`,
       })),
-      ...(view === 'asks'
-        ? [
-            {
-              view,
-              scenario,
-              width: 87,
-              fixture: scenario === 'busy' ? 'asks-busy' : `base-${scenario}`,
-              file: `asks-${scenario}-87.txt`,
-            },
-          ]
+      ...(view === 'asks' && scenario === 'busy'
+        ? [{ view, scenario, width: 87, fixture: 'asks-busy', file: 'asks-busy-87.txt' }]
         : []),
     ]),
   ),

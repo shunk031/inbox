@@ -227,7 +227,7 @@ for (const isNextBuild of [false, true])
     expect(keys(screen, INITIAL_UI, String(tabs.length + 1)).tab).toBe(INITIAL_UI.tab)
   })
 
-test('a question’s context draws whole and dim, first under its title, on every question row', () => {
+test('a question’s context draws whole and dim, first under its title, on its selected row only', () => {
   const screen = screenOf()
   const row = firstQuestion(screen)
   const other = screen.view.needsYou.questions.find(r => r.state.is === 'open' && r.id !== row.id)!
@@ -240,24 +240,7 @@ test('a question’s context draws whole and dim, first under its title, on ever
   expect(at).toBeLessThan(shown.indexOf(`Why ${row.item!.rec}`))
   const firstWords = context.split(' ').slice(0, 3).join(' ')
   expect(drawn(screen, onRow(row), 50).find(l => strip(l).trim().startsWith(firstWords))).toContain(`${ESC}2m`)
-  expect(flat(onRow(other))).toContain(firstWords)
-})
-
-test('a missing option effect draws on one line with a dim marker', () => {
-  const screen = screenOf()
-  const row = screen.view.needsYou.questions.find(
-    candidate => candidate.state.is === 'open' && candidate.optionDescriptions.some(option => option.isMissing),
-  )!
-  const missing = row.optionDescriptions.find(option => option.isMissing)!
-  const lines = text(screen, { ...onRow(row), tab: 'needsYou', opened: row.id }, 87)
-
-  expect(lines).toContain(`${missing.label}: No effect given`)
-  expect(lines).not.toContain('\n  No effect given')
-  expect(
-    drawn(screen, { ...onRow(row), tab: 'needsYou', opened: row.id }, 87).find(line =>
-      strip(line).includes(`${missing.label}: No effect given`),
-    ),
-  ).toContain(`${ESC}2m: No effect given`)
+  expect(flat(onRow(other))).not.toContain(firstWords)
 })
 
 for (const isNextBuild of [false, true])

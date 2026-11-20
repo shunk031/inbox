@@ -70,7 +70,7 @@ async function main() {
   }
   runMutationProofs(frames)
   const summary = `PASS ${registry.length} live pane snapshots`
-  const coverage = `${VIEWS.length} views × ${SCENARIOS.length} scenarios × 2 widths + 2 Asks widths + Timeline fold × 2 widths + detail layout × 3 widths`
+  const coverage = `${VIEWS.length} views × ${SCENARIOS.length} scenarios × 2 widths + 1 Asks width + Timeline fold × 2 widths + detail layout × 3 widths`
   process.stdout.write(`${summary} (${coverage})\n`)
 }
 main().catch(error => {

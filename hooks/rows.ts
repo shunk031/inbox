@@ -145,6 +145,8 @@ export type RowView = {
   actions: ActionView[]
   /** The effect of each answer button, in button order. A folded button's effect is folded with it. */
   optionDescriptions: OptionDescription[]
+  /** All answer effects, including missing-effect markers, for the terminal and desktop looks. */
+  optionEffects: OptionDescription[]
   /**
    * "Holds up" and the names of the open subjects an open ask holds up, comma-separated, as the Status call linked them.
    * A look draws it on a next build, which draws the Status.
@@ -153,10 +155,11 @@ export type RowView = {
   /** "Why", the recommended option and the agent's reason for it, on a question whose record gave one. */
   recLine: string | null
   /**
-   * What happened before the agent asked, or the marker for a missing context. Looks draw it under each question title;
-   * Herdr keeps it in the selected row body.
+   * What happened before the agent asked. Looks that already draw question context keep using this field.
    */
   contextLine: string | null
+  /** What happened before the question, or the missing-background marker for the terminal and desktop looks. */
+  contextDisplayLine: string | null
 }
 
 export const NO_BACKGROUND_GIVEN = 'No background given'
@@ -166,8 +169,13 @@ export function questionContextOf(item: Pick<Item, 'context'> | null): string {
   return item?.context || NO_BACKGROUND_GIVEN
 }
 
-/** Only a question has the context line; tasks and findings do not get a missing-background marker. */
+/** Only a question has a recorded context line. */
 export function contextLineOf(type: RowView['type'], item: Pick<Item, 'context'> | null): string | null {
+  return type === 'question' ? item?.context || null : null
+}
+
+/** Only a question gets a missing-background marker; tasks and findings do not. */
+export function contextDisplayLineOf(type: RowView['type'], item: Pick<Item, 'context'> | null): string | null {
   return type === 'question' ? questionContextOf(item) : null
 }
 
@@ -208,6 +216,29 @@ export function optionDescriptionsOf(
   return actions.flatMap(a => {
     if (a.press.action !== 'answer') return []
     const description = item.optionDescriptions?.[a.press.option]
+    if (!description) return []
+
+    return [
+      {
+        label: clipLabel(linkLabel(a.press.option), OPTION_LABEL_CHARS),
+        description,
+        isMissing: false,
+        isFolded: a.isFolded,
+      },
+    ]
+  })
+}
+
+/** Every answer effect for the terminal and desktop row plan, including those missing from a record. */
+export function optionEffectsOf(
+  item: Pick<Item, 'optionDescriptions'> | null,
+  actions: ActionView[],
+): OptionDescription[] {
+  if (!item) return []
+
+  return actions.flatMap(a => {
+    if (a.press.action !== 'answer') return []
+    const description = item.optionDescriptions?.[a.press.option]
 
     return [
       {
@@ -223,6 +254,10 @@ export function optionDescriptionsOf(
 /** The option descriptions a row shows: all of them once its folded options show, else the unfolded ones. */
 export function shownOptionDescriptions(row: RowView, isShowingAll: boolean): OptionDescription[] {
   return row.optionDescriptions.filter(o => isShowingAll || !o.isFolded)
+}
+
+export function shownOptionEffects(row: Pick<RowView, 'optionEffects'>, isShowingAll: boolean): OptionDescription[] {
+  return row.optionEffects.filter(o => isShowingAll || !o.isFolded)
 }
 
 /** A row's handle in text the agent reads: its number, as "1)", or "•". */
