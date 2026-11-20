@@ -166,7 +166,7 @@ test('the next-build pane draws Timeline with its saved selection and folded bra
   expect(text, 'the saved folded branch').not.toContain('Child')
 })
 
-test('the summary press closes stale detail, preserves hidden selection and j/k navigation', async ($, on) => {
+test('the desktop summary footer closes stale detail, preserves hidden selection and j/k navigation', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   world($, on, [])
   w.files = ['/.next-build']
@@ -200,17 +200,19 @@ test('the summary press closes stale detail, preserves hidden selection and j/k 
   await pane.press({ key: 'tab-key-timeline' })
   await clock.settle()
 
-  expect((await pane.find({ key: `timeline-title-${COMPLETED_FOLD_ID}` }))?.props.autoFocus).toBe(true)
-  await pane.press({ key: 'toggle-branch' })
+  expect((await pane.findAll({ type: 'Text' })).some(row => row.text.includes('> ▸ '))).toBe(true)
+  w.surfaces = ['desktop']
+  const desktop = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await $.session.attach({ surface: 'desktop', clientId: 'desktop:default' })
+  await clock.settle()
+  await desktop.press({ key: 'toggle-branch' })
   await clock.settle()
   expect(detailOpen).toBe(false)
   expect(selection.value).toBe('finished')
-  expect((await pane.find({ key: 'timeline-title-finished' }))?.props.autoFocus).toBe(true)
+  expect((await desktop.findAll({ type: 'Text' })).some(row => row.text.includes('> ● '))).toBe(true)
   await pane.press({ key: `timeline-title-${COMPLETED_FOLD_ID}` })
   await clock.settle()
-  expect(detailOpen).toBe(false)
-  expect(selection.value).toBe('finished')
-  expect((await pane.find({ key: `timeline-title-${COMPLETED_FOLD_ID}` }))?.props.autoFocus).toBe(true)
+  expect((await pane.findAll({ type: 'Text' })).some(row => row.text.includes('> ▸ '))).toBe(true)
   await pane.press({ key: 'previous' })
   await clock.settle()
   expect(selection.value).toBe('active-last')

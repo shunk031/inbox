@@ -149,9 +149,9 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
         <Button
           key={action.action}
           label={action.label}
-          hotkey={action.hotkey}
+          hotkey={action.hotkey === 'enter' ? undefined : action.hotkey}
           plain
-          onPress={() => void updateTimelineFolded(folded => toggleTimelineBranch(folded, action.id))}
+          onPress={() => void toggleCompletedFold(action.id)}
         />
       </Box>
     ) : null
