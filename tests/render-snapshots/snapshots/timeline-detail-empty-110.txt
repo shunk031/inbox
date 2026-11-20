@@ -15,8 +15,8 @@
  │ 0 / 1                             │
  └───────────────────────────────────┘
 
-      History
-      1m · fixture · Task created
+ History
+ 1m · fixture · Task created
 
 
 

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { checkChipBoxes, checkFrame, stripChipRightPadding } from './render-snapshots-checks.mjs'
+import { checkChipBoxes, checkFrame, checkLeftEdges, stripChipRightPadding } from './render-snapshots-checks.mjs'
 import { cropInboxPane, isolate, ready, storeKeys, stripAnsi } from './render-snapshots-live.mjs'
 import { fixtureState, PLUGIN_STORE, registry } from './render-snapshots-fixtures.mjs'
 
@@ -46,13 +46,26 @@ test('store key inventory follows CLAUDE_CONFIG_DIR and treats missing store as 
 })
 
 test('registry covers every remaining terminal view, scenario, and width once', () => {
-  assert.equal(registry.length, 26)
+  assert.equal(registry.length, 29)
   assert.equal(new Set(registry.map(entry => entry.file)).size, registry.length)
-  assert.deepEqual(new Set(registry.map(entry => entry.width)), new Set([110, 200]))
+  assert.deepEqual(new Set(registry.map(entry => entry.width)), new Set([87, 110, 200]))
   assert.deepEqual(
     registry.filter(entry => entry.fixture === 'fold-done').map(entry => entry.width),
     [200, 110],
   )
+  assert.deepEqual(
+    registry
+      .filter(entry => entry.scenario === 'layout')
+      .map(entry => entry.width)
+      .toSorted((a, b) => a - b),
+    [87, 110, 200],
+  )
+})
+
+test('left-edge check catches an indented Detail heading and its text', () => {
+  const entry = registry.find(candidate => candidate.file === 'timeline-detail-layout-87.txt')
+  const frame = `    Asks        b: ‹ Back Snapshot In progress\n${' '.repeat(16)}┌─────────────┐\n${' '.repeat(16)}│ Progress    │\n${' '.repeat(23)}Detail\n${' '.repeat(23)}Newest text`
+  assert.match(checkLeftEdges(entry, frame).join('\n'), /left edge mismatch[\s\S]*left edge mismatch/)
 })
 
 test('Help snapshots open through the existing footer control', () => {

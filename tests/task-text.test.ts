@@ -24,6 +24,7 @@ const task = (change: Partial<TaskNode> = {}): TaskNode => ({
   history: [
     { at: 1_000, source: 'agent', kind: 'created' },
     { at: 2_000, source: 'agent', kind: 'note', detail: 'The latest note' },
+    { at: 1_500, source: 'agent', kind: 'detail' },
   ],
   ...change,
 })
@@ -39,9 +40,11 @@ test('Status rows and Timeline details use the newer note while retaining the fu
 
   expect(row?.kind === 'subject' ? row.text : '').toContain('The latest note')
   expect(row?.kind === 'subject' ? row.text : '').not.toContain('The original plan')
-  expect(timeline.selected?.details).toContainEqual({ label: 'Current', text: 'The latest note · now' })
+  expect(timeline.selected?.details.map(line => line.label)).toEqual(['Detail', 'Note', 'History'])
   expect(timeline.selected?.details).toContainEqual({ label: 'Detail', text: 'The original plan' })
   expect(timeline.selected?.details).toContainEqual({ label: 'Note', text: 'The latest note' })
+  const history = timeline.selected?.details.find(line => line.label === 'History')
+  if (history?.label === 'History') expect(history.text).toMatch(/Task detail updated[\s\S]*Note added/u)
 })
 
 test('current task text uses newer detail when its recorded change time follows the latest note', () => {

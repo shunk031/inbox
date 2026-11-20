@@ -1,5 +1,5 @@
 // Built by herdr/build.ts with Bun 1.4.4 from herdr/src and hooks/. Do not edit.
-// Built at 2026-11-20T17:07:35.491Z. 226293 characters follow.
+// Built at 2026-11-20T17:26:29.335Z. 226201 characters follow.
 
 // src/main.ts
 import { View, div as div5 } from "gpui-kit";
@@ -3557,12 +3557,10 @@ var BAR_TONES = {
 var BAR_STATES = Object.keys(BAR_MARKS);
 function timelineTask(task, now) {
   const { createdAt: _createdAt, updatedAt, history, ...details } = task;
-  const current = currentTaskText(task);
   return {
     ...details,
     updatedAgo: shortAgo(now - updatedAt),
-    currentText: current ? { ...current, ago: shortAgo(now - current.at) } : null,
-    history: history.map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) }))
+    history: history.toSorted((a, b) => a.at - b.at).map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) }))
   };
 }
 function percent(value) {

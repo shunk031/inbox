@@ -17,6 +17,7 @@ const task = (id, parentId, title, status, detail = '', notes = []) => ({
   history: [{ at: NOW - 60_000, source: 'fixture', kind: 'created' }],
 })
 const wrappedTitle = '折り返し用の日本語タイトルと子の説明'
+const timelineDetailWidths = [87, ...widths]
 const tasks = [
   [
     'snapshot-root',
@@ -130,6 +131,16 @@ export function fixtureState(fixture) {
     const finished = task('snapshot-finished-root', null, 'Snapshot finished root', 'done')
     state.taskTree = fixture === 'fold-done' ? [...tasks, finished] : tasks
     state.prViews = { ...state.prViews, views: { [pr.ref]: pr }, isGhMissing: false }
+  } else if (fixture.startsWith('timeline-detail-layout')) {
+    const detail = '狭い画面でも左端と折り返し位置を確認する中立的な説明です。'.repeat(3)
+    const note = '配置確認用のメモです。'
+    const split87 = fixture.endsWith('-87')
+    const item = task('snapshot-detail-layout', null, 'Snapshot timeline detail', 'working', detail, [note])
+    item.history.push(
+      { at: NOW - (split87 ? 10_000 : 30_000), source: 'fixture', kind: 'note', detail: note },
+      { at: NOW - (split87 ? 30_000 : 10_000), source: 'fixture', kind: 'detail' },
+    )
+    state.taskTree = [item]
   } else if (fixture === 'detail-empty' || fixture === 'detail-busy') {
     const empty = fixture === 'detail-empty'
     state.taskTree = empty ? [task('snapshot-detail-empty', null, 'Snapshot detail empty', 'working')] : tasks
@@ -153,3 +164,13 @@ export const registry = [
 ]
 const foldDone = { view: 'timeline', scenario: 'fold-done', fixture: 'fold-done' }
 registry.push(...widths.map(width => ({ ...foldDone, width, file: `timeline-fold-done-${width}.txt` })))
+registry.push(
+  ...timelineDetailWidths.map(width => ({
+    view: 'timeline-detail',
+    scenario: 'layout',
+    fixture: width === 87 ? 'timeline-detail-layout-87' : 'timeline-detail-layout',
+    width,
+    ...(width === 87 ? { terminalWidth: 196 } : {}),
+    file: `timeline-detail-layout-${width}.txt`,
+  })),
+)

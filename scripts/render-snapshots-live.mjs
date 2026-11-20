@@ -97,16 +97,18 @@ export function ready(entry, frame) {
 }
 async function wait(socket, session, width, predicate, label, mode = 'pane', timeout = 45_000) {
   const end = Date.now() + timeout
+  let last = ''
   let previous
   while (Date.now() < end) {
     const capture = tmux(socket, 'capture-pane', '-N', '-e', '-p', '-t', `${session}:0.0`)
     const crop =
       mode === 'pane' ? cropInboxPane(capture, width) : { text: mode === 'raw' ? stripAnsi(capture) : capture }
+    last = crop?.text ?? stripAnsi(capture).slice(-1600)
     if (crop && predicate(crop.text) && capture === previous) return { ...crop, capture }
     previous = capture
     await pause(125)
   }
-  throw Error(`timed out waiting for ${label}`)
+  throw Error(`timed out waiting for ${label}${last ? `\nLast frame:\n${last}` : ''}`)
 }
 async function press(socket, session, width, key, predicate, label, timeout = 15_000) {
   const end = Date.now() + timeout
@@ -177,6 +179,7 @@ export async function capture(entry, pluginDir, root, socket, claude) {
   const home = path.join(run, 'home')
   const config = path.join(run, 'config')
   const tmp = path.join(run, 'tmp')
+  const terminalWidth = entry.terminalWidth ?? entry.width
   for (const dir of [home, config, tmp]) mkdirSync(dir, { recursive: true })
   isolate(root, home, config)
   const id = randomUUID()
@@ -206,7 +209,7 @@ export async function capture(entry, pluginDir, root, socket, claude) {
       '-s',
       session,
       '-x',
-      String(entry.width),
+      String(terminalWidth),
       '-y',
       String(entry.height ?? HEIGHT),
       '-c',
@@ -216,7 +219,7 @@ export async function capture(entry, pluginDir, root, socket, claude) {
     await wait(
       socket,
       session,
-      entry.width,
+      terminalWidth,
       frame => pageMarker(frame, '❯') || pageMarker(frame, 'Open inbox'),
       'Claude prompt',
       'raw',
@@ -224,9 +227,31 @@ export async function capture(entry, pluginDir, root, socket, claude) {
     )
     send(socket, session, '/inbox', true)
     send(socket, session, 'Enter')
-    await wait(socket, session, entry.width, frame => pageMarker(frame, 'Asks'), 'initial inbox pane')
+    const initial = entry.fixture.startsWith('timeline-detail-layout')
+      ? 'Timeline'
+      : entry.fixture === 'detail-empty'
+        ? 'Snapshot empty report'
+        : entry.fixture === 'detail-busy'
+          ? 'Snapshot report'
+          : entry.fixture === 'agents-busy' || entry.fixture === 'agents-tree' || entry.fixture.endsWith('empty')
+            ? 'Nothing needed'
+            : 'Snapshot question'
+    await wait(
+      socket,
+      session,
+      terminalWidth,
+      frame => pageMarker(frame, initial),
+      `initial inbox pane for ${entry.fixture}`,
+    )
     const timelineDetail = frame =>
-      pageMarker(frame, entry.scenario === 'empty' ? 'Snapshot detail empty' : 'Snapshot root')
+      pageMarker(
+        frame,
+        entry.fixture.startsWith('timeline-detail-layout')
+          ? 'Snapshot timeline'
+          : entry.scenario === 'empty'
+            ? 'Snapshot detail empty'
+            : 'Snapshot root',
+      )
     const childSelected = frame => {
       const row = frame.split('\n').find(line => line.includes('折り返し用'))
       return row?.slice(0, row.indexOf('折り返し用')).includes('>') ?? false
@@ -241,7 +266,7 @@ export async function capture(entry, pluginDir, root, socket, claude) {
       'asks-detail': [['v', frame => ready(entry, frame)]],
     }
     for (const [key, predicate] of steps[entry.view] ?? [])
-      await press(socket, session, entry.width, key, predicate, `${entry.view} ${entry.scenario} ${key}`)
+      await press(socket, session, terminalWidth, key, predicate, `${entry.view} ${entry.scenario} ${key}`)
     if (entry.view === 'help') {
       await focusHelp(socket, session)
       send(socket, session, 'Enter')
@@ -249,7 +274,7 @@ export async function capture(entry, pluginDir, root, socket, claude) {
     const crop = await wait(
       socket,
       session,
-      entry.width,
+      terminalWidth,
       frame => ready(entry, frame),
       `${entry.view} ${entry.scenario}`,
     )

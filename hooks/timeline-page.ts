@@ -10,8 +10,6 @@ import type {
 import { prMarkId } from './pr-rows'
 import { shortAgo } from './rows'
 import { weightedTaskProgress, weightedTaskProgressSegments } from './task-tree'
-import { currentTaskText } from './task-text'
-import type { CurrentTaskText } from './task-text'
 import type { PrAction } from './pr-press'
 import type { ActionView } from './rows'
 import { COMPLETED_FOLD_ID, timelineCompletedFolded } from './timeline-state'
@@ -28,7 +26,6 @@ type TimelineBarPart = {
 type TimelineHistoryEvent = Omit<TaskHistoryEvent, 'at'> & { time: string }
 type TimelineTask = Omit<TaskNode, 'createdAt' | 'updatedAt' | 'history'> & {
   updatedAgo: string
-  currentText: (CurrentTaskText & { ago: string }) | null
   history: TimelineHistoryEvent[]
 }
 type TimelineRowAction = Pick<ActionView, 'label' | 'hotkey' | 'kind' | 'emphasis'> & {
@@ -37,8 +34,7 @@ type TimelineRowAction = Pick<ActionView, 'label' | 'hotkey' | 'kind' | 'emphasi
 }
 type TimelineLinkAction = PrAction & { result: LastAction['result'] | null }
 type TimelineDetailLine =
-  | { label: 'Current' | 'Detail' | 'Updated' | 'Note' | 'History'; text: string }
-  | { label: 'Links'; actions: TimelineLinkAction[] }
+  { label: 'Detail' | 'Updated' | 'Note' | 'History'; text: string } | { label: 'Links'; actions: TimelineLinkAction[] }
 type TimelineStats = { progress: string; weight: string; completedUnits: string }
 type TimelineNode = {
   task: TimelineTask
@@ -118,15 +114,21 @@ const HISTORY_TEXT: Record<TaskHistoryEvent['kind'], string> = {
   note: 'Note added',
   imported: 'Task imported',
 }
+const timelineHistoryText = (events: TimelineHistoryEvent[]) =>
+  events
+    .map(({ time, source, kind, detail }) =>
+      [time, source, kind === 'note' ? HISTORY_TEXT.note : (detail ?? HISTORY_TEXT[kind])].join(' · '),
+    )
+    .join('\n')
 
 function timelineTask(task: TaskNode, now: number): TimelineTask {
   const { createdAt: _createdAt, updatedAt, history, ...details } = task
-  const current = currentTaskText(task)
   return {
     ...details,
     updatedAgo: shortAgo(now - updatedAt),
-    currentText: current ? { ...current, ago: shortAgo(now - current.at) } : null,
-    history: history.map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) })),
+    history: history
+      .toSorted((a, b) => a.at - b.at)
+      .map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) })),
   }
 }
 
@@ -342,7 +344,6 @@ export function timelinePage(
           detail: '',
           notes: [],
           updatedAgo: '',
-          currentText: null,
           history: [],
           links: {},
         },
@@ -465,20 +466,11 @@ export function timelinePage(
   const selectedLinks = selectedRow ? timelineLinkPlan(selectedRow.task, lastActions) : []
   const details: TimelineDetailLine[] = selectedRow
     ? [
-        ...(selectedRow.task.currentText
-          ? [
-              {
-                label: 'Current' as const,
-                text: `${selectedRow.task.currentText.text} · ${selectedRow.task.currentText.ago}`,
-              },
-            ]
-          : []),
         ...(selectedRow.task.detail ? [{ label: 'Detail' as const, text: selectedRow.task.detail }] : []),
         ...selectedRow.task.notes.map(text => ({ label: 'Note' as const, text })),
-        ...selectedRow.task.history.map(event => ({
-          label: 'History' as const,
-          text: `${event.time} · ${event.source} · ${event.detail ?? HISTORY_TEXT[event.kind]}`,
-        })),
+        ...(selectedRow.task.history.length
+          ? [{ label: 'History' as const, text: timelineHistoryText(selectedRow.task.history) }]
+          : []),
         ...(selectedLinks.length ? [{ label: 'Links' as const, actions: selectedLinks }] : []),
       ]
     : []

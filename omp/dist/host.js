@@ -7895,14 +7895,14 @@ var HISTORY_TEXT = {
   note: "Note added",
   imported: "Task imported"
 };
+var timelineHistoryText = (events) => events.map(({ time, source, kind, detail }) => [time, source, kind === "note" ? HISTORY_TEXT.note : detail ?? HISTORY_TEXT[kind]].join(" \xB7 ")).join(`
+`);
 function timelineTask(task, now) {
   const { createdAt: _createdAt, updatedAt, history, ...details } = task;
-  const current = currentTaskText(task);
   return {
     ...details,
     updatedAgo: shortAgo(now - updatedAt),
-    currentText: current ? { ...current, ago: shortAgo(now - current.at) } : null,
-    history: history.map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) }))
+    history: history.toSorted((a, b) => a.at - b.at).map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) }))
   };
 }
 function percent(value) {
@@ -8095,7 +8095,6 @@ function timelinePage(data, selectedId, folded, lastActions = {}, isDetailOpen =
       detail: "",
       notes: [],
       updatedAgo: "",
-      currentText: null,
       history: [],
       links: {}
     },
@@ -8209,18 +8208,9 @@ function timelinePage(data, selectedId, folded, lastActions = {}, isDetailOpen =
   const selectedRow = selected ? drawnRows.find((row) => row.task.id === selected.task.id) : null;
   const selectedLinks = selectedRow ? timelineLinkPlan(selectedRow.task, lastActions) : [];
   const details = selectedRow ? [
-    ...selectedRow.task.currentText ? [
-      {
-        label: "Current",
-        text: `${selectedRow.task.currentText.text} \xB7 ${selectedRow.task.currentText.ago}`
-      }
-    ] : [],
     ...selectedRow.task.detail ? [{ label: "Detail", text: selectedRow.task.detail }] : [],
     ...selectedRow.task.notes.map((text) => ({ label: "Note", text })),
-    ...selectedRow.task.history.map((event) => ({
-      label: "History",
-      text: `${event.time} \xB7 ${event.source} \xB7 ${event.detail ?? HISTORY_TEXT[event.kind]}`
-    })),
+    ...selectedRow.task.history.length ? [{ label: "History", text: timelineHistoryText(selectedRow.task.history) }] : [],
     ...selectedLinks.length ? [{ label: "Links", actions: selectedLinks }] : []
   ] : [];
   const taskProgress = selectedRow ? percent(selectedRow.progress / 100) : null;
@@ -10276,7 +10266,9 @@ function timelineLine(line, plan, isSelected, d) {
     } else {
       out.push(`${row.detailLead}${s.dim(detail.label)}`);
       const indent = detailIndent + 2;
-      out.push(...wrapTimelineText(detail.text, Math.max(1, width - indent)).map((text) => `${" ".repeat(indent)}${text}`));
+      for (const text of detail.text.split(`
+`))
+        out.push(...wrapTimelineText(text, Math.max(1, width - indent)).map((text) => `${" ".repeat(indent)}${text}`));
     }
   }
   return out;

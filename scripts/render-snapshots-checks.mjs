@@ -47,10 +47,35 @@ export function checkTimelineFocus(entry, frame, ansiFrame) {
   return errors
 }
 const col = (line, index) => cellWidth(line.slice(0, index))
-const detailColumns = { 110: [19, 21], 200: [27, 29, 52, 54] }
+const detailColumns = { 87: [26, 28, 51, 53], 110: [19, 21], 200: [27, 29, 52, 54] }
 export const failure = (entry, row, expected, actual, reason) =>
   `FAIL view=${entry.view} scenario=${entry.scenario} width=${entry.width} row=${row} ` +
   `expected-column=${expected} actual-column=${actual} ${reason}`
+
+const detailHeadings = new Set(['Detail', 'Updated', 'Note', 'History', 'Links'])
+export function checkLeftEdges(entry, frame) {
+  if (entry.view !== 'timeline-detail') return []
+  const lines = frame.split('\n')
+  const header = lines.find(line => line.includes('Back Snapshot')),
+    box = lines.find(line => line.includes('┌'))
+  if (!header || !box) return ['left-edge reference row absent']
+
+  const edge = col(box, box.indexOf('┌')),
+    errors = []
+  const check = (row, line, index) =>
+    col(line, index) === edge || errors.push(failure(entry, row, edge, col(line, index), 'left edge mismatch'))
+  check('detail header', header, header.indexOf('b: ‹ Back'))
+
+  let section = false
+  for (let row = 0; row < lines.length; row++) {
+    const line = lines[row],
+      text = line.trim()
+    if (detailHeadings.has(text)) section = true
+    else if (!text) section = false
+    if (section) check(`line-${row + 1}`, line, line.search(/\S/u))
+  }
+  return errors
+}
 
 export function checkFrame(entry, frame, width) {
   const errors = []
@@ -76,7 +101,7 @@ export function checkFrame(entry, frame, width) {
       const inTree = at >= 4 && at <= 14
       const listGuide = entry.view === 'asks' && at >= listBase && (at - listBase) % 3 === 0 && at <= listBase + 12
       const statsRow = entry.view === 'timeline-detail' && /Progress|Weight|Completed units|%/u.test(line)
-      const statsDivider = statsRow && detailColumns[entry.width].includes(at)
+      const statsDivider = statsRow && (detailColumns[entry.width]?.includes(at) ?? false)
       const allowed = tree ? border || inTree : border || listGuide || statsDivider
       if (!allowed)
         add(

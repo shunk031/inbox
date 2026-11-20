@@ -3174,12 +3174,10 @@ var BAR_TONES = {
 var BAR_STATES = Object.keys(BAR_MARKS);
 function timelineTask(task, now) {
   const { createdAt: _createdAt, updatedAt, history, ...details } = task;
-  const current = currentTaskText(task);
   return {
     ...details,
     updatedAgo: shortAgo(now - updatedAt),
-    currentText: current ? { ...current, ago: shortAgo(now - current.at) } : null,
-    history: history.map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) }))
+    history: history.toSorted((a, b) => a.at - b.at).map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) }))
   };
 }
 function percent(value) {
