@@ -38,6 +38,10 @@ export const holdsUpLineOf = (r: RowView | undefined) => (mod.isNextBuild ? (r?.
 
 export const childPos = (n: number, count: number): TreePos => (n === count - 1 ? 'last' : 'mid')
 
+export function treeGlyph(Text: PaneBase['Text'], color: string, text: string) {
+  return <Text color={color}>{text}</Text>
+}
+
 export function paneRowLines({
   elements,
   lastActions,
@@ -114,7 +118,7 @@ export function paneRowLines({
   const branch = (pos: TreePos, lead = 0, left = TREE_LINE_AT, color = pal.line, top = 0, key?: string) =>
     look === 'desktop' ? null : (
       <Box key={key} position="absolute" top={top} bottom={0} left={left} width={2}>
-        <Text color={color}>{treeText(pos, lead)}</Text>
+        {treeGlyph(Text, color, treeText(pos, lead))}
       </Box>
     )
   /** A 1 pt line in the divider color on desktop, `across` the pane or `down` it. */
@@ -170,7 +174,7 @@ export function paneRowLines({
             <Box key={`divider-${group}-${n}`} flexDirection="row">
               <Box width={TREE_LINE_AT} flexShrink={0} />
               <Box width={textAt - TREE_LINE_AT} flexShrink={0}>
-                <Text color={pal.line}>│</Text>
+                {treeGlyph(Text, pal.line, '│')}
               </Box>
               {rule(textAt + 2)}
             </Box>,
