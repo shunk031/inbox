@@ -355,7 +355,6 @@ test('terminal Timeline keeps Japanese titles, row metadata and detail guides at
   const detailText = (await pane.findAll({ type: 'Text' })).map(line => line.text)
   expect(detailText.some(text => text.includes('子タスク'))).toBe(true)
   expect(detailText).toContain(longDetail)
-  expect(detailText).toContain('Current')
   expect(detailText).toContain('Detail')
   expect(detailText).toContain('History')
   expect(detailText).toContain('A newer Japanese note')

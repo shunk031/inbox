@@ -1,5 +1,5 @@
 // Built by herdr/build.ts with Bun 1.4.4 from herdr/src and hooks/. Do not edit.
-// Built at 2026-11-20T11:10:52.376Z. 226936 characters follow.
+// Built at 2026-11-20T16:06:43.928Z. 227134 characters follow.
 
 // src/main.ts
 import { View, div as div5 } from "gpui-kit";
@@ -949,6 +949,10 @@ function currentTaskText(task) {
   if (latestNote && (latestNote.at > detailAt || latestNote.at === detailAt && latestNote.index > detailIndex))
     return { text: latestNote.text, at: latestNote.at };
   return task.detail ? { text: task.detail, at: detailAt } : latestNote;
+}
+function timelineCurrentTaskText(task) {
+  const current = currentTaskText(task);
+  return current && (current.text === task.detail || task.notes.includes(current.text)) ? null : current;
 }
 
 // ../hooks/inbox-text.ts
@@ -3560,7 +3564,7 @@ var BAR_TONES = {
 var BAR_STATES = Object.keys(BAR_MARKS);
 function timelineTask(task, now) {
   const { createdAt: _createdAt, updatedAt, history, ...details } = task;
-  const current = currentTaskText(task);
+  const current = timelineCurrentTaskText(task);
   return {
     ...details,
     updatedAgo: shortAgo(now - updatedAt),

@@ -3325,6 +3325,10 @@ function currentTaskText(task) {
     return { text: latestNote.text, at: latestNote.at };
   return task.detail ? { text: task.detail, at: detailAt } : latestNote;
 }
+function timelineCurrentTaskText(task) {
+  const current = currentTaskText(task);
+  return current && (current.text === task.detail || task.notes.includes(current.text)) ? null : current;
+}
 
 // ../hooks/inbox-text.ts
 function surfaceAtStart(host) {
@@ -7898,9 +7902,11 @@ var HISTORY_TEXT = {
   note: "Note added",
   imported: "Task imported"
 };
+var timelineHistoryText = (events) => events.map(({ time, source, kind, detail }) => [time, source, kind === "note" ? HISTORY_TEXT.note : detail ?? HISTORY_TEXT[kind]].join(" \xB7 ")).join(`
+`);
 function timelineTask(task, now) {
   const { createdAt: _createdAt, updatedAt, history, ...details } = task;
-  const current = currentTaskText(task);
+  const current = timelineCurrentTaskText(task);
   return {
     ...details,
     updatedAgo: shortAgo(now - updatedAt),
@@ -8212,7 +8218,7 @@ function timelinePage(data, selectedId, folded, lastActions = {}, isDetailOpen =
   const selectedRow = selected ? drawnRows.find((row) => row.task.id === selected.task.id) : null;
   const selectedLinks = selectedRow ? timelineLinkPlan(selectedRow.task, lastActions) : [];
   const details = selectedRow ? [
-    ...selectedRow.task.currentText && selectedRow.task.currentText.text !== selectedRow.task.detail ? [
+    ...selectedRow.task.currentText ? [
       {
         label: "Current",
         text: `${selectedRow.task.currentText.text} \xB7 ${selectedRow.task.currentText.ago}`
@@ -8220,13 +8226,7 @@ function timelinePage(data, selectedId, folded, lastActions = {}, isDetailOpen =
     ] : [],
     ...selectedRow.task.detail ? [{ label: "Detail", text: selectedRow.task.detail }] : [],
     ...selectedRow.task.notes.map((text) => ({ label: "Note", text })),
-    ...selectedRow.task.history.length ? [
-      {
-        label: "History",
-        text: selectedRow.task.history.map((event) => `${event.time} \xB7 ${event.source} \xB7 ${event.kind === "note" ? HISTORY_TEXT.note : event.detail ?? HISTORY_TEXT[event.kind]}`).join(`
-`)
-      }
-    ] : [],
+    ...selectedRow.task.history.length ? [{ label: "History", text: timelineHistoryText(selectedRow.task.history) }] : [],
     ...selectedLinks.length ? [{ label: "Links", actions: selectedLinks }] : []
   ] : [];
   const taskProgress = selectedRow ? percent(selectedRow.progress / 100) : null;

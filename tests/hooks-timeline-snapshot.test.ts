@@ -169,23 +169,10 @@ for (const bodyColumns of [87, 110, 200] as const) {
     const detailText = (await emptyPane.findAll({ type: 'Text' })).map(line => line.text)
     expect(detailText).toContain('日本語の詳細を確認する')
     expect(detailText).toContain('Completed')
-    expect(detailText).toContain('最新の作業メモはここに表示する。 · now')
     expect(detailText).toContain('登録した説明はCurrentとは別に残る。')
-    const detailSnapshot = detailText.flatMap(text => {
-      if (['Current', 'Detail', 'History'].includes(text)) return [text]
-      if (text === '最新の作業メモはここに表示する。 · now') return ['Current: 最新の作業メモはここに表示する。 · now']
-      if (text === '登録した説明はCurrentとは別に残る。') return ['Detail: 登録した説明はCurrentとは別に残る。']
-      if (text.includes('Task created')) return ['History: Task created']
-      return []
-    })
-    expect(detailSnapshot).toEqual([
-      'Current',
-      'Current: 最新の作業メモはここに表示する。 · now',
-      'Detail',
-      'Detail: 登録した説明はCurrentとは別に残る。',
-      'History',
-      'History: Task created',
-    ])
+    const headings = detailText.filter(text => /^(Current|Note|Detail|History)$/u.test(text))
+    expect(headings).toEqual(['Detail', 'Note', 'History'])
+    expect(detailText).toContain('最新の作業メモはここに表示する。')
     for (let index = 0; index < 4; index++) {
       const lead = await emptyPane.find({ key: `timeline-detail-lead-${index}` })
       expect(lead, `detail block ${index} starts at the page edge`).toBeFalsy()

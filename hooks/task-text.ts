@@ -28,3 +28,8 @@ export function currentTaskText(
     return { text: latestNote.text, at: latestNote.at }
   return task.detail ? { text: task.detail, at: detailAt } : latestNote
 }
+
+export function timelineCurrentTaskText(task: Parameters<typeof currentTaskText>[0]) {
+  const current = currentTaskText(task)
+  return current && (current.text === task.detail || task.notes.includes(current.text)) ? null : current
+}

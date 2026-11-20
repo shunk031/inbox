@@ -60,12 +60,9 @@ test('registry covers every terminal view, scenario, and width once', () => {
 })
 
 test('left-edge check catches an indented Current heading and its text', () => {
+  const entry = registry.find(candidate => candidate.file === 'timeline-detail-layout-87.txt')
   const frame = `    Asks        b: ‹ Back Snapshot In progress\n${' '.repeat(16)}┌─────────────┐\n${' '.repeat(16)}│ Progress    │\n${' '.repeat(23)}Current\n${' '.repeat(23)}Newest text`
-  const failures = checkLeftEdges(
-    registry.find(candidate => candidate.file === 'timeline-detail-layout-87.txt'),
-    frame,
-  )
-  assert.match(failures.join('\n'), /body heading does not start[\s\S]*body text does not start/)
+  assert.match(checkLeftEdges(entry, frame).join('\n'), /left edge mismatch[\s\S]*left edge mismatch/)
 })
 
 test('Help snapshots open through the existing footer control', () => {

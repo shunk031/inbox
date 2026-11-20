@@ -1466,6 +1466,10 @@ function currentTaskText(task) {
     return { text: latestNote.text, at: latestNote.at };
   return task.detail ? { text: task.detail, at: detailAt } : latestNote;
 }
+function timelineCurrentTaskText(task) {
+  const current = currentTaskText(task);
+  return current && (current.text === task.detail || task.notes.includes(current.text)) ? null : current;
+}
 
 // ../hooks/inbox-text.ts
 function surfaceAtStart(host) {
@@ -3592,7 +3596,7 @@ var BAR_TONES = {
 var BAR_STATES = Object.keys(BAR_MARKS);
 function timelineTask(task, now) {
   const { createdAt: _createdAt, updatedAt, history, ...details } = task;
-  const current = currentTaskText(task);
+  const current = timelineCurrentTaskText(task);
   return {
     ...details,
     updatedAgo: shortAgo(now - updatedAt),

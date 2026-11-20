@@ -4,7 +4,7 @@ import { EMPTY } from '../hooks/ledger'
 import { inboxText, promptNotes, statusCarryText } from '../hooks/inbox-text'
 import { statusPage } from '../hooks/status-page'
 import { statusPrompt } from '../hooks/status-prompt'
-import { currentTaskText } from '../hooks/task-text'
+import { currentTaskText, timelineCurrentTaskText } from '../hooks/task-text'
 import { EMPTY_SESSION_STATUS } from '../hooks/status-limits'
 import { timelineData, timelinePage } from '../hooks/timeline-page'
 import { emptySession } from '../hooks/session-files'
@@ -39,7 +39,7 @@ test('Status rows and Timeline details use the newer note while retaining the fu
 
   expect(row?.kind === 'subject' ? row.text : '').toContain('The latest note')
   expect(row?.kind === 'subject' ? row.text : '').not.toContain('The original plan')
-  expect(timeline.selected?.details).toContainEqual({ label: 'Current', text: 'The latest note · now' })
+  expect([timelineCurrentTaskText(task({ notes: [] })), timelineCurrentTaskText(current)]).toEqual([null, null])
   expect(timeline.selected?.details).toContainEqual({ label: 'Detail', text: 'The original plan' })
   expect(timeline.selected?.details).toContainEqual({ label: 'Note', text: 'The latest note' })
 })

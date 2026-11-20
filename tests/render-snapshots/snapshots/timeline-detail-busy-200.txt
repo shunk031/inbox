@@ -10,9 +10,6 @@
  │ 50.00%                  │ │ 1                    │ │ 1 / 2                          │
  └─────────────────────────┘ └──────────────────────┘ └────────────────────────────────┘
 
- Current
- The root task has a stable note. · 1m
-
  Detail
  An invented root task with a long CJK title.
 
@@ -21,6 +18,9 @@
 
  History
  1m · fixture · Task created
+
+
+
 
 
 

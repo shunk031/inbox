@@ -57,51 +57,23 @@ const detailHeadings = new Set(['Current', 'Detail', 'Updated', 'Note', 'History
 export function checkLeftEdges(entry, frame) {
   if (entry.view !== 'timeline-detail') return []
   const lines = frame.split('\n')
-  const errors = []
-  const header = lines.find(line => line.includes('Back') && line.includes('Snapshot'))
-  const box = lines.find(line => line.includes('┌'))
-  if (!header || !box)
-    return [failure(entry, 'left-edge reference', 'header and box', 'missing', 'reference row absent')]
+  const header = lines.find(line => line.includes('Back Snapshot')),
+    box = lines.find(line => line.includes('┌'))
+  if (!header || !box) return ['left-edge reference row absent']
 
-  const action = header.indexOf('b: ‹ Back')
-  const headerStart = action >= 0 ? action : header.indexOf('‹ Back')
-  const boxStart = box.indexOf('┌')
-  const edge = col(box, boxStart)
-  if (col(header, headerStart) !== edge)
-    errors.push(
-      failure(entry, 'detail header', edge, col(header, headerStart), 'header and stats box do not share a left edge'),
-    )
+  const edge = col(box, box.indexOf('┌')),
+    errors = []
+  const check = (row, line, index) =>
+    col(line, index) === edge || errors.push(failure(entry, row, edge, col(line, index), 'left edge mismatch'))
+  check('detail header', header, header.indexOf('b: ‹ Back'))
 
+  let section = false
   for (let row = 0; row < lines.length; row++) {
-    const heading = lines[row].trim()
-    if (!detailHeadings.has(heading)) continue
-    const headingColumn = col(lines[row], lines[row].indexOf(heading))
-    if (headingColumn !== edge)
-      errors.push(
-        failure(
-          entry,
-          `line-${row + 1}:${heading}`,
-          edge,
-          headingColumn,
-          'body heading does not start at the page left edge',
-        ),
-      )
-    for (let body = row + 1; body < lines.length; body++) {
-      const text = lines[body].trim()
-      if (!text || detailHeadings.has(text)) break
-      const start = lines[body].search(/\S/u)
-      const textColumn = col(lines[body], start)
-      if (textColumn !== edge)
-        errors.push(
-          failure(
-            entry,
-            `line-${body + 1}:${heading} text`,
-            edge,
-            textColumn,
-            'body text does not start at the page left edge',
-          ),
-        )
-    }
+    const line = lines[row],
+      text = line.trim()
+    if (detailHeadings.has(text)) section = true
+    else if (!text) section = false
+    if (section) check(`line-${row + 1}`, line, line.search(/\S/u))
   }
   return errors
 }

@@ -10,7 +10,7 @@ import type {
 import { prMarkId } from './pr-rows'
 import { shortAgo } from './rows'
 import { weightedTaskProgress, weightedTaskProgressSegments } from './task-tree'
-import { currentTaskText } from './task-text'
+import { timelineCurrentTaskText } from './task-text'
 import type { CurrentTaskText } from './task-text'
 import type { PrAction } from './pr-press'
 import type { ActionView } from './rows'
@@ -118,10 +118,16 @@ const HISTORY_TEXT: Record<TaskHistoryEvent['kind'], string> = {
   note: 'Note added',
   imported: 'Task imported',
 }
+const timelineHistoryText = (events: TimelineHistoryEvent[]) =>
+  events
+    .map(({ time, source, kind, detail }) =>
+      [time, source, kind === 'note' ? HISTORY_TEXT.note : (detail ?? HISTORY_TEXT[kind])].join(' · '),
+    )
+    .join('\n')
 
 function timelineTask(task: TaskNode, now: number): TimelineTask {
   const { createdAt: _createdAt, updatedAt, history, ...details } = task
-  const current = currentTaskText(task)
+  const current = timelineCurrentTaskText(task)
   return {
     ...details,
     updatedAgo: shortAgo(now - updatedAt),
@@ -465,7 +471,7 @@ export function timelinePage(
   const selectedLinks = selectedRow ? timelineLinkPlan(selectedRow.task, lastActions) : []
   const details: TimelineDetailLine[] = selectedRow
     ? [
-        ...(selectedRow.task.currentText && selectedRow.task.currentText.text !== selectedRow.task.detail
+        ...(selectedRow.task.currentText
           ? [
               {
                 label: 'Current' as const,
@@ -476,17 +482,7 @@ export function timelinePage(
         ...(selectedRow.task.detail ? [{ label: 'Detail' as const, text: selectedRow.task.detail }] : []),
         ...selectedRow.task.notes.map(text => ({ label: 'Note' as const, text })),
         ...(selectedRow.task.history.length
-          ? [
-              {
-                label: 'History' as const,
-                text: selectedRow.task.history
-                  .map(
-                    event =>
-                      `${event.time} · ${event.source} · ${event.kind === 'note' ? HISTORY_TEXT.note : (event.detail ?? HISTORY_TEXT[event.kind])}`,
-                  )
-                  .join('\n'),
-              },
-            ]
+          ? [{ label: 'History' as const, text: timelineHistoryText(selectedRow.task.history) }]
           : []),
         ...(selectedLinks.length ? [{ label: 'Links' as const, actions: selectedLinks }] : []),
       ]

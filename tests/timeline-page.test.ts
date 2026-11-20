@@ -142,7 +142,6 @@ test('the selected task plan orders labeled details and link actions', () => {
         task('plan', {
           detail: 'Build the review flow',
           updatedAt: now - 19 * 60_000,
-          notes: ['Keep the row short', 'Use the shared view'],
           history: [
             { at: now - 5 * 60_000, source: 'claude', kind: 'updated', detail: 'Added the pane' },
             { at: now - 2 * 60_000, source: 'status', kind: 'created' },
@@ -161,18 +160,14 @@ test('the selected task plan orders labeled details and link actions', () => {
     true,
   ).selected?.details
 
-  expect(detail?.map(line => line.label)).toEqual(['Current', 'Detail', 'Note', 'Note', 'History', 'Links'])
-  expect(detail?.slice(0, 5)).toEqual([
-    { label: 'Current', text: 'Use the shared view · 1m' },
+  expect(detail?.slice(0, 2)).toEqual([
     { label: 'Detail', text: 'Build the review flow' },
-    { label: 'Note', text: 'Keep the row short' },
-    { label: 'Note', text: 'Use the shared view' },
     { label: 'History', text: '5m · claude · Added the pane\n2m · status · Task created' },
   ])
   expect(detail?.at(-1)).toMatchObject({ label: 'Links', actions: [{ label: 'Open PR' }] })
 })
 
-test('Timeline detail keeps a distinct Current when its text differs from Detail', () => {
+test('Timeline rows show the newest task text, while selected details retain the full detail and every note', () => {
   const current = task('plan', {
     detail: 'The original plan',
     notes: ['First update', 'Latest update'],
@@ -184,7 +179,6 @@ test('Timeline detail keeps a distinct Current when its text differs from Detail
   })
   const page = timelinePage(timelineData([current], segments, {}, [], now), 'plan', [])
 
-  expect(page.selected?.details).toContainEqual({ label: 'Current', text: 'Latest update · now' })
   expect(page.selected?.details).toContainEqual({ label: 'Detail', text: 'The original plan' })
   expect(page.selected?.details.filter(line => line.label === 'Note')).toEqual([
     { label: 'Note', text: 'First update' },
