@@ -117,7 +117,7 @@ export function fixtureState(fixture) {
     isHelpShown: false,
   }
   const data = state.ledger
-  if (fixture === 'base-busy') {
+  if (fixture === 'base-busy' || fixture === 'fold-done') {
     Object.assign(data, {
       items: [question],
       findings: [report(false)],
@@ -127,7 +127,8 @@ export function fixtureState(fixture) {
       batchTurn: 1,
       nextId: 2,
     })
-    state.taskTree = tasks
+    const finished = task('snapshot-finished-root', null, 'Snapshot finished root', 'done')
+    state.taskTree = fixture === 'fold-done' ? [...tasks, finished] : tasks
     state.prViews = { ...state.prViews, views: { [pr.ref]: pr }, isGhMissing: false }
   } else if (fixture === 'agents-busy') {
     data.findings = [
@@ -206,3 +207,5 @@ export const registry = [
     file: `agents-tree-${width}.txt`,
   })),
 ]
+const foldDone = { view: 'timeline', scenario: 'fold-done', fixture: 'fold-done' }
+registry.push(...widths.map(width => ({ ...foldDone, width, file: `timeline-fold-done-${width}.txt` })))

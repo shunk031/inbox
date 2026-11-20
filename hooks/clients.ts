@@ -93,6 +93,7 @@ export type FeatureId =
   | 'task-tree-export'
   | 'task-status-mismatch'
   | 'timeline'
+  | 'timeline-completed-fold'
   | 'agents-tab'
 
 type FeatureSupport = { kind: 'full' } | { kind: 'different' | 'unsupported'; reason: string }

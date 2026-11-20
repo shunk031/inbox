@@ -188,5 +188,9 @@ export const CODEX_SUPPORT: ClientSupport['support'] = {
   },
   'task-status-mismatch': { kind: 'full' },
   timeline: { kind: 'full' },
+  'timeline-completed-fold': {
+    kind: 'different',
+    reason: 'Codex keeps finished Timeline roots inline while the terminal look ships the fold first.',
+  },
   'agents-tab': { kind: 'different', reason: 'Agents is not drawn in this look yet.' },
 }
