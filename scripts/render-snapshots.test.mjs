@@ -46,9 +46,17 @@ test('store key inventory follows CLAUDE_CONFIG_DIR and treats missing store as 
 })
 
 test('registry covers every terminal view, scenario, and width once', () => {
-  assert.equal(registry.length, 30)
+  assert.equal(registry.length, 33)
   assert.equal(new Set(registry.map(entry => entry.file)).size, registry.length)
-  assert.deepEqual(new Set(registry.map(entry => entry.width)), new Set([110, 200]))
+  assert.deepEqual(new Set(registry.map(entry => entry.width)), new Set([87, 110, 200]))
+  assert.deepEqual(
+    registry.filter(entry => entry.fixture === 'agents-tree').map(entry => entry.width),
+    [87, 110, 200],
+  )
+  assert.deepEqual(
+    registry.filter(entry => entry.fixture === 'fold-done').map(entry => entry.width),
+    [200, 110],
+  )
 })
 
 test('Help snapshots open through the existing footer control', () => {
@@ -77,6 +85,10 @@ test('Agents and report readiness wait for settled fixture content', () => {
   assert.equal(ready(agents, 'Orchestrators\nHerdr agent list unavailable; local agent status is not current.'), true)
   const agentsBusy = registry.find(candidate => candidate.fixture === 'agents-busy')
   assert.equal(ready(agentsBusy, 'Meta tasks\nStale\nIn progress\nWaiting\nsnapshot-local…'), true)
+  const tree = registry.find(candidate => candidate.fixture === 'agents-tree' && candidate.width === 87)
+  const treeFrame = `Orchestrators\nMeta tasks\nLocal agents\nsnapshot-local-worker\nIn\nprogress\n${'├─\n'.repeat(11)}`
+  assert.equal(ready(tree, treeFrame.replace('snapshot-local-worker', '')), false)
+  assert.equal(ready(tree, treeFrame), true)
   const report = registry.find(candidate => candidate.view === 'asks-detail' && candidate.scenario === 'busy')
   assert.equal(ready(report, 'Snapshot report\nBack to inbox\nOpening report…'), false)
   assert.equal(
@@ -95,6 +107,14 @@ test('pane crop preserves leading and interior spaces while removing the dock di
   assert.equal(cropped.paneWidth, 39)
   assert.equal(cropped.text.split('\n')[12], '  x  y')
   assert.equal(cropped.text.endsWith('\n'), false)
+})
+
+test('pane crop handles the 87-column single-pane border', () => {
+  const capture = Array.from({ length: 14 }, (_, index) => `│${(index === 5 ? 'Asks' : '').padEnd(85)}│`).join('\n')
+  const cropped = cropInboxPane(capture, 87)
+  assert.equal(cropped.paneWidth, 85)
+  assert.equal(cropped.dividerColumn, 0)
+  assert.equal(cropped.text.split('\n')[5], 'Asks')
 })
 
 test('ANSI stripping removes CSI and OSC control sequences', () => {

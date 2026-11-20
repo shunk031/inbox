@@ -149,6 +149,27 @@ export function fixtureState(fixture) {
       task('snapshot-agents-working', null, 'Snapshot working task', 'working'),
       task('snapshot-agents-waiting', null, 'Snapshot waiting task', 'waits-on-other'),
     ]
+  } else if (fixture === 'agents-tree') {
+    data.findings = ['A', 'B', 'C', 'D'].map(letter => ({
+      id: `snapshot-feed-${letter}`,
+      kind: 'progress',
+      title: `Feed ${letter}`,
+      detail: 'Sample tree row.',
+      path: null,
+      at: NOW - 10_000,
+      feedKey: `herdr/local/worker-${letter}`,
+      feedSource: 'snapshot',
+      feedOwned: true,
+      owner: { machine: 'local', agent: `worker-${letter}` },
+    }))
+    state.taskTree = [
+      task('snapshot-tree-root', null, 'Root task', 'unknown'),
+      task('snapshot-tree-a', 'snapshot-tree-root', 'Task A', 'unknown'),
+      task('snapshot-tree-a-child', 'snapshot-tree-a', 'Nested task', 'unknown'),
+      task('snapshot-tree-b', 'snapshot-tree-root', 'Task B', 'unknown'),
+      task('snapshot-tree-c', 'snapshot-tree-root', 'Task C', 'unknown'),
+      task('snapshot-tree-d', 'snapshot-tree-root', 'Task D', 'unknown'),
+    ]
   } else if (fixture === 'detail-empty' || fixture === 'detail-busy') {
     const empty = fixture === 'detail-empty'
     state.taskTree = empty ? [task('snapshot-detail-empty', null, 'Snapshot detail empty', 'working')] : tasks
@@ -156,23 +177,35 @@ export function fixtureState(fixture) {
   } else if (fixture !== 'base-empty') throw Error(`Unknown fixture: ${fixture}`)
   return shift(state, Date.now() - NOW)
 }
-export const registry = VIEWS.flatMap(view =>
-  SCENARIOS.flatMap(scenario =>
-    widths.map(width => ({
-      view,
-      scenario,
-      width,
-      fixture:
-        view === 'agents' && scenario === 'busy'
-          ? 'agents-busy'
-          : view === 'help'
-            ? `help-${scenario}`
-            : view.endsWith('-detail')
-              ? `detail-${scenario}`
-              : `base-${scenario}`,
-      file: `${view}-${scenario}-${width}.txt`,
-    })),
+export const registry = [
+  ...VIEWS.flatMap(view =>
+    SCENARIOS.flatMap(scenario =>
+      widths.map(width => ({
+        view,
+        scenario,
+        width,
+        fixture:
+          view === 'agents' && scenario === 'tree'
+            ? 'agents-tree'
+            : view === 'agents' && scenario === 'busy'
+              ? 'agents-busy'
+              : view === 'help'
+                ? `help-${scenario}`
+                : view.endsWith('-detail')
+                  ? `detail-${scenario}`
+                  : `base-${scenario}`,
+        file: `${view}-${scenario}-${width}.txt`,
+      })),
+    ),
   ),
-)
+  ...[87, 110, 200].map(width => ({
+    view: 'agents',
+    scenario: 'tree',
+    width,
+    height: 108,
+    fixture: 'agents-tree',
+    file: `agents-tree-${width}.txt`,
+  })),
+]
 const foldDone = { view: 'timeline', scenario: 'fold-done', fixture: 'fold-done' }
 registry.push(...widths.map(width => ({ ...foldDone, width, file: `timeline-fold-done-${width}.txt` })))

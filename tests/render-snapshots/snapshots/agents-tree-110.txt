@@ -1,0 +1,103 @@
+                                     ✕
+ ▄▄▄▄▄▄ ▄▄▄▄▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄▄ ▄▄▄▄▄
+  Asks   Timeline 6   Agents   PRs
+─▀▀▀▀▀▀─▀▀▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀─▀▀▀▀▀────
+
+   Orchestrators · 4
+   │
+   ├─ ○ local/worker-A · F… Unknown
+   │
+   ├─ ○ local/worker-B · F… Unknown
+   │
+   ├─ ○ local/worker-C · F… Unknown
+   │
+   └─ ○ local/worker-D · F… Unknown
+
+
+   Meta tasks · 7
+   │
+   └─ ○ This session · meta · 0% com…
+      └─ ○ 0% · No owner ·… Unknown
+         ├─ ○ 0% · No owne… Unknown
+         │  └─ ○ 0% · No o… Unknown
+         │
+         ├─ ○ 0% · No owne… Unknown
+         │
+         ├─ ○ 0% · No owne… Unknown
+         │
+         └─ ○ 0% · No owne… Unknown
+
+
+   Local agents · 1
+   │
+   └─ ◐ snapshot-local… In progress
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  Help                         v0.4.0
