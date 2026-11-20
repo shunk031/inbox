@@ -74,6 +74,10 @@ async function main() {
     ),
   )
   if (errors.length) {
+    const rawFrames = mkdtempSync(path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'inbox-render-failures-'))
+    for (const [name, item] of frames)
+      writeFileSync(path.join(rawFrames, name.replace(/\.txt$/u, '.ansi')), item.ansiFrame)
+    process.stderr.write(`Raw frames saved: ${rawFrames}\n`)
     errors.forEach(line => process.stderr.write(`${line}\n`))
     throw Error(`${errors.length} render snapshot failure(s)`)
   }

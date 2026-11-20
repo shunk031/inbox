@@ -7,10 +7,11 @@ import { TREE_LINE_AT } from './pane-sizes'
 import { cellWidth } from './text'
 import { paneState } from './mod-state'
 
-type AgentsPaneBase = Pick<PaneBase, 'Box' | 'Text' | 'pal' | 'view' | 'e' | 'hasRail'> &
+type AgentsPaneBase = Pick<PaneBase, 'Box' | 'Text' | 'pal' | 'view'> &
   Pick<PaneRowParts, 'groupEmpty' | 'groupTitle' | 'section' | 'sections' | 'titleGap'> & {
     now: number
     isDemo: boolean
+    listColumns: number
   }
 
 function timelineState(status: string | null): TimelineState {
@@ -45,8 +46,7 @@ export function paneAgents({
   Text,
   pal,
   view,
-  e,
-  hasRail,
+  listColumns,
   now,
   isDemo,
   groupEmpty,
@@ -55,8 +55,8 @@ export function paneAgents({
   sections,
   titleGap,
 }: AgentsPaneBase) {
-  const width = e.props.bodyColumns - 2 - (hasRail ? 5 : 0)
-  const paneWidth = cellWidth(' '.repeat(e.props.bodyColumns - (hasRail ? 5 : 0)))
+  const width = listColumns - 2
+  const paneWidth = cellWidth(' '.repeat(listColumns))
   const treeBridge = (group: string, guides: readonly string[], index = 0) => {
     const prefix = `${' '.repeat(TREE_LINE_AT)}${guides.join('')}│`
     return (
@@ -104,7 +104,7 @@ export function paneAgents({
             </Box>
             <Box flexDirection="row" flexGrow={1} flexShrink={1} minWidth={0}>
               <Box
-                width={Math.max(0, paneWidth - 2 - cellWidth(mark) - (label ? cellWidth(label) + 4 : 0))}
+                width={Math.max(0, paneWidth - 2 - cellWidth(mark) - (label ? cellWidth(label) + 3 : 0))}
                 flexShrink={0}
               >
                 <Text color={color} wrap="truncate-end">

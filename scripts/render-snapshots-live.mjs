@@ -87,7 +87,11 @@ export function ready(entry, frame) {
   if (entry.view === 'prs') return has(marker(entry)) && !has('Refreshing PRs')
   if (entry.view === 'agents' && entry.fixture === 'agents-tree') {
     const connectors = [...frame.matchAll(/├─|└─/gu)].length
-    return ['Orchestrators', 'Meta tasks', 'Local agents'].every(has) && connectors >= 11
+    return (
+      ['Orchestrators', 'Meta tasks', 'Local agents'].every(has) &&
+      connectors >= 11 &&
+      (entry.width !== 87 || ['snapshot-local-worker', 'In progress'].every(has))
+    )
   }
   if (entry.view === 'agents' && entry.fixture === 'agents-busy') {
     const required = [marker(entry), 'Stale', 'In progress', 'Waiting', 'snapshot-local']
@@ -108,11 +112,13 @@ export function ready(entry, frame) {
 }
 async function wait(socket, session, width, predicate, label, mode = 'pane', timeout = 45_000) {
   const end = Date.now() + timeout
+  let previous
   while (Date.now() < end) {
-    const capture = tmux(socket, 'capture-pane', ...(mode === 'ansi' ? ['-e'] : []), '-p', '-t', `${session}:0.0`)
+    const capture = tmux(socket, 'capture-pane', '-N', '-e', '-p', '-t', `${session}:0.0`)
     const crop =
       mode === 'pane' ? cropInboxPane(capture, width) : { text: mode === 'raw' ? stripAnsi(capture) : capture }
-    if (crop && predicate(crop.text)) return crop
+    if (crop && predicate(crop.text) && capture === previous) return { ...crop, capture }
+    previous = capture
     await pause(125)
   }
   throw Error(`timed out waiting for ${label}`)
@@ -287,7 +293,7 @@ export async function capture(entry, pluginDir, root, socket, claude, { feedSour
       frame => ready(entry, frame),
       `${entry.view} ${entry.scenario}`,
     )
-    const ansiFrame = tmux(socket, 'capture-pane', '-N', '-e', '-p', '-t', `${session}:0.0`)
+    const ansiFrame = crop.capture
     process.stdout.write(`CAPTURE ${entry.file}\n`)
     return { entry, frame: crop.text, ansiFrame, paneWidth: crop.paneWidth }
   } finally {

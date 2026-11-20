@@ -66,6 +66,7 @@ test('tree trunks stay continuous through descendant and wrapped rows', () => {
   broken('   │  │  wrap', '      │  wrap')
   broken('   │\n   └─ B', '   \n   └─ B')
   broken('Local agents\n   │', 'Local agents\n   │\n   │', 'duplicate-heading-trunk-column=3')
+  assert.ok(check('Local agents\n   │\n   └─ A\n      │').some(error => error.includes('orphan-trunk-column=6')))
 })
 
 test('Help snapshots open through the existing footer control', () => {
@@ -94,6 +95,10 @@ test('Agents and report readiness wait for settled fixture content', () => {
   assert.equal(ready(agents, 'Orchestrators\nHerdr agent list unavailable; local agent status is not current.'), true)
   const agentsBusy = registry.find(candidate => candidate.fixture === 'agents-busy')
   assert.equal(ready(agentsBusy, 'Meta tasks\nStale\nIn progress\nWaiting\nsnapshot-local…'), true)
+  const tree = registry.find(candidate => candidate.fixture === 'agents-tree' && candidate.width === 87)
+  const treeFrame = `Orchestrators\nMeta tasks\nLocal agents\nsnapshot-local-worker\nIn\nprogress\n${'├─\n'.repeat(11)}`
+  assert.equal(ready(tree, treeFrame.replace('snapshot-local-worker', '')), false)
+  assert.equal(ready(tree, treeFrame), true)
   const report = registry.find(candidate => candidate.view === 'asks-detail' && candidate.scenario === 'busy')
   assert.equal(ready(report, 'Snapshot report\nBack to inbox\nOpening report…'), false)
   assert.equal(

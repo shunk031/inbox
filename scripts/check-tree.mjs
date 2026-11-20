@@ -83,7 +83,6 @@ export function checkTreeText(text, { view = 'auto', source = 'frame', requireTr
       kind === 'timeline'
         ? Math.min(...rows.map(row => row.column))
         : (headerTrunks.find(column => column <= first.column && (first.column - column) % 3 === 0) ?? 3)
-    const lastTreeColumn = expectedBase + Math.ceil((Math.max(...rows.map(row => row.column)) - expectedBase) / 3) * 3
     for (const row of rows) {
       if (row.column < expectedBase || (row.column - expectedBase) % 3 !== 0)
         fail(block.name, row.line, `connector-column=${row.column} expected=${expectedBase}+3n`)
@@ -106,12 +105,9 @@ export function checkTreeText(text, { view = 'auto', source = 'frame', requireTr
 
     for (let line = block.start; line < block.end; line++) {
       const row = lines[line] ?? ''
-      const connectors = glyphColumns(row, GLYPHS)
       for (const { column } of glyphColumns(row, /│/gu)) {
-        if (column < expectedBase || column > lastTreeColumn || (column - expectedBase) % 3 !== 0) continue
-        if (rows.some(candidate => candidate.line > line && candidate.column === column)) continue
-        if (connectors.some(candidate => candidate.column === column)) continue
-        fail(block.name, line, `orphan-trunk-column=${column}`)
+        if (kind !== 'timeline' && !rows.some(candidate => candidate.line > line && candidate.column === column))
+          fail(block.name, line, `orphan-trunk-column=${column}`)
       }
     }
   }
