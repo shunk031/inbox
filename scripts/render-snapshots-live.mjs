@@ -233,7 +233,7 @@ export async function capture(entry, pluginDir, root, socket, claude) {
         ? 'Snapshot empty report'
         : entry.fixture === 'detail-busy'
           ? 'Snapshot report'
-          : entry.fixture === 'agents-busy' || entry.fixture === 'agents-tree' || entry.fixture.endsWith('empty')
+          : entry.fixture.endsWith('empty')
             ? 'Nothing needed'
             : 'Snapshot question'
     await wait(
