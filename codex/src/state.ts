@@ -31,7 +31,7 @@ import {
 } from '../../hooks/session-files'
 import { pruned } from '../../hooks/session-presses'
 import { diagnosticLines } from './diagnostics'
-import { isShownTab } from '../../hooks/tabs'
+import { upgradeShownTab } from '../../hooks/tabs'
 import type { ShownTab } from '../../hooks/tabs'
 
 /** A failed `codex exec` call as builds before `callFailures` saved it, with the fields each build added. */
@@ -233,7 +233,7 @@ function upgraded(saved: Saved, sessionId: string): SessionState {
       turn,
       pending: (saved.pending ?? []).map(({ ex: { checks: _exChecks, ...ex }, ...p }) => ({ ...p, ex })),
     }),
-    shownTab: saved.shownTab === 'findings' ? 'needsYou' : isShownTab(saved.shownTab) ? saved.shownTab : base.shownTab,
+    shownTab: upgradeShownTab(saved.shownTab, base.shownTab),
     heard,
     ...(saved.callFailures ? {} : { callFailures: withSavedFailure(saved) }),
     coveredTurn: saved.coveredTurn !== undefined ? saved.coveredTurn : coveredBefore(heard, turn.person ?? null),

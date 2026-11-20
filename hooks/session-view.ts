@@ -21,7 +21,6 @@ import { statusPage } from './status-page'
 import { applyTaskOwnerFacts, taskOwnerKey } from './task-facts'
 import { timelineData } from './timeline-page'
 import type { TimelineData } from './timeline-page'
-import type { AgentSourceOverrides, AgentsPageInput } from './agents-page'
 import type { InboxView } from './view'
 import type { StatusPage } from './status-page'
 import type { Holds } from './timing'
@@ -75,7 +74,6 @@ export type SessionView = InboxView & {
   statusPage: StatusPage
   /** The task tree, progress bars, stall ages and warnings shared by the Timeline adapters. */
   timeline: TimelineData
-  agents: AgentsPageInput
   /** Weighted task progress, with working tasks whose owners are not working counted as stalled. */
   taskProgressSegments: TaskProgressSegments
   /** Derived start times for stalled task and Progress rows, keyed by their ids. */
@@ -130,7 +128,6 @@ export function sessionView(
   holds: Holds = NO_HOLDS,
   notes: Record<string, RowNote> = {},
   timelineTaskTree: TaskTree = s.taskTree,
-  agentOverrides: AgentSourceOverrides = {},
 ): SessionView {
   const l = s.ledger
   const lastActions = withoutStalePending(s.lastActions, now)
@@ -179,15 +176,6 @@ export function sessionView(
       now,
       s.taskStatusMismatches,
     ),
-    agents: {
-      feedRows: agentOverrides.feedRows ?? l.findings,
-      taskTree: timelineTaskTree,
-      ownerFacts: agentOverrides.ownerFacts ?? ownerFacts,
-      progress: timelineOwnerView.segments,
-      localAgents: agentOverrides.localAgents ?? [],
-      localAgentsUnavailable: agentOverrides.localAgentsUnavailable,
-      now,
-    },
     taskProgressSegments: taskOwnerView.segments,
     taskStalledSince: taskOwnerView.stalledSince,
     feedStalledSince,

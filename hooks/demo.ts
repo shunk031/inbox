@@ -1,4 +1,4 @@
-import type { DemoCopy, Finding, Session, Subject } from '../types'
+import type { DemoCopy, Session, Subject } from '../types'
 import { emptySession } from './session-files'
 import { demoTaskTree } from './demo-timeline'
 import { taskTreeFromStatus } from './task-tree'
@@ -81,40 +81,8 @@ function subject(
 
 /** The sample. `agent` names the agent that closed its closed items, as a real close does. */
 export function demoView(now: number, agent: string): DemoCopy {
-  const agentFeedRows: Finding[] = [
-    {
-      id: 'demo-root-feed',
-      kind: 'progress',
-      title: 'Root status',
-      detail: 'Working on the saved view.',
-      path: null,
-      at: now - 3 * MIN,
-      feedKey: 'herdr/workstation/meta',
-      feedSource: 'demo',
-      feedOwned: true,
-      owner: { machine: 'workstation', agent: 'meta' },
-      ownerFact: { state: 'working', since: now - 3 * MIN },
-    },
-    {
-      id: 'demo-feed-progress',
-      kind: 'progress',
-      title: 'Review the Japanese copy',
-      detail: 'Blocked: waiting for the copy review.',
-      path: null,
-      at: now - 8 * MIN,
-      feedKey: 'subagent/demo/copy-review',
-      feedSource: 'demo',
-      feedOwned: true,
-    },
-  ]
-
   return {
     timelineTaskTree: demoTaskTree(now),
-    agentFeedRows,
-    localAgents: [
-      { machine: 'workstation', name: 'reviewer', status: 'working' },
-      { machine: 'workstation', name: 'builder', status: 'blocked' },
-    ],
     ledger: {
       overview: {
         head: { title: 'Pinch to dismiss', description: 'Adding a pinch that dismisses glances' },

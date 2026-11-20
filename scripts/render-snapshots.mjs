@@ -46,16 +46,13 @@ async function main() {
   for (const [name, item] of frames) {
     const file = path.join(baseline, name)
     const rendered = `${item.frame}\n`
-    // The old Agents fixtures predate the connector change; compare the new tree fixture instead.
-    if (item.entry.fixture !== 'agents-busy') {
-      if (process.env.UPDATE_SNAPSHOTS === '1') writeFileSync(file, rendered)
-      else if (!existsSync(file))
-        errors.push(failure(item.entry, 'snapshot inventory', name, 'missing', 'baseline missing'))
-      else {
-        const expected = readFileSync(file, 'utf8').replace(/\n$/u, '')
-        if (expected !== item.frame)
-          errors.push(failure(item.entry, 'baseline', 'same pane frame', 'different', 'frame differs'))
-      }
+    if (process.env.UPDATE_SNAPSHOTS === '1') writeFileSync(file, rendered)
+    else if (!existsSync(file))
+      errors.push(failure(item.entry, 'snapshot inventory', name, 'missing', 'baseline missing'))
+    else {
+      const expected = readFileSync(file, 'utf8').replace(/\n$/u, '')
+      if (expected !== item.frame)
+        errors.push(failure(item.entry, 'baseline', 'same pane frame', 'different', 'frame differs'))
     }
     errors.push(...checkFrame(item.entry, item.frame, item.paneWidth))
     errors.push(...checkChipBoxes(item.entry, item.ansiFrame, item.paneWidth))
@@ -73,7 +70,7 @@ async function main() {
   }
   runMutationProofs(frames)
   const summary = `PASS ${registry.length} live pane snapshots`
-  const coverage = `${VIEWS.length} views × ${SCENARIOS.length} scenarios × 2 widths + 2 Asks widths + 3 Agents tree widths + 1 Timeline case × 2 widths`
+  const coverage = `${VIEWS.length} views × ${SCENARIOS.length} scenarios × 2 widths + 2 Asks widths + Timeline fold × 2 widths + detail layout × 3 widths`
   process.stdout.write(`${summary} (${coverage})\n`)
 }
 main().catch(error => {

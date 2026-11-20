@@ -1,12 +1,75 @@
 import { expect, mock, test } from 'claude-code/testing'
 import { TAB_HEIGHT, tabLines, type TabsProps } from '../hooks/tabs-client'
 import { cellWidth } from '../hooks/text'
-import { shownTabs, tabBadge } from '../hooks/tabs'
+import { shownTabs, tabBadge, screenTabOf, upgradePageTab, upgradeShownTab } from '../hooks/tabs'
+import { screenText } from '../hooks/inbox-text'
+import { CLAUDE_CODE } from '../hooks/model-text'
+import { CODEX } from '../codex/src/texts'
+import { OMP } from '../omp/src/texts'
 import { w, world } from './hooks-world'
 import { PANE, SAVED_SESSION, seedTasks } from './hooks-helpers'
 
 test('Timeline draws its open-task count even when it is zero', () => {
   expect(tabBadge('timeline', { needsYou: 0, findings: 0, prs: 0, timeline: 0 })).toBe('0')
+})
+
+test('remaining tabs keep the exact screen text read by each host', () => {
+  const labels = {
+    needsYou: 'Asks',
+    timeline: 'Timeline',
+    prs: 'PRs',
+    overview: 'Status',
+  } as const
+  const pageTabs = new Set(['timeline', 'overview'])
+  const expected: Record<string, Record<keyof typeof labels, string>> = {
+    'the /inbox pane': {
+      needsYou: 'The /inbox pane is open beside the conversation, on its Asks tab, listing every open item.',
+      timeline:
+        "The /inbox pane is open beside the conversation, on its Timeline tab, which shows a guide to the session's work, not rows.",
+      prs: 'The /inbox pane is open beside the conversation, on its PRs tab, listing every open item.',
+      overview:
+        "The /inbox pane is open beside the conversation, on its Status tab, which shows a guide to the session's work, not rows.",
+    },
+    'the Inbox tab': {
+      needsYou: 'The Inbox tab is open beside the conversation, on its Asks tab, listing every open item.',
+      timeline:
+        "The Inbox tab is open beside the conversation, on its Timeline tab, which shows a guide to the session's work, not rows.",
+      prs: 'The Inbox tab is open beside the conversation, on its PRs tab, listing every open item.',
+      overview:
+        "The Inbox tab is open beside the conversation, on its Status tab, which shows a guide to the session's work, not rows.",
+    },
+    'the /inbox panel': {
+      needsYou: 'The /inbox panel is open beside the conversation, on its Asks tab, listing every open item.',
+      timeline:
+        "The /inbox panel is open beside the conversation, on its Timeline tab, which shows a guide to the session's work, not rows.",
+      prs: 'The /inbox panel is open beside the conversation, on its PRs tab, listing every open item.',
+      overview:
+        "The /inbox panel is open beside the conversation, on its Status tab, which shows a guide to the session's work, not rows.",
+    },
+  }
+  for (const host of [CLAUDE_CODE, CODEX, OMP]) {
+    const hostExpected = expected[host.surface]!
+    for (const [tab, label] of Object.entries(labels)) {
+      expect(screenText(host, true, screenTabOf(tab as keyof typeof labels))).toBe(
+        hostExpected[tab as keyof typeof labels],
+      )
+      expect(screenTabOf(tab as keyof typeof labels)).toEqual({ label, isPage: pageTabs.has(tab) })
+    }
+  }
+})
+
+test('a saved Agents page upgrades to Timeline with Timeline’s existing screen text', () => {
+  expect(upgradePageTab('agents')).toBe('timeline')
+  expect(upgradeShownTab('agents')).toBe('timeline')
+  for (const host of [CLAUDE_CODE, CODEX, OMP]) {
+    expect(screenText(host, true, screenTabOf(upgradePageTab('agents')!))).toBe(
+      host.surface === 'the /inbox pane'
+        ? "The /inbox pane is open beside the conversation, on its Timeline tab, which shows a guide to the session's work, not rows."
+        : host.surface === 'the Inbox tab'
+          ? "The Inbox tab is open beside the conversation, on its Timeline tab, which shows a guide to the session's work, not rows."
+          : "The /inbox panel is open beside the conversation, on its Timeline tab, which shows a guide to the session's work, not rows.",
+    )
+  }
 })
 
 test('the pane footer shows the version from the plugin manifest', async ($, on) => {

@@ -38,7 +38,7 @@ export const holdsUpLineOf = (r: RowView | undefined) => (mod.isNextBuild ? (r?.
 
 export const childPos = (n: number, count: number): TreePos => (n === count - 1 ? 'last' : 'mid')
 
-export function treeGlyph(Text: PaneBase['Text'], color: string, text: string) {
+function treeGlyph(Text: PaneBase['Text'], color: string, text: string) {
   return <Text color={color}>{text}</Text>
 }
 

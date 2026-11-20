@@ -85,21 +85,6 @@ export function ready(entry, frame) {
   const has = text => pageMarker(frame, text)
   if (entry.view === 'help') return has('Keys') && has('Tabs') && frame.includes('●  Working')
   if (entry.view === 'prs') return has(marker(entry)) && !has('Refreshing PRs')
-  if (entry.view === 'agents' && entry.fixture === 'agents-tree') {
-    const connectors = [...frame.matchAll(/├─|└─/gu)].length
-    return (
-      ['Orchestrators', 'Meta tasks', 'Local agents'].every(has) &&
-      connectors >= 11 &&
-      (entry.width !== 87 || ['snapshot-local-worker', 'In progress'].every(has))
-    )
-  }
-  if (entry.view === 'agents' && entry.fixture === 'agents-busy') {
-    const required = [marker(entry), 'Stale', 'In progress', 'Waiting', 'snapshot-local']
-    const missing = required.filter(text => !has(text))
-    return missing.length === 0
-  }
-  if (entry.view === 'agents')
-    return has(marker(entry)) && has('Herdr agent list unavailable; local agent status is not current.')
   if (entry.view === 'timeline-detail') return has('Snapshot') && has('Back')
   if (entry.view === 'asks-detail')
     return (
@@ -112,16 +97,18 @@ export function ready(entry, frame) {
 }
 async function wait(socket, session, width, predicate, label, mode = 'pane', timeout = 45_000) {
   const end = Date.now() + timeout
+  let last = ''
   let previous
   while (Date.now() < end) {
     const capture = tmux(socket, 'capture-pane', '-N', '-e', '-p', '-t', `${session}:0.0`)
     const crop =
       mode === 'pane' ? cropInboxPane(capture, width) : { text: mode === 'raw' ? stripAnsi(capture) : capture }
+    last = crop?.text ?? stripAnsi(capture).slice(-1600)
     if (crop && predicate(crop.text) && capture === previous) return { ...crop, capture }
     previous = capture
     await pause(125)
   }
-  throw Error(`timed out waiting for ${label}`)
+  throw Error(`timed out waiting for ${label}${last ? `\nLast frame:\n${last}` : ''}`)
 }
 async function press(socket, session, width, key, predicate, label, timeout = 15_000) {
   const end = Date.now() + timeout
@@ -153,14 +140,6 @@ function writeConfig(config, home, pluginDir, sessionId, fixture) {
   const fakeGh = path.join(bin, 'gh')
   writeFileSync(fakeGh, '#!/bin/sh\nprintf "gh is disabled in render snapshot fixtures\\n" >&2\nexit 1\n')
   chmodSync(fakeGh, 0o755)
-  if (fixture === 'agents-busy' || fixture === 'agents-tree') {
-    const fakeHerdr = path.join(bin, 'herdr')
-    writeFileSync(
-      fakeHerdr,
-      `#!/bin/sh\nprintf '%s\\n' '{"result":{"agents":[{"name":"snapshot-local-worker","agent_status":"working"}]}}'\n`,
-    )
-    chmodSync(fakeHerdr, 0o755)
-  }
   return bin
 }
 export function storeKeys(env = process.env) {
@@ -200,6 +179,7 @@ export async function capture(entry, pluginDir, root, socket, claude) {
   const home = path.join(run, 'home')
   const config = path.join(run, 'config')
   const tmp = path.join(run, 'tmp')
+  const terminalWidth = entry.terminalWidth ?? entry.width
   for (const dir of [home, config, tmp]) mkdirSync(dir, { recursive: true })
   isolate(root, home, config)
   const id = randomUUID()
@@ -229,7 +209,7 @@ export async function capture(entry, pluginDir, root, socket, claude) {
       '-s',
       session,
       '-x',
-      String(entry.width),
+      String(terminalWidth),
       '-y',
       String(entry.height ?? HEIGHT),
       '-c',
@@ -239,7 +219,7 @@ export async function capture(entry, pluginDir, root, socket, claude) {
     await wait(
       socket,
       session,
-      entry.width,
+      terminalWidth,
       frame => pageMarker(frame, '❯') || pageMarker(frame, 'Open inbox'),
       'Claude prompt',
       'raw',
@@ -247,10 +227,36 @@ export async function capture(entry, pluginDir, root, socket, claude) {
     )
     send(socket, session, '/inbox', true)
     send(socket, session, 'Enter')
+    const initial =
+      entry.view === 'asks' && entry.width <= 87
+        ? 'Asks'
+        : entry.fixture.startsWith('timeline-detail-layout')
+          ? 'Timeline'
+          : entry.fixture === 'detail-empty'
+            ? 'Snapshot empty report'
+            : entry.fixture === 'detail-busy'
+              ? 'Snapshot report'
+              : entry.fixture.endsWith('empty')
+                ? 'Nothing needed'
+                : 'Snapshot question'
     const initialPane = entry.view === 'asks' && entry.width <= 87 ? 'raw' : 'pane'
-    await wait(socket, session, entry.width, frame => pageMarker(frame, 'Asks'), 'initial inbox pane', initialPane)
+    await wait(
+      socket,
+      session,
+      terminalWidth,
+      frame => pageMarker(frame, initial),
+      `initial inbox pane for ${entry.fixture}`,
+      initialPane,
+    )
     const timelineDetail = frame =>
-      pageMarker(frame, entry.scenario === 'empty' ? 'Snapshot detail empty' : 'Snapshot root')
+      pageMarker(
+        frame,
+        entry.fixture.startsWith('timeline-detail-layout')
+          ? 'Snapshot timeline'
+          : entry.scenario === 'empty'
+            ? 'Snapshot detail empty'
+            : 'Snapshot root',
+      )
     const childSelected = frame => {
       const row = frame.split('\n').find(line => line.includes('折り返し用'))
       return row?.slice(0, row.indexOf('折り返し用')).includes('>') ?? false
@@ -261,12 +267,11 @@ export async function capture(entry, pluginDir, root, socket, claude) {
         ['2', timelineDetail],
         ['Enter', frame => ready(entry, frame)],
       ],
-      agents: [['3', frame => ready(entry, frame)]],
-      prs: [['4', frame => ready(entry, frame)]],
+      prs: [['3', frame => ready(entry, frame)]],
       'asks-detail': [['v', frame => ready(entry, frame)]],
     }
     for (const [key, predicate] of steps[entry.view] ?? [])
-      await press(socket, session, entry.width, key, predicate, `${entry.view} ${entry.scenario} ${key}`)
+      await press(socket, session, terminalWidth, key, predicate, `${entry.view} ${entry.scenario} ${key}`)
     if (entry.view === 'help') {
       await focusHelp(socket, session)
       send(socket, session, 'Enter')
@@ -274,7 +279,7 @@ export async function capture(entry, pluginDir, root, socket, claude) {
     const crop = await wait(
       socket,
       session,
-      entry.width,
+      terminalWidth,
       frame => ready(entry, frame),
       `${entry.view} ${entry.scenario}`,
     )

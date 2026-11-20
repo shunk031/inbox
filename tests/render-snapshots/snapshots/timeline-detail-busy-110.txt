@@ -1,7 +1,7 @@
                                      ✕
- ▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄▄ ▄▄▄▄▄
-  Asks 1   Timeline 3   Agents   PRs
-─▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀─▀▀▀▀▀──
+ ▄▄▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄
+   Asks 1     Timeline 3     PRs
+─▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀─────
 
  b: ‹ Back Snapshot …     In progress
 
@@ -15,19 +15,19 @@
  │ 1 / 2                             │
  └───────────────────────────────────┘
 
-      Current
-      The root task has a stable note.
-      · 1m
+ Detail
+ An invented root task with a long CJK
+ title.
 
-      Detail
-      An invented root task with a
-      long CJK title.
+ Note
+ The root task has a stable note.
 
-      Note
-      The root task has a stable note.
+ History
+ 1m · fixture · Task created
 
-      History
-      1m · fixture · Task created
+
+
+
 
 
 

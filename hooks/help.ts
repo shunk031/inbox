@@ -118,8 +118,8 @@ export const HELP_COPY = { open: 'Help', close: '✕ Close help', keys: 'Keys', 
 export type HelpKey = { keys: string; does: string }
 
 /** The symbol each tab draws where its name does not fit, with its name, in Help's key layout. */
-export function tabLegend(isNextBuild: boolean, includeTimeline = false, includeAgents = false): HelpKey[] {
-  return shownTabs(isNextBuild, includeTimeline, includeAgents).map(t => ({ keys: t.symbol, does: t.label }))
+export function tabLegend(isNextBuild: boolean, includeTimeline = false): HelpKey[] {
+  return shownTabs(isNextBuild, includeTimeline).map(t => ({ keys: t.symbol, does: t.label }))
 }
 
 /** The key that presses Undo, which no row's selection holds: a closed row settles and the selection moves on. */
@@ -146,9 +146,8 @@ export function helpKeys(
   tab: ShownTab,
   hasStatusButtons: boolean,
   includeTimeline = false,
-  includeAgents = false,
 ): HelpKey[] {
-  const tabKeys = shownTabs(isNextBuild, includeTimeline, includeAgents)
+  const tabKeys = shownTabs(isNextBuild, includeTimeline)
     .map(t => t.hotkey)
     .join(' ')
   const hasRows = isRowTab(tab)

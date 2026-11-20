@@ -151,9 +151,8 @@ function timelineLine(line: Line, plan: TimelineLinePlan, isSelected: boolean, d
     } else {
       out.push(`${row.detailLead}${s.dim(detail.label)}`)
       const indent = detailIndent + 2
-      out.push(
-        ...wrapTimelineText(detail.text, Math.max(1, width - indent)).map(text => `${' '.repeat(indent)}${text}`),
-      )
+      for (const text of detail.text.split('\n'))
+        out.push(...wrapTimelineText(text, Math.max(1, width - indent)).map(text => `${' '.repeat(indent)}${text}`))
     }
   }
   return out

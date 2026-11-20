@@ -5,11 +5,11 @@ import type { TimelinePage } from './timeline-page'
 
 type TimelineStyle = Pick<PaneBase, 'Box' | 'Text' | 'pal'>
 
-export function timelineToneColor(pal: PaneBase['pal'], tone: string) {
+function timelineToneColor(pal: PaneBase['pal'], tone: string) {
   return tone === 'key' ? pal.key : tone === 'muted' ? pal.muted : (pal.tone[tone as 'done' | 'error'] ?? pal.muted)
 }
 
-export function timelineChip({ Box, Text, pal }: TimelineStyle, label: string, tone: string, key?: string) {
+function timelineChip({ Box, Text, pal }: TimelineStyle, label: string, tone: string, key?: string) {
   return (
     <Box key={key} backgroundColor={timelineToneColor(pal, tone)} paddingX={1}>
       <Text color="inverseText">{label}</Text>
@@ -30,10 +30,6 @@ function terminalTreeLead(row: TimelinePage['rows'][number], cells: number) {
   const siblingGuide = row.depth > 0 ? (row.hasLaterSibling ? '│  ' : '   ') : ''
   const childGuide = row.hasVisibleChildren ? '│  ' : '   '
   return padToCells(`  ${row.guides.join('')}${siblingGuide}${childGuide}`, cells)
-}
-
-export function timelineRowBackground(pal: PaneBase['pal'], alternate: boolean) {
-  return alternate ? (pal.card ?? pal.line) : undefined
 }
 
 type TimelinePaneBase = Pick<
@@ -117,7 +113,7 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
               {selection?.details.map(line =>
                 line.label === 'Links' ? (
                   <Box flexDirection="row">
-                    <Text color={pal.muted}>{`${row.detailLead}Links · `}</Text>
+                    <Text color={pal.muted}>Links · </Text>
                     {line.actions.map(link => (
                       <Box key={`${link.label}-${row.task.id}`} flexDirection="row">
                         <Button
@@ -134,8 +130,13 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
                       </Box>
                     ))}
                   </Box>
+                ) : line.label === 'History' ? (
+                  <Box flexDirection="column">
+                    <Text color={pal.muted}>History</Text>
+                    <Text color={pal.muted}>{line.text}</Text>
+                  </Box>
                 ) : (
-                  <Text color={pal.muted}>{`${row.detailLead}${line.label} · ${line.text}`}</Text>
+                  <Text color={pal.muted}>{`${line.label} · ${line.text}`}</Text>
                 ),
               )}
             </Box>
@@ -206,7 +207,6 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
   )
 
   const selected = page.selected
-  const detailLead = selected ? ' '.repeat(cellWidth(selected.row.detailLead)) : ''
   const detailTitle = selected
     ? cellWidth(selected.row.task.title) > Math.max(1, bodyColumns - 27)
       ? `${cutToCells(selected.row.task.title, Math.max(0, bodyColumns - 28))}…`
@@ -244,9 +244,6 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
       </Box>
       {selected.details.map((line, index) => (
         <Box key={`timeline-detail-row-${index}`} flexDirection="row" alignItems="flex-start">
-          <Box key={`timeline-detail-lead-${index}`} width={widthForCells(detailLead)} flexShrink={0}>
-            <Text>{detailLead}</Text>
-          </Box>
           {line.label === 'Links' ? (
             <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
               <Text color={pal.muted}>Links</Text>

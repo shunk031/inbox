@@ -1,7 +1,7 @@
 import type { Place } from './status'
 import type { TurnDialogQuestion } from './items'
 import type { LastAction, RowNote } from './press'
-import type { Finding, Ledger, PrView } from './ledger'
+import type { Ledger, PrView } from './ledger'
 import type { TaskFactWarning, TaskOwnerFacts, TaskPrState, TaskStatusMismatch, TaskTree } from './task-tree'
 
 /** Why the session halted outside the conversation, from the error Claude Code classified it with. */
@@ -39,7 +39,7 @@ export type OldPresence = Away & {
 export type Tab = 'needsYou' | 'findings' | 'prs'
 
 /** A tab that shows a page instead of rows. `'overview'` is the Status tab, under the id it was saved with. */
-export type PageTab = 'overview' | 'timeline' | 'agents'
+export type PageTab = 'overview' | 'timeline'
 
 /**
  * A tab's open row: its id, its position, and when a click or key opened it.
@@ -101,10 +101,6 @@ export type DemoCopy = {
   notes: Record<string, RowNote>
   /** Sample task tree shown only by Timeline; Status keeps its own sample rows. */
   timelineTaskTree: TaskTree
-  /** Sample feed rows shown only by Agents. */
-  agentFeedRows?: Finding[]
-  /** Sample local Herdr agents shown only by Agents. */
-  localAgents?: { machine: string; name: string; status: 'idle' | 'working' | 'blocked' | 'done' | 'unknown' }[]
   turns: Turns
 }
 

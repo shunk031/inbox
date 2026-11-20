@@ -1,5 +1,5 @@
 // Built by herdr/build.ts with Bun 1.4.4 from herdr/src and hooks/. Do not edit.
-// Built at 2026-11-20T16:40:33.450Z. 227254 characters follow.
+// Built at 2026-11-20T18:29:06.130Z. 226519 characters follow.
 
 // src/main.ts
 import { View, div as div5 } from "gpui-kit";
@@ -82,16 +82,13 @@ var TAB_NAMES = [
   { id: "overview", label: "Status", symbol: "\uD83E\uDDED" },
   { id: "needsYou", label: "Asks", symbol: "\uD83D\uDE4B" },
   { id: "timeline", label: "Timeline", symbol: "◷" },
-  { id: "agents", label: "Agents", symbol: "♟" },
   { id: "prs", label: "PRs", symbol: "\uD83D\uDD00" }
 ];
 var numbered = (tabs) => tabs.map((t, n) => ({ ...t, hotkey: String(n + 1) }));
-function shownTabs(isNextBuild, includeTimeline = false, includeAgents = false) {
-  return numbered(TAB_NAMES.filter((tab) => (isNextBuild || tab.id !== "overview") && (includeTimeline || tab.id !== "timeline") && (includeAgents || tab.id !== "agents")));
+function shownTabs(isNextBuild, includeTimeline = false) {
+  return numbered(TAB_NAMES.filter((tab) => (isNextBuild || tab.id !== "overview") && (includeTimeline || tab.id !== "timeline")));
 }
-function tabBadge(id, counts, agentsAttentionCount = 0) {
-  if (id === "agents")
-    return agentsAttentionCount > 0 ? String(agentsAttentionCount) : null;
+function tabBadge(id, counts) {
   if (id === "timeline" && counts.timeline !== undefined)
     return String(counts.timeline);
   return isRowTab(id) && counts[id] > 0 ? String(counts[id]) : null;
@@ -1475,8 +1472,8 @@ var DOCUMENT_KEYS = [
   { keys: "v", does: "Read the selected report, if available" },
   { keys: "b", does: "Return to the inbox from a report" }
 ];
-function helpKeys(look, isNextBuild, tab, hasStatusButtons, includeTimeline = false, includeAgents = false) {
-  const tabKeys = shownTabs(isNextBuild, includeTimeline, includeAgents).map((t) => t.hotkey).join(" ");
+function helpKeys(look, isNextBuild, tab, hasStatusButtons, includeTimeline = false) {
+  const tabKeys = shownTabs(isNextBuild, includeTimeline).map((t) => t.hotkey).join(" ");
   const hasRows = isRowTab(tab);
   const selectsTimelineRows = tab === "timeline";
   const hasDocumentRows = tab === "needsYou";
@@ -3571,12 +3568,10 @@ var BAR_TONES = {
 var BAR_STATES = Object.keys(BAR_MARKS);
 function timelineTask(task, now) {
   const { createdAt: _createdAt, updatedAt, history, ...details } = task;
-  const current = currentTaskText(task);
   return {
     ...details,
     updatedAgo: shortAgo(now - updatedAt),
-    currentText: current ? { ...current, ago: shortAgo(now - current.at) } : null,
-    history: history.map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) }))
+    history: history.toSorted((a, b) => a.at - b.at).map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) }))
   };
 }
 function percent(value) {
@@ -3755,7 +3750,7 @@ function updateRecovery(s) {
     return "unreadable";
   return presence.failedAttempts > 1 ? "failed-again" : "waiting";
 }
-function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timelineTaskTree = s.taskTree, agentOverrides = {}) {
+function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timelineTaskTree = s.taskTree) {
   const l = s.ledger;
   const lastActions = withoutStalePending(s.lastActions, now);
   const inbox = inboxView({
@@ -3793,15 +3788,6 @@ function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timel
     prs: prTabOf(s, lastActions, now, holds, settleWindowMs),
     statusPage: statusPage(s, now, new Set(Object.keys(taskOwnerView.stalledSince))),
     timeline: timelineData(timelineTaskTree, timelineOwnerView.segments, timelineOwnerView.stalledSince, taskTimelineWarnings(s, timelineTaskTree, now), now, s.taskStatusMismatches),
-    agents: {
-      feedRows: agentOverrides.feedRows ?? l.findings,
-      taskTree: timelineTaskTree,
-      ownerFacts: agentOverrides.ownerFacts ?? ownerFacts,
-      progress: timelineOwnerView.segments,
-      localAgents: agentOverrides.localAgents ?? [],
-      localAgentsUnavailable: agentOverrides.localAgentsUnavailable,
-      now
-    },
     taskProgressSegments: taskOwnerView.segments,
     taskStalledSince: taskOwnerView.stalledSince,
     feedStalledSince,

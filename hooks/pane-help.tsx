@@ -23,8 +23,7 @@ export function paneHelp({
   statusRowLine,
   isNextBuild,
   includeTimeline,
-  includeAgents,
-}: { isNextBuild: boolean; includeTimeline?: boolean; includeAgents?: boolean } & Pick<
+}: { isNextBuild: boolean; includeTimeline?: boolean } & Pick<
   PaneBase,
   'pal' | 'keyList' | 'Box' | 'keyColumn' | 'Text' | 'hasRail'
 > &
@@ -61,7 +60,7 @@ export function paneHelp({
   const helpTabsSection = () =>
     section([
       groupTitle(HELP_COPY.tabs, 0),
-      ...keyRows(tabLegend(isNextBuild, includeTimeline, includeAgents), 'help-tab', Math.max(keyColumn, 4)),
+      ...keyRows(tabLegend(isNextBuild, includeTimeline), 'help-tab', Math.max(keyColumn, 4)),
     ])
   const helpMarksSection = () =>
     section([

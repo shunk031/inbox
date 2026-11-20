@@ -1782,12 +1782,11 @@ var TAB_NAMES = [
   { id: "overview", label: "Status", symbol: "\uD83E\uDDED" },
   { id: "needsYou", label: "Asks", symbol: "\uD83D\uDE4B" },
   { id: "timeline", label: "Timeline", symbol: "\u25F7" },
-  { id: "agents", label: "Agents", symbol: "\u265F" },
   { id: "prs", label: "PRs", symbol: "\uD83D\uDD00" }
 ];
 var numbered = (tabs) => tabs.map((t, n) => ({ ...t, hotkey: String(n + 1) }));
-function shownTabs(isNextBuild, includeTimeline = false, includeAgents = false) {
-  return numbered(TAB_NAMES.filter((tab) => (isNextBuild || tab.id !== "overview") && (includeTimeline || tab.id !== "timeline") && (includeAgents || tab.id !== "agents")));
+function shownTabs(isNextBuild, includeTimeline = false) {
+  return numbered(TAB_NAMES.filter((tab) => (isNextBuild || tab.id !== "overview") && (includeTimeline || tab.id !== "timeline")));
 }
 function inboxCommandText(isNextBuild) {
   return isNextBuild ? "Show where this session stands and what waits on you" : "Show this session's questions, task plan and PRs";
@@ -1803,9 +1802,7 @@ function fitTabs(layouts, fits) {
         return { naming, layout };
   return { naming: "symbols", layout: layouts.at(-1) };
 }
-function tabBadge(id, counts, agentsAttentionCount = 0) {
-  if (id === "agents")
-    return agentsAttentionCount > 0 ? String(agentsAttentionCount) : null;
+function tabBadge(id, counts) {
   if (id === "timeline" && counts.timeline !== undefined)
     return String(counts.timeline);
   return isRowTab(id) && counts[id] > 0 ? String(counts[id]) : null;
@@ -3882,8 +3879,8 @@ function markLegend(isNextBuild) {
   return isNextBuild ? MARK_LEGEND : MARK_LEGEND.filter((m) => !STATUS_ONLY_MARKS.has(m.mark));
 }
 var HELP_COPY = { open: "Help", close: "\u2715 Close help", keys: "Keys", marks: "Marks", tabs: "Tabs" };
-function tabLegend(isNextBuild, includeTimeline = false, includeAgents = false) {
-  return shownTabs(isNextBuild, includeTimeline, includeAgents).map((t) => ({ keys: t.symbol, does: t.label }));
+function tabLegend(isNextBuild, includeTimeline = false) {
+  return shownTabs(isNextBuild, includeTimeline).map((t) => ({ keys: t.symbol, does: t.label }));
 }
 var UNDO_KEY = "u";
 var PR_TAB_HELP_KEYS = [
@@ -3894,8 +3891,8 @@ var DOCUMENT_KEYS = [
   { keys: "v", does: "Read the selected report, if available" },
   { keys: "b", does: "Return to the inbox from a report" }
 ];
-function helpKeys(look, isNextBuild, tab, hasStatusButtons, includeTimeline = false, includeAgents = false) {
-  const tabKeys = shownTabs(isNextBuild, includeTimeline, includeAgents).map((t) => t.hotkey).join(" ");
+function helpKeys(look, isNextBuild, tab, hasStatusButtons, includeTimeline = false) {
+  const tabKeys = shownTabs(isNextBuild, includeTimeline).map((t) => t.hotkey).join(" ");
   const hasRows = isRowTab(tab);
   const selectsTimelineRows = tab === "timeline";
   const hasDocumentRows = tab === "needsYou";
@@ -7909,14 +7906,14 @@ var HISTORY_TEXT = {
   note: "Note added",
   imported: "Task imported"
 };
+var timelineHistoryText = (events) => events.map(({ time, source, kind, detail }) => [time, source, kind === "note" ? HISTORY_TEXT.note : detail ?? HISTORY_TEXT[kind]].join(" \xB7 ")).join(`
+`);
 function timelineTask(task, now) {
   const { createdAt: _createdAt, updatedAt, history, ...details } = task;
-  const current = currentTaskText(task);
   return {
     ...details,
     updatedAgo: shortAgo(now - updatedAt),
-    currentText: current ? { ...current, ago: shortAgo(now - current.at) } : null,
-    history: history.map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) }))
+    history: history.toSorted((a, b) => a.at - b.at).map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) }))
   };
 }
 function percent(value) {
@@ -8109,7 +8106,6 @@ function timelinePage(data, selectedId, folded, lastActions = {}, isDetailOpen =
       detail: "",
       notes: [],
       updatedAgo: "",
-      currentText: null,
       history: [],
       links: {}
     },
@@ -8223,18 +8219,9 @@ function timelinePage(data, selectedId, folded, lastActions = {}, isDetailOpen =
   const selectedRow = selected ? drawnRows.find((row) => row.task.id === selected.task.id) : null;
   const selectedLinks = selectedRow ? timelineLinkPlan(selectedRow.task, lastActions) : [];
   const details = selectedRow ? [
-    ...selectedRow.task.currentText ? [
-      {
-        label: "Current",
-        text: `${selectedRow.task.currentText.text} \xB7 ${selectedRow.task.currentText.ago}`
-      }
-    ] : [],
     ...selectedRow.task.detail ? [{ label: "Detail", text: selectedRow.task.detail }] : [],
     ...selectedRow.task.notes.map((text) => ({ label: "Note", text })),
-    ...selectedRow.task.history.map((event) => ({
-      label: "History",
-      text: `${event.time} \xB7 ${event.source} \xB7 ${event.detail ?? HISTORY_TEXT[event.kind]}`
-    })),
+    ...selectedRow.task.history.length ? [{ label: "History", text: timelineHistoryText(selectedRow.task.history) }] : [],
     ...selectedLinks.length ? [{ label: "Links", actions: selectedLinks }] : []
   ] : [];
   const taskProgress = selectedRow ? percent(selectedRow.progress / 100) : null;
@@ -8297,7 +8284,7 @@ function updateRecovery(s) {
     return "unreadable";
   return presence.failedAttempts > 1 ? "failed-again" : "waiting";
 }
-function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timelineTaskTree = s.taskTree, agentOverrides = {}) {
+function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timelineTaskTree = s.taskTree) {
   const l = s.ledger;
   const lastActions = withoutStalePending(s.lastActions, now);
   const inbox = inboxView({
@@ -8335,15 +8322,6 @@ function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timel
     prs: prTabOf(s, lastActions, now, holds, settleWindowMs),
     statusPage: statusPage(s, now, new Set(Object.keys(taskOwnerView.stalledSince))),
     timeline: timelineData(timelineTaskTree, timelineOwnerView.segments, timelineOwnerView.stalledSince, taskTimelineWarnings(s, timelineTaskTree, now), now, s.taskStatusMismatches),
-    agents: {
-      feedRows: agentOverrides.feedRows ?? l.findings,
-      taskTree: timelineTaskTree,
-      ownerFacts: agentOverrides.ownerFacts ?? ownerFacts,
-      progress: timelineOwnerView.segments,
-      localAgents: agentOverrides.localAgents ?? [],
-      localAgentsUnavailable: agentOverrides.localAgentsUnavailable,
-      now
-    },
     taskProgressSegments: taskOwnerView.segments,
     taskStalledSince: taskOwnerView.stalledSince,
     feedStalledSince,
@@ -10299,7 +10277,9 @@ function timelineLine(line, plan, isSelected, d) {
     } else {
       out.push(`${row.detailLead}${s.dim(detail.label)}`);
       const indent = detailIndent + 2;
-      out.push(...wrapTimelineText(detail.text, Math.max(1, width - indent)).map((text) => `${" ".repeat(indent)}${text}`));
+      for (const text of detail.text.split(`
+`))
+        out.push(...wrapTimelineText(text, Math.max(1, width - indent)).map((text) => `${" ".repeat(indent)}${text}`));
     }
   }
   return out;
@@ -11052,39 +11032,8 @@ function subject(id, status, name, text, at, more = {}) {
   };
 }
 function demoView(now, agent) {
-  const agentFeedRows = [
-    {
-      id: "demo-root-feed",
-      kind: "progress",
-      title: "Root status",
-      detail: "Working on the saved view.",
-      path: null,
-      at: now - 3 * MIN2,
-      feedKey: "herdr/workstation/meta",
-      feedSource: "demo",
-      feedOwned: true,
-      owner: { machine: "workstation", agent: "meta" },
-      ownerFact: { state: "working", since: now - 3 * MIN2 }
-    },
-    {
-      id: "demo-feed-progress",
-      kind: "progress",
-      title: "Review the Japanese copy",
-      detail: "Blocked: waiting for the copy review.",
-      path: null,
-      at: now - 8 * MIN2,
-      feedKey: "subagent/demo/copy-review",
-      feedSource: "demo",
-      feedOwned: true
-    }
-  ];
   return {
     timelineTaskTree: demoTaskTree(now),
-    agentFeedRows,
-    localAgents: [
-      { machine: "workstation", name: "reviewer", status: "working" },
-      { machine: "workstation", name: "builder", status: "blocked" }
-    ],
     ledger: {
       overview: {
         head: { title: "Pinch to dismiss", description: "Adding a pinch that dismisses glances" },
@@ -11689,11 +11638,7 @@ var CLAUDE_CODE_SUPPORT = {
   "task-tree-export": { kind: "full" },
   "task-status-mismatch": { kind: "full" },
   timeline: { kind: "full" },
-  "timeline-completed-fold": { kind: "full" },
-  "agents-tab": {
-    kind: "different",
-    reason: "The terminal draws Agents; the desktop pane does not draw this look yet."
-  }
+  "timeline-completed-fold": { kind: "full" }
 };
 
 // ../hooks/client-support-codex.ts
@@ -11866,8 +11811,7 @@ var CODEX_SUPPORT = {
   "timeline-completed-fold": {
     kind: "different",
     reason: "Codex keeps finished Timeline roots inline while the terminal look ships the fold first."
-  },
-  "agents-tab": { kind: "different", reason: "Agents is not drawn in this look yet." }
+  }
 };
 
 // ../hooks/client-support-omp.ts
@@ -12001,8 +11945,7 @@ var OMP_SUPPORT = {
   "timeline-completed-fold": {
     kind: "different",
     reason: "omp keeps finished Timeline roots inline while the terminal look ships the fold first."
-  },
-  "agents-tab": { kind: "different", reason: "Agents is not drawn in this look yet." }
+  }
 };
 
 // ../hooks/client-support.ts
