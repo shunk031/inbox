@@ -234,6 +234,7 @@ document.addEventListener(
         }
       } else if (
         selected &&
+        !selected.isCompletedFold &&
         e.key === 'Enter' &&
         !isInteractiveTarget(e.target) &&
         !isInteractiveTarget(document.activeElement)

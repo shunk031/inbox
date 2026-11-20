@@ -1,6 +1,13 @@
 import { expect, test } from 'claude-code/testing'
-import { moveTimelineSelection, timelineData, timelinePage, toggleTimelineBranch } from '../hooks/timeline-page'
+import {
+  COMPLETED_FOLD_ID,
+  moveTimelineSelection,
+  timelineData,
+  timelinePage,
+  toggleTimelineBranch,
+} from '../hooks/timeline-page'
 import type { TaskFactWarning, TaskNode, TaskProgressSegments, TaskTree } from '../types'
+import { upgradedTimelineFolded } from '../hooks/timeline-state'
 
 const now = 1_000_000
 const task = (id: string, change: Partial<TaskNode> = {}): TaskNode => ({
@@ -186,20 +193,42 @@ test('Timeline rows show the newest task text, while selected details retain the
   ])
 })
 
-test('Timeline keeps the whole tree, selection and branch folding in the shared plan', () => {
+test('Timeline folds completed roots after open roots and restores selection when expanded', () => {
   const roots: TaskTree = [
     task('one', { status: 'done', streamId: 's1' }),
+    task('one-child', { parentId: 'one', status: 'dropped' }),
     task('two', { status: 'working', streamId: 's2' }),
+    task('two-child', { parentId: 'two', status: 'done' }),
     task('three', { status: 'waits-on-other', streamId: 's3' }),
   ]
-  const page = timelinePage(timelineData(roots, segments, {}, [], now), 'missing', [])
+  const data = timelineData(roots, segments, {}, [], now)
+  const page = timelinePage(data, 'one', upgradedTimelineFolded(undefined))
 
   expect(page.mode).toBe('tree')
-  expect(page.rows.map(row => row.task.id)).toEqual(['one', 'two', 'three'])
-  expect(page.selected?.row.task.id).toBe('one')
-  expect(moveTimelineSelection(page.rows, 'three', 1)).toBe('one')
+  expect(page.completedRootIds).toEqual(['one'])
+  expect(page.rows.map(row => row.task.id)).toEqual(['two', 'two-child', 'three', COMPLETED_FOLD_ID])
+  expect(page.selected?.row.task.id).toBe(COMPLETED_FOLD_ID)
+  const expanded = timelinePage(data, 'one', [COMPLETED_FOLD_ID])
+  expect(expanded.rows.map(row => row.task.id)).toEqual([
+    'two',
+    'two-child',
+    'three',
+    COMPLETED_FOLD_ID,
+    'one',
+    'one-child',
+  ])
+  expect(expanded.selected?.row.task.id).toBe('one')
+  expect(moveTimelineSelection(page.rows, 'three', 1)).toBe(COMPLETED_FOLD_ID)
   expect(toggleTimelineBranch([], 'one')).toEqual(['one'])
   expect(toggleTimelineBranch(['one'], 'one')).toEqual([])
+})
+
+test('Timeline hides no open roots and shows one row when all roots are finished', () => {
+  const page = (tree: TaskTree) =>
+    timelinePage(timelineData(tree, segments, {}, [], now), null, upgradedTimelineFolded(undefined))
+  expect(page([task('open')]).rows.some(row => row.isCompletedFold)).toBe(false)
+  const finished = page([task('done', { status: 'done' }), task('dropped', { status: 'dropped' })])
+  expect(finished.rows.map(row => row.task.id)).toEqual([COMPLETED_FOLD_ID])
 })
 
 test('folding a selected parent hides its children and keeps the parent selected', () => {

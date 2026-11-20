@@ -117,7 +117,7 @@ export function fixtureState(fixture) {
     isHelpShown: false,
   }
   const data = state.ledger
-  if (fixture === 'base-busy') {
+  if (fixture === 'base-busy' || fixture === 'fold-done') {
     Object.assign(data, {
       items: [question],
       findings: [report(false)],
@@ -127,7 +127,14 @@ export function fixtureState(fixture) {
       batchTurn: 1,
       nextId: 2,
     })
-    state.taskTree = tasks
+    state.taskTree =
+      fixture === 'fold-done'
+        ? [
+            ...tasks,
+            task('snapshot-finished-root', null, 'Snapshot finished root', 'done'),
+            task('snapshot-finished-child', 'snapshot-finished-root', 'Finished child', 'dropped'),
+          ]
+        : tasks
     state.prViews = { ...state.prViews, views: { [pr.ref]: pr }, isGhMissing: false }
   } else if (fixture === 'detail-empty' || fixture === 'detail-busy') {
     const empty = fixture === 'detail-empty'
@@ -147,4 +154,13 @@ export const registry = VIEWS.flatMap(view =>
       file: `${view}-${scenario}-${width}.txt`,
     })),
   ),
+)
+registry.push(
+  ...widths.map(width => ({
+    view: 'timeline',
+    scenario: 'fold-done',
+    width,
+    fixture: 'fold-done',
+    file: `timeline-fold-done-${width}.txt`,
+  })),
 )

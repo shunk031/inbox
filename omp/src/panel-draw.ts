@@ -99,6 +99,10 @@ function timelineLine(line: Line, plan: TimelineLinePlan, isSelected: boolean, d
   const { ui, width, style: s } = d
   if (plan.kind === 'tree') {
     const row = plan.row
+    if (row.isCompletedFold) {
+      const lead = ` ${isSelected ? s.tone('accent', '❯') : ' '} ${s.tone('done', row.mark)} `
+      return [s.timelineRow(fit(`${lead}${s.tone('done', s.bold(row.task.title))}`, width), false)]
+    }
     const bar =
       row.progressBar.map(part => s.tone(part.tone, part.mark.repeat(part.count))).join('') ||
       s.tone('muted', '─'.repeat(10))

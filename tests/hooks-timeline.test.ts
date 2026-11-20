@@ -343,13 +343,6 @@ test('terminal Timeline aligns percentages, strips rows, and separates only top-
   await $.tool.call({
     tool: 'mcp__inbox__tasks',
     operation: 'add',
-    task_id: 'hundred',
-    title: 'Hundred',
-    status: 'done',
-  })
-  await $.tool.call({
-    tool: 'mcp__inbox__tasks',
-    operation: 'add',
     task_id: 'dropped',
     title: 'Dropped',
     status: 'dropped',
@@ -365,8 +358,6 @@ test('terminal Timeline aligns percentages, strips rows, and separates only top-
     ['forty', 1],
     ['forty-done', 0],
     ['forty-open', 0],
-    ['hundred', 1],
-    ['dropped', 1],
   ] as const) {
     const element = await row(id)
     expect(element?.props.paddingTop, `${id} spacing`).toBe(paddingTop)
@@ -374,12 +365,12 @@ test('terminal Timeline aligns percentages, strips rows, and separates only top-
   }
 
   const percentages = await Promise.all(
-    ['zero', 'forty', 'hundred'].map(async id => (await row(id))?.text.match(/ {1,3}(?:0|40|100)\.00%/)?.[0]),
+    ['zero', 'forty', 'forty-done'].map(async id => (await row(id))?.text.match(/ {1,3}(?:0|40|100)\.00%/)?.[0]),
   )
   expect(percentages).toEqual(['   0.00%', '  40.00%', ' 100.00%'])
   expect(percentages.map(text => cellWidth(text ?? ''))).toEqual([8, 8, 8])
   const bars = await Promise.all(
-    ['zero', 'forty', 'hundred'].map(async id => (await pane.find({ key: `timeline-row-bar-${id}` }))?.text ?? ''),
+    ['zero', 'forty', 'forty-done'].map(async id => (await pane.find({ key: `timeline-row-bar-${id}` }))?.text ?? ''),
   )
   expect(bars.map(text => cellWidth(text))).toEqual([12, 12, 12])
   const text = (await pane.findAll({ type: 'Text' })).map(node => node.text)

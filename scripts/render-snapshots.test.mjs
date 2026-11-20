@@ -46,9 +46,18 @@ test('store key inventory follows CLAUDE_CONFIG_DIR and treats missing store as 
 })
 
 test('registry covers every terminal view, scenario, and width once', () => {
-  assert.equal(registry.length, 28)
+  assert.equal(registry.length, 30)
   assert.equal(new Set(registry.map(entry => entry.file)).size, registry.length)
   assert.deepEqual(new Set(registry.map(entry => entry.width)), new Set([110, 200]))
+  assert.deepEqual(
+    registry.filter(entry => entry.scenario === 'fold-done').map(({ view, width }) => [view, width]),
+    [
+      ['timeline', 200],
+      ['timeline', 110],
+    ],
+  )
+  const fixture = fixtureState('fold-done')
+  assert.ok(fixture.taskTree.some(task => task.id === 'snapshot-finished-root'))
 })
 
 test('Help snapshots open through the existing footer control', () => {

@@ -147,6 +147,8 @@ for (const bodyColumns of [110, 200] as const) {
       note: '最新の作業メモはここに表示する。',
     })
     await clock.settle()
+    await emptyPane.press({ key: 'toggle-branch' })
+    await clock.settle()
     await emptyPane.press({ key: 'timeline-title-detail-scene' })
     await clock.settle()
 

@@ -14,9 +14,11 @@ import { currentTaskText } from './task-text'
 import type { CurrentTaskText } from './task-text'
 import type { PrAction } from './pr-press'
 import type { ActionView } from './rows'
+import { COMPLETED_FOLD_ID, timelineCompletedFolded } from './timeline-state'
 
 export type TimelineState = 'done' | 'working' | 'stalled' | 'waiting' | 'queued' | 'dropped'
 export type TimelineTone = 'done' | 'key' | 'error' | 'muted'
+export { COMPLETED_FOLD_ID }
 type TimelineBarPart = {
   state: keyof Omit<TaskProgressSegments, 'total'>
   mark: string
@@ -58,6 +60,7 @@ type TimelineNode = {
   mark: string
   alternate: boolean
   warnings: string[]
+  isCompletedFold: boolean
   actions: TimelineRowAction[]
 }
 type TimelineProgressCard = {
@@ -81,6 +84,7 @@ type TimelineDataRow = Omit<TimelineNode, 'actions' | 'treeLead' | 'detailLead' 
 export type TimelineData = TimelineBase & { rows: TimelineDataRow[] }
 export type TimelinePage = TimelineBase & {
   mode: 'tree' | 'detail'
+  completedRootIds: string[]
   rows: TimelineNode[]
   selected: {
     row: TimelineNode
@@ -245,6 +249,7 @@ export function timelineData(
           ...warnings.filter(warning => warning.taskId === task.id).map(warning => warning.message),
           ...(mismatchByTask.has(task.id) ? [mismatchByTask.get(task.id)!] : []),
         ],
+        isCompletedFold: false,
       })
       visit(childrenOfTask, depth + 1, depth === 0 ? guides : [...guides, hasLaterSibling ? '│  ' : '   '])
     })
@@ -310,7 +315,58 @@ export function timelinePage(
 ): TimelinePage {
   const nodes = new Map(data.rows.map(row => [row.task.id, row]))
   const foldedIds = new Set(folded)
-  const visibleRows = data.rows.filter(row => {
+  const completedFolded = timelineCompletedFolded(folded)
+  const rootById = new Map<string, string>()
+  const finishedByRoot = new Map<string, boolean>()
+  for (const row of data.rows) {
+    const root = row.depth === 0 ? row.task.id : (rootById.get(row.task.parentId!) ?? row.task.id)
+    rootById.set(row.task.id, root)
+    finishedByRoot.set(
+      root,
+      (finishedByRoot.get(root) ?? true) && (row.task.status === 'done' || row.task.status === 'dropped'),
+    )
+  }
+  const completedRootIds = [...finishedByRoot].flatMap(([id, done]) => (done ? [id] : []))
+  const completedRoots = new Set(completedRootIds)
+  const completedRows = data.rows.filter(row => completedRoots.has(rootById.get(row.task.id)!))
+  const activeRows = data.rows.filter(row => !completedRoots.has(rootById.get(row.task.id)!))
+  const summary: TimelineDataRow | null = completedRootIds.length
+    ? {
+        ...data.rows[0]!,
+        task: {
+          ...data.rows[0]!.task,
+          id: COMPLETED_FOLD_ID,
+          parentId: null,
+          status: 'done',
+          title: `${completedRootIds.length} completed`,
+          detail: '',
+          notes: [],
+          updatedAgo: '',
+          currentText: null,
+          history: [],
+          links: {},
+        },
+        depth: 0,
+        guides: [],
+        prefix: '',
+        hasLaterSibling: false,
+        hasChildren: false,
+        progress: 100,
+        percent: '100.00%',
+        progressBar: [],
+        completedUnits: { done: completedRootIds.length, total: completedRootIds.length },
+        status: 'done',
+        statusLabel: 'Completed',
+        tone: 'done',
+        mark: completedFolded ? '▸' : '▾',
+        alternate: false,
+        warnings: [],
+        isCompletedFold: true,
+      }
+    : null
+  const orderedRows = [...activeRows, ...(summary ? [summary] : []), ...(completedFolded ? [] : completedRows)]
+  const visibleRows = orderedRows.filter(row => {
+    if (row.isCompletedFold) return true
     let parent = row.task.parentId
     while (parent !== null) {
       if (foldedIds.has(parent)) return false
@@ -332,6 +388,8 @@ export function timelinePage(
   })
   let selected = rows.find(row => row.task.id === selectedId)
   if (!selected && selectedId) {
+    const root = rootById.get(selectedId)
+    if (completedFolded && root && completedRoots.has(root)) selected = rows.find(row => row.isCompletedFold)
     let parent = nodes.get(selectedId)?.task.parentId ?? null
     while (parent !== null && !selected) {
       selected = rows.find(row => row.task.id === parent)
@@ -342,8 +400,18 @@ export function timelinePage(
   const drawnRows = rows.map(row => {
     const isSelected = row.task.id === selected?.task.id
     const isFolded = foldedIds.has(row.task.id)
-    const actions: TimelineRowAction[] =
-      isDetailOpen && isSelected
+    const actions: TimelineRowAction[] = row.isCompletedFold
+      ? [
+          {
+            action: 'toggle-branch',
+            id: COMPLETED_FOLD_ID,
+            label: completedFolded ? 'Show completed' : 'Hide completed',
+            hotkey: 'enter',
+            kind: 'view',
+            emphasis: 'quiet',
+          },
+        ]
+      : isDetailOpen && isSelected
         ? [
             {
               action: 'back',
@@ -414,8 +482,9 @@ export function timelinePage(
     : []
   const taskProgress = selectedRow ? percent(selectedRow.progress / 100) : null
   const units = selectedRow?.completedUnits ?? null
-  const stats =
-    selectedRow && taskProgress && units
+  const stats = selectedRow?.isCompletedFold
+    ? { progress: selectedRow.percent, weight: '—', completedUnits: `${units?.done ?? 0} / ${units?.total ?? 0}` }
+    : selectedRow && taskProgress && units
       ? {
           progress: taskProgress.label,
           weight: String(Number(selectedRow.task.weight.toFixed(1))),
@@ -425,7 +494,8 @@ export function timelinePage(
 
   return {
     ...data,
-    mode: isDetailOpen && selectedRow ? 'detail' : 'tree',
+    mode: isDetailOpen && selectedRow && !selectedRow.isCompletedFold ? 'detail' : 'tree',
+    completedRootIds,
     rows: drawnRows,
     selected: selectedRow && stats ? { row: selectedRow, stats, details, links: selectedLinks } : null,
   }
