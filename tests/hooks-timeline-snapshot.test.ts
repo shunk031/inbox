@@ -170,7 +170,7 @@ for (const bodyColumns of [87, 110, 200] as const) {
     expect(detailText).toContain('日本語の詳細を確認する')
     expect(detailText).toContain('Completed')
     expect(detailText).toContain('登録した説明はCurrentとは別に残る。')
-    const headings = detailText.filter(text => /^(Current|Note|Detail|History)$/u.test(text))
+    const headings = detailText.filter(text => /^(Note|Detail|History)$/u.test(text))
     expect(headings).toEqual(['Detail', 'Note', 'History'])
     expect(detailText).toContain('最新の作業メモはここに表示する。')
     for (let index = 0; index < 4; index++) {

@@ -53,7 +53,7 @@ export const failure = (entry, row, expected, actual, reason) =>
   `FAIL view=${entry.view} scenario=${entry.scenario} width=${entry.width} row=${row} ` +
   `expected-column=${expected} actual-column=${actual} ${reason}`
 
-const detailHeadings = new Set(['Current', 'Detail', 'Updated', 'Note', 'History', 'Links'])
+const detailHeadings = new Set(['Detail', 'Updated', 'Note', 'History', 'Links'])
 export function checkLeftEdges(entry, frame) {
   if (entry.view !== 'timeline-detail') return []
   const lines = frame.split('\n')

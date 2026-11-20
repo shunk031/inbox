@@ -1,6 +1,6 @@
 import type { TaskNode } from '../types'
 
-export type CurrentTaskText = { text: string; at: number }
+type CurrentTaskText = { text: string; at: number }
 
 /** The newest task detail or note, with the time that text became current. */
 export function currentTaskText(
@@ -27,9 +27,4 @@ export function currentTaskText(
   if (latestNote && (latestNote.at > detailAt || (latestNote.at === detailAt && latestNote.index > detailIndex)))
     return { text: latestNote.text, at: latestNote.at }
   return task.detail ? { text: task.detail, at: detailAt } : latestNote
-}
-
-export function timelineCurrentTaskText(task: Parameters<typeof currentTaskText>[0]) {
-  const current = currentTaskText(task)
-  return current && (current.text === task.detail || task.notes.includes(current.text)) ? null : current
 }

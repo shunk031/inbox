@@ -3325,10 +3325,6 @@ function currentTaskText(task) {
     return { text: latestNote.text, at: latestNote.at };
   return task.detail ? { text: task.detail, at: detailAt } : latestNote;
 }
-function timelineCurrentTaskText(task) {
-  const current = currentTaskText(task);
-  return current && (current.text === task.detail || task.notes.includes(current.text)) ? null : current;
-}
 
 // ../hooks/inbox-text.ts
 function surfaceAtStart(host) {
@@ -7906,12 +7902,10 @@ var timelineHistoryText = (events) => events.map(({ time, source, kind, detail }
 `);
 function timelineTask(task, now) {
   const { createdAt: _createdAt, updatedAt, history, ...details } = task;
-  const current = timelineCurrentTaskText(task);
   return {
     ...details,
     updatedAgo: shortAgo(now - updatedAt),
-    currentText: current ? { ...current, ago: shortAgo(now - current.at) } : null,
-    history: history.map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) }))
+    history: history.toSorted((a, b) => a.at - b.at).map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) }))
   };
 }
 function percent(value) {
@@ -8104,7 +8098,6 @@ function timelinePage(data, selectedId, folded, lastActions = {}, isDetailOpen =
       detail: "",
       notes: [],
       updatedAgo: "",
-      currentText: null,
       history: [],
       links: {}
     },
@@ -8218,12 +8211,6 @@ function timelinePage(data, selectedId, folded, lastActions = {}, isDetailOpen =
   const selectedRow = selected ? drawnRows.find((row) => row.task.id === selected.task.id) : null;
   const selectedLinks = selectedRow ? timelineLinkPlan(selectedRow.task, lastActions) : [];
   const details = selectedRow ? [
-    ...selectedRow.task.currentText ? [
-      {
-        label: "Current",
-        text: `${selectedRow.task.currentText.text} \xB7 ${selectedRow.task.currentText.ago}`
-      }
-    ] : [],
     ...selectedRow.task.detail ? [{ label: "Detail", text: selectedRow.task.detail }] : [],
     ...selectedRow.task.notes.map((text) => ({ label: "Note", text })),
     ...selectedRow.task.history.length ? [{ label: "History", text: timelineHistoryText(selectedRow.task.history) }] : [],

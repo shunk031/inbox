@@ -20,8 +20,8 @@
 
  History
  1m · fixture · Task created
- now · fixture · Note added
  1m · fixture · Task detail updated
+ now · fixture · Note added
 
 
 
