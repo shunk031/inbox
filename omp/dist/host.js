@@ -7869,6 +7869,10 @@ function applyTaskPrFacts(tree, states, at) {
   return { tree: next, warnings };
 }
 
+// ../hooks/timeline-state.ts
+var COMPLETED_FOLD_ID = "inbox:timeline:completed-fold".padEnd(101, "-");
+var timelineCompletedFolded = (folded) => !folded.includes(COMPLETED_FOLD_ID);
+
 // ../hooks/timeline-page.ts
 var BAR_MARKS = {
   done: "\u2501",
@@ -8065,10 +8069,60 @@ function timelineLinkPlan(task, lastActions) {
     ];
   });
 }
-function timelinePage(data, selectedId, folded, lastActions = {}, isDetailOpen = false) {
+function timelinePage(data, selectedId, folded, lastActions = {}, isDetailOpen = false, foldCompleted = false) {
   const nodes = new Map(data.rows.map((row) => [row.task.id, row]));
   const foldedIds = new Set(folded);
-  const visibleRows = data.rows.filter((row) => {
+  const completedFolded = foldCompleted && timelineCompletedFolded(folded);
+  const rootById = new Map;
+  const finishedByRoot = new Map;
+  if (foldCompleted) {
+    for (const row of data.rows) {
+      const root = row.depth ? rootById.get(row.task.parentId) : row.task.id;
+      rootById.set(row.task.id, root);
+      const finished = row.task.status === "done" || row.task.status === "dropped";
+      finishedByRoot.set(root, (finishedByRoot.get(root) ?? true) && finished);
+    }
+  }
+  const completedRootIds = [...finishedByRoot].flatMap(([id, done]) => done ? [id] : []);
+  const completedRoots = new Set(completedRootIds);
+  const completedRows = data.rows.filter((row) => completedRoots.has(rootById.get(row.task.id)));
+  const activeRows = data.rows.filter((row) => !completedRoots.has(rootById.get(row.task.id)));
+  const summary = completedRootIds.length ? {
+    ...data.rows[0],
+    task: {
+      ...data.rows[0].task,
+      id: COMPLETED_FOLD_ID,
+      parentId: null,
+      status: "done",
+      title: `${completedRootIds.length} completed`,
+      detail: "",
+      notes: [],
+      updatedAgo: "",
+      currentText: null,
+      history: [],
+      links: {}
+    },
+    depth: 0,
+    guides: [],
+    prefix: "",
+    hasLaterSibling: false,
+    hasChildren: false,
+    progress: 100,
+    percent: "100.00%",
+    progressBar: [],
+    completedUnits: { done: completedRootIds.length, total: completedRootIds.length },
+    status: "done",
+    statusLabel: "Completed",
+    tone: "done",
+    mark: completedFolded ? "\u25B8" : "\u25BE",
+    alternate: false,
+    warnings: [],
+    isCompletedFold: true
+  } : null;
+  const orderedRows = foldCompleted ? [...activeRows, ...summary ? [summary] : [], ...completedFolded ? [] : completedRows] : data.rows;
+  const visibleRows = orderedRows.filter((row) => {
+    if (row.isCompletedFold)
+      return true;
     let parent = row.task.parentId;
     while (parent !== null) {
       if (foldedIds.has(parent))
@@ -8091,6 +8145,9 @@ function timelinePage(data, selectedId, folded, lastActions = {}, isDetailOpen =
   });
   let selected = rows.find((row) => row.task.id === selectedId);
   if (!selected && selectedId) {
+    const root = rootById.get(selectedId);
+    if (completedFolded && root && completedRoots.has(root))
+      selected = rows.find((row) => row.isCompletedFold);
     let parent = nodes.get(selectedId)?.task.parentId ?? null;
     while (parent !== null && !selected) {
       selected = rows.find((row) => row.task.id === parent);
@@ -8101,7 +8158,16 @@ function timelinePage(data, selectedId, folded, lastActions = {}, isDetailOpen =
   const drawnRows = rows.map((row) => {
     const isSelected = row.task.id === selected?.task.id;
     const isFolded = foldedIds.has(row.task.id);
-    const actions = isDetailOpen && isSelected ? [
+    const actions = row.isCompletedFold ? [
+      {
+        action: "toggle-branch",
+        id: COMPLETED_FOLD_ID,
+        label: completedFolded ? "Show completed" : "Hide completed",
+        hotkey: "enter",
+        kind: "view",
+        emphasis: "quiet"
+      }
+    ] : isDetailOpen && isSelected ? [
       {
         action: "back",
         id: row.task.id,
@@ -8162,14 +8228,15 @@ function timelinePage(data, selectedId, folded, lastActions = {}, isDetailOpen =
   ] : [];
   const taskProgress = selectedRow ? percent(selectedRow.progress / 100) : null;
   const units = selectedRow?.completedUnits ?? null;
-  const stats = selectedRow && taskProgress && units ? {
+  const stats = selectedRow?.isCompletedFold ? { progress: selectedRow.percent, weight: "\u2014", completedUnits: `${units?.done ?? 0} / ${units?.total ?? 0}` } : selectedRow && taskProgress && units ? {
     progress: taskProgress.label,
     weight: String(Number(selectedRow.task.weight.toFixed(1))),
     completedUnits: `${units.done} / ${units.total}`
   } : null;
   return {
     ...data,
-    mode: isDetailOpen && selectedRow ? "detail" : "tree",
+    mode: isDetailOpen && selectedRow && !selectedRow.isCompletedFold ? "detail" : "tree",
+    completedRootIds,
     rows: drawnRows,
     selected: selectedRow && stats ? { row: selectedRow, stats, details, links: selectedLinks } : null
   };
@@ -11607,6 +11674,7 @@ var CLAUDE_CODE_SUPPORT = {
   "task-tree-export": { kind: "full" },
   "task-status-mismatch": { kind: "full" },
   timeline: { kind: "full" },
+  "timeline-completed-fold": { kind: "full" },
   "agents-tab": {
     kind: "different",
     reason: "The terminal draws Agents; the desktop pane does not draw this look yet."
@@ -11780,6 +11848,10 @@ var CODEX_SUPPORT = {
   },
   "task-status-mismatch": { kind: "full" },
   timeline: { kind: "full" },
+  "timeline-completed-fold": {
+    kind: "different",
+    reason: "Codex keeps finished Timeline roots inline while the terminal look ships the fold first."
+  },
   "agents-tab": { kind: "different", reason: "Agents is not drawn in this look yet." }
 };
 
@@ -11911,6 +11983,10 @@ var OMP_SUPPORT = {
   },
   "task-status-mismatch": { kind: "full" },
   timeline: { kind: "full" },
+  "timeline-completed-fold": {
+    kind: "different",
+    reason: "omp keeps finished Timeline roots inline while the terminal look ships the fold first."
+  },
   "agents-tab": { kind: "different", reason: "Agents is not drawn in this look yet." }
 };
 

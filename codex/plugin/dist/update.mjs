@@ -3571,6 +3571,9 @@ function applyTaskOwnerFacts(tree, facts, at) {
   return { stalledSince, warnings, segments };
 }
 
+// ../hooks/timeline-state.ts
+var COMPLETED_FOLD_ID = "inbox:timeline:completed-fold".padEnd(101, "-");
+
 // ../hooks/timeline-page.ts
 var BAR_MARKS = {
   done: "\u2501",

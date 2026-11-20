@@ -5,6 +5,7 @@ import type { TabsProps } from '../hooks/tabs-client'
 import { prMarkId } from '../hooks/pr-rows'
 import { applyPrPress } from '../hooks/pr-tab'
 import { cellWidth } from '../hooks/text'
+import { COMPLETED_FOLD_ID } from '../hooks/timeline-page'
 import type { Session } from '../types'
 import { w, world } from './hooks-world'
 import { PANE } from './hooks-helpers'
@@ -163,6 +164,61 @@ test('the next-build pane draws Timeline with its saved selection and folded bra
   expect(text, 'the saved selection row').toContain('Other')
   expect(text, 'the saved selection marker').toContain('> ○ ')
   expect(text, 'the saved folded branch').not.toContain('Child')
+})
+
+test('the desktop summary footer closes stale detail, preserves hidden selection and j/k navigation', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  world($, on, [])
+  w.files = ['/.next-build']
+  let selection: { value: string | null; version: number } = { value: 'finished', version: 1 }
+  let detailOpen = true
+  let detailVersion = 1
+  on('state.get', { plugin: 'inbox', key: 'timelineSelection' } as const, () => {
+    return { value: selection as never }
+  })
+  on('state.set', { plugin: 'inbox', key: 'timelineSelection' } as const, (_$, event) => {
+    selection = { value: event.value as string | null, version: selection.version + 1 }
+    return { value: { isSet: true as const, version: selection.version } }
+  })
+  on('state.get', { plugin: 'inbox', key: 'timelineDetailOpen' } as const, () => ({
+    value: { value: detailOpen, version: detailVersion } as never,
+  }))
+  on('state.set', { plugin: 'inbox', key: 'timelineDetailOpen' } as const, (_$, event) => {
+    detailOpen = event.value as boolean
+    return { value: { isSet: true as const, version: ++detailVersion } }
+  })
+
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  for (const [task_id, status] of [
+    ['active-first', 'queued'],
+    ['active-last', 'working'],
+    ['finished', 'done'],
+  ] as const) {
+    await $.tool.call({ tool: 'mcp__inbox__tasks', operation: 'add', task_id, title: task_id, status })
+  }
+  const pane = await $.ui.mount(PANE)
+  await pane.press({ key: 'tab-key-timeline' })
+  await clock.settle()
+
+  expect((await pane.findAll({ type: 'Text' })).some(row => row.text.includes('> ▸ '))).toBe(true)
+  w.surfaces = ['desktop']
+  const desktop = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await $.session.attach({ surface: 'desktop', clientId: 'desktop:default' })
+  await clock.settle()
+  await desktop.press({ key: 'toggle-branch' })
+  await clock.settle()
+  expect(detailOpen).toBe(false)
+  expect(selection.value).toBe('finished')
+  expect((await desktop.findAll({ type: 'Text' })).some(row => row.text.includes('> ● '))).toBe(true)
+  await pane.press({ key: `timeline-title-${COMPLETED_FOLD_ID}` })
+  await clock.settle()
+  expect((await pane.findAll({ type: 'Text' })).some(row => row.text.includes('> ▸ '))).toBe(true)
+  await pane.press({ key: 'previous' })
+  await clock.settle()
+  expect(selection.value).toBe('active-last')
+  await pane.press({ key: 'next' })
+  await clock.settle()
+  expect(selection.value).toBe('active-first')
 })
 
 test('Timeline opens a selected task detail and returns to the selected tree row', async ($, on) => {
@@ -343,17 +399,11 @@ test('terminal Timeline aligns percentages, strips rows, and separates only top-
   await $.tool.call({
     tool: 'mcp__inbox__tasks',
     operation: 'add',
-    task_id: 'hundred',
-    title: 'Hundred',
-    status: 'done',
-  })
-  await $.tool.call({
-    tool: 'mcp__inbox__tasks',
-    operation: 'add',
     task_id: 'dropped',
+    parent_id: 'forty-open',
     title: 'Dropped',
     status: 'dropped',
-  })
+  } as never)
 
   const pane = await $.ui.mount(PANE)
   await pane.press({ key: 'tab-key-timeline' })
@@ -365,8 +415,7 @@ test('terminal Timeline aligns percentages, strips rows, and separates only top-
     ['forty', 1],
     ['forty-done', 0],
     ['forty-open', 0],
-    ['hundred', 1],
-    ['dropped', 1],
+    ['dropped', 0],
   ] as const) {
     const element = await row(id)
     expect(element?.props.paddingTop, `${id} spacing`).toBe(paddingTop)
@@ -374,12 +423,12 @@ test('terminal Timeline aligns percentages, strips rows, and separates only top-
   }
 
   const percentages = await Promise.all(
-    ['zero', 'forty', 'hundred'].map(async id => (await row(id))?.text.match(/ {1,3}(?:0|40|100)\.00%/)?.[0]),
+    ['zero', 'forty', 'forty-done'].map(async id => (await row(id))?.text.match(/ {1,3}(?:0|40|100)\.00%/)?.[0]),
   )
   expect(percentages).toEqual(['   0.00%', '  40.00%', ' 100.00%'])
   expect(percentages.map(text => cellWidth(text ?? ''))).toEqual([8, 8, 8])
   const bars = await Promise.all(
-    ['zero', 'forty', 'hundred'].map(async id => (await pane.find({ key: `timeline-row-bar-${id}` }))?.text ?? ''),
+    ['zero', 'forty', 'forty-done'].map(async id => (await pane.find({ key: `timeline-row-bar-${id}` }))?.text ?? ''),
   )
   expect(bars.map(text => cellWidth(text))).toEqual([12, 12, 12])
   const text = (await pane.findAll({ type: 'Text' })).map(node => node.text)
