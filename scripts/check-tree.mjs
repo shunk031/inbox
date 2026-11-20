@@ -25,8 +25,8 @@ function paneLines(text) {
 
 const glyphColumns = (line, pattern) =>
   [...line.matchAll(pattern)].map(match => ({ text: match[0], column: cellWidth(line.slice(0, match.index)) }))
-const hasTrunkAt = (line, column) =>
-  [...line.matchAll(/│/gu)].some(match => cellWidth(line.slice(0, match.index)) === column)
+const hasTreeAt = (line, column) =>
+  [...line.matchAll(/│|├─|└─/gu)].some(match => cellWidth(line.slice(0, match.index)) === column)
 
 const viewOf = (lines, requested) =>
   requested !== 'auto'
@@ -70,6 +70,15 @@ export function checkTreeText(text, { view = 'auto', source = 'frame', requireTr
       kind === 'timeline'
         ? []
         : lines.slice(block.start + 1, first.line).flatMap(line => glyphColumns(line, /│/gu).map(glyph => glyph.column))
+    // Asks' inline look omits titleGap for an empty group.
+    const inlineEmpty =
+      kind === 'agents' &&
+      block.name === 'Local agents' &&
+      rows.length === 1 &&
+      first.column > 3 &&
+      headerTrunks.length === 0 &&
+      /No open /u.test(lines[first.line] ?? '')
+    if (inlineEmpty) headerTrunks.push(first.column)
     const expectedBase =
       kind === 'timeline'
         ? Math.min(...rows.map(row => row.column))
@@ -83,21 +92,16 @@ export function checkTreeText(text, { view = 'auto', source = 'frame', requireTr
     if (kind !== 'timeline') {
       if (!headerTrunks.includes(expectedBase))
         fail(block.name, first.line, `missing-heading-trunk-column=${expectedBase}`)
+      if (block.name === 'Local agents' && headerTrunks.filter(column => column === expectedBase).length > 1)
+        fail(block.name, block.start + 1, `duplicate-heading-trunk-column=${expectedBase}`)
       if (first.line > block.start + 1 && !(lines[first.line - 1] ?? '').trim())
         fail(block.name, first.line - 1, 'blank-break-before-first-child')
     }
 
-    for (let index = 0; index < rows.length; index++) {
-      const row = rows[index]
-      const column = expectedBase + Math.max(0, Math.round((row.column - expectedBase) / 3)) * 3
-      const prior = rows
-        .slice(0, index)
-        .filter(candidate => candidate.column === row.column)
-        .at(-1)
-      if (!prior) continue
-      const bridge = lines[row.line - 1] ?? ''
-      if (!bridge.trim()) fail(block.name, row.line - 1, `blank-break-at-column=${column}`)
-      else if (!hasTrunkAt(bridge, column)) fail(block.name, row.line - 1, `missing-bridge-column=${column}`)
+    for (const row of rows) {
+      const later = rows.find(candidate => candidate.line > row.line && candidate.column === row.column)
+      for (let line = row.line + 1; later && line <= later.line; line++)
+        if (!hasTreeAt(lines[line] ?? '', row.column)) fail(block.name, line, `missing-continuity-column=${row.column}`)
     }
 
     for (let line = block.start; line < block.end; line++) {

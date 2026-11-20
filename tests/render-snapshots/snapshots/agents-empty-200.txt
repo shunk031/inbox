@@ -6,20 +6,20 @@
  Herdr agent list unavailable; local agent status is not current.
    Orchestrators
    │
-   │
    └─   No open orchestrators
 
 
    Meta tasks
-   │
    │
    └─   No open meta tasks
 
 
    Local agents
    │
-   │
    └─   No open local agents
+
+
+
 
 
 

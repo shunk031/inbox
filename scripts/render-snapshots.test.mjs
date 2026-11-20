@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
+import { checkTreeText } from './check-tree.mjs'
 import { checkChipBoxes, checkFrame, stripChipRightPadding } from './render-snapshots-checks.mjs'
 import { cropInboxPane, isolate, ready, storeKeys, stripAnsi } from './render-snapshots-live.mjs'
 import { fixtureState, PLUGIN_STORE, registry } from './render-snapshots-fixtures.mjs'
@@ -53,6 +54,18 @@ test('registry covers every terminal view, scenario, and width once', () => {
     registry.filter(entry => entry.fixture === 'agents-tree').map(entry => entry.width),
     [87, 110, 200],
   )
+})
+
+test('tree trunks stay continuous through descendant and wrapped rows', () => {
+  const frame = 'Local agents\n   │\n   ├─ A\n   │  ├─ C1\n   │  │  wrap\n   │  └─ C2\n   │\n   └─ B'
+  const check = text => checkTreeText(text, { view: 'agents' })
+  const broken = (from, to, expected = 'missing-continuity-column=3') =>
+    assert.ok(check(frame.replace(from, to)).some(error => error.includes(expected)))
+  assert.deepEqual(check(frame), [])
+  broken('   │  ├─ C1', '      ├─ C1')
+  broken('   │  │  wrap', '      │  wrap')
+  broken('   │\n   └─ B', '   \n   └─ B')
+  broken('Local agents\n   │', 'Local agents\n   │\n   │', 'duplicate-heading-trunk-column=3')
 })
 
 test('Help snapshots open through the existing footer control', () => {

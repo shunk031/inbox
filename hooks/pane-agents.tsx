@@ -125,9 +125,7 @@ export function paneAgents({
 
     return section([
       groupTitle(title, count),
-      ...(rows.length
-        ? [treeBridge(group.key, [], -1), ...connectedRows]
-        : [...titleGap(), treeBridge(group.key, [], -1), groupEmpty(title)]),
+      ...(rows.length ? [treeBridge(group.key, [], -1), ...connectedRows] : [...titleGap(), groupEmpty(title)]),
     ])
   })
 
