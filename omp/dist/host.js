@@ -3642,6 +3642,13 @@ function afterTaskTreeUpdate(current, tree) {
     return !task || task.status === mismatch.claim ? [] : [{ ...mismatch, savedStatus: task.status }];
   });
 }
+function taskFactsAfterTreeUpdate(tree, facts) {
+  const ids = new Set(tree.map((task) => task.id));
+  return {
+    taskStatusMismatches: afterTaskTreeUpdate(facts.taskStatusMismatches, tree),
+    taskFactWarnings: facts.taskFactWarnings.filter(({ taskId }) => ids.has(taskId))
+  };
+}
 function upgradeTaskStatusMismatches(value, tree) {
   if (!Array.isArray(value))
     return [];
@@ -6845,7 +6852,6 @@ function pruneFinishedTaskRoots(tree) {
   const children = new Map;
   for (const task of tree)
     children.set(task.parentId, [...children.get(task.parentId) ?? [], task]);
-  const finished = [];
   const visit = (task) => {
     const descendants = (children.get(task.id) ?? []).map(visit);
     return {
@@ -6853,22 +6859,19 @@ function pruneFinishedTaskRoots(tree) {
       at: Math.max(task.updatedAt, ...descendants.map((child) => child.at))
     };
   };
-  for (const [index, root] of (children.get(null) ?? []).entries()) {
+  const finished = (children.get(null) ?? []).flatMap((root, index) => {
     const result = visit(root);
-    if (result.done)
-      finished.push({ id: root.id, at: result.at, index });
-  }
+    return result.done ? [{ id: root.id, at: result.at, index }] : [];
+  });
   if (finished.length <= FINISHED_TASK_ROOT_LIMIT)
     return { tree, deletedIds: [] };
-  const removedRoots = new Set(finished.sort((a, b) => b.at - a.at || b.index - a.index).slice(FINISHED_TASK_ROOT_LIMIT).map((root) => root.id));
   const deleted = new Set;
   const remove = (task) => {
     deleted.add(task.id);
-    for (const child of children.get(task.id) ?? [])
-      remove(child);
+    (children.get(task.id) ?? []).forEach(remove);
   };
-  for (const root of removedRoots)
-    remove(tree.find((task) => task.id === root));
+  for (const { id } of finished.sort((a, b) => b.at - a.at || b.index - a.index).slice(FINISHED_TASK_ROOT_LIMIT))
+    remove(tree.find((task) => task.id === id));
   return { tree: tree.filter((task) => !deleted.has(task.id)), deletedIds: [...deleted] };
 }
 
@@ -6906,7 +6909,6 @@ function taskTreeAnswer(tree, input, now, goalId) {
   if (!id || id.length > TASK_ID_LENGTH)
     return { taskTree: tree, result: `Not saved: task_id must be 1\u2013${TASK_ID_LENGTH} characters.` };
   let result;
-  let deletedBeforeAdd = [];
   if (operation === "add") {
     const linkInput = taskLinksFromInput(input);
     if (!linkInput.ok)
@@ -6953,7 +6955,6 @@ function taskTreeAnswer(tree, input, now, goalId) {
     if (!result.ok && result.reason === "limit" && tree.length >= TASK_NODE_LIMIT) {
       const pruned = pruneFinishedTaskRoots(tree);
       if (pruned.deletedIds.length) {
-        deletedBeforeAdd = pruned.deletedIds;
         result = createTask(pruned.tree, node, "agent");
       }
     }
@@ -7030,15 +7031,10 @@ function taskTreeAnswer(tree, input, now, goalId) {
       return { taskTree: tree, result: `Not saved: note must be at most ${TASK_NOTE_LENGTH} characters.` };
     result = addTaskNote(tree, id, note, now, "agent");
   }
-  const answer = failure2(tree, result, id);
-  if (!result.ok)
-    return answer;
   const shouldPrune = operation === "add" || operation === "complete" || operation === "update" && (input.status === "done" || input.status === "dropped");
-  if (!shouldPrune)
-    return answer;
-  const pruned = pruneFinishedTaskRoots(result.tree);
-  const prunedTaskIds = [...new Set([...deletedBeforeAdd, ...pruned.deletedIds])];
-  return { ...answer, taskTree: pruned.tree, ...prunedTaskIds.length ? { prunedTaskIds } : {} };
+  if (!result.ok || !shouldPrune)
+    return failure2(tree, result, id);
+  return { ...failure2(tree, result, id), taskTree: pruneFinishedTaskRoots(result.tree).tree };
 }
 
 // ../hooks/record-links.ts
@@ -8378,10 +8374,8 @@ function recorded(host, s, tool, args, now, fields) {
   const r = toolAnswer(host, s.ledger, tool, args, now, presses, fields, s.taskTree);
   const ledger = withOrderStatuses(r.ledger, s.prViews.views);
   const taskTree = r.taskTree ?? s.taskTree;
-  const prunedIds = new Set(r.prunedTaskIds ?? []);
-  const taskStatusMismatches = tool === "tasks" && taskTree !== s.taskTree ? afterTaskTreeUpdate(s.taskStatusMismatches, taskTree) : s.taskStatusMismatches;
-  const taskFactWarnings = prunedIds.size ? s.taskFactWarnings.filter((warning) => !prunedIds.has(warning.taskId)) : s.taskFactWarnings;
-  const state = linkDialogs({ ...s, ledger, taskTree, taskStatusMismatches, taskFactWarnings }, now);
+  const taskFacts = tool === "tasks" && taskTree !== s.taskTree ? taskFactsAfterTreeUpdate(taskTree, s) : s;
+  const state = linkDialogs({ ...s, ...taskFacts, ledger, taskTree }, now);
   const answered = ledger.items.find((i) => !state.ledger.items.some((o) => o.id === i.id));
   if (!answered)
     return { state, result: r.result, personLine: r.personLine };

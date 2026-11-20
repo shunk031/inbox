@@ -28,10 +28,10 @@ test('prunes older finished roots with their subtrees and keeps open roots', () 
   const roots = finished(21)
   roots.push(task('latest-child', { parentId: 'r0', status: 'done', updatedAt: 100 }), task('open'))
   const result = pruneFinishedTaskRoots(roots)
-  expect([
-    result.tree.filter(node => node.parentId === null && node.status === 'done').length,
-    result.tree.some(node => node.id === 'open'),
-  ]).toEqual([FINISHED_TASK_ROOT_LIMIT, true])
+  expect(result.tree.filter(node => node.parentId === null && node.status === 'done')).toHaveLength(
+    FINISHED_TASK_ROOT_LIMIT,
+  )
+  expect(result.tree.some(node => node.id === 'open')).toBe(true)
   const mixed = [task('open-root'), task('old-child', { parentId: 'open-root', status: 'done', updatedAt: 0 })]
   expect(pruneFinishedTaskRoots([...finished(21), ...mixed]).tree.slice(-2)).toEqual(mixed)
 })

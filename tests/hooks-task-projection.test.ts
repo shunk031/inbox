@@ -187,31 +187,19 @@ describe('task-tree projection', () => {
 
   test('one-time feed import prunes finished roots back to the retention limit', async () => {
     const path = '/feed/meta-open-items.json'
-    const old = JSON.stringify({
-      version: 1,
-      source: 'meta-open-items',
-      writtenAt: 10,
-      entries: Array.from({ length: 3 }, (_, i) => ({
-        key: `feed${i}`,
-        kind: 'task',
-        state: 'done',
-        title: `Feed task ${i}`,
-        detail: '',
-        at: 100 + i,
-        owner: { agent: 'worker', machine: 'host' },
-      })),
-    })
+    const old =
+      '{"version":1,"source":"meta-open-items","writtenAt":10,"entries":[{"key":"feed","kind":"task","state":"done","title":"Feed task","detail":"","at":100,"owner":{"agent":"worker","machine":"host"}}]}'
     const store = memoryFiles(path, old)
     const projection = createTaskProjection(store.files, path)
     let session = {
       ...emptySession(),
-      taskTree: Array.from({ length: 19 }, (_, i) => node(`old${i}`, 'done', { updatedAt: i })),
+      taskTree: Array.from({ length: 21 }, (_, i) => node(`old${i}`, 'done', { updatedAt: i })),
+      taskStatusMismatches: [{ taskId: 'old0', claim: 'working' as const, savedStatus: 'done' as const, at: 1 }],
+      taskFactWarnings: [{ taskId: 'old0', pr: 'p', message: 'PR merged, task still open' as const }],
     }
-    const result = await afterTaskTreeUpdate(projection, 'meta', session, 20, change =>
-      Promise.resolve(change(session)),
-    )
-
+    const result = await afterTaskTreeUpdate(projection, 'meta', session, 20, async change => change(session))
     expect(result.session.taskTree.filter(task => task.status === 'done' && task.parentId === null)).toHaveLength(20)
+    expect([result.session.taskStatusMismatches, result.session.taskFactWarnings]).toEqual([[], []])
     await projection.release('meta')
   })
 

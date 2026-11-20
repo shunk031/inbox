@@ -58,7 +58,7 @@ function failure(tree: TaskTree, result: TaskTreeResult, id: string): TaskToolAn
   return { taskTree: tree, result: `Not saved: ${detail[result.reason]}` }
 }
 
-type TaskToolAnswer = { taskTree: TaskTree; result: string; prunedTaskIds?: string[] }
+type TaskToolAnswer = { taskTree: TaskTree; result: string }
 
 /** Applies a task tool call and returns its normalized result for the calling agent. */
 export function taskTreeAnswer(tree: TaskTree, input: Record<string, unknown>, now: number, goalId?: string) {
@@ -71,7 +71,6 @@ export function taskTreeAnswer(tree: TaskTree, input: Record<string, unknown>, n
     return { taskTree: tree, result: `Not saved: task_id must be 1–${TASK_ID_LENGTH} characters.` }
 
   let result: TaskTreeResult
-  let deletedBeforeAdd: string[] = []
   if (operation === 'add') {
     const linkInput = taskLinksFromInput(input)
     if (!linkInput.ok) return { taskTree: tree, result: `Not saved: ${taskLinkProblemText(linkInput.reason)}` }
@@ -116,7 +115,6 @@ export function taskTreeAnswer(tree: TaskTree, input: Record<string, unknown>, n
     if (!result.ok && result.reason === 'limit' && tree.length >= TASK_NODE_LIMIT) {
       const pruned = pruneFinishedTaskRoots(tree)
       if (pruned.deletedIds.length) {
-        deletedBeforeAdd = pruned.deletedIds
         result = createTask(pruned.tree, node, 'agent')
       }
     }
@@ -195,14 +193,10 @@ export function taskTreeAnswer(tree: TaskTree, input: Record<string, unknown>, n
       return { taskTree: tree, result: `Not saved: note must be at most ${TASK_NOTE_LENGTH} characters.` }
     result = addTaskNote(tree, id, note, now, 'agent')
   }
-  const answer = failure(tree, result, id)
-  if (!result.ok) return answer
   const shouldPrune =
     operation === 'add' ||
     operation === 'complete' ||
     (operation === 'update' && (input.status === 'done' || input.status === 'dropped'))
-  if (!shouldPrune) return answer
-  const pruned = pruneFinishedTaskRoots(result.tree)
-  const prunedTaskIds = [...new Set([...deletedBeforeAdd, ...pruned.deletedIds])]
-  return { ...answer, taskTree: pruned.tree, ...(prunedTaskIds.length ? { prunedTaskIds } : {}) }
+  if (!result.ok || !shouldPrune) return failure(tree, result, id)
+  return { ...failure(tree, result, id), taskTree: pruneFinishedTaskRoots(result.tree).tree }
 }

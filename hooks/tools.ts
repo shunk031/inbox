@@ -100,7 +100,6 @@ function list(value: unknown, max: number, each: number, inline = false): string
 export type ToolAnswer = {
   ledger: Ledger
   taskTree?: TaskTree
-  prunedTaskIds?: string[]
   result: string
   personLine: string | null
 }
