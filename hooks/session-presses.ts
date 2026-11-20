@@ -136,11 +136,15 @@ export function recorded<S extends Session>(
   const r = toolAnswer(host, s.ledger, tool, args, now, presses, fields, s.taskTree)
   const ledger = withOrderStatuses(r.ledger, s.prViews.views)
   const taskTree = r.taskTree ?? s.taskTree
+  const prunedIds = new Set(r.prunedTaskIds ?? [])
   const taskStatusMismatches =
     tool === 'tasks' && taskTree !== s.taskTree
       ? afterTaskTreeUpdate(s.taskStatusMismatches, taskTree)
       : s.taskStatusMismatches
-  const state = linkDialogs({ ...s, ledger, taskTree, taskStatusMismatches }, now)
+  const taskFactWarnings = prunedIds.size
+    ? s.taskFactWarnings.filter(warning => !prunedIds.has(warning.taskId))
+    : s.taskFactWarnings
+  const state = linkDialogs({ ...s, ledger, taskTree, taskStatusMismatches, taskFactWarnings }, now)
   const answered = ledger.items.find(i => !state.ledger.items.some(o => o.id === i.id))
   if (!answered) return { state, result: r.result, personLine: r.personLine }
   const outcome = state.ledger.closed.findLast(c => c.id === answered.id)?.outcome ?? ''

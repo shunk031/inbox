@@ -97,7 +97,13 @@ function list(value: unknown, max: number, each: number, inline = false): string
 }
 
 /** The agent's result and the optional line shown to the person under the call. */
-export type ToolAnswer = { ledger: Ledger; taskTree?: TaskTree; result: string; personLine: string | null }
+export type ToolAnswer = {
+  ledger: Ledger
+  taskTree?: TaskTree
+  prunedTaskIds?: string[]
+  result: string
+  personLine: string | null
+}
 
 /** What follows an answer whose change the user sees now, when the store refused to save the session as full. */
 export const NOT_SAVED = "Not saved: the inbox's store is full, so this change is lost if this session restarts."

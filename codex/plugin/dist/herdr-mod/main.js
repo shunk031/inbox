@@ -1,5 +1,5 @@
 // Built by herdr/build.ts with Bun 1.4.4 from herdr/src and hooks/. Do not edit.
-// Built at 2026-11-17T18:02:18.273Z. 226742 characters follow.
+// Built at 2026-11-20T05:24:30.866Z. 226916 characters follow.
 
 // src/main.ts
 import { View, div as div5 } from "gpui-kit";
@@ -2694,6 +2694,7 @@ function emptySession() {
   return {
     ledger: EMPTY,
     taskTree: [],
+    taskTreePrunedIds: [],
     taskTreeProjectionVersion: 0,
     taskTreeProjectionInvalidAt: null,
     taskTreeProjectionInvalidReported: false,
@@ -2771,6 +2772,7 @@ function sessionFields(saved, views) {
   return {
     ledger,
     taskTree,
+    taskTreePrunedIds: Array.isArray(saved.taskTreePrunedIds) ? [...new Set(saved.taskTreePrunedIds.filter((id) => typeof id === "string"))] : [],
     taskTreeProjectionVersion: Number.isSafeInteger(saved.taskTreeProjectionVersion) && saved.taskTreeProjectionVersion >= 0 ? saved.taskTreeProjectionVersion : 0,
     taskTreeProjectionInvalidAt: Number.isSafeInteger(saved.taskTreeProjectionInvalidAt) && saved.taskTreeProjectionInvalidAt >= 0 ? saved.taskTreeProjectionInvalidAt : null,
     taskTreeProjectionInvalidReported: saved.taskTreeProjectionInvalidReported === true,

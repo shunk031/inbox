@@ -309,7 +309,7 @@ export function timelinePage(
   isDetailOpen = false,
 ): TimelinePage {
   const nodes = new Map(data.rows.map(row => [row.task.id, row]))
-  const foldedIds = new Set(folded)
+  const foldedIds = new Set(folded.filter(id => nodes.has(id)))
   const visibleRows = data.rows.filter(row => {
     let parent = row.task.parentId
     while (parent !== null) {

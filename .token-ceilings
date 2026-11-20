@@ -2,3 +2,4 @@
 # most tokens it may hold. One "path ceiling" entry per line. The pre-commit
 # hook and scripts/check-sizes.mjs both read this file.
 hooks/register.tsx 34500
+hooks/task-tree.ts 5400

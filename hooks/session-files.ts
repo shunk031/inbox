@@ -19,6 +19,7 @@ export function emptySession(): Session {
   return {
     ledger: EMPTY,
     taskTree: [],
+    taskTreePrunedIds: [],
     taskTreeProjectionVersion: 0,
     taskTreeProjectionInvalidAt: null,
     taskTreeProjectionInvalidReported: false,
@@ -157,6 +158,9 @@ function sessionFields(saved: SavedSession, views: Record<string, PrView>): Sess
   return {
     ledger,
     taskTree,
+    taskTreePrunedIds: Array.isArray(saved.taskTreePrunedIds)
+      ? [...new Set(saved.taskTreePrunedIds.filter((id): id is string => typeof id === 'string'))]
+      : [],
     taskTreeProjectionVersion:
       Number.isSafeInteger(saved.taskTreeProjectionVersion) && saved.taskTreeProjectionVersion! >= 0
         ? saved.taskTreeProjectionVersion!

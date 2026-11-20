@@ -2922,6 +2922,7 @@ var TASK_NOTES_LIMIT = 40;
 var TASK_NOTE_LENGTH = 2000;
 var TASK_HISTORY_DETAIL_LENGTH = 2000;
 var TASK_NODE_LIMIT = 200;
+var FINISHED_TASK_ROOT_LIMIT = 20;
 var TASK_DEPTH_LIMIT = 8;
 var TASK_TITLE_LENGTH = 100;
 var TASK_WEIGHT_MIN = 0.1;
@@ -2947,6 +2948,36 @@ function notesOf(notes) {
 }
 function hasValidWeight(weight) {
   return Number.isFinite(weight) && weight >= TASK_WEIGHT_MIN && weight <= TASK_WEIGHT_MAX;
+}
+function pruneFinishedTaskRoots(tree) {
+  const children = new Map;
+  for (const task of tree)
+    children.set(task.parentId, [...children.get(task.parentId) ?? [], task]);
+  const finished = [];
+  const visit = (task) => {
+    const descendants = (children.get(task.id) ?? []).map(visit);
+    return {
+      done: (task.status === "done" || task.status === "dropped") && descendants.every((child) => child.done),
+      at: Math.max(task.updatedAt, ...descendants.map((child) => child.at))
+    };
+  };
+  for (const [index, root] of (children.get(null) ?? []).entries()) {
+    const result = visit(root);
+    if (result.done)
+      finished.push({ id: root.id, at: result.at, index });
+  }
+  if (finished.length <= FINISHED_TASK_ROOT_LIMIT)
+    return { tree, deletedIds: [] };
+  const removedRoots = new Set(finished.sort((a, b) => b.at - a.at || b.index - a.index).slice(FINISHED_TASK_ROOT_LIMIT).map((root) => root.id));
+  const deleted = new Set;
+  const remove = (task) => {
+    deleted.add(task.id);
+    for (const child of children.get(task.id) ?? [])
+      remove(child);
+  };
+  for (const root of removedRoots)
+    remove(tree.find((task) => task.id === root));
+  return { tree: tree.filter((task) => !deleted.has(task.id)), deletedIds: [...deleted] };
 }
 function taskGitHubLink(value) {
   const match = /^https:\/\/[^/?#]+\/([A-Za-z0-9](?:[A-Za-z0-9-]{0,38})?)\/([A-Za-z0-9_.-]{1,100})\/(pull|issues)\/([1-9]\d*)$/.exec(value);
@@ -5390,6 +5421,7 @@ function emptySession() {
   return {
     ledger: EMPTY,
     taskTree: [],
+    taskTreePrunedIds: [],
     taskTreeProjectionVersion: 0,
     taskTreeProjectionInvalidAt: null,
     taskTreeProjectionInvalidReported: false,
@@ -5476,6 +5508,7 @@ function sessionFields(saved, views) {
   return {
     ledger,
     taskTree,
+    taskTreePrunedIds: Array.isArray(saved.taskTreePrunedIds) ? [...new Set(saved.taskTreePrunedIds.filter((id) => typeof id === "string"))] : [],
     taskTreeProjectionVersion: Number.isSafeInteger(saved.taskTreeProjectionVersion) && saved.taskTreeProjectionVersion >= 0 ? saved.taskTreeProjectionVersion : 0,
     taskTreeProjectionInvalidAt: Number.isSafeInteger(saved.taskTreeProjectionInvalidAt) && saved.taskTreeProjectionInvalidAt >= 0 ? saved.taskTreeProjectionInvalidAt : null,
     taskTreeProjectionInvalidReported: saved.taskTreeProjectionInvalidReported === true,
@@ -6873,6 +6906,7 @@ function taskTreeAnswer(tree, input, now, goalId) {
   if (!id || id.length > TASK_ID_LENGTH)
     return { taskTree: tree, result: `Not saved: task_id must be 1\u2013${TASK_ID_LENGTH} characters.` };
   let result;
+  let deletedBeforeAdd = [];
   if (operation === "add") {
     const linkInput = taskLinksFromInput(input);
     if (!linkInput.ok)
@@ -6916,6 +6950,13 @@ function taskTreeAnswer(tree, input, now, goalId) {
       ...linkInput.links ? { links: linkInput.links } : {}
     };
     result = createTask(tree, node, "agent");
+    if (!result.ok && result.reason === "limit" && tree.length >= TASK_NODE_LIMIT) {
+      const pruned = pruneFinishedTaskRoots(tree);
+      if (pruned.deletedIds.length) {
+        deletedBeforeAdd = pruned.deletedIds;
+        result = createTask(pruned.tree, node, "agent");
+      }
+    }
   } else if (operation === "update") {
     const current = tree.find((task) => task.id === id);
     if (!current)
@@ -6989,7 +7030,15 @@ function taskTreeAnswer(tree, input, now, goalId) {
       return { taskTree: tree, result: `Not saved: note must be at most ${TASK_NOTE_LENGTH} characters.` };
     result = addTaskNote(tree, id, note, now, "agent");
   }
-  return failure2(tree, result, id);
+  const answer = failure2(tree, result, id);
+  if (!result.ok)
+    return answer;
+  const shouldPrune = operation === "add" || operation === "complete" || operation === "update" && (input.status === "done" || input.status === "dropped");
+  if (!shouldPrune)
+    return answer;
+  const pruned = pruneFinishedTaskRoots(result.tree);
+  const prunedTaskIds = [...new Set([...deletedBeforeAdd, ...pruned.deletedIds])];
+  return { ...answer, taskTree: pruned.tree, ...prunedTaskIds.length ? { prunedTaskIds } : {} };
 }
 
 // ../hooks/record-links.ts
@@ -8019,7 +8068,7 @@ function timelineLinkPlan(task, lastActions) {
 }
 function timelinePage(data, selectedId, folded, lastActions = {}, isDetailOpen = false) {
   const nodes = new Map(data.rows.map((row) => [row.task.id, row]));
-  const foldedIds = new Set(folded);
+  const foldedIds = new Set(folded.filter((id) => nodes.has(id)));
   const visibleRows = data.rows.filter((row) => {
     let parent = row.task.parentId;
     while (parent !== null) {
@@ -8328,8 +8377,10 @@ function recorded(host, s, tool, args, now, fields) {
   const r = toolAnswer(host, s.ledger, tool, args, now, presses, fields, s.taskTree);
   const ledger = withOrderStatuses(r.ledger, s.prViews.views);
   const taskTree = r.taskTree ?? s.taskTree;
+  const prunedIds = new Set(r.prunedTaskIds ?? []);
   const taskStatusMismatches = tool === "tasks" && taskTree !== s.taskTree ? afterTaskTreeUpdate(s.taskStatusMismatches, taskTree) : s.taskStatusMismatches;
-  const state = linkDialogs({ ...s, ledger, taskTree, taskStatusMismatches }, now);
+  const taskFactWarnings = prunedIds.size ? s.taskFactWarnings.filter((warning) => !prunedIds.has(warning.taskId)) : s.taskFactWarnings;
+  const state = linkDialogs({ ...s, ledger, taskTree, taskStatusMismatches, taskFactWarnings }, now);
   const answered = ledger.items.find((i) => !state.ledger.items.some((o) => o.id === i.id));
   if (!answered)
     return { state, result: r.result, personLine: r.personLine };

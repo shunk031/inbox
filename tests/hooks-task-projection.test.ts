@@ -185,6 +185,24 @@ describe('task-tree projection', () => {
     await projection.release('meta')
   })
 
+  test('a pruned id cannot return through the one-time feed import or next projection', async () => {
+    const path = '/feed/meta-open-items.json'
+    const old =
+      '{"version":1,"source":"meta-open-items","writtenAt":10,"entries":[{"key":"removed","kind":"task","state":"working","title":"Old task","detail":"","at":10,"owner":{"agent":"worker","machine":"host"}}]}'
+    const store = memoryFiles(path, old)
+    const projection = createTaskProjection(store.files, path)
+    const session = { ...emptySession(), taskTreePrunedIds: ['removed'] }
+    const result = await afterTaskTreeUpdate(projection, 'meta', session, 20, change =>
+      Promise.resolve(change(session)),
+    )
+
+    expect([
+      result.session.taskTree,
+      result.session.taskTreePrunedIds,
+      JSON.parse(store.contents.get(path)!).entries,
+    ]).toEqual([[], [], []])
+  })
+
   test('does not import rows from an existing projected snapshot', async () => {
     const path = '/feed/meta-open-items.json'
     const original = JSON.stringify({

@@ -2641,6 +2641,7 @@ function emptySession() {
   return {
     ledger: EMPTY,
     taskTree: [],
+    taskTreePrunedIds: [],
     taskTreeProjectionVersion: 0,
     taskTreeProjectionInvalidAt: null,
     taskTreeProjectionInvalidReported: false,
@@ -2721,6 +2722,7 @@ function sessionFields(saved, views) {
   return {
     ledger,
     taskTree,
+    taskTreePrunedIds: Array.isArray(saved.taskTreePrunedIds) ? [...new Set(saved.taskTreePrunedIds.filter((id) => typeof id === "string"))] : [],
     taskTreeProjectionVersion: Number.isSafeInteger(saved.taskTreeProjectionVersion) && saved.taskTreeProjectionVersion >= 0 ? saved.taskTreeProjectionVersion : 0,
     taskTreeProjectionInvalidAt: Number.isSafeInteger(saved.taskTreeProjectionInvalidAt) && saved.taskTreeProjectionInvalidAt >= 0 ? saved.taskTreeProjectionInvalidAt : null,
     taskTreeProjectionInvalidReported: saved.taskTreeProjectionInvalidReported === true,

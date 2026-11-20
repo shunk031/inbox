@@ -28,6 +28,14 @@ export async function runModTool(
   let didChangeTaskTree = false
   const saved = await deps.commit(owner, s => {
     answer = answerToolCallWithReminder(s, tool, toolInput, now, isMainAgent, isTasksCall)
+    if (tool === 'tasks' && deps.projection?.enabled && answer.state.taskTreeProjectionVersion === 0) {
+      const ids = new Set([...s.taskTreePrunedIds, ...(answer.prunedTaskIds ?? [])])
+      const current = new Set(answer.state.taskTree.map(task => task.id))
+      answer = {
+        ...answer,
+        state: { ...answer.state, taskTreePrunedIds: [...ids].filter(id => !current.has(id)) },
+      }
+    }
     didChangeTaskTree = tool === 'tasks' && answer.state.taskTree !== s.taskTree
     return answer.state
   })
