@@ -3,9 +3,8 @@ import { cellWidth, cutToCells } from '../hooks/text.ts'
 import { isTerminalChrome } from './render-snapshots-checks.mjs'
 
 const ANSI = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))/gu
-const HEADING_PREFIX = /^\s*(?:(?:Asks|Timeline|Agents|PRs)(?:\s+\d+)?\s+)?(?:▸|▲|✦|↻)?\s*/u
+const HEADING_PREFIX = /^\s*(?:(?:Asks|Timeline)(?:\s+\d+)?\s+)?(?:▸|▲|✦|↻)?\s*/u
 const HEADINGS = {
-  agents: /^(Orchestrators|Meta tasks|Local agents)(?:\s*·\s*\d+)?\s*$/u,
   asks: /^(Questions|Tasks|Issues|Findings|Legacy findings|Opportunities|Progress)(?:\s*·\s*\d+)?\s*$/u,
 }
 const CONNECTORS = /├─|└─/gu
@@ -61,7 +60,7 @@ function boxBorders(lines) {
 export function checkTreeText(text, { view, source = 'frame', inputMode, dividerColumn, paneWidth } = {}) {
   const { lines, unclassified } = paneLines(text, inputMode, dividerColumn, paneWidth)
   const errors = unclassified.map(line => `FAIL ${source} line=${line} unclassified line`)
-  if (!['agents', 'asks', 'timeline'].includes(view)) return [...errors, `FAIL ${source} line=1 unclassified view`]
+  if (!['asks', 'timeline'].includes(view)) return [...errors, `FAIL ${source} line=1 unclassified view`]
   const borders = boxBorders(lines)
   const fail = (line, detail, tree = view) => errors.push(`FAIL ${source} tree=${tree} line=${line + 1} ${detail}`)
   const connectors = lines.flatMap((line, row) =>
@@ -87,10 +86,12 @@ export function checkTreeText(text, { view, source = 'frame', inputMode, divider
         ]
       : []
   })
+  if (!sections.length) fail(0, view === 'timeline' ? 'missing-timeline-root' : 'missing-recognized-heading')
+  else if (!connectors.length) fail(sections[0].line, 'recognized-heading-without-connectors', sections[0].name)
   for (const section of sections) {
     const next = sections.find(row => row.line > section.line)?.line ?? lines.length
     const first = connectors.find(row => row.line > section.line && row.line < next)
-    if (first && view !== 'timeline') {
+    if (first && view === 'asks') {
       const trunk = guides.find(row => row.line > section.line && row.line < first.line)
       section.column = trunk?.column
       if (!trunk) fail(first.line, 'heading-requires-trunk-before-connectors', section.name)

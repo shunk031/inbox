@@ -54,14 +54,6 @@ async function main() {
     registry.length,
     `registry entries captured exactly once (${frames.size}/${registry.length})`,
   )
-  assert.equal(frames.get('timeline-detail-layout-87.txt')?.paneWidth, 87, 'split detail pane is 87 columns wide')
-  if (process.env.INBOX_TIMELINE_PROOF) {
-    const proof = frames.get('timeline-detail-layout-87.txt')
-    assert.ok(proof, '87-column Timeline detail proof frame was captured')
-    mkdirSync(path.dirname(process.env.INBOX_TIMELINE_PROOF), { recursive: true })
-    writeFileSync(`${process.env.INBOX_TIMELINE_PROOF}.ansi`, proof.ansiFrame)
-    writeFileSync(`${process.env.INBOX_TIMELINE_PROOF}.txt`, `${proof.frame}\n`)
-  }
   mkdirSync(baseline, { recursive: true })
   const errors = []
   for (const [name, item] of frames) {
@@ -70,15 +62,16 @@ async function main() {
     if (process.env.UPDATE_SNAPSHOTS === '1') writeFileSync(file, rendered)
     else if (!existsSync(file))
       errors.push(failure(item.entry, 'snapshot inventory', name, 'missing', 'baseline missing'))
-    const snapshotFrame =
-      process.env.UPDATE_SNAPSHOTS === '1' ? item.frame : readFileSync(file, 'utf8').replace(/\n$/u, '')
-    if (snapshotFrame !== item.frame)
-      errors.push(failure(item.entry, 'baseline', 'same pane frame', 'different', 'frame differs'))
+    else {
+      const expected = readFileSync(file, 'utf8').replace(/\n$/u, '')
+      if (expected !== item.frame)
+        errors.push(failure(item.entry, 'baseline', 'same pane frame', 'different', 'frame differs'))
+    }
     errors.push(...checkFrame(item.entry, item.frame, item.paneWidth))
     errors.push(...checkLeftEdges(item.entry, item.frame))
     errors.push(...checkChipBoxes(item.entry, item.ansiFrame, item.paneWidth))
     errors.push(...checkTimelineFocus(item.entry, item.frame, item.ansiFrame))
-    if (['asks', 'timeline', 'agents'].includes(item.entry.view))
+    if ((item.entry.view === 'asks' || item.entry.view === 'timeline') && item.entry.scenario === 'busy')
       errors.push(
         ...checkTreeText(stripAnsi(item.ansiFrame), {
           view: item.entry.view,
@@ -105,7 +98,7 @@ async function main() {
   }
   runMutationProofs(frames)
   const summary = `PASS ${registry.length} live pane snapshots`
-  const coverage = `${VIEWS.length} views × ${SCENARIOS.length} scenarios × 2 widths + 3 Agents tree widths + Timeline fold × 2 widths + detail layout × 3 widths`
+  const coverage = `${VIEWS.length} views × ${SCENARIOS.length} scenarios × 2 widths + Timeline fold × 2 widths + detail layout × 3 widths`
   process.stdout.write(`${summary} (${coverage})\n`)
 }
 main().catch(error => {

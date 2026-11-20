@@ -5,11 +5,11 @@ import type { TimelinePage } from './timeline-page'
 
 type TimelineStyle = Pick<PaneBase, 'Box' | 'Text' | 'pal'>
 
-export function timelineToneColor(pal: PaneBase['pal'], tone: string) {
+function timelineToneColor(pal: PaneBase['pal'], tone: string) {
   return tone === 'key' ? pal.key : tone === 'muted' ? pal.muted : (pal.tone[tone as 'done' | 'error'] ?? pal.muted)
 }
 
-export function timelineChip({ Box, Text, pal }: TimelineStyle, label: string, tone: string, key?: string) {
+function timelineChip({ Box, Text, pal }: TimelineStyle, label: string, tone: string, key?: string) {
   return (
     <Box key={key} backgroundColor={timelineToneColor(pal, tone)} paddingX={1}>
       <Text color="inverseText">{label}</Text>
@@ -30,10 +30,6 @@ function terminalTreeLead(row: TimelinePage['rows'][number], cells: number) {
   const siblingGuide = row.depth > 0 ? (row.hasLaterSibling ? '│  ' : '   ') : ''
   const childGuide = row.hasVisibleChildren ? '│  ' : '   '
   return padToCells(`  ${row.guides.join('')}${siblingGuide}${childGuide}`, cells)
-}
-
-export function timelineRowBackground(pal: PaneBase['pal'], alternate: boolean) {
-  return alternate ? (pal.card ?? pal.line) : undefined
 }
 
 type TimelinePaneBase = Pick<

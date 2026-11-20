@@ -15,7 +15,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { cellWidth, cutToCells } from '../hooks/text.ts'
 import { fixtureState, HEIGHT, PLUGIN_STORE } from './render-snapshots-fixtures.mjs'
-import { isTerminalChrome, marker, pageMarker } from './render-snapshots-checks.mjs'
+import { marker, pageMarker } from './render-snapshots-checks.mjs'
 
 const ANSI = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))/g
 const quote = value => `'${String(value).replaceAll("'", "'\\''")}'`
@@ -26,36 +26,36 @@ const send = (socket, session, key, literal = false) =>
 const stripAnsi = text => text.replace(ANSI, '').replace(/\r/g, '')
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
 function cropInboxPane(capture, width) {
-  const lines = stripAnsi(capture).replace(/\n+$/u, '').split('\n')
+  const lines = stripAnsi(capture).split('\n')
+  if (lines.at(-1) === '') lines.pop()
   const counts = new Map()
   for (const line of lines)
     for (const m of line.matchAll(/│/g)) {
       const col = cellWidth(line.slice(0, m.index))
       if (col >= Math.floor(width / 3) && col < width - 20) counts.set(col, (counts.get(col) ?? 0) + 1)
     }
-  const candidate = [...counts].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0]?.[0]
-  const singlePane = width <= 87 && candidate === undefined
-  const divider = singlePane ? 0 : (candidate ?? -1)
-  const paneWidth = singlePane ? width - 2 : divider < 0 ? width : width - divider - 1
-  const frame = lines.map(line => {
-    if (singlePane && line.startsWith('│') && line.endsWith('│') && cellWidth(line) === width)
-      return line.slice(1, -1).replace(/ +$/u, '')
-    const prefix = cutToCells(line, divider + 1)
-    return divider >= 0 && cellWidth(prefix) === divider + 1 && prefix.endsWith('│')
-      ? line.slice(prefix.length).replace(/ +$/u, '')
-      : line
-  })
-  const top = frame.findIndex(line => line.startsWith('╭'))
-  const bottom = frame.findLastIndex(line => line.startsWith('╰'))
-  const visible = singlePane && top >= 0 && bottom > top ? frame.slice(top, bottom + 1) : frame
-  return {
-    text: visible
-      .filter(line => !isTerminalChrome(line, width))
-      .join('\n')
-      .replace(capture.endsWith('\n') ? /\n$/u : /$^/u, ''),
-    paneWidth,
-    dividerColumn: divider,
+  const [divider, rows] = [...counts].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0] ?? []
+  const minRows = width <= 87 ? 12 : 20
+  if (!divider || rows < minRows) {
+    const frame = lines.filter(line => line.startsWith('│') && line.endsWith('│') && cellWidth(line) === width)
+    if (width <= 87 && frame.length >= minRows)
+      return {
+        text: frame.map(line => line.slice(1, -1).replace(/ +$/u, '')).join('\n'),
+        paneWidth: width - 2,
+        dividerColumn: 0,
+      }
+    return null
   }
+  const paneWidth = width - divider - 1
+  const frame = lines.flatMap(line => {
+    const prefix = cutToCells(line, divider + 1)
+    return cellWidth(prefix) === divider + 1 && prefix.endsWith('│')
+      ? [line.slice(prefix.length).replace(/ +$/u, '')]
+      : []
+  })
+  while (frame.at(-1) === '') frame.pop()
+  if (frame.length < minRows) return null
+  return { text: frame.join('\n'), paneWidth, dividerColumn: divider }
 }
 const focusedHelp = frame => {
   const line = frame.split('\n').find(text => text.includes('Help'))
@@ -90,22 +90,6 @@ export function ready(entry, frame) {
   const has = text => pageMarker(frame, text)
   if (entry.view === 'help') return has('Keys') && has('Tabs') && frame.includes('●  Working')
   if (entry.view === 'prs') return has(marker(entry)) && !has('Refreshing PRs')
-  if (entry.view === 'agents' && entry.fixture === 'agents-tree') {
-    const connectors = [...frame.matchAll(/├─|└─/gu)].length
-    return (
-      ['Orchestrators', 'Meta tasks', 'Local agents'].every(has) &&
-      connectors >= 11 &&
-      ['snapshot-local', 'In progress'].every(has) &&
-      (entry.width !== 87 || has('snapshot-local-worker'))
-    )
-  }
-  if (entry.view === 'agents' && entry.fixture === 'agents-busy') {
-    const required = [marker(entry), 'Stale', 'In progress', 'Waiting', 'snapshot-local']
-    const missing = required.filter(text => !has(text))
-    return missing.length === 0
-  }
-  if (entry.view === 'agents')
-    return has(marker(entry)) && has('Herdr agent list unavailable; local agent status is not current.')
   if (entry.view === 'timeline-detail') return has('Snapshot') && has('Back')
   if (entry.view === 'asks-detail')
     return (
@@ -182,28 +166,7 @@ function writeConfig(config, home, pluginDir, sessionId, fixture) {
   const fakeGh = path.join(bin, 'gh')
   writeFileSync(fakeGh, '#!/bin/sh\nprintf "gh is disabled in render snapshot fixtures\\n" >&2\nexit 1\n')
   chmodSync(fakeGh, 0o755)
-  if (fixture === 'agents-busy' || fixture === 'agents-tree') {
-    const fakeHerdr = path.join(bin, 'herdr')
-    writeFileSync(
-      fakeHerdr,
-      `#!/bin/sh\nprintf '%s\\n' '{"result":{"agents":[{"name":"snapshot-local-worker","agent_status":"working"}]}}'\n`,
-    )
-    chmodSync(fakeHerdr, 0o755)
-  }
   return bin
-}
-function copyReadOnlyFeeds(source, destination) {
-  mkdirSync(destination, { recursive: true })
-  const files = readdirSync(source, { withFileTypes: true }).filter(
-    entry => entry.isFile() && entry.name.endsWith('.json'),
-  )
-  for (const entry of files) {
-    const copy = path.join(destination, entry.name)
-    writeFileSync(copy, readFileSync(path.join(source, entry.name)))
-    chmodSync(copy, 0o444)
-  }
-  chmodSync(destination, 0o555)
-  return files.length
 }
 export function storeKeys(env = process.env) {
   const config = env.CLAUDE_CONFIG_DIR || path.join(env.HOME || os.homedir(), '.claude')
@@ -237,7 +200,7 @@ export function isolate(root, home, config, env = process.env) {
   if (![h, c].every(value => value.startsWith(temp)))
     throw Error('refusing isolated paths outside the runner temp directory')
 }
-export async function capture(entry, pluginDir, root, socket, claude, { feedSource, onTimeout } = {}) {
+export async function capture(entry, pluginDir, root, socket, claude, { onTimeout } = {}) {
   const run = path.join(root, entry.file.replace(/\.txt$/u, ''))
   const home = path.join(run, 'home')
   const config = path.join(run, 'config')
@@ -248,8 +211,6 @@ export async function capture(entry, pluginDir, root, socket, claude, { feedSour
   const id = randomUUID()
   const session = `snap-${entry.fixture}-${entry.view}-${entry.width}`
   const bin = writeConfig(config, home, pluginDir, id, entry.fixture)
-  const feedCopy = feedSource ? path.join(config, 'feeds') : null
-  if (feedSource && copyReadOnlyFeeds(feedSource, feedCopy) === 0) throw Error('no regular JSON feed files to copy')
   const env = {
     HOME: home,
     CLAUDE_CONFIG_DIR: config,
@@ -260,7 +221,6 @@ export async function capture(entry, pluginDir, root, socket, claude, { feedSour
     LC_ALL: 'C.UTF-8',
     TZ: 'UTC',
     CLAUDE_CODE_NO_FLICKER: '1',
-    ...(feedCopy ? { INBOX_FEED: feedCopy } : {}),
   }
   const vars = Object.entries(env)
     .map(([key, value]) => `${key}=${quote(value)}`)
@@ -300,7 +260,7 @@ export async function capture(entry, pluginDir, root, socket, claude, { feedSour
         ? 'Snapshot empty report'
         : entry.fixture === 'detail-busy'
           ? 'Snapshot report'
-          : entry.fixture === 'agents-busy' || entry.fixture === 'agents-tree' || entry.fixture.endsWith('empty')
+          : entry.fixture.endsWith('empty')
             ? 'Nothing needed'
             : 'Snapshot question'
     await wait(
@@ -332,13 +292,10 @@ export async function capture(entry, pluginDir, root, socket, claude, { feedSour
         ['2', timelineDetail],
         ['Enter', frame => ready(entry, frame)],
       ],
-      agents: [['3', frame => ready(entry, frame)]],
-      prs: [['4', frame => ready(entry, frame)]],
+      prs: [['3', frame => ready(entry, frame)]],
       'asks-detail': [['v', frame => ready(entry, frame)]],
-      asks: [],
-      help: [],
     }
-    for (const [key, predicate] of steps[entry.view])
+    for (const [key, predicate] of steps[entry.view] ?? [])
       await press(
         socket,
         session,
