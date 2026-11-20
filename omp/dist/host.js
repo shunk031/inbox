@@ -8220,10 +8220,13 @@ function timelinePage(data, selectedId, folded, lastActions = {}, isDetailOpen =
     ] : [],
     ...selectedRow.task.detail ? [{ label: "Detail", text: selectedRow.task.detail }] : [],
     ...selectedRow.task.notes.map((text) => ({ label: "Note", text })),
-    ...selectedRow.task.history.map((event) => ({
-      label: "History",
-      text: `${event.time} \xB7 ${event.source} \xB7 ${event.kind === "note" ? HISTORY_TEXT.note : event.detail ?? HISTORY_TEXT[event.kind]}`
-    })),
+    ...selectedRow.task.history.length ? [
+      {
+        label: "History",
+        text: selectedRow.task.history.map((event) => `${event.time} \xB7 ${event.source} \xB7 ${event.kind === "note" ? HISTORY_TEXT.note : event.detail ?? HISTORY_TEXT[event.kind]}`).join(`
+`)
+      }
+    ] : [],
     ...selectedLinks.length ? [{ label: "Links", actions: selectedLinks }] : []
   ] : [];
   const taskProgress = selectedRow ? percent(selectedRow.progress / 100) : null;
@@ -10288,7 +10291,9 @@ function timelineLine(line, plan, isSelected, d) {
     } else {
       out.push(`${row.detailLead}${s.dim(detail.label)}`);
       const indent = detailIndent + 2;
-      out.push(...wrapTimelineText(detail.text, Math.max(1, width - indent)).map((text) => `${" ".repeat(indent)}${text}`));
+      for (const text of detail.text.split(`
+`))
+        out.push(...wrapTimelineText(text, Math.max(1, width - indent)).map((text) => `${" ".repeat(indent)}${text}`));
     }
   }
   return out;

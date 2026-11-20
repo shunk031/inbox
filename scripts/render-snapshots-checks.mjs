@@ -48,7 +48,7 @@ export function checkTimelineFocus(entry, frame, ansiFrame) {
   return errors
 }
 const col = (line, index) => cellWidth(line.slice(0, index))
-const detailColumns = { 87: [18, 36, 38, 55, 57], 110: [19, 21], 200: [27, 29, 52, 54] }
+const detailColumns = { 87: [26, 28, 51, 53], 110: [19, 21], 200: [27, 29, 52, 54] }
 export const failure = (entry, row, expected, actual, reason) =>
   `FAIL view=${entry.view} scenario=${entry.scenario} width=${entry.width} row=${row} ` +
   `expected-column=${expected} actual-column=${actual} ${reason}`

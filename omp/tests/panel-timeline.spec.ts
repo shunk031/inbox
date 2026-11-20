@@ -61,6 +61,7 @@ test('Timeline draws the shared card and two-line rows, then opens and returns f
   expect(opened.timelineTreeTop).toBe(3)
   expect(opened.pageTop).toBe(0)
   const detail = strip(text(screen, opened, 100))
+  expect(detail.match(/History/g)).toHaveLength(1)
   const labels = ['Progress', 'Weight', 'Completed units', 'Current', 'Detail', 'Note', 'History', 'Links']
   const positions = labels.map(label => detail.indexOf(label))
   expect(positions.every(position => position >= 0)).toBe(true)

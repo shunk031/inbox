@@ -134,6 +134,11 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
                       </Box>
                     ))}
                   </Box>
+                ) : line.label === 'History' ? (
+                  <Box flexDirection="column">
+                    <Text color={pal.muted}>History</Text>
+                    <Text color={pal.muted}>{line.text}</Text>
+                  </Box>
                 ) : (
                   <Text color={pal.muted}>{`${line.label} · ${line.text}`}</Text>
                 ),

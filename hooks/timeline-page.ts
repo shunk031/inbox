@@ -475,10 +475,19 @@ export function timelinePage(
           : []),
         ...(selectedRow.task.detail ? [{ label: 'Detail' as const, text: selectedRow.task.detail }] : []),
         ...selectedRow.task.notes.map(text => ({ label: 'Note' as const, text })),
-        ...selectedRow.task.history.map(event => ({
-          label: 'History' as const,
-          text: `${event.time} · ${event.source} · ${event.kind === 'note' ? HISTORY_TEXT.note : (event.detail ?? HISTORY_TEXT[event.kind])}`,
-        })),
+        ...(selectedRow.task.history.length
+          ? [
+              {
+                label: 'History' as const,
+                text: selectedRow.task.history
+                  .map(
+                    event =>
+                      `${event.time} · ${event.source} · ${event.kind === 'note' ? HISTORY_TEXT.note : (event.detail ?? HISTORY_TEXT[event.kind])}`,
+                  )
+                  .join('\n'),
+              },
+            ]
+          : []),
         ...(selectedLinks.length ? [{ label: 'Links' as const, actions: selectedLinks }] : []),
       ]
     : []

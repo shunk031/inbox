@@ -42,6 +42,7 @@ async function main() {
     registry.length,
     `registry entries captured exactly once (${frames.size}/${registry.length})`,
   )
+  assert.equal(frames.get('timeline-detail-layout-87.txt')?.paneWidth, 87, 'split detail pane is 87 columns wide')
   if (process.env.INBOX_TIMELINE_PROOF) {
     const proof = frames.get('timeline-detail-layout-87.txt')
     assert.ok(proof, '87-column Timeline detail proof frame was captured')

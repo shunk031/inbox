@@ -196,6 +196,7 @@ registry.push(
     scenario: 'layout',
     fixture: 'timeline-detail-layout',
     width,
+    ...(width === 87 ? { terminalWidth: 196 } : {}),
     file: `timeline-detail-layout-${width}.txt`,
   })),
 )

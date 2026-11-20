@@ -108,14 +108,6 @@ test('pane crop preserves leading and interior spaces while removing the dock di
   assert.equal(cropped.text.endsWith('\n'), false)
 })
 
-test('pane crop removes the side borders of a narrow full-width inbox overlay', () => {
-  const capture = Array.from({ length: 10 }, (_, index) => `│${`row-${index}`.padEnd(38)}│`).join('\n')
-  const cropped = cropInboxPane(capture, 40)
-  assert.equal(cropped.dividerColumn, 0)
-  assert.equal(cropped.paneWidth, 38)
-  assert.equal(cropped.text.split('\n')[5], 'row-5')
-})
-
 test('ANSI stripping removes CSI and OSC control sequences', () => {
   assert.equal(stripAnsi('\x1b[31mred\x1b[0m\x1b]8;;https://example.invalid\x07link\x1b]8;;\x07'), 'redlink')
 })

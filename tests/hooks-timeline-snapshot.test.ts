@@ -185,7 +185,6 @@ for (const bodyColumns of [87, 110, 200] as const) {
       'Detail: 登録した説明はCurrentとは別に残る。',
       'History',
       'History: Task created',
-      'History',
     ])
     for (let index = 0; index < 4; index++) {
       const lead = await emptyPane.find({ key: `timeline-detail-lead-${index}` })

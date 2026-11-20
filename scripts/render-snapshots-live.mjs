@@ -28,29 +28,6 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
 function cropInboxPane(capture, width) {
   const lines = stripAnsi(capture).split('\n')
   if (lines.at(-1) === '') lines.pop()
-  const cropFullWidthOverlay = () => {
-    const edges = new Map()
-    for (const line of lines)
-      for (const match of line.matchAll(/│/g)) {
-        const column = cellWidth(line.slice(0, match.index))
-        edges.set(column, (edges.get(column) ?? 0) + 1)
-      }
-    const left = [...edges].find(([column, rows]) => column <= 1 && rows >= 5)?.[0]
-    const right = [...edges]
-      .filter(([column, rows]) => column >= width - 2 && rows >= 5)
-      .map(([column]) => column)
-      .at(-1)
-    if (left === undefined || right === undefined || right <= left) return null
-    const frame = lines.flatMap(line => {
-      const bars = [...line.matchAll(/│/g)]
-      const leftBar = bars.find(match => cellWidth(line.slice(0, match.index)) === left)
-      const rightBar = bars.find(match => cellWidth(line.slice(0, match.index)) === right)
-      return leftBar && rightBar ? [line.slice(leftBar.index + 1, rightBar.index).replace(/ +$/u, '')] : []
-    })
-    while (frame.at(-1) === '') frame.pop()
-    if (frame.length < 5) return null
-    return { text: frame.join('\n'), paneWidth: right - left - 1, dividerColumn: left }
-  }
   const counts = new Map()
   for (const line of lines)
     for (const m of line.matchAll(/│/g)) {
@@ -58,7 +35,7 @@ function cropInboxPane(capture, width) {
       if (col >= Math.floor(width / 3)) counts.set(col, (counts.get(col) ?? 0) + 1)
     }
   const [divider, rows] = [...counts].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0] ?? []
-  if (!divider || rows < 20) return cropFullWidthOverlay()
+  if (!divider || rows < 20) return null
   const paneWidth = width - divider - 1
   const frame = lines.flatMap(line => {
     const prefix = cutToCells(line, divider + 1)
@@ -67,7 +44,7 @@ function cropInboxPane(capture, width) {
       : []
   })
   while (frame.at(-1) === '') frame.pop()
-  if (frame.length < 20) return cropFullWidthOverlay()
+  if (frame.length < 20) return null
   return { text: frame.join('\n'), paneWidth, dividerColumn: divider }
 }
 const focusedHelp = frame => {
@@ -207,6 +184,7 @@ export async function capture(entry, pluginDir, root, socket, claude) {
   const home = path.join(run, 'home')
   const config = path.join(run, 'config')
   const tmp = path.join(run, 'tmp')
+  const terminalWidth = entry.terminalWidth ?? entry.width
   for (const dir of [home, config, tmp]) mkdirSync(dir, { recursive: true })
   isolate(root, home, config)
   const id = randomUUID()
@@ -236,7 +214,7 @@ export async function capture(entry, pluginDir, root, socket, claude) {
       '-s',
       session,
       '-x',
-      String(entry.width),
+      String(terminalWidth),
       '-y',
       String(HEIGHT),
       '-c',
@@ -246,7 +224,7 @@ export async function capture(entry, pluginDir, root, socket, claude) {
     await wait(
       socket,
       session,
-      entry.width,
+      terminalWidth,
       frame => pageMarker(frame, '❯') || pageMarker(frame, 'Open inbox'),
       'Claude prompt',
       'raw',
@@ -267,7 +245,7 @@ export async function capture(entry, pluginDir, root, socket, claude) {
     await wait(
       socket,
       session,
-      entry.width,
+      terminalWidth,
       frame => pageMarker(frame, initial),
       `initial inbox pane for ${entry.fixture}`,
     )
@@ -295,7 +273,7 @@ export async function capture(entry, pluginDir, root, socket, claude) {
       'asks-detail': [['v', frame => ready(entry, frame)]],
     }
     for (const [key, predicate] of steps[entry.view] ?? [])
-      await press(socket, session, entry.width, key, predicate, `${entry.view} ${entry.scenario} ${key}`)
+      await press(socket, session, terminalWidth, key, predicate, `${entry.view} ${entry.scenario} ${key}`)
     if (entry.view === 'help') {
       await focusHelp(socket, session)
       send(socket, session, 'Enter')
@@ -303,7 +281,7 @@ export async function capture(entry, pluginDir, root, socket, claude) {
     const crop = await wait(
       socket,
       session,
-      entry.width,
+      terminalWidth,
       frame => ready(entry, frame),
       `${entry.view} ${entry.scenario}`,
     )

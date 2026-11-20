@@ -186,7 +186,9 @@ export function TimelineTab({ view }: { view: TabView }) {
                   <span class="timeline-detail-prefix" aria-hidden="true">
                     {detail.row.detailLead}
                   </span>
-                  <p>{line.text}</p>
+                  {(line.label === 'History' ? line.text.split('\n') : [line.text]).map((text, index) => (
+                    <p key={index}>{text}</p>
+                  ))}
                 </div>
               )}
             </section>
