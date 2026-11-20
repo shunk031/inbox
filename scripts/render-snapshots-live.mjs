@@ -15,7 +15,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { cellWidth, cutToCells } from '../hooks/text.ts'
 import { fixtureState, HEIGHT, PLUGIN_STORE } from './render-snapshots-fixtures.mjs'
-import { marker, pageMarker } from './render-snapshots-checks.mjs'
+import { isTerminalChrome, marker, pageMarker } from './render-snapshots-checks.mjs'
 
 const ANSI = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))/g
 const quote = value => `'${String(value).replaceAll("'", "'\\''")}'`
@@ -26,7 +26,7 @@ const send = (socket, session, key, literal = false) =>
 const stripAnsi = text => text.replace(ANSI, '').replace(/\r/g, '')
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
 function cropInboxPane(capture, width) {
-  const lines = stripAnsi(capture).replace(/\n$/u, '').split('\n')
+  const lines = stripAnsi(capture).replace(/\n+$/u, '').split('\n')
   const counts = new Map()
   for (const line of lines)
     for (const m of line.matchAll(/│/g)) {
@@ -45,7 +45,17 @@ function cropInboxPane(capture, width) {
       ? line.slice(prefix.length).replace(/ +$/u, '')
       : line
   })
-  return { text: frame.join('\n'), paneWidth, dividerColumn: divider }
+  const top = frame.findIndex(line => line.startsWith('╭'))
+  const bottom = frame.findLastIndex(line => line.startsWith('╰'))
+  const visible = singlePane && top >= 0 && bottom > top ? frame.slice(top, bottom + 1) : frame
+  return {
+    text: visible
+      .filter(line => !isTerminalChrome(line, width))
+      .join('\n')
+      .replace(capture.endsWith('\n') ? /\n$/u : /$^/u, ''),
+    paneWidth,
+    dividerColumn: divider,
+  }
 }
 const focusedHelp = frame => {
   const line = frame.split('\n').find(text => text.includes('Help'))
@@ -117,6 +127,7 @@ export async function wait(
   { onTimeout, captureFrame } = {},
 ) {
   const end = Date.now() + timeout
+  let last = ''
   let previous
   let lastCapture
   while (Date.now() < end) {
@@ -125,21 +136,14 @@ export async function wait(
       : tmux(socket, 'capture-pane', '-N', '-e', '-p', '-t', `${session}:0.0`)
     lastCapture = capture
     const crop =
-      mode === 'pane'
-        ? cropInboxPane(capture, width)
-        : mode === 'raw'
-          ? { text: stripAnsi(capture) }
-          : mode === 'ansi'
-            ? { text: capture }
-            : (() => {
-                throw Error(`unknown capture mode: ${mode}`)
-              })()
+      mode === 'pane' ? cropInboxPane(capture, width) : { text: mode === 'raw' ? stripAnsi(capture) : capture }
+    last = crop?.text ?? stripAnsi(capture).slice(-1600)
     if (crop && predicate(crop.text) && capture === previous) return { ...crop, capture }
     previous = capture
     await pause(125)
   }
   onTimeout?.(lastCapture, label)
-  throw Error(`timed out waiting for ${label}`)
+  throw Error(`timed out waiting for ${label}${last ? `\nLast frame:\n${last}` : ''}`)
 }
 export function saveRawTimeoutFrame(directory, name, frame) {
   const file = path.join(directory, name.replace(/\.txt$/u, '.timeout.ansi'))
@@ -238,6 +242,7 @@ export async function capture(entry, pluginDir, root, socket, claude, { feedSour
   const home = path.join(run, 'home')
   const config = path.join(run, 'config')
   const tmp = path.join(run, 'tmp')
+  const terminalWidth = entry.terminalWidth ?? entry.width
   for (const dir of [home, config, tmp]) mkdirSync(dir, { recursive: true })
   isolate(root, home, config)
   const id = randomUUID()
@@ -270,7 +275,7 @@ export async function capture(entry, pluginDir, root, socket, claude, { feedSour
       '-s',
       session,
       '-x',
-      String(entry.width),
+      String(terminalWidth),
       '-y',
       String(entry.height ?? HEIGHT),
       '-c',
@@ -280,7 +285,7 @@ export async function capture(entry, pluginDir, root, socket, claude, { feedSour
     await wait(
       socket,
       session,
-      entry.width,
+      terminalWidth,
       frame => pageMarker(frame, '❯') || pageMarker(frame, 'Open inbox'),
       'Claude prompt',
       'raw',
@@ -289,11 +294,34 @@ export async function capture(entry, pluginDir, root, socket, claude, { feedSour
     )
     send(socket, session, '/inbox', true)
     send(socket, session, 'Enter')
-    await wait(socket, session, entry.width, frame => pageMarker(frame, 'Asks'), 'initial inbox pane', 'pane', 45_000, {
-      onTimeout,
-    })
+    const initial = entry.fixture.startsWith('timeline-detail-layout')
+      ? 'Timeline'
+      : entry.fixture === 'detail-empty'
+        ? 'Snapshot empty report'
+        : entry.fixture === 'detail-busy'
+          ? 'Snapshot report'
+          : entry.fixture === 'agents-busy' || entry.fixture === 'agents-tree' || entry.fixture.endsWith('empty')
+            ? 'Nothing needed'
+            : 'Snapshot question'
+    await wait(
+      socket,
+      session,
+      terminalWidth,
+      frame => pageMarker(frame, initial),
+      `initial inbox pane for ${entry.fixture}`,
+      'pane',
+      45_000,
+      { onTimeout },
+    )
     const timelineDetail = frame =>
-      pageMarker(frame, entry.scenario === 'empty' ? 'Snapshot detail empty' : 'Snapshot root')
+      pageMarker(
+        frame,
+        entry.fixture.startsWith('timeline-detail-layout')
+          ? 'Snapshot timeline'
+          : entry.scenario === 'empty'
+            ? 'Snapshot detail empty'
+            : 'Snapshot root',
+      )
     const childSelected = frame => {
       const row = frame.split('\n').find(line => line.includes('折り返し用'))
       return row?.slice(0, row.indexOf('折り返し用')).includes('>') ?? false
@@ -307,13 +335,14 @@ export async function capture(entry, pluginDir, root, socket, claude, { feedSour
       agents: [['3', frame => ready(entry, frame)]],
       prs: [['4', frame => ready(entry, frame)]],
       'asks-detail': [['v', frame => ready(entry, frame)]],
+      asks: [],
       help: [],
     }
     for (const [key, predicate] of steps[entry.view])
       await press(
         socket,
         session,
-        entry.width,
+        terminalWidth,
         key,
         predicate,
         `${entry.view} ${entry.scenario} ${key}`,
@@ -327,7 +356,7 @@ export async function capture(entry, pluginDir, root, socket, claude, { feedSour
     const crop = await wait(
       socket,
       session,
-      entry.width,
+      terminalWidth,
       frame => ready(entry, frame),
       `${entry.view} ${entry.scenario}`,
       'pane',

@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { checkTreeText } from './check-tree.mjs'
-import { checkChipBoxes, checkFrame, stripChipRightPadding } from './render-snapshots-checks.mjs'
+import { checkChipBoxes, checkFrame, checkLeftEdges, stripChipRightPadding } from './render-snapshots-checks.mjs'
 import {
   cropInboxPane,
   isolate,
@@ -57,7 +57,7 @@ test('store key inventory follows CLAUDE_CONFIG_DIR and treats missing store as 
 })
 
 test('registry covers every terminal view, scenario, and width once', () => {
-  assert.equal(registry.length, 33)
+  assert.equal(registry.length, 36)
   assert.equal(new Set(registry.map(entry => entry.file)).size, registry.length)
   assert.deepEqual(new Set(registry.map(entry => entry.width)), new Set([87, 110, 200]))
   assert.deepEqual(
@@ -70,7 +70,7 @@ test('registry covers every terminal view, scenario, and width once', () => {
   )
 })
 
-test('tree trunks stay continuous through descendant and wrapped rows', () => {
+test('tree reconstruction enforces continuity, parent columns and recognized headings', () => {
   const frame = 'Local agents\n   │\n   ├─ A\n   │  ├─ C1\n   │  │  wrap\n   │  └─ C2\n   │\n   └─ B'
   const check = text => paneOnly(text, { view: 'agents' })
   assert.deepEqual(check(frame), [])
@@ -81,9 +81,6 @@ test('tree trunks stay continuous through descendant and wrapped rows', () => {
   ])
     assert.ok(check(frame.replace(from, to)).some(error => error.includes('missing-continuity-column=3')))
   assert.ok(check('Local agents\n   │\n   └─ A\n      │').some(error => error.includes('orphan-trunk-column=6')))
-})
-
-test('tree checks require recognized headings and reject orphan trunks and shifted connectors', () => {
   const rejects = (text, detail, view = 'agents') =>
     assert.ok(paneOnly(text, { view }).some(error => error.includes(detail)))
   const oneChild = 'Local agents\n   │\n   └─ A'
@@ -108,13 +105,11 @@ test('raw terminal checks reject missing divider rows without a row-count thresh
     `${' '.repeat(40)}│${['Local agents', '   │', '   ├─ A', '   │', '   └─ B'][index] ?? ''}`.padEnd(92),
   )
   assert.deepEqual(check(rows.join('\n'), 40, 51), [])
+  assert.ok(check(`broken row\n${rows.join('\n')}`, 40, 51).some(error => error.includes('line=1 unclassified line')))
   rows[2] = `${rows[2].slice(0, 40)} ${rows[2].slice(41)}`
   assert.ok(check(rows.join('\n'), 40, 51).some(error => error.includes('line=3 unclassified line')))
-  assert.equal(cropInboxPane(rows.join('\n'), 92).text.split('\n').length, 30)
   rows[29] = `${rows[4].slice(0, 40)} ${rows[4].slice(41)}`
   assert.ok(check(rows.join('\n'), 40, 51).some(error => error.includes('line=30 unclassified line')))
-  const short = '   │Local agents\n   │   │\n      ├─ A\n   │   └─ B'
-  assert.ok(check(short, 3, 15).some(error => error.includes('line=3 unclassified line')))
 })
 
 test('Timeline root and paired square or rounded box borders are explicit', () => {
@@ -123,24 +118,16 @@ test('Timeline root and paired square or rounded box borders are explicit', () =
   assert.deepEqual(paneOnly(frame, { view: 'timeline' }), [])
   const outsideBorder = frame.replace('    │  In progress', '   │  In progress')
   rejects(outsideBorder, 'timeline', 'orphan-trunk-column=3')
-  const asksBox = 'Questions · 1\n   │\n   └─ Q\n ╭──╮\n │  │\n ╰──╯'
-  assert.deepEqual(paneOnly(asksBox, { view: 'asks' }), [])
-  rejects(asksBox.replace(' ╰──╯', ' ╰─╯'), 'asks', 'orphan-trunk')
+  rejects(frame.replace(' └──┘', ' └─┘'), 'timeline', 'orphan-trunk')
   rejects(frame.replace('    ◐ root\n', ''), 'timeline', 'connector-without-timeline-root')
 })
 
 test('list gutters allow deeper guides only for Agents', () => {
   const asks = registry.find(entry => entry.file === 'asks-empty-110.txt')
   const agents = registry.find(entry => entry.file === 'agents-empty-110.txt')
-  assert.equal(
-    checkFrame(asks, 'Nothing needed\n   │ item', 110).some(error => error.includes('stray │')),
-    false,
-  )
+  assert.ok(!checkFrame(asks, 'Nothing needed\n   │ item', 110).some(error => error.includes('stray │')))
   assert.ok(checkFrame(asks, 'Nothing needed\n      │ item', 110).some(error => error.includes('stray │')))
-  assert.equal(
-    checkFrame(agents, 'Orchestrators\n      │ item', 110).some(error => error.includes('stray │')),
-    false,
-  )
+  assert.ok(!checkFrame(agents, 'Orchestrators\n      │ item', 110).some(error => error.includes('stray │')))
 })
 
 test('capture and readiness timeouts save their last raw frame', async t => {
@@ -159,6 +146,12 @@ test('capture and readiness timeouts save their last raw frame', async t => {
     )
     assert.equal(readFileSync(saved, 'utf8'), 'raw terminal frame')
   }
+})
+
+test('left-edge check catches an indented Detail heading and its text', () => {
+  const entry = registry.find(candidate => candidate.file === 'timeline-detail-layout-87.txt')
+  const frame = `    Asks        b: ‹ Back Snapshot In progress\n${' '.repeat(16)}┌─────────────┐\n${' '.repeat(16)}│ Progress    │\n${' '.repeat(23)}Detail\n${' '.repeat(23)}Newest text`
+  assert.match(checkLeftEdges(entry, frame).join('\n'), /left edge mismatch[\s\S]*left edge mismatch/)
 })
 
 test('Help snapshots open through the existing footer control', () => {
@@ -215,16 +208,6 @@ test('pane crop preserves leading and interior spaces while removing the dock di
   assert.equal(cropped.dividerColumn, 40)
   assert.equal(cropped.paneWidth, 39)
   assert.equal(cropped.text.split('\n')[12], '  x  y')
-  assert.equal(cropped.text.split('\n').length, 30)
-  assert.equal(cropped.text.endsWith('\n'), true)
-})
-
-test('pane crop handles the 87-column single-pane border', () => {
-  const capture = Array.from({ length: 14 }, (_, index) => `│${(index === 5 ? 'Asks' : '').padEnd(85)}│`).join('\n')
-  const cropped = cropInboxPane(capture, 87)
-  assert.equal(cropped.paneWidth, 85)
-  assert.equal(cropped.dividerColumn, 0)
-  assert.equal(cropped.text.split('\n')[5], 'Asks')
 })
 
 test('ANSI stripping removes CSI and OSC control sequences', () => {

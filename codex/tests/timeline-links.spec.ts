@@ -30,7 +30,10 @@ test('a Timeline Local open stays disabled while pending and draws its done or f
       notes: [],
       createdAt: now,
       updatedAt: now,
-      history: [],
+      history: [
+        { at: now - 1, source: 'fixture', kind: 'detail' },
+        { at: now, source: 'fixture', kind: 'created' },
+      ],
     },
     {
       id: 'child-task',
@@ -162,10 +165,11 @@ test('a Timeline Local open stays disabled while pending and draws its done or f
     assert.ok(root.querySelector('.timeline-detail-copy .timeline-detail-prefix'))
     assert.doesNotMatch(root.querySelector('.timeline-detail-copy .timeline-detail-prefix')?.textContent ?? '', /[│├└]/)
     assert.equal(
-      [...root.querySelectorAll('.timeline-detail-section')]
-        .find(section => section.querySelector('strong')?.textContent === 'Current')
-        ?.querySelector('p')?.textContent,
-      `${state.taskTree[0]?.detail} · now`,
+      [...root.querySelectorAll('.timeline-detail-section')].some(
+        section => section.querySelector('strong')?.textContent === 'Current',
+      ),
+      false,
+      'matching Current text is omitted',
     )
     assert.equal(
       [...root.querySelectorAll('.timeline-detail-section')]
@@ -179,8 +183,13 @@ test('a Timeline Local open stays disabled while pending and draws its done or f
     )
     assert.deepEqual(
       [...root.querySelectorAll('.timeline-detail-section strong')].map(label => label.textContent),
-      ['Current', 'Detail', 'Links'],
+      ['Detail', 'History', 'Links'],
     )
+    const history = [...root.querySelectorAll('.timeline-detail-section')].find(
+      section => section.querySelector('strong')?.textContent === 'History',
+    )
+    assert.equal(history?.querySelectorAll('p').length, 1)
+    assert.equal(history?.querySelector('p')?.textContent?.split('\n').length, 2)
 
     openButton()!.click()
     await until(() => openButton()?.textContent === 'Opening…')

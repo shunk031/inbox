@@ -5,21 +5,21 @@
 
    Orchestrators · 1
    │
-    └─ ○ stale 20m · local/sna… Stale
+   └─ ○ stale 20m · local/sn… Stale
 
 
    Meta tasks · 3
    │
-    └─ ○ This session · meta · 0% comp…
-
-       ├─ ◐ 0% · No owne… In progress
-
-       └─ ✕ 0% · No owner · … Waiting
+   └─ ○ This session · meta · 0% com…
+      ├─ ◐ 0% · No own… In progress
+      │
+      └─ ✕ 0% · No owner ·… Waiting
 
 
    Local agents · 1
    │
-    └─ ◐ snapshot-local-… In progress
+   └─ ◐ snapshot-local… In progress
+
 
 
 

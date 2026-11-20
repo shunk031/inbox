@@ -5,21 +5,21 @@
 
    Orchestrators · 1
    │
-    └─ ○ stale 20m · local/snapshot-root · Snapshot stale root · An invented fee… Stale
+   └─ ○ stale 20m · local/snapshot-root · Snapshot stale root · An invented fe… Stale
 
 
    Meta tasks · 3
    │
-    └─ ○ This session · meta · 0% complete · 0.0/2.0 weight
-
-       ├─ ◐ 0% · No owner · Snapshot working task                           In progress
-
-       └─ ✕ 0% · No owner · Snapshot waiting task                               Waiting
+   └─ ○ This session · meta · 0% complete · 0.0/2.0 weight
+      ├─ ◐ 0% · No owner · Snapshot working task                          In progress
+      │
+      └─ ✕ 0% · No owner · Snapshot waiting task                              Waiting
 
 
    Local agents · 1
    │
-    └─ ◐ snapshot-local-worker                                              In progress
+   └─ ◐ snapshot-local-worker                                             In progress
+
 
 
 
