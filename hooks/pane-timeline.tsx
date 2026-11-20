@@ -56,8 +56,12 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
     look === 'terminal' && timelineDetailOpen,
     true,
   )
+  const toggleCompletedFold = async (id: string) => {
+    if (timelineDetailOpen) await closeTimelineDetail()
+    await updateTimelineFolded(folded => toggleTimelineBranch(folded, id))
+  }
   const selectOrToggleDone = (id: string, isCompletedFold: boolean) => {
-    if (isCompletedFold) void updateTimelineFolded(folded => toggleTimelineBranch(folded, id))
+    if (isCompletedFold) void toggleCompletedFold(id)
     else void selectTimelineRow(id)
   }
   if (look === 'desktop') {
@@ -413,7 +417,7 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
                   ? void selectTimelineRow(action.id)
                   : action.action === 'back'
                     ? void closeTimelineDetail()
-                    : void updateTimelineFolded(folded => toggleTimelineBranch(folded, action.id))
+                    : void toggleCompletedFold(action.id)
             }
           />
         ))}

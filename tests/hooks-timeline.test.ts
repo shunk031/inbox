@@ -166,17 +166,26 @@ test('the next-build pane draws Timeline with its saved selection and folded bra
   expect(text, 'the saved folded branch').not.toContain('Child')
 })
 
-test('the summary button and key action preserve hidden selection and j/k navigation', async ($, on) => {
+test('the summary press closes stale detail, preserves hidden selection and j/k navigation', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   world($, on, [])
   w.files = ['/.next-build']
   let selection: { value: string | null; version: number } = { value: 'finished', version: 1 }
+  let detailOpen = true
+  let detailVersion = 1
   on('state.get', { plugin: 'inbox', key: 'timelineSelection' } as const, () => {
     return { value: selection as never }
   })
   on('state.set', { plugin: 'inbox', key: 'timelineSelection' } as const, (_$, event) => {
     selection = { value: event.value as string | null, version: selection.version + 1 }
     return { value: { isSet: true as const, version: selection.version } }
+  })
+  on('state.get', { plugin: 'inbox', key: 'timelineDetailOpen' } as const, () => ({
+    value: { value: detailOpen, version: detailVersion } as never,
+  }))
+  on('state.set', { plugin: 'inbox', key: 'timelineDetailOpen' } as const, (_$, event) => {
+    detailOpen = event.value as boolean
+    return { value: { isSet: true as const, version: ++detailVersion } }
   })
 
   await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
@@ -194,10 +203,12 @@ test('the summary button and key action preserve hidden selection and j/k naviga
   expect((await pane.find({ key: `timeline-title-${COMPLETED_FOLD_ID}` }))?.props.autoFocus).toBe(true)
   await pane.press({ key: 'toggle-branch' })
   await clock.settle()
+  expect(detailOpen).toBe(false)
   expect(selection.value).toBe('finished')
   expect((await pane.find({ key: 'timeline-title-finished' }))?.props.autoFocus).toBe(true)
   await pane.press({ key: `timeline-title-${COMPLETED_FOLD_ID}` })
   await clock.settle()
+  expect(detailOpen).toBe(false)
   expect(selection.value).toBe('finished')
   expect((await pane.find({ key: `timeline-title-${COMPLETED_FOLD_ID}` }))?.props.autoFocus).toBe(true)
   await pane.press({ key: 'previous' })
