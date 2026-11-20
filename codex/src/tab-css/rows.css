@@ -210,9 +210,20 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.body .option-description.missing-effect {
+  display: flex;
+  min-width: 0;
+}
+.body .option-description.missing-effect .option-label {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .body .option-description.missing-effect .muted {
-  display: block;
-  white-space: normal;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 .body .option-description + .option-description {
   margin-top: 0;

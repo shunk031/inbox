@@ -3,6 +3,7 @@ import { expect, test } from 'bun:test'
 import { rowKeyPlan } from '../../hooks/action-plan'
 import { CLEAR_FINISHED_ID } from '../../hooks/pr-rows'
 import { actionLabel } from '../../hooks/rows'
+import { NO_EFFECT_GIVEN } from '../../hooks/rows'
 import type { RowView } from '../../hooks/rows'
 import { goalKeyPlan, statusKeyPlan } from '../../hooks/status-keys'
 import { shownTabs } from '../../hooks/tabs'
@@ -38,6 +39,33 @@ test('a selected row draws its buttons in the shared key plan order', () => {
       const drawn = rowsOf(tabBlocks(screen, ui)).find(b => b.id === row.id)!
       expect(drawn.buttons.map(b => b.label)).toEqual(plannedLabels(row, isAllShown))
     }
+})
+
+test('a selected row keeps a missing option effect in one line with a muted suffix', () => {
+  const screen = demoScreen()
+  const question = screen.view.needsYou.questions.find(r => r.state.is === 'open')!
+  const withMissing = {
+    ...question,
+    optionDescriptions: [
+      { label: 'Shorten the labels', description: NO_EFFECT_GIVEN, isMissing: true, isFolded: false },
+    ],
+  }
+  const view = {
+    ...screen.view,
+    needsYou: {
+      ...screen.view.needsYou,
+      questions: screen.view.needsYou.questions.map(r => (r.id === question.id ? withMissing : r)),
+    },
+  }
+  const row = rowsOf(tabBlocks({ ...screen, view }, uiOn('needsYou', { selected: question.id }))).find(
+    b => b.id === question.id,
+  )!
+
+  expect(row.body.find(line => line.suffix)).toEqual({
+    text: 'Shorten the labels',
+    tone: null,
+    suffix: { text: ': No effect given', tone: 'muted' },
+  })
 })
 
 test('only the selected row shows buttons, and with no selection the first waiting row opens', () => {

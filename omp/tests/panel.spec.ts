@@ -243,6 +243,23 @@ test('a question’s context draws whole and dim, first under its title, on ever
   expect(flat(onRow(other))).toContain(firstWords)
 })
 
+test('a missing option effect draws on one line with a dim marker', () => {
+  const screen = screenOf()
+  const row = screen.view.needsYou.questions.find(
+    candidate => candidate.state.is === 'open' && candidate.optionDescriptions.some(option => option.isMissing),
+  )!
+  const missing = row.optionDescriptions.find(option => option.isMissing)!
+  const lines = text(screen, { ...onRow(row), tab: 'needsYou', opened: row.id }, 87)
+
+  expect(lines).toContain(`${missing.label}: No effect given`)
+  expect(lines).not.toContain('\n  No effect given')
+  expect(
+    drawn(screen, { ...onRow(row), tab: 'needsYou', opened: row.id }, 87).find(line =>
+      strip(line).includes(`${missing.label}: No effect given`),
+    ),
+  ).toContain(`${ESC}2m: No effect given`)
+})
+
 for (const isNextBuild of [false, true])
   test(`on a ${isNextBuild ? 'next' : 'release'} build, an Asks row ${isNextBuild ? 'names' : 'leaves out'} the open subject it holds up`, () => {
     const shown = text(screenOf({ isNextBuild }), { ...INITIAL_UI, tab: 'needsYou' })

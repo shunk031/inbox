@@ -1,5 +1,5 @@
 // Built by herdr/build.ts with Bun 1.4.4 from herdr/src and hooks/. Do not edit.
-// Built at 2026-11-20T18:29:06.130Z. 226519 characters follow.
+// Built at 2026-11-20T23:16:48.831Z. 228112 characters follow.
 
 // src/main.ts
 import { View, div as div5 } from "gpui-kit";
@@ -191,6 +191,29 @@ function isOpen(s) {
 function clipLabel(text, max) {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
+function cutForEllipsis(line, fits) {
+  const parts = [];
+  let at = 0;
+  for (const match of line.matchAll(ANSI_TOKEN)) {
+    parts.push(...graphemesOf(line.slice(at, match.index)), match[0]);
+    at = match.index + match[0].length;
+  }
+  parts.push(...graphemesOf(line.slice(at)));
+  while (parts.length > 0 && !fits(`${parts.join("")}…`))
+    parts.pop();
+  let result = parts.join("");
+  const trailingControl = new RegExp(`(?:\\x1b\\[[0-9;]*m|${OSC8.source})$`);
+  const controls = [];
+  while (true) {
+    const match = result.match(trailingControl);
+    if (!match)
+      break;
+    controls.unshift(match[0]);
+    result = result.slice(0, -match[0].length);
+  }
+  result = result.replace(/[\s.,;:]+$/, "") + controls.join("");
+  return closeOpenLink(result);
+}
 var PHRASE_END = /[,;](?=\s)|\s(?=and\s)/g;
 function cutAtPhrase(text, fits) {
   if (fits(text))
@@ -213,6 +236,12 @@ function graphemesOf(text) {
 }
 var OSC8 = /\x1b\]8;[^;\x07\x1b]*;[^\x07\x1b]*(?:\x07|\x1b\\)/g;
 var ANSI_TOKEN = new RegExp(`\\x1b\\[[0-9;]*m|${OSC8.source}`, "g");
+function closeOpenLink(text) {
+  let isOpen = false;
+  for (const match of text.matchAll(OSC8))
+    isOpen = !/;;(?:\x07|\x1b\\)$/.test(match[0]);
+  return isOpen ? `${text}\x1B]8;;\x1B\\` : text;
+}
 var ZERO_WIDTH = /^[\p{Mn}\p{Me}\p{Cc}\p{Cf}]+$/u;
 var EMOJI = /\p{Emoji_Presentation}|\uFE0F/u;
 var WIDE = /^[\u1100-\u115F\u2E80-\u303E\u3041-\u33FF\u3400-\u4DBF\u4E00-\u9FFF\uA000-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6\u{20000}-\u{3FFFD}]/u;
@@ -2022,8 +2051,16 @@ var NO_EFFECT_GIVEN = "No effect given";
 function questionContextOf(item) {
   return item?.context || NO_BACKGROUND_GIVEN;
 }
+function contextLineOf(type, item) {
+  return type === "question" ? questionContextOf(item) : null;
+}
 function recLineOf(item) {
   return item?.rec && item.recReason ? `Why ${item.rec}: ${item.recReason}` : null;
+}
+function optionDescriptionLine(option, fits) {
+  const suffix = `: ${option.description}`;
+  const label = option.isMissing && fits && !fits(`${option.label}${suffix}`) ? `${cutForEllipsis(option.label, (candidate) => fits(`${candidate}${suffix}`))}…` : option.label;
+  return { label, suffix, suffixTone: option.isMissing ? "muted" : null };
 }
 function optionDescriptionsOf(item, actions) {
   if (!item)
@@ -3418,7 +3455,7 @@ function inboxView({
       optionDescriptions: optionDescriptionsOf(row.item, actions),
       holdsUpLine: held.length > 0 ? `${HOLDS_UP_TEXT} ${held.join(", ")}` : null,
       recLine: state.is === "open" ? recLineOf(row.item) : null,
-      contextLine: row.type === "question" ? questionContextOf(row.item) : null
+      contextLine: contextLineOf(row.type, row.item)
     };
   };
   const itemRow = (item) => {
@@ -4293,10 +4330,10 @@ function rowBody(row, isAllShown, isNextBuild) {
     { text: row.contextLine, tone: "muted" },
     { text: row.detail, tone: null },
     { text: row.fileName ? `${ROW_COPY.relevantFile}${row.fileName}` : null, tone: "muted" },
-    ...shownOptionDescriptions(row, isAllShown).flatMap((o) => o.isMissing ? [
-      { text: `${o.label}:`, tone: null },
-      { text: `  ${o.description}`, tone: "muted" }
-    ] : [{ text: `${o.label}: ${o.description}`, tone: null }]),
+    ...shownOptionDescriptions(row, isAllShown).map((o) => {
+      const line = optionDescriptionLine(o);
+      return { text: line.label, tone: null, suffix: { text: line.suffix, tone: line.suffixTone } };
+    }),
     { text: row.recLine, tone: "muted" },
     { text: isNextBuild ? row.holdsUpLine : null, tone: "muted", mark: HOLDS_UP_MARK }
   ];
@@ -4894,7 +4931,7 @@ var CLEAR = "#00000000";
 var buttonsEl = (buttons, p, indent, isInert = false) => h_flex2().flex_wrap().items_center().gap(CONTROL_GAP).pt(CONTROL_GAP).pl(indent).children(buttons.map((b) => buttonEl(b, p, isInert)));
 var markEl = (m, t) => div3().w(MARK_W).flex_none().text_color(m === null || m.tone === null ? t.muted : colorOf(t, m.tone)).when(m?.isRunning === true, (e) => e.loop("opacity", { from: 1, to: 0.3, period: RUNNING_PULSE_MS })).child(m?.text ?? "");
 var lineEl = (text, color, indent = MARK_W) => div3().pl(indent).pt(LINE_GAP).whitespace_normal().text_color(color).child(text);
-var bodyLineEl = (l, t) => l.mark ? h_flex2().pt(LINE_GAP).items_start().child(markEl(l.mark, t)).child(div3().flex_1().min_w(0).whitespace_normal().text_color(colorOf(t, l.tone)).child(l.text)) : lineEl(l.text, colorOf(t, l.tone));
+var bodyLineEl = (l, t) => l.suffix ? h_flex2().pt(LINE_GAP).pl(MARK_W).min_w(0).child(div3().flex_1().min_w(0).truncate().text_color(colorOf(t, l.tone)).child(l.text)).child(div3().flex_none().text_color(colorOf(t, l.suffix.tone)).child(l.suffix.text)) : l.mark ? h_flex2().pt(LINE_GAP).items_start().child(markEl(l.mark, t)).child(div3().flex_1().min_w(0).whitespace_normal().text_color(colorOf(t, l.tone)).child(l.text)) : lineEl(l.text, colorOf(t, l.tone));
 function fieldEl(f, p, indent, isInert = false) {
   const { t } = p;
   const state = p.input(f.rowId);

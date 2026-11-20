@@ -4743,6 +4743,9 @@ var NO_EFFECT_GIVEN = "No effect given";
 function questionContextOf(item) {
   return item?.context || NO_BACKGROUND_GIVEN;
 }
+function contextLineOf(type, item) {
+  return type === "question" ? questionContextOf(item) : null;
+}
 function recLineOf(item) {
   return item?.rec && item.recReason ? `Why ${item.rec}: ${item.recReason}` : null;
 }
@@ -4750,6 +4753,11 @@ function documentPreviewLine(row) {
   if (!row.document)
     return null;
   return `Report preview: ${row.documentPreview || baseName(row.document) || "Markdown document"}`;
+}
+function optionDescriptionLine(option, fits) {
+  const suffix = `: ${option.description}`;
+  const label = option.isMissing && fits && !fits(`${option.label}${suffix}`) ? `${cutForEllipsis(option.label, (candidate) => fits(`${candidate}${suffix}`))}\u2026` : option.label;
+  return { label, suffix, suffixTone: option.isMissing ? "muted" : null };
 }
 function optionDescriptionsOf(item, actions) {
   if (!item)
@@ -7714,7 +7722,7 @@ function inboxView({
       optionDescriptions: optionDescriptionsOf(row.item, actions),
       holdsUpLine: held.length > 0 ? `${HOLDS_UP_TEXT} ${held.join(", ")}` : null,
       recLine: state.is === "open" ? recLineOf(row.item) : null,
-      contextLine: row.type === "question" ? questionContextOf(row.item) : null
+      contextLine: contextLineOf(row.type, row.item)
     };
   };
   const itemRow = (item) => {
@@ -10418,12 +10426,10 @@ function drawLine(line, isSelected, d) {
     return out;
   if (line.file)
     out.push(" ".repeat(indent) + s.tone("accent", line.file));
-  for (const o of line.row?.optionDescriptions ?? [])
-    if (o.isMissing) {
-      out.push(fit(" ".repeat(indent) + o.label + ":", width));
-      out.push(fit(" ".repeat(indent + 2) + s.dim(o.description), width));
-    } else
-      out.push(fit(" ".repeat(indent) + o.label + s.dim(`: ${o.description}`), width));
+  for (const o of line.row?.optionDescriptions ?? []) {
+    const planned = optionDescriptionLine(o, (text) => visibleLength(text) <= width - indent);
+    out.push(fit(" ".repeat(indent) + planned.label + s.dim(planned.suffix), width));
+  }
   const hasInlineLinks = line.selectionMark === ">" && line.body?.includes("Links \xB7") === true;
   const linkStart = hasInlineLinks ? line.buttons.findIndex((button) => button.press.action === "pr-open") : -1;
   if (line.buttons.length > 0 && ui.typing !== line.id)

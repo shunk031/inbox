@@ -10,8 +10,7 @@
    │  No background given
    │
    │  Keep the labels: Preserves the invented labels for this example.
-   │  Shorten the labels:
-   │  No effect given
+   │  Shorten the labels: No effect given
    │
    │  a: Keep the labels (recommended)  b: Shorten the labels
    │  t: Reply  e: Explain  x: Dismiss
@@ -27,6 +26,7 @@
 
 
       ▸ Legacy findings · 1
+
 
 
 

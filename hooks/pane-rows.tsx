@@ -20,7 +20,7 @@ import {
   TERMINAL_SIDE_CELLS,
   TREE_LINE_AT,
 } from './pane-sizes'
-import { DOT, ROW_COPY, shownOptionDescriptions } from './rows'
+import { DOT, ROW_COPY, optionDescriptionLine, shownOptionDescriptions } from './rows'
 import { lineCount, SELECTION_BAR, type TreePos } from './terminal-text'
 import { cellWidth, clipLabel } from './text'
 
@@ -206,18 +206,17 @@ export function paneRows(
         <Box flexDirection="column" marginTop={blankLine}>
           {described.map(o => {
             const width = look === 'desktop' ? titleWidth : textWidth
-            if (o.isMissing)
-              return (
-                <Box key={`option-${o.label}`} flexDirection="column">
-                  <Text wrap="truncate-end">
-                    <Text>{clipLabel(o.label, Math.max(1, width - 1))}</Text>
-                    <Text color={pal.muted}>:</Text>
-                  </Text>
-                  <Text wrap="truncate-end" color={pal.muted}>
-                    {o.description}
-                  </Text>
-                </Box>
+            if (o.isMissing) {
+              const line = optionDescriptionLine(o, text =>
+                look === 'desktop' ? desktopTextPt(text) <= desktopRowTextPt : cellWidth(text) <= width,
               )
+              return (
+                <Text key={`option-${o.label}`} wrap="truncate-end">
+                  <Text>{line.label}</Text>
+                  <Text color={pal.muted}>{line.suffix}</Text>
+                </Text>
+              )
+            }
             const line = clipLabel(`${o.label}: ${o.description}`, width)
             return (
               <Text wrap="truncate-end">

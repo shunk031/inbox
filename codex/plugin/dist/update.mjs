@@ -2308,6 +2308,9 @@ var NO_EFFECT_GIVEN = "No effect given";
 function questionContextOf(item) {
   return item?.context || NO_BACKGROUND_GIVEN;
 }
+function contextLineOf(type, item) {
+  return type === "question" ? questionContextOf(item) : null;
+}
 function recLineOf(item) {
   return item?.rec && item.recReason ? `Why ${item.rec}: ${item.recReason}` : null;
 }
@@ -3465,7 +3468,7 @@ function inboxView({
       optionDescriptions: optionDescriptionsOf(row.item, actions),
       holdsUpLine: held2.length > 0 ? `${HOLDS_UP_TEXT} ${held2.join(", ")}` : null,
       recLine: state.is === "open" ? recLineOf(row.item) : null,
-      contextLine: row.type === "question" ? questionContextOf(row.item) : null
+      contextLine: contextLineOf(row.type, row.item)
     };
   };
   const itemRow = (item) => {

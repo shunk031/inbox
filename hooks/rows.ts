@@ -1,7 +1,7 @@
 import type { Item, Closed, PressKind, Finding } from '../types'
 import { closedState } from './ledger-close'
 import type { ClosedState } from './ledger-close'
-import { clipLabel, ago } from './text'
+import { clipLabel, ago, cutForEllipsis } from './text'
 import { linkLabel } from './inline'
 import { capitalized } from './press-labels'
 import type { HelpStep } from './help-steps'
@@ -166,6 +166,11 @@ export function questionContextOf(item: Pick<Item, 'context'> | null): string {
   return item?.context || NO_BACKGROUND_GIVEN
 }
 
+/** Only a question has the context line; tasks and findings do not get a missing-background marker. */
+export function contextLineOf(type: RowView['type'], item: Pick<Item, 'context'> | null): string | null {
+  return type === 'question' ? questionContextOf(item) : null
+}
+
 export function recLineOf(item: Item | null): string | null {
   return item?.rec && item.recReason ? `Why ${item.rec}: ${item.recReason}` : null
 }
@@ -177,6 +182,22 @@ export function documentPreviewLine(row: Pick<RowView, 'document' | 'documentPre
 }
 
 type OptionDescription = { label: string; description: string; isMissing: boolean; isFolded: boolean }
+
+type OptionDescriptionLine = { label: string; suffix: string; suffixTone: 'muted' | null }
+
+/** The shared one-line drawing plan for an option effect. A missing effect's suffix stays whole as its label shrinks. */
+export function optionDescriptionLine(
+  option: OptionDescription,
+  fits?: (line: string) => boolean,
+): OptionDescriptionLine {
+  const suffix = `: ${option.description}`
+  const label =
+    option.isMissing && fits && !fits(`${option.label}${suffix}`)
+      ? `${cutForEllipsis(option.label, candidate => fits(`${candidate}${suffix}`))}…`
+      : option.label
+
+  return { label, suffix, suffixTone: option.isMissing ? 'muted' : null }
+}
 
 export function optionDescriptionsOf(
   item: Pick<Item, 'optionDescriptions'> | null,

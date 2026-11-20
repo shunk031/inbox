@@ -80,7 +80,7 @@ export type RowBlock = {
   isSelectable: boolean
   isSelected: boolean
   /** What the selected row shows under its line, in order, each line with the mark that leads it, if any. */
-  body: { text: string; tone: Tone; mark?: Mark }[]
+  body: { text: string; tone: Tone; suffix?: { text: string; tone: Tone }; mark?: Mark }[]
   buttons: Button[]
   /** The open reply field, in place of the buttons, or null. */
   field: Field | null

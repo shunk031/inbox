@@ -3,6 +3,7 @@ import type { RowPress } from '../../hooks/presses'
 import type { ClosedDelivery, ResultMark, RowView } from '../../hooks/rows'
 import {
   NEEDS_YOU_GROUPS,
+  optionDescriptionLine,
   ROW_COPY,
   actionLabel,
   fieldExit,
@@ -148,18 +149,14 @@ function fieldOf(rowId: string, isDiscard: boolean, send: string = ROW_COPY.send
 }
 
 function rowBody(row: RowView, isAllShown: boolean, isNextBuild: boolean): RowBlock['body'] {
-  const lines: { text: string | null; tone: Tone; mark?: Mark }[] = [
+  const lines: { text: string | null; tone: Tone; suffix?: { text: string; tone: Tone }; mark?: Mark }[] = [
     { text: row.contextLine, tone: 'muted' },
     { text: row.detail, tone: null },
     { text: row.fileName ? `${ROW_COPY.relevantFile}${row.fileName}` : null, tone: 'muted' },
-    ...shownOptionDescriptions(row, isAllShown).flatMap(o =>
-      o.isMissing
-        ? [
-            { text: `${o.label}:`, tone: null },
-            { text: `  ${o.description}`, tone: 'muted' },
-          ]
-        : [{ text: `${o.label}: ${o.description}`, tone: null }],
-    ),
+    ...shownOptionDescriptions(row, isAllShown).map(o => {
+      const line = optionDescriptionLine(o)
+      return { text: line.label, tone: null, suffix: { text: line.suffix, tone: line.suffixTone } }
+    }),
     { text: row.recLine, tone: 'muted' },
     { text: isNextBuild ? row.holdsUpLine : null, tone: 'muted', mark: HOLDS_UP_MARK },
   ]

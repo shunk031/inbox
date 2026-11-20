@@ -11,8 +11,7 @@
    │  No background given
    │
    │  Keep the labels: Preserves the…
-   │  Shorten the labels:
-   │  No effect given
+   │  Shorten the l…: No effect given
    │
    │  a: Keep the labels
    │  (recommended)
@@ -32,6 +31,7 @@
 
 
       ▸ Legacy findings · 1
+
 
 
 
