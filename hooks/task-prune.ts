@@ -1,8 +1,6 @@
 import type { TaskNode, TaskTree } from '../types'
 
 export const FINISHED_TASK_ROOT_LIMIT = 20
-
-/** Keeps the newest finished roots, removing each older root with its whole subtree. */
 export function pruneFinishedTaskRoots(tree: TaskTree): { tree: TaskTree; deletedIds: string[] } {
   const children = new Map<string | null, TaskNode[]>()
   for (const task of tree) children.set(task.parentId, [...(children.get(task.parentId) ?? []), task])
