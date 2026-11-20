@@ -3612,6 +3612,42 @@ function upgradeHostTasks(saved) {
   });
 }
 
+// ../hooks/task-prune.ts
+var FINISHED_TASK_ROOT_LIMIT = 20;
+function boundedTaskPrunedIds(ids, current = new Set) {
+  return [...new Set(ids.filter((id) => typeof id === "string" && !current.has(id)).reverse())].slice(0, TASK_NODE_LIMIT).reverse();
+}
+function pruneFinishedTaskRoots(tree) {
+  const children = new Map;
+  for (const task of tree)
+    children.set(task.parentId, [...children.get(task.parentId) ?? [], task]);
+  const finished = [];
+  const visit = (task) => {
+    const descendants = (children.get(task.id) ?? []).map(visit);
+    return {
+      done: (task.status === "done" || task.status === "dropped") && descendants.every((child) => child.done),
+      at: Math.max(task.updatedAt, ...descendants.map((child) => child.at))
+    };
+  };
+  for (const [index, root] of (children.get(null) ?? []).entries()) {
+    const result = visit(root);
+    if (result.done)
+      finished.push({ id: root.id, at: result.at, index });
+  }
+  if (finished.length <= FINISHED_TASK_ROOT_LIMIT)
+    return { tree, deletedIds: [] };
+  const removedRoots = new Set(finished.sort((a, b) => b.at - a.at || b.index - a.index).slice(FINISHED_TASK_ROOT_LIMIT).map((root) => root.id));
+  const deleted = new Set;
+  const remove = (task) => {
+    deleted.add(task.id);
+    for (const child of children.get(task.id) ?? [])
+      remove(child);
+  };
+  for (const root of removedRoots)
+    remove(tree.find((task) => task.id === root));
+  return { tree: tree.filter((task) => !deleted.has(task.id)), deletedIds: [...deleted] };
+}
+
 // ../hooks/task-mismatches.ts
 var STATUSES3 = ["working", "queued", "waits-on-other", "done", "dropped"];
 function isStatus(value) {
@@ -5477,7 +5513,7 @@ function sessionFields(saved, views) {
   return {
     ledger,
     taskTree,
-    taskTreePrunedIds: Array.isArray(saved.taskTreePrunedIds) ? [...new Set(saved.taskTreePrunedIds.filter((id) => typeof id === "string"))] : [],
+    taskTreePrunedIds: boundedTaskPrunedIds(Array.isArray(saved.taskTreePrunedIds) ? saved.taskTreePrunedIds : []),
     taskTreeProjectionVersion: Number.isSafeInteger(saved.taskTreeProjectionVersion) && saved.taskTreeProjectionVersion >= 0 ? saved.taskTreeProjectionVersion : 0,
     taskTreeProjectionInvalidAt: Number.isSafeInteger(saved.taskTreeProjectionInvalidAt) && saved.taskTreeProjectionInvalidAt >= 0 ? saved.taskTreeProjectionInvalidAt : null,
     taskTreeProjectionInvalidReported: saved.taskTreeProjectionInvalidReported === true,
@@ -6839,39 +6875,6 @@ function tasksDescription(host) {
   return `Keep your task tree current when you make a plan, start work, finish work or drop work. Add, update, move, complete or note tasks. A task is your own work plan, never a question or a step for the user; use ${host.recordTool} for those.
 
 When one exists, link the PR, issue or owner agent so finished or stalled work can be noticed.`;
-}
-
-// ../hooks/task-prune.ts
-var FINISHED_TASK_ROOT_LIMIT = 20;
-function pruneFinishedTaskRoots(tree) {
-  const children = new Map;
-  for (const task of tree)
-    children.set(task.parentId, [...children.get(task.parentId) ?? [], task]);
-  const finished = [];
-  const visit = (task) => {
-    const descendants = (children.get(task.id) ?? []).map(visit);
-    return {
-      done: (task.status === "done" || task.status === "dropped") && descendants.every((child) => child.done),
-      at: Math.max(task.updatedAt, ...descendants.map((child) => child.at))
-    };
-  };
-  for (const [index, root] of (children.get(null) ?? []).entries()) {
-    const result = visit(root);
-    if (result.done)
-      finished.push({ id: root.id, at: result.at, index });
-  }
-  if (finished.length <= FINISHED_TASK_ROOT_LIMIT)
-    return { tree, deletedIds: [] };
-  const removedRoots = new Set(finished.sort((a, b) => b.at - a.at || b.index - a.index).slice(FINISHED_TASK_ROOT_LIMIT).map((root) => root.id));
-  const deleted = new Set;
-  const remove = (task) => {
-    deleted.add(task.id);
-    for (const child of children.get(task.id) ?? [])
-      remove(child);
-  };
-  for (const root of removedRoots)
-    remove(tree.find((task) => task.id === root));
-  return { tree: tree.filter((task) => !deleted.has(task.id)), deletedIds: [...deleted] };
 }
 
 // ../hooks/task-tool.ts

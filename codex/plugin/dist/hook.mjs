@@ -719,6 +719,7 @@ function outcomeText(d) {
 // ../hooks/task-tree.ts
 var TASK_NOTES_LIMIT = 40;
 var TASK_NOTE_LENGTH = 2e3;
+var TASK_NODE_LIMIT = 200;
 function notesOf(notes) {
   return notes.slice(0, TASK_NOTES_LIMIT).map((note) => note.slice(0, TASK_NOTE_LENGTH));
 }
@@ -1162,6 +1163,11 @@ function upgradeHostTasks(saved) {
     const status = STATUSES2[String(t.status)];
     return typeof t.id === "string" && typeof t.text === "string" && t.text !== "" && status ? [{ id: t.id, text: t.text, status }] : [];
   });
+}
+
+// ../hooks/task-prune.ts
+function boundedTaskPrunedIds(ids, current = /* @__PURE__ */ new Set()) {
+  return [...new Set(ids.filter((id) => typeof id === "string" && !current.has(id)).reverse())].slice(0, TASK_NODE_LIMIT).reverse();
 }
 
 // ../hooks/task-mismatches.ts
@@ -2298,7 +2304,7 @@ function sessionFields(saved, views) {
   return {
     ledger,
     taskTree,
-    taskTreePrunedIds: Array.isArray(saved.taskTreePrunedIds) ? [...new Set(saved.taskTreePrunedIds.filter((id) => typeof id === "string"))] : [],
+    taskTreePrunedIds: boundedTaskPrunedIds(Array.isArray(saved.taskTreePrunedIds) ? saved.taskTreePrunedIds : []),
     taskTreeProjectionVersion: Number.isSafeInteger(saved.taskTreeProjectionVersion) && saved.taskTreeProjectionVersion >= 0 ? saved.taskTreeProjectionVersion : 0,
     taskTreeProjectionInvalidAt: Number.isSafeInteger(saved.taskTreeProjectionInvalidAt) && saved.taskTreeProjectionInvalidAt >= 0 ? saved.taskTreeProjectionInvalidAt : null,
     taskTreeProjectionInvalidReported: saved.taskTreeProjectionInvalidReported === true,

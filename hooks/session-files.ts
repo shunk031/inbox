@@ -3,6 +3,7 @@ import { TOLD_NOTHING } from './inbox-text'
 import { upgradeLastActions } from './last-actions'
 import { upgradeHostTasks } from './host-tasks'
 import { taskTreeFromStatus } from './task-tree'
+import { boundedTaskPrunedIds } from './task-prune'
 import { upgradeTaskStatusMismatches } from './task-mismatches'
 import { withCheckKeys } from './saved-check-keys'
 import { NO_TASK_REMINDER, taskReminderState } from './task-reminder'
@@ -158,9 +159,7 @@ function sessionFields(saved: SavedSession, views: Record<string, PrView>): Sess
   return {
     ledger,
     taskTree,
-    taskTreePrunedIds: Array.isArray(saved.taskTreePrunedIds)
-      ? [...new Set(saved.taskTreePrunedIds.filter((id): id is string => typeof id === 'string'))]
-      : [],
+    taskTreePrunedIds: boundedTaskPrunedIds(Array.isArray(saved.taskTreePrunedIds) ? saved.taskTreePrunedIds : []),
     taskTreeProjectionVersion:
       Number.isSafeInteger(saved.taskTreeProjectionVersion) && saved.taskTreeProjectionVersion! >= 0
         ? saved.taskTreeProjectionVersion!

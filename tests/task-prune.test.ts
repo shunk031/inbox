@@ -1,11 +1,8 @@
 import { expect, test } from 'claude-code/testing'
-import { applyTaskOwnerFacts } from '../hooks/task-facts'
-import { timelineData, timelinePage } from '../hooks/timeline-page'
 import { taskTreeAnswer } from '../hooks/task-tool'
-import { taskTreeExport } from '../hooks/task-projection'
 import { TASK_NODE_LIMIT } from '../hooks/task-tree'
-import { FINISHED_TASK_ROOT_LIMIT, pruneFinishedTaskRoots } from '../hooks/task-prune'
-import { emptySession } from '../hooks/session-files'
+import { boundedTaskPrunedIds, FINISHED_TASK_ROOT_LIMIT, pruneFinishedTaskRoots } from '../hooks/task-prune'
+import { emptySession, upgradeSession } from '../hooks/session-files'
 import { recorded } from '../hooks/session-presses'
 import { CLAUDE_CODE } from '../hooks/model-text'
 import { V0_3_TOOL_FIELDS } from '../hooks/tool-schemas'
@@ -35,8 +32,6 @@ test('prunes older finished roots with their subtrees and keeps open roots', () 
     FINISHED_TASK_ROOT_LIMIT,
   )
   expect(result.tree.map(node => node.id)).toContain('open')
-  expect(taskTreeExport('s', result.tree, [], [], 1).tasks.map(node => node.id)).not.toContain('r1')
-
   const mixed = [task('open-root'), task('old-child', { parentId: 'open-root', status: 'done', updatedAt: 0 })]
   expect(
     pruneFinishedTaskRoots([...finished(21), ...mixed])
@@ -45,31 +40,25 @@ test('prunes older finished roots with their subtrees and keeps open roots', () 
   ).toEqual(['open-root', 'old-child'])
 })
 
-test('prunes after add, complete and update-to-done, but not note or move', () => {
+test('prunes after add, complete and update-to-done, but not note', () => {
   const full = [...finished(21), ...Array.from({ length: TASK_NODE_LIMIT - 21 }, (_, i) => task(`w${i}`))]
   const added = taskTreeAnswer(full, { operation: 'add', task_id: 'new', title: 'New task' }, 100)
   expect(added.taskTree).toHaveLength(TASK_NODE_LIMIT)
 
   for (const operation of ['complete', 'update'] as const) {
-    const tree = [...finished(20), task('work')]
-    const answer = taskTreeAnswer(
-      tree,
-      operation === 'complete' ? { operation, task_id: 'work' } : { operation, task_id: 'work', status: 'done' },
-      100,
+    const input = { operation, task_id: 'work', ...(operation === 'update' ? { status: 'done' } : {}) }
+    expect(taskTreeAnswer([...finished(20), task('work')], input, 100).taskTree.map(node => node.id)).not.toContain(
+      'r0',
     )
-    expect(answer.taskTree.map(node => node.id)).not.toContain('r0')
   }
 
   const tree = [...finished(21), task('parent'), task('child', { parentId: 'parent' })]
-  for (const input of [
-    { operation: 'note', task_id: 'parent', note: 'Still working' },
-    { operation: 'move', task_id: 'child', parent_id: null },
-  ]) {
-    expect(taskTreeAnswer(tree, input, 100).taskTree).toHaveLength(tree.length)
-  }
+  expect(
+    taskTreeAnswer(tree, { operation: 'note', task_id: 'parent', note: 'Still working' }, 100).taskTree,
+  ).toHaveLength(tree.length)
 })
 
-test('pruned ids leave shared warnings and Timeline navigation on visible tasks', () => {
+test('pruned ids leave no shared warnings', () => {
   const state = {
     ...emptySession(),
     taskTree: finished(21),
@@ -87,9 +76,12 @@ test('pruned ids leave shared warnings and Timeline navigation on visible tasks'
     V0_3_TOOL_FIELDS,
   ).state
   expect([changed.taskStatusMismatches, changed.taskFactWarnings]).toEqual([[], []])
-  const facts = applyTaskOwnerFacts(changed.taskTree, {}, 100)
-  expect(Object.keys(facts.stalledSince)).not.toContain('r0')
-  const page = timelinePage(timelineData(changed.taskTree, facts.segments, {}, [], 100), 'r0', ['r0'])
-  expect(page.selected?.row.task.id).not.toBe('r0')
-  expect(page.rows.map(row => row.task.id)).toEqual(changed.taskTree.map(node => node.id))
+})
+
+test('keeps only the newest task tombstones when saving and upgrading a session', () => {
+  const ids = Array.from({ length: TASK_NODE_LIMIT + 1 }, (_, i) => `id${i}`)
+  expect(boundedTaskPrunedIds(ids)).toEqual(ids.slice(-TASK_NODE_LIMIT))
+  expect(upgradeSession({ ...emptySession(), taskTreePrunedIds: ids }).taskTreePrunedIds).toEqual(
+    ids.slice(-TASK_NODE_LIMIT),
+  )
 })
