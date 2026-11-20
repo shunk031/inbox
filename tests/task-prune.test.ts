@@ -1,8 +1,8 @@
 import { expect, test } from 'claude-code/testing'
 import { taskTreeAnswer } from '../hooks/task-tool'
 import { TASK_NODE_LIMIT } from '../hooks/task-tree'
-import { boundedTaskPrunedIds, FINISHED_TASK_ROOT_LIMIT, pruneFinishedTaskRoots } from '../hooks/task-prune'
-import { emptySession, upgradeSession } from '../hooks/session-files'
+import { FINISHED_TASK_ROOT_LIMIT, pruneFinishedTaskRoots } from '../hooks/task-prune'
+import { emptySession } from '../hooks/session-files'
 import { recorded } from '../hooks/session-presses'
 import { CLAUDE_CODE } from '../hooks/model-text'
 import { V0_3_TOOL_FIELDS } from '../hooks/tool-schemas'
@@ -64,9 +64,14 @@ test('prunes after task changes and clears warnings', () => {
   }
 })
 
-test('keeps only the newest task tombstones when saving and upgrading a session', () => {
-  const ids = Array.from({ length: TASK_NODE_LIMIT + 1 }, (_, i) => `id${i}`)
-  const newest = ids.slice(-TASK_NODE_LIMIT)
-  expect(boundedTaskPrunedIds(ids)).toEqual(newest)
-  expect(upgradeSession({ ...emptySession(), taskTreePrunedIds: ids }).taskTreePrunedIds).toEqual(newest)
+test('notes and moves do not prune when there are more than 20 finished roots', () => {
+  const tree = [...finished(21), task('parent'), task('work')]
+  for (const input of [
+    { operation: 'note', task_id: 'parent', note: 'Still working' },
+    { operation: 'move', task_id: 'work', parent_id: 'parent' },
+  ]) {
+    expect(
+      taskTreeAnswer(tree, input, 100).taskTree.filter(task => task.parentId === null && task.status === 'done'),
+    ).toHaveLength(21)
+  }
 })

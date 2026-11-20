@@ -1,5 +1,5 @@
 // Built by herdr/build.ts with Bun 1.4.4 from herdr/src and hooks/. Do not edit.
-// Built at 2026-11-20T05:54:24.889Z. 227130 characters follow.
+// Built at 2026-11-20T06:36:33.357Z. 226742 characters follow.
 
 // src/main.ts
 import { View, div as div5 } from "gpui-kit";
@@ -791,7 +791,6 @@ var CLOSED_BY_CLAUDE = "closed by Claude";
 // ../hooks/task-tree.ts
 var TASK_NOTES_LIMIT = 40;
 var TASK_NOTE_LENGTH = 2000;
-var TASK_NODE_LIMIT = 200;
 function notesOf(notes) {
   return notes.slice(0, TASK_NOTES_LIMIT).map((note) => note.slice(0, TASK_NOTE_LENGTH));
 }
@@ -1062,11 +1061,6 @@ function upgradeHostTasks(saved) {
     const status = STATUSES2[String(t.status)];
     return typeof t.id === "string" && typeof t.text === "string" && t.text !== "" && status ? [{ id: t.id, text: t.text, status }] : [];
   });
-}
-
-// ../hooks/task-prune.ts
-function boundedTaskPrunedIds(ids, current = new Set) {
-  return [...new Set(ids.filter((id) => typeof id === "string" && !current.has(id)).reverse())].slice(0, TASK_NODE_LIMIT).reverse();
 }
 
 // ../hooks/task-mismatches.ts
@@ -2700,7 +2694,6 @@ function emptySession() {
   return {
     ledger: EMPTY,
     taskTree: [],
-    taskTreePrunedIds: [],
     taskTreeProjectionVersion: 0,
     taskTreeProjectionInvalidAt: null,
     taskTreeProjectionInvalidReported: false,
@@ -2778,7 +2771,6 @@ function sessionFields(saved, views) {
   return {
     ledger,
     taskTree,
-    taskTreePrunedIds: boundedTaskPrunedIds(Array.isArray(saved.taskTreePrunedIds) ? saved.taskTreePrunedIds : []),
     taskTreeProjectionVersion: Number.isSafeInteger(saved.taskTreeProjectionVersion) && saved.taskTreeProjectionVersion >= 0 ? saved.taskTreeProjectionVersion : 0,
     taskTreeProjectionInvalidAt: Number.isSafeInteger(saved.taskTreeProjectionInvalidAt) && saved.taskTreeProjectionInvalidAt >= 0 ? saved.taskTreeProjectionInvalidAt : null,
     taskTreeProjectionInvalidReported: saved.taskTreeProjectionInvalidReported === true,

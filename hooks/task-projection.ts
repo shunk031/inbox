@@ -1,6 +1,7 @@
 import { parseFeed } from './feed'
 import type { Feed, FeedEntry } from './feed'
 import { currentTaskText } from './task-text'
+import { pruneFinishedTaskRoots } from './task-prune'
 import { TASK_HISTORY_LIMIT, TASK_NODE_LIMIT } from './task-tree'
 import type { Session, TaskFactWarning, TaskNode, TaskOwner, TaskStatusMismatch, TaskTree } from '../types'
 
@@ -146,10 +147,9 @@ function importedStatus(state: FeedEntry['state']): TaskNode['status'] {
 }
 
 /** Merges hand-written entries without replacing saved status or non-empty current text. */
-export function mergeProjectedTasks(tree: TaskTree, feed: Feed, prunedIds: ReadonlySet<string> = new Set()): TaskTree {
+export function mergeProjectedTasks(tree: TaskTree, feed: Feed): TaskTree {
   let next = tree
   for (const entry of feed.entries) {
-    if (prunedIds.has(entry.key)) continue
     const current = next.find(task => task.id === entry.key)
     if (current) {
       const fillText = currentTaskText(current) === null && entry.detail !== ''
@@ -260,10 +260,7 @@ export function createTaskProjection(files: ProjectionFiles, path: string | null
             const feed = original && original.trim() !== '' ? importedFeed(original) : null
             current = await save(saved => ({
               ...saved,
-              taskTree: feed
-                ? mergeProjectedTasks(saved.taskTree, feed, new Set(saved.taskTreePrunedIds))
-                : saved.taskTree,
-              taskTreePrunedIds: [],
+              taskTree: pruneFinishedTaskRoots(feed ? mergeProjectedTasks(saved.taskTree, feed) : saved.taskTree).tree,
               taskTreeProjectionVersion: TASK_PROJECTION_VERSION,
               taskTreeProjectionInvalidAt: invalidFeed
                 ? (saved.taskTreeProjectionInvalidAt ?? now)

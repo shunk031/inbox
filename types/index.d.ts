@@ -757,7 +757,6 @@ export type Session = {
   ledger: Ledger
   /** Durable work copied from Status subjects and milestones; order is the saved tree order. */
   taskTree: TaskTree
-  taskTreePrunedIds: string[]
   /** Version of the one-time hand-written projection import saved to this session. */
   taskTreeProjectionVersion: number
   /** Stable UTC millisecond timestamp for the one-time invalid-feed backup. */

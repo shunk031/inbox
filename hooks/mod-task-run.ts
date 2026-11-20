@@ -1,7 +1,6 @@
 import { NOT_SAVED, type AgentTool } from './tools'
 import { answerToolCallWithReminder, type Owner } from './mod-sessions'
 import { afterTaskTreeUpdate } from './task-projection-host'
-import { boundedTaskPrunedIds } from './task-prune'
 import type { ModTaskProjection } from './mod-task-projection'
 import type { Session } from '../types'
 
@@ -29,13 +28,6 @@ export async function runModTool(
   let didChangeTaskTree = false
   const saved = await deps.commit(owner, s => {
     answer = answerToolCallWithReminder(s, tool, toolInput, now, isMainAgent, isTasksCall)
-    if (tool === 'tasks' && answer.state.taskTreeProjectionVersion === 0) {
-      const ids = boundedTaskPrunedIds(
-        [...s.taskTreePrunedIds, ...(answer.prunedTaskIds ?? [])],
-        new Set(answer.state.taskTree.map(task => task.id)),
-      )
-      answer = { ...answer, state: { ...answer.state, taskTreePrunedIds: ids } }
-    }
     didChangeTaskTree = tool === 'tasks' && answer.state.taskTree !== s.taskTree
     return answer.state
   })

@@ -3612,42 +3612,6 @@ function upgradeHostTasks(saved) {
   });
 }
 
-// ../hooks/task-prune.ts
-var FINISHED_TASK_ROOT_LIMIT = 20;
-function boundedTaskPrunedIds(ids, current = new Set) {
-  return [...new Set(ids.filter((id) => typeof id === "string" && !current.has(id)).reverse())].slice(0, TASK_NODE_LIMIT).reverse();
-}
-function pruneFinishedTaskRoots(tree) {
-  const children = new Map;
-  for (const task of tree)
-    children.set(task.parentId, [...children.get(task.parentId) ?? [], task]);
-  const finished = [];
-  const visit = (task) => {
-    const descendants = (children.get(task.id) ?? []).map(visit);
-    return {
-      done: (task.status === "done" || task.status === "dropped") && descendants.every((child) => child.done),
-      at: Math.max(task.updatedAt, ...descendants.map((child) => child.at))
-    };
-  };
-  for (const [index, root] of (children.get(null) ?? []).entries()) {
-    const result = visit(root);
-    if (result.done)
-      finished.push({ id: root.id, at: result.at, index });
-  }
-  if (finished.length <= FINISHED_TASK_ROOT_LIMIT)
-    return { tree, deletedIds: [] };
-  const removedRoots = new Set(finished.sort((a, b) => b.at - a.at || b.index - a.index).slice(FINISHED_TASK_ROOT_LIMIT).map((root) => root.id));
-  const deleted = new Set;
-  const remove = (task) => {
-    deleted.add(task.id);
-    for (const child of children.get(task.id) ?? [])
-      remove(child);
-  };
-  for (const root of removedRoots)
-    remove(tree.find((task) => task.id === root));
-  return { tree: tree.filter((task) => !deleted.has(task.id)), deletedIds: [...deleted] };
-}
-
 // ../hooks/task-mismatches.ts
 var STATUSES3 = ["working", "queued", "waits-on-other", "done", "dropped"];
 function isStatus(value) {
@@ -5426,7 +5390,6 @@ function emptySession() {
   return {
     ledger: EMPTY,
     taskTree: [],
-    taskTreePrunedIds: [],
     taskTreeProjectionVersion: 0,
     taskTreeProjectionInvalidAt: null,
     taskTreeProjectionInvalidReported: false,
@@ -5513,7 +5476,6 @@ function sessionFields(saved, views) {
   return {
     ledger,
     taskTree,
-    taskTreePrunedIds: boundedTaskPrunedIds(Array.isArray(saved.taskTreePrunedIds) ? saved.taskTreePrunedIds : []),
     taskTreeProjectionVersion: Number.isSafeInteger(saved.taskTreeProjectionVersion) && saved.taskTreeProjectionVersion >= 0 ? saved.taskTreeProjectionVersion : 0,
     taskTreeProjectionInvalidAt: Number.isSafeInteger(saved.taskTreeProjectionInvalidAt) && saved.taskTreeProjectionInvalidAt >= 0 ? saved.taskTreeProjectionInvalidAt : null,
     taskTreeProjectionInvalidReported: saved.taskTreeProjectionInvalidReported === true,
@@ -6877,6 +6839,39 @@ function tasksDescription(host) {
 When one exists, link the PR, issue or owner agent so finished or stalled work can be noticed.`;
 }
 
+// ../hooks/task-prune.ts
+var FINISHED_TASK_ROOT_LIMIT = 20;
+function pruneFinishedTaskRoots(tree) {
+  const children = new Map;
+  for (const task of tree)
+    children.set(task.parentId, [...children.get(task.parentId) ?? [], task]);
+  const finished = [];
+  const visit = (task) => {
+    const descendants = (children.get(task.id) ?? []).map(visit);
+    return {
+      done: (task.status === "done" || task.status === "dropped") && descendants.every((child) => child.done),
+      at: Math.max(task.updatedAt, ...descendants.map((child) => child.at))
+    };
+  };
+  for (const [index, root] of (children.get(null) ?? []).entries()) {
+    const result = visit(root);
+    if (result.done)
+      finished.push({ id: root.id, at: result.at, index });
+  }
+  if (finished.length <= FINISHED_TASK_ROOT_LIMIT)
+    return { tree, deletedIds: [] };
+  const removedRoots = new Set(finished.sort((a, b) => b.at - a.at || b.index - a.index).slice(FINISHED_TASK_ROOT_LIMIT).map((root) => root.id));
+  const deleted = new Set;
+  const remove = (task) => {
+    deleted.add(task.id);
+    for (const child of children.get(task.id) ?? [])
+      remove(child);
+  };
+  for (const root of removedRoots)
+    remove(tree.find((task) => task.id === root));
+  return { tree: tree.filter((task) => !deleted.has(task.id)), deletedIds: [...deleted] };
+}
+
 // ../hooks/task-tool.ts
 var TASK_ID_LENGTH = 100;
 var TASK_LINK_FIELDS = ["pr", "issue", "owner_agent", "owner_machine"];
@@ -8183,8 +8178,9 @@ function timelinePage(data, selectedId, folded, lastActions = {}, isDetailOpen =
 function moveTimelineSelection(rows, selectedId, step) {
   if (rows.length === 0)
     return null;
-  const at = rows.findIndex((row) => row.task.id === selectedId);
-  const to = ((at < 0 ? step < 0 ? 0 : -1 : at) + step + rows.length) % rows.length;
+  const selected = rows.findIndex((row) => row.task.id === selectedId);
+  const at = selectedId === null ? -1 : Math.max(0, selected);
+  const to = (at + step + rows.length) % rows.length;
   return rows[to].task.id;
 }
 function toggleTimelineBranch(folded, id) {
@@ -8388,11 +8384,10 @@ function recorded(host, s, tool, args, now, fields) {
   const state = linkDialogs({ ...s, ledger, taskTree, taskStatusMismatches, taskFactWarnings }, now);
   const answered = ledger.items.find((i) => !state.ledger.items.some((o) => o.id === i.id));
   if (!answered)
-    return { state, result: r.result, personLine: r.personLine, prunedTaskIds: r.prunedTaskIds };
+    return { state, result: r.result, personLine: r.personLine };
   const outcome = state.ledger.closed.findLast((c) => c.id === answered.id)?.outcome ?? "";
   return {
     state,
-    prunedTaskIds: r.prunedTaskIds,
     result: `Not shown as open: the user already answered this in your dialog (${outcome}), so it closed with that answer.`,
     personLine: `Closed: ${answered.ask}`
   };
@@ -10054,8 +10049,8 @@ function pageKey(screen, ui, key, now) {
       const button = key === "enter" ? line.buttons[focusOf2(line, ui)] : line.buttons.find((item) => item.key === key);
       return button ? activate(screen, ui, line, button, now) : null;
     }
-    if (key === "j" || key === "k") {
-      const id = moveTimelineSelection(page.rows, ui.timelineSelection, key === "k" ? -1 : 1);
+    if (key === "j" || key === "k" || key === "up" || key === "down") {
+      const id = moveTimelineSelection(page.rows, ui.timelineSelection, key === "k" || key === "up" ? -1 : 1);
       const target = linesOf(entriesOf(screen, ui, ui.tab, now)).find((item) => item.id === id);
       const select = target?.buttons.find((button) => button.press.action === "timeline-select" && button.press.id === id);
       if (target && select)

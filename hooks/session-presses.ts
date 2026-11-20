@@ -146,12 +146,11 @@ export function recorded<S extends Session>(
     : s.taskFactWarnings
   const state = linkDialogs({ ...s, ledger, taskTree, taskStatusMismatches, taskFactWarnings }, now)
   const answered = ledger.items.find(i => !state.ledger.items.some(o => o.id === i.id))
-  if (!answered) return { state, result: r.result, personLine: r.personLine, prunedTaskIds: r.prunedTaskIds }
+  if (!answered) return { state, result: r.result, personLine: r.personLine }
   const outcome = state.ledger.closed.findLast(c => c.id === answered.id)?.outcome ?? ''
 
   return {
     state,
-    prunedTaskIds: r.prunedTaskIds,
     result: `Not shown as open: the user already answered this in your dialog (${outcome}), so it closed with that answer.`,
     personLine: `Closed: ${answered.ask}`,
   }

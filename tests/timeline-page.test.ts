@@ -198,6 +198,8 @@ test('Timeline keeps the whole tree, selection and branch folding in the shared 
   expect(page.rows.map(row => row.task.id)).toEqual(['one', 'two', 'three'])
   expect(page.selected?.row.task.id).toBe('one')
   expect(moveTimelineSelection(page.rows, 'three', 1)).toBe('one')
+  expect(moveTimelineSelection(page.rows, 'missing', 1)).toBe('two')
+  expect(moveTimelineSelection(page.rows, 'missing', -1)).toBe('three')
   expect(toggleTimelineBranch([], 'one')).toEqual(['one'])
   expect(toggleTimelineBranch(['one'], 'one')).toEqual([])
 })

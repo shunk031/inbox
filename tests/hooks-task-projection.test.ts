@@ -7,7 +7,6 @@ import {
   writeProjectionAtomically,
 } from '../hooks/task-projection'
 import { afterTaskTreeUpdate } from '../hooks/task-projection-host'
-import { runModTool } from '../hooks/mod-task-run'
 import { emptySession } from '../hooks/session-files'
 import type { TaskNode, TaskTree } from '../types'
 
@@ -186,38 +185,34 @@ describe('task-tree projection', () => {
     await projection.release('meta')
   })
 
-  test('a pruned id cannot return through the one-time feed import or next projection', async () => {
+  test('one-time feed import prunes finished roots back to the retention limit', async () => {
     const path = '/feed/meta-open-items.json'
-    const old =
-      '{"version":1,"source":"meta-open-items","writtenAt":10,"entries":[{"key":"removed","kind":"task","state":"working","title":"Old task","detail":"","at":10,"owner":{"agent":"worker","machine":"host"}}]}'
+    const old = JSON.stringify({
+      version: 1,
+      source: 'meta-open-items',
+      writtenAt: 10,
+      entries: Array.from({ length: 3 }, (_, i) => ({
+        key: `feed${i}`,
+        kind: 'task',
+        state: 'done',
+        title: `Feed task ${i}`,
+        detail: '',
+        at: 100 + i,
+        owner: { agent: 'worker', machine: 'host' },
+      })),
+    })
     const store = memoryFiles(path, old)
-    const owner = { id: 'meta', generation: 0 }
+    const projection = createTaskProjection(store.files, path)
     let session = {
       ...emptySession(),
-      taskTree: Array.from({ length: 21 }, (_, i) => node(i === 0 ? 'removed' : `r${i}`, 'done', { updatedAt: i })),
+      taskTree: Array.from({ length: 19 }, (_, i) => node(`old${i}`, 'done', { updatedAt: i })),
     }
-    await runModTool(
-      {
-        now: async () => 100,
-        owner: () => owner,
-        preview: async input => input,
-        commit: async (_owner, change) => (session = change(session)),
-        refused: () => false,
-        projection: null,
-        savePersonLine: async () => undefined,
-      },
-      'tasks',
-      { operation: 'add', task_id: 'next', title: 'Next task' },
-      undefined,
-      true,
-      false,
-    )
-    const projection = createTaskProjection(store.files, path)
     const result = await afterTaskTreeUpdate(projection, 'meta', session, 20, change =>
       Promise.resolve(change(session)),
     )
 
-    expect(result.session.taskTree.map(task => task.id)).not.toContain('removed')
+    expect(result.session.taskTree.filter(task => task.status === 'done' && task.parentId === null)).toHaveLength(20)
+    await projection.release('meta')
   })
 
   test('does not import rows from an existing projected snapshot', async () => {
