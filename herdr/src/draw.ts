@@ -152,7 +152,14 @@ function rowBody(row: RowView, isAllShown: boolean, isNextBuild: boolean): RowBl
     { text: row.contextLine, tone: 'muted' },
     { text: row.detail, tone: null },
     { text: row.fileName ? `${ROW_COPY.relevantFile}${row.fileName}` : null, tone: 'muted' },
-    ...shownOptionDescriptions(row, isAllShown).map(o => ({ text: `${o.label}: ${o.description}`, tone: null })),
+    ...shownOptionDescriptions(row, isAllShown).flatMap(o =>
+      o.isMissing
+        ? [
+            { text: `${o.label}:`, tone: null },
+            { text: `  ${o.description}`, tone: 'muted' },
+          ]
+        : [{ text: `${o.label}: ${o.description}`, tone: null }],
+    ),
     { text: row.recLine, tone: 'muted' },
     { text: isNextBuild ? row.holdsUpLine : null, tone: 'muted', mark: HOLDS_UP_MARK },
   ]

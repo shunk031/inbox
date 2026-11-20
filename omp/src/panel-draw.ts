@@ -342,10 +342,10 @@ export function drawLine(line: Line, isSelected: boolean, d: Draw): string[] {
         ? s.bold(shownTitle)
         : shownTitle
   out.push(spread(fit(`${head}${title}${status}${after}`, besideAge), `${age} `, width))
-  if (line.settled || isShut(line, ui)) return out
   const indent = (line.lead === null ? UNLED_INDENT : INDENT) + pad
-  const contextLine = isSelected ? line.row?.contextLine : null
-  if (contextLine) out.push(...indentedLinks(contextLine, indent, width, Infinity, s.dim, s.link))
+  const contextLine = line.row?.type === 'question' ? line.row.contextLine : null
+  if (contextLine) out.push(...indentedLinks(contextLine, indent, width, isSelected ? Infinity : 1, s.dim, s.link))
+  if (line.settled || isShut(line, ui)) return out
   // A next build draws the Status, so only it names the subject an ask holds up.
   const holdsUp = d.screen.isNextBuild === true ? line.row?.holdsUpLine : null
   if (holdsUp) out.push(fit(`${' '.repeat(indent)}${s.tone(HELD_MARK.tone, HELD_MARK.mark)} ${s.dim(holdsUp)}`, width))
@@ -376,7 +376,10 @@ export function drawLine(line: Line, isSelected: boolean, d: Draw): string[] {
   if (!isSelected) return out
   if (line.file) out.push(' '.repeat(indent) + s.tone('accent', line.file))
   for (const o of line.row?.optionDescriptions ?? [])
-    out.push(fit(' '.repeat(indent) + o.label + s.dim(`: ${o.description}`), width))
+    if (o.isMissing) {
+      out.push(fit(' '.repeat(indent) + o.label + ':', width))
+      out.push(fit(' '.repeat(indent + 2) + s.dim(o.description), width))
+    } else out.push(fit(' '.repeat(indent) + o.label + s.dim(`: ${o.description}`), width))
   // As in the terminal, an open reply field replaces the row's buttons: Enter sends, so no button reads as focused.
   const hasInlineLinks = line.selectionMark === '>' && line.body?.includes('Links ·') === true
   const linkStart = hasInlineLinks ? line.buttons.findIndex(button => button.press.action === 'pr-open') : -1

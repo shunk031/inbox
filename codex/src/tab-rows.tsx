@@ -218,9 +218,12 @@ function itemRow(v: View, r: RowView): Row {
             <div>
               {r.detail ? <p style={{ whiteSpace: 'pre-line' }}>{inlineHtml(r.detail)}</p> : null}
               {described.map(o => (
-                <p class="option-description" title={`${o.label}: ${o.description}`}>
+                <p
+                  class={`option-description${o.isMissing ? ' missing-effect' : ''}`}
+                  title={`${o.label}: ${o.description}`}
+                >
                   {o.label}
-                  <span class="muted">: {o.description}</span>
+                  <span class="muted">{o.isMissing ? o.description : `: ${o.description}`}</span>
                 </p>
               ))}
               {r.document ? <p class="document-preview">{documentPreviewLine(r)}</p> : null}

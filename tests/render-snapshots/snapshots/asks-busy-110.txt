@@ -1,26 +1,29 @@
                                      ✕
  ▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄▄ ▄▄▄▄▄
-  Asks 2   Timeline 3   Agents   PRs
+  Asks 3   Timeline 3   Agents   PRs
 ─▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀─▀▀▀▀▀──
 
-   Questions · 1
+   Questions · 2
    │
    │
-   └─ 1) Snapshot question:        1m
-      should this invented panel
-      keep its CJK labels?
-      A neutral fixture exercises a
-      long, wrapped question.
-
-      The report and question are
-      invented test data.
-
-      a: Keep the labels
-      (recommended)
-      b: Shorten the labels
-      t: Reply  e: Explain
-      x: Dismiss
-
+   ├─ 1) Snapshot question         1m
+   │  without background
+   │  No background given
+   │
+   │  Keep the labels: Preserves the…
+   │  Shorten the labels:
+   │  No effect given
+   │
+   │  a: Keep the labels
+   │  (recommended)
+   │  b: Shorten the labels
+   │  t: Reply  e: Explain
+   │  x: Dismiss
+   │
+   │  ────────────────────────────────
+   └─ Snapshot question: should    1m
+      this invented panel keep …
+      A neutral fixture exercis…
 
 
    Tasks
@@ -29,9 +32,6 @@
 
 
       ▸ Legacy findings · 1
-
-
-
 
 
 

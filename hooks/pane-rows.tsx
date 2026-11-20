@@ -205,7 +205,20 @@ export function paneRows(
       described.length > 0 ? (
         <Box flexDirection="column" marginTop={blankLine}>
           {described.map(o => {
-            const line = clipLabel(`${o.label}: ${o.description}`, look === 'desktop' ? titleWidth : textWidth)
+            const width = look === 'desktop' ? titleWidth : textWidth
+            if (o.isMissing)
+              return (
+                <Box key={`option-${o.label}`} flexDirection="column">
+                  <Text wrap="truncate-end">
+                    <Text>{clipLabel(o.label, Math.max(1, width - 1))}</Text>
+                    <Text color={pal.muted}>:</Text>
+                  </Text>
+                  <Text wrap="truncate-end" color={pal.muted}>
+                    {o.description}
+                  </Text>
+                </Box>
+              )
+            const line = clipLabel(`${o.label}: ${o.description}`, width)
             return (
               <Text wrap="truncate-end">
                 <Text>{line.slice(0, o.label.length)}</Text>

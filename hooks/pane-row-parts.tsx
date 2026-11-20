@@ -423,11 +423,17 @@ export function paneRowParts(
     { label, at, delivery, closedAs, reply }: SettledState,
     undo: RowPress | PrPress | null,
     mark: ResultMark | null,
+    context: string | null = null,
   ) => (
     <Box flexDirection="column">
       <Text wrap="truncate-end" color={pal.muted}>
         {inlineText(what)}
       </Text>
+      {context ? (
+        <Text wrap="truncate-end" color={pal.muted}>
+          {inlineText(context)}
+        </Text>
+      ) : null}
       <Box position="relative" flexDirection="row" columnGap={2}>
         {undo ? (
           <Box
@@ -477,11 +483,16 @@ export function paneRowParts(
               {inlineText(desktopSettledLabel(state))}
             </Text>
           </Text>,
+          r.type === 'question' ? (
+            <Text wrap="truncate-end" color={pal.muted}>
+              {inlineText(r.contextLine ?? '')}
+            </Text>
+          ) : null,
         ],
       })
     return (
       <Box key={`settled-${r.id}`} flexDirection="column" paddingY={space.settledPad}>
-        {treeRow(pos, null, settledContent(title, state, undo, mark))}
+        {treeRow(pos, null, settledContent(title, state, undo, mark, r.type === 'question' ? r.contextLine : null))}
       </Box>
     )
   }

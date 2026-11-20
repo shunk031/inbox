@@ -1856,16 +1856,27 @@ var ROW_COPY = {
   undo: "Undo",
   reopen: "Reopen"
 };
+var NO_BACKGROUND_GIVEN = "No background given";
+var NO_EFFECT_GIVEN = "No effect given";
+function questionContextOf(item) {
+  return item?.context || NO_BACKGROUND_GIVEN;
+}
 function recLineOf(item) {
   return item?.rec && item.recReason ? `Why ${item.rec}: ${item.recReason}` : null;
 }
 function optionDescriptionsOf(item, actions) {
-  const descriptions = item?.optionDescriptions;
-  if (!descriptions) return [];
+  if (!item) return [];
   return actions.flatMap((a) => {
-    if (a.press.action !== "answer" || !Object.hasOwn(descriptions, a.press.option)) return [];
-    const description = descriptions[a.press.option];
-    return [{ label: clipLabel(linkLabel(a.press.option), OPTION_LABEL_CHARS), description, isFolded: a.isFolded }];
+    if (a.press.action !== "answer") return [];
+    const description = item.optionDescriptions?.[a.press.option];
+    return [
+      {
+        label: clipLabel(linkLabel(a.press.option), OPTION_LABEL_CHARS),
+        description: description || NO_EFFECT_GIVEN,
+        isMissing: !description,
+        isFolded: a.isFolded
+      }
+    ];
   });
 }
 function isWaitingRow(row) {
@@ -3028,7 +3039,7 @@ function inboxView({
       optionDescriptions: optionDescriptionsOf(row.item, actions),
       holdsUpLine: held2.length > 0 ? `${HOLDS_UP_TEXT} ${held2.join(", ")}` : null,
       recLine: state.is === "open" ? recLineOf(row.item) : null,
-      contextLine: state.is === "open" ? row.item?.context ?? null : null
+      contextLine: row.type === "question" ? questionContextOf(row.item) : null
     };
   };
   const itemRow = (item) => {

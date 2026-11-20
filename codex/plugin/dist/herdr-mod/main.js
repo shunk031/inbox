@@ -1,5 +1,5 @@
 // Built by herdr/build.ts with Bun 1.4.4 from herdr/src and hooks/. Do not edit.
-// Built at 2026-11-20T11:10:52.376Z. 226936 characters follow.
+// Built at 2026-11-20T16:40:33.450Z. 227254 characters follow.
 
 // src/main.ts
 import { View, div as div5 } from "gpui-kit";
@@ -2020,18 +2020,29 @@ function closedLineAction(d) {
     return { label: ROW_COPY.undo, press: { id: d.id, action: "undo" } };
   return d.how === "dismissed" ? { label: ROW_COPY.reopen, press: { id: d.id, action: "undo" } } : null;
 }
+var NO_BACKGROUND_GIVEN = "No background given";
+var NO_EFFECT_GIVEN = "No effect given";
+function questionContextOf(item) {
+  return item?.context || NO_BACKGROUND_GIVEN;
+}
 function recLineOf(item) {
   return item?.rec && item.recReason ? `Why ${item.rec}: ${item.recReason}` : null;
 }
 function optionDescriptionsOf(item, actions) {
-  const descriptions = item?.optionDescriptions;
-  if (!descriptions)
+  if (!item)
     return [];
   return actions.flatMap((a) => {
-    if (a.press.action !== "answer" || !Object.hasOwn(descriptions, a.press.option))
+    if (a.press.action !== "answer")
       return [];
-    const description = descriptions[a.press.option];
-    return [{ label: clipLabel(linkLabel(a.press.option), OPTION_LABEL_CHARS), description, isFolded: a.isFolded }];
+    const description = item.optionDescriptions?.[a.press.option];
+    return [
+      {
+        label: clipLabel(linkLabel(a.press.option), OPTION_LABEL_CHARS),
+        description: description || NO_EFFECT_GIVEN,
+        isMissing: !description,
+        isFolded: a.isFolded
+      }
+    ];
   });
 }
 function shownOptionDescriptions(row, isShowingAll) {
@@ -3410,7 +3421,7 @@ function inboxView({
       optionDescriptions: optionDescriptionsOf(row.item, actions),
       holdsUpLine: held.length > 0 ? `${HOLDS_UP_TEXT} ${held.join(", ")}` : null,
       recLine: state.is === "open" ? recLineOf(row.item) : null,
-      contextLine: state.is === "open" ? row.item?.context ?? null : null
+      contextLine: row.type === "question" ? questionContextOf(row.item) : null
     };
   };
   const itemRow = (item) => {
@@ -4296,7 +4307,10 @@ function rowBody(row, isAllShown, isNextBuild) {
     { text: row.contextLine, tone: "muted" },
     { text: row.detail, tone: null },
     { text: row.fileName ? `${ROW_COPY.relevantFile}${row.fileName}` : null, tone: "muted" },
-    ...shownOptionDescriptions(row, isAllShown).map((o) => ({ text: `${o.label}: ${o.description}`, tone: null })),
+    ...shownOptionDescriptions(row, isAllShown).flatMap((o) => o.isMissing ? [
+      { text: `${o.label}:`, tone: null },
+      { text: `  ${o.description}`, tone: "muted" }
+    ] : [{ text: `${o.label}: ${o.description}`, tone: null }]),
     { text: row.recLine, tone: "muted" },
     { text: isNextBuild ? row.holdsUpLine : null, tone: "muted", mark: HOLDS_UP_MARK }
   ];

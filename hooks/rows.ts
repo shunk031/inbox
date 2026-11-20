@@ -143,7 +143,7 @@ export type RowView = {
   state: RowState
   feedback: Feedback | null
   actions: ActionView[]
-  /** The description of each answer button that has one, in button order. A folded button's is folded with it. */
+  /** The effect of each answer button, in button order. A folded button's effect is folded with it. */
   optionDescriptions: OptionDescription[]
   /**
    * "Holds up" and the names of the open subjects an open ask holds up, comma-separated, as the Status call linked them.
@@ -153,10 +153,17 @@ export type RowView = {
   /** "Why", the recommended option and the agent's reason for it, on a question whose record gave one. */
   recLine: string | null
   /**
-   * Why the agent asked, on an open question whose record gave a context. A look draws it whole, first under the
-   * title, on the selected row only.
+   * What happened before the agent asked, or the marker for a missing context. Looks draw it under each question title;
+   * Herdr keeps it in the selected row body.
    */
   contextLine: string | null
+}
+
+export const NO_BACKGROUND_GIVEN = 'No background given'
+export const NO_EFFECT_GIVEN = 'No effect given'
+
+export function questionContextOf(item: Pick<Item, 'context'> | null): string {
+  return item?.context || NO_BACKGROUND_GIVEN
 }
 
 export function recLineOf(item: Item | null): string | null {
@@ -169,17 +176,26 @@ export function documentPreviewLine(row: Pick<RowView, 'document' | 'documentPre
   return `Report preview: ${row.documentPreview || baseName(row.document) || 'Markdown document'}`
 }
 
-type OptionDescription = { label: string; description: string; isFolded: boolean }
+type OptionDescription = { label: string; description: string; isMissing: boolean; isFolded: boolean }
 
-export function optionDescriptionsOf(item: Item | null, actions: ActionView[]): OptionDescription[] {
-  const descriptions = item?.optionDescriptions
-  if (!descriptions) return []
+export function optionDescriptionsOf(
+  item: Pick<Item, 'optionDescriptions'> | null,
+  actions: ActionView[],
+): OptionDescription[] {
+  if (!item) return []
 
   return actions.flatMap(a => {
-    if (a.press.action !== 'answer' || !Object.hasOwn(descriptions, a.press.option)) return []
-    const description = descriptions[a.press.option]!
+    if (a.press.action !== 'answer') return []
+    const description = item.optionDescriptions?.[a.press.option]
 
-    return [{ label: clipLabel(linkLabel(a.press.option), OPTION_LABEL_CHARS), description, isFolded: a.isFolded }]
+    return [
+      {
+        label: clipLabel(linkLabel(a.press.option), OPTION_LABEL_CHARS),
+        description: description || NO_EFFECT_GIVEN,
+        isMissing: !description,
+        isFolded: a.isFolded,
+      },
+    ]
   })
 }
 

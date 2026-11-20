@@ -247,7 +247,8 @@ export async function capture(entry, pluginDir, root, socket, claude) {
     )
     send(socket, session, '/inbox', true)
     send(socket, session, 'Enter')
-    await wait(socket, session, entry.width, frame => pageMarker(frame, 'Asks'), 'initial inbox pane')
+    const initialPane = entry.view === 'asks' && entry.width <= 87 ? 'raw' : 'pane'
+    await wait(socket, session, entry.width, frame => pageMarker(frame, 'Asks'), 'initial inbox pane', initialPane)
     const timelineDetail = frame =>
       pageMarker(frame, entry.scenario === 'empty' ? 'Snapshot detail empty' : 'Snapshot root')
     const childSelected = frame => {

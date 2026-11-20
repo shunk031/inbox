@@ -46,7 +46,7 @@ test('store key inventory follows CLAUDE_CONFIG_DIR and treats missing store as 
 })
 
 test('registry covers every terminal view, scenario, and width once', () => {
-  assert.equal(registry.length, 33)
+  assert.equal(registry.length, 35)
   assert.equal(new Set(registry.map(entry => entry.file)).size, registry.length)
   assert.deepEqual(new Set(registry.map(entry => entry.width)), new Set([87, 110, 200]))
   assert.deepEqual(
@@ -56,6 +56,10 @@ test('registry covers every terminal view, scenario, and width once', () => {
   assert.deepEqual(
     registry.filter(entry => entry.fixture === 'fold-done').map(entry => entry.width),
     [200, 110],
+  )
+  assert.deepEqual(
+    registry.filter(entry => entry.view === 'asks').map(({ scenario, width }) => `${scenario}:${width}`),
+    'empty:200 empty:110 empty:87 busy:200 busy:110 busy:87'.split(' '),
   )
 })
 

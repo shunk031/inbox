@@ -10,7 +10,15 @@ import { isHeldSend, isUndoable } from './pressed'
 import { FINDING_GROUPS } from './help'
 import { isSettledInPlace, canUndoClose, isUndoLeft, pendingDeliveryAt, earliestOf } from './timing'
 import type { ListInput } from './timing'
-import { closedRowState, optionDescriptionsOf, isWaitingRow, outcomeLabel, closedMark, recLineOf } from './rows'
+import {
+  closedRowState,
+  optionDescriptionsOf,
+  isWaitingRow,
+  outcomeLabel,
+  closedMark,
+  recLineOf,
+  questionContextOf,
+} from './rows'
 import type { RowView, ClosedDelivery, ResultMark, RowState } from './rows'
 import { doneLabel, feedbackOf, fixLabel, feedbackIn, pressUnderWaySince, pressFeedbackIn } from './feedback'
 import type { ShownTab } from './tabs'
@@ -264,7 +272,7 @@ export function inboxView({
       optionDescriptions: optionDescriptionsOf(row.item, actions),
       holdsUpLine: held.length > 0 ? `${HOLDS_UP_TEXT} ${held.join(', ')}` : null,
       recLine: state.is === 'open' ? recLineOf(row.item) : null,
-      contextLine: state.is === 'open' ? (row.item?.context ?? null) : null,
+      contextLine: row.type === 'question' ? questionContextOf(row.item) : null,
     }
   }
   const itemRow = (item: Item): RowView => {

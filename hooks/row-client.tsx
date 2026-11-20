@@ -8,6 +8,8 @@ export type RowProps = {
   title: string
   after: string
   /** A muted line under the title and `after`, or empty for none. */
+  context: string
+  /** A muted line under the context, or empty for none. */
   note: string
   /** A mark before the note, in its own color. */
   noteMark: { text: string; color: string | null } | null
@@ -79,6 +81,7 @@ const Row: ClientModule<RowProps, State> = (props, surface) => {
   const textCells = columns - FRAME_CELLS - props.markCells - props.sideCells
   const perLine = Math.floor(textCells * props.charsPerCell)
   const after = clipAtSpace(props.after, perLine)
+  const context = clipAtSpace(props.context, perLine)
   const note = clipAtSpace(props.note, perLine - (props.noteMark ? props.noteMark.text.length + 1 : 0))
   const recNote = clipAtSpace(props.recNote, perLine)
   const background = pressed ? props.colors.pressed : hover ? props.colors.hover : null
@@ -114,6 +117,7 @@ const Row: ClientModule<RowProps, State> = (props, surface) => {
             ],
           }),
           ...(after ? [Text({ wrap: 'truncate-end', ...colored(ageColor), children: after })] : []),
+          ...(context ? [Text({ wrap: 'truncate-end', ...colored(props.colors.muted), children: context })] : []),
           ...(note
             ? [
                 Text({

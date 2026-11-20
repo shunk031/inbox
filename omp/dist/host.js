@@ -4741,6 +4741,11 @@ function closedLineAction(d) {
     return { label: ROW_COPY.undo, press: { id: d.id, action: "undo" } };
   return d.how === "dismissed" ? { label: ROW_COPY.reopen, press: { id: d.id, action: "undo" } } : null;
 }
+var NO_BACKGROUND_GIVEN = "No background given";
+var NO_EFFECT_GIVEN = "No effect given";
+function questionContextOf(item) {
+  return item?.context || NO_BACKGROUND_GIVEN;
+}
 function recLineOf(item) {
   return item?.rec && item.recReason ? `Why ${item.rec}: ${item.recReason}` : null;
 }
@@ -4750,14 +4755,20 @@ function documentPreviewLine(row) {
   return `Report preview: ${row.documentPreview || baseName(row.document) || "Markdown document"}`;
 }
 function optionDescriptionsOf(item, actions) {
-  const descriptions = item?.optionDescriptions;
-  if (!descriptions)
+  if (!item)
     return [];
   return actions.flatMap((a) => {
-    if (a.press.action !== "answer" || !Object.hasOwn(descriptions, a.press.option))
+    if (a.press.action !== "answer")
       return [];
-    const description = descriptions[a.press.option];
-    return [{ label: clipLabel(linkLabel(a.press.option), OPTION_LABEL_CHARS), description, isFolded: a.isFolded }];
+    const description = item.optionDescriptions?.[a.press.option];
+    return [
+      {
+        label: clipLabel(linkLabel(a.press.option), OPTION_LABEL_CHARS),
+        description: description || NO_EFFECT_GIVEN,
+        isMissing: !description,
+        isFolded: a.isFolded
+      }
+    ];
   });
 }
 function rowHandle(row) {
@@ -7706,7 +7717,7 @@ function inboxView({
       optionDescriptions: optionDescriptionsOf(row.item, actions),
       holdsUpLine: held.length > 0 ? `${HOLDS_UP_TEXT} ${held.join(", ")}` : null,
       recLine: state.is === "open" ? recLineOf(row.item) : null,
-      contextLine: state.is === "open" ? row.item?.context ?? null : null
+      contextLine: row.type === "question" ? questionContextOf(row.item) : null
     };
   };
   const itemRow = (item) => {
@@ -10407,12 +10418,12 @@ function drawLine(line, isSelected, d) {
   const shownTitle = line.mark ? cutTitle(titleText, besideAge - visibleLength(head) - visibleLength(status) - visibleLength(after)) : titleText;
   const title = line.isDim ? s.dim(shownTitle) : line.titleTone ? s.tone(line.titleTone, s.bold(shownTitle)) : isSelected ? s.bold(shownTitle) : shownTitle;
   out.push(spread(fit(`${head}${title}${status}${after}`, besideAge), `${age} `, width));
+  const indent = (line.lead === null ? UNLED_INDENT : INDENT) + pad;
+  const contextLine = line.row?.type === "question" ? line.row.contextLine : null;
+  if (contextLine)
+    out.push(...indentedLinks(contextLine, indent, width, isSelected ? Infinity : 1, s.dim, s.link));
   if (line.settled || isShut(line, ui))
     return out;
-  const indent = (line.lead === null ? UNLED_INDENT : INDENT) + pad;
-  const contextLine = isSelected ? line.row?.contextLine : null;
-  if (contextLine)
-    out.push(...indentedLinks(contextLine, indent, width, Infinity, s.dim, s.link));
   const holdsUp = d.screen.isNextBuild === true ? line.row?.holdsUpLine : null;
   if (holdsUp)
     out.push(fit(`${" ".repeat(indent)}${s.tone(HELD_MARK.tone, HELD_MARK.mark)} ${s.dim(holdsUp)}`, width));
@@ -10428,7 +10439,11 @@ function drawLine(line, isSelected, d) {
   if (line.file)
     out.push(" ".repeat(indent) + s.tone("accent", line.file));
   for (const o of line.row?.optionDescriptions ?? [])
-    out.push(fit(" ".repeat(indent) + o.label + s.dim(`: ${o.description}`), width));
+    if (o.isMissing) {
+      out.push(fit(" ".repeat(indent) + o.label + ":", width));
+      out.push(fit(" ".repeat(indent + 2) + s.dim(o.description), width));
+    } else
+      out.push(fit(" ".repeat(indent) + o.label + s.dim(`: ${o.description}`), width));
   const hasInlineLinks = line.selectionMark === ">" && line.body?.includes("Links \xB7") === true;
   const linkStart = hasInlineLinks ? line.buttons.findIndex((button) => button.press.action === "pr-open") : -1;
   if (line.buttons.length > 0 && ui.typing !== line.id)

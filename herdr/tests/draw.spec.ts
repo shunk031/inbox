@@ -49,7 +49,7 @@ test('only the selected row shows buttons, and with no selection the first waiti
 
 test('a selected question draws why it came up first under its title, in the Why line’s tone, and a collapsed one draws none', () => {
   const screen = demoScreen()
-  const question = screen.view.needsYou.questions.find(r => r.contextLine)!
+  const question = screen.view.needsYou.questions.find(r => r.state.is === 'open' && r.item?.context)!
   const selected = rowsOf(tabBlocks(screen, uiOn('needsYou', { selected: question.id }))).find(
     b => b.id === question.id,
   )!

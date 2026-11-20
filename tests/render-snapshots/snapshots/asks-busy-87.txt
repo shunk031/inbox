@@ -1,0 +1,13 @@
+    Timeline 3      ├─ 1) Snapshot question without background                  1m
+    Agents          │  No background given
+    PRs             │  Keep the labels: Preserves the invented labels for this ex…
+                    │  Shorten the labels:
+                    │  No effect given
+                    │  a: Keep the labels (recommended)  b: Shorten the labels
+                    │  t: Reply  e: Explain  x: Dismiss
+                    └─ Snapshot question: should this invented panel keep its   1m
+                       CJK labels?
+                       A neutral fixture exercises a long, wrapped question.
+
+                    Tasks
+                    └─   No open tasks
