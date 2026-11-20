@@ -1,14 +1,20 @@
 import { sessionFile } from './session-files'
 import { taskTreeExport, writeProjectionAtomically } from './task-projection'
 import { taskTimelineWarnings } from './session-view'
+import { taskOwnerInHerdr } from './herdr'
+import { observedTaskOwnerFact, taskOwnerKey } from './task-facts'
 import type { Run } from './gh'
-import type { Session } from '../types'
+import type { Session, TaskFactWarning, TaskOwner, TaskOwnerFacts, TaskOwnerState } from '../types'
+
+const isOwnerWarning = (warning: TaskFactWarning): warning is Extract<TaskFactWarning, { owner: TaskOwner }> =>
+  warning.message === 'Owner idle 15m+' || warning.message === 'Owner finished, task open'
 
 export function modTaskTreeExport(deps: {
   home: () => Promise<string | undefined>
   now: () => Promise<number>
   write: (path: string, text: string) => Promise<void>
   run: Run
+  updateSession: (change: (session: Session) => Session) => Promise<Session>
   nonce: () => string
   log: (text: string) => void
 }) {
@@ -43,7 +49,38 @@ export function modTaskTreeExport(deps: {
       const root = home.replace(/\/+$/, '')
       const path = `${root}/.local/state/inbox/task-tree/${sessionFile(sessionId)}`
       const warnings = taskTimelineWarnings(session, session.taskTree, savedAt)
-      const projection = taskTreeExport(sessionId, session.taskTree, warnings, session.taskStatusMismatches, savedAt)
+      const warnedOwners = new Map(
+        warnings.filter(isOwnerWarning).map(warning => [taskOwnerKey(warning.owner), warning.owner]),
+      )
+      let current = session
+      if (warnedOwners.size > 0) {
+        const observations = await Promise.all(
+          [...warnedOwners]
+            .filter(([, owner]) => owner.machine === 'local')
+            .map(async ([key, owner]) => [key, await taskOwnerInHerdr(owner.agent, deps.run)] as const),
+        )
+        const refreshed = observations.filter((entry): entry is readonly [string, TaskOwnerState] => entry[1] !== null)
+        if (refreshed.length > 0) {
+          const checkedAt = await deps.now().catch(() => savedAt)
+          current = await deps
+            .updateSession(saved => {
+              const taskOwnerFacts: TaskOwnerFacts = { ...saved.taskOwnerFacts }
+              for (const [key, state] of refreshed)
+                taskOwnerFacts[key] = observedTaskOwnerFact(taskOwnerFacts[key], state, checkedAt)
+              return { ...saved, taskOwnerFacts }
+            })
+            .catch(() => session)
+        }
+      }
+      const savedAtFinal = warnedOwners.size > 0 ? await deps.now().catch(() => savedAt) : savedAt
+      const finalWarnings = taskTimelineWarnings(current, current.taskTree, savedAtFinal)
+      const projection = taskTreeExport(
+        sessionId,
+        current.taskTree,
+        finalWarnings,
+        current.taskStatusMismatches,
+        savedAtFinal,
+      )
       await writeProjectionAtomically(path, `${JSON.stringify(projection, null, 2)}\n`, files)
       exported.add(sessionId)
       return projection

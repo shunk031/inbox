@@ -2103,6 +2103,7 @@ async function initializeInbox($: EngineInterface) {
       write: (path, text) => $.fs.write(path, text),
       home: () => $.env.get('HOME'),
       now: () => $.clock.now(),
+      updateSession: change => update($, SESSION, change),
       log: text => $.ui.log(text, { to: 'debug' }),
     },
     processRun($),
@@ -2231,9 +2232,8 @@ async function applyConversation(
   conversation.root = sessionRoot
   paneState.recordedRows = null
   sessionState.isReadingAgain = false
-  // A reload stops any update the previous load had running, and state outlives
-  // it, so an update in flight at load was cut off: record it as failed.
-  // The theme read at the start is gone after /clear, so each conversation reads it.
+  // Reload cuts off in-flight updates while saved state survives, so record them as failed.
+  // /clear loses the initial theme, so reread it for each conversation.
   const [current] = await Promise.all([upgradeState($), syncTheme($)])
   const loadedAt = await $.clock.now()
   // The pane now shows another conversation, so it starts a new showing.
