@@ -85,21 +85,6 @@ export function ready(entry, frame) {
   const has = text => pageMarker(frame, text)
   if (entry.view === 'help') return has('Keys') && has('Tabs') && frame.includes('●  Working')
   if (entry.view === 'prs') return has(marker(entry)) && !has('Refreshing PRs')
-  if (entry.view === 'agents' && entry.fixture === 'agents-tree') {
-    const connectors = [...frame.matchAll(/├─|└─/gu)].length
-    return (
-      ['Orchestrators', 'Meta tasks', 'Local agents'].every(has) &&
-      connectors >= 11 &&
-      (entry.width !== 87 || ['snapshot-local-worker', 'In progress'].every(has))
-    )
-  }
-  if (entry.view === 'agents' && entry.fixture === 'agents-busy') {
-    const required = [marker(entry), 'Stale', 'In progress', 'Waiting', 'snapshot-local']
-    const missing = required.filter(text => !has(text))
-    return missing.length === 0
-  }
-  if (entry.view === 'agents')
-    return has(marker(entry)) && has('Herdr agent list unavailable; local agent status is not current.')
   if (entry.view === 'timeline-detail') return has('Snapshot') && has('Back')
   if (entry.view === 'asks-detail')
     return (
@@ -155,14 +140,6 @@ function writeConfig(config, home, pluginDir, sessionId, fixture) {
   const fakeGh = path.join(bin, 'gh')
   writeFileSync(fakeGh, '#!/bin/sh\nprintf "gh is disabled in render snapshot fixtures\\n" >&2\nexit 1\n')
   chmodSync(fakeGh, 0o755)
-  if (fixture === 'agents-busy' || fixture === 'agents-tree') {
-    const fakeHerdr = path.join(bin, 'herdr')
-    writeFileSync(
-      fakeHerdr,
-      `#!/bin/sh\nprintf '%s\\n' '{"result":{"agents":[{"name":"snapshot-local-worker","agent_status":"working"}]}}'\n`,
-    )
-    chmodSync(fakeHerdr, 0o755)
-  }
   return bin
 }
 export function storeKeys(env = process.env) {
@@ -256,7 +233,7 @@ export async function capture(entry, pluginDir, root, socket, claude) {
         ? 'Snapshot empty report'
         : entry.fixture === 'detail-busy'
           ? 'Snapshot report'
-          : entry.fixture === 'agents-busy' || entry.fixture === 'agents-tree' || entry.fixture.endsWith('empty')
+          : entry.fixture.endsWith('empty')
             ? 'Nothing needed'
             : 'Snapshot question'
     await wait(
@@ -285,8 +262,7 @@ export async function capture(entry, pluginDir, root, socket, claude) {
         ['2', timelineDetail],
         ['Enter', frame => ready(entry, frame)],
       ],
-      agents: [['3', frame => ready(entry, frame)]],
-      prs: [['4', frame => ready(entry, frame)]],
+      prs: [['3', frame => ready(entry, frame)]],
       'asks-detail': [['v', frame => ready(entry, frame)]],
     }
     for (const [key, predicate] of steps[entry.view] ?? [])

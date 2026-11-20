@@ -2,9 +2,8 @@ const NOW = Date.now()
 export const PLUGIN_STORE = 'inbox_inline-7e8589075f50.json'
 export const HEIGHT = 50
 export const SCENARIOS = ['empty', 'busy']
-export const VIEWS = ['asks', 'timeline', 'agents', 'prs', 'timeline-detail', 'asks-detail', 'help']
+export const VIEWS = ['asks', 'timeline', 'prs', 'timeline-detail', 'asks-detail', 'help']
 const widths = [200, 110]
-const timelineDetailWidths = [87, ...widths]
 const task = (id, parentId, title, status, detail = '', notes = []) => ({
   id,
   parentId,
@@ -18,6 +17,7 @@ const task = (id, parentId, title, status, detail = '', notes = []) => ({
   history: [{ at: NOW - 60_000, source: 'fixture', kind: 'created' }],
 })
 const wrappedTitle = '折り返し用の日本語タイトルと子の説明'
+const timelineDetailWidths = [87, ...widths]
 const tasks = [
   [
     'snapshot-root',
@@ -131,56 +131,16 @@ export function fixtureState(fixture) {
     const finished = task('snapshot-finished-root', null, 'Snapshot finished root', 'done')
     state.taskTree = fixture === 'fold-done' ? [...tasks, finished] : tasks
     state.prViews = { ...state.prViews, views: { [pr.ref]: pr }, isGhMissing: false }
-  } else if (fixture === 'agents-busy') {
-    data.findings = [
-      {
-        id: 'snapshot-stale-root',
-        kind: 'progress',
-        title: 'Snapshot stale root',
-        detail: 'An invented feed row exercises the Stale chip.',
-        path: null,
-        at: NOW - 20 * 60_000,
-        feedKey: 'herdr/local/snapshot-root',
-        feedSource: 'snapshot',
-        feedOwned: true,
-        owner: { machine: 'local', agent: 'snapshot-root' },
-      },
-    ]
-    state.taskTree = [
-      task('snapshot-agents-working', null, 'Snapshot working task', 'working'),
-      task('snapshot-agents-waiting', null, 'Snapshot waiting task', 'waits-on-other'),
-    ]
   } else if (fixture.startsWith('timeline-detail-layout')) {
     const detail = '狭い画面でも左端と折り返し位置を確認する中立的な説明です。'.repeat(3)
-    const note = '配置確認用のメモです。',
-      split87 = fixture.at(-1) === '7'
+    const note = '配置確認用のメモです。'
+    const split87 = fixture.endsWith('-87')
     const item = task('snapshot-detail-layout', null, 'Snapshot timeline detail', 'working', detail, [note])
     item.history.push(
       { at: NOW - (split87 ? 10_000 : 30_000), source: 'fixture', kind: 'note', detail: note },
       { at: NOW - (split87 ? 30_000 : 10_000), source: 'fixture', kind: 'detail' },
     )
     state.taskTree = [item]
-  } else if (fixture === 'agents-tree') {
-    data.findings = ['A', 'B', 'C', 'D'].map(letter => ({
-      id: `snapshot-feed-${letter}`,
-      kind: 'progress',
-      title: `Feed ${letter}`,
-      detail: 'Sample tree row.',
-      path: null,
-      at: NOW - 10_000,
-      feedKey: `herdr/local/worker-${letter}`,
-      feedSource: 'snapshot',
-      feedOwned: true,
-      owner: { machine: 'local', agent: `worker-${letter}` },
-    }))
-    state.taskTree = [
-      task('snapshot-tree-root', null, 'Root task', 'unknown'),
-      task('snapshot-tree-a', 'snapshot-tree-root', 'Task A', 'unknown'),
-      task('snapshot-tree-a-child', 'snapshot-tree-a', 'Nested task', 'unknown'),
-      task('snapshot-tree-b', 'snapshot-tree-root', 'Task B', 'unknown'),
-      task('snapshot-tree-c', 'snapshot-tree-root', 'Task C', 'unknown'),
-      task('snapshot-tree-d', 'snapshot-tree-root', 'Task D', 'unknown'),
-    ]
   } else if (fixture === 'detail-empty' || fixture === 'detail-busy') {
     const empty = fixture === 'detail-empty'
     state.taskTree = empty ? [task('snapshot-detail-empty', null, 'Snapshot detail empty', 'working')] : tasks
@@ -196,27 +156,11 @@ export const registry = [
         scenario,
         width,
         fixture:
-          view === 'agents' && scenario === 'tree'
-            ? 'agents-tree'
-            : view === 'agents' && scenario === 'busy'
-              ? 'agents-busy'
-              : view === 'help'
-                ? `help-${scenario}`
-                : view.endsWith('-detail')
-                  ? `detail-${scenario}`
-                  : `base-${scenario}`,
+          view === 'help' ? `help-${scenario}` : view.endsWith('-detail') ? `detail-${scenario}` : `base-${scenario}`,
         file: `${view}-${scenario}-${width}.txt`,
       })),
     ),
   ),
-  ...[87, 110, 200].map(width => ({
-    view: 'agents',
-    scenario: 'tree',
-    width,
-    height: 108,
-    fixture: 'agents-tree',
-    file: `agents-tree-${width}.txt`,
-  })),
 ]
 const foldDone = { view: 'timeline', scenario: 'fold-done', fixture: 'fold-done' }
 registry.push(...widths.map(width => ({ ...foldDone, width, file: `timeline-fold-done-${width}.txt` })))

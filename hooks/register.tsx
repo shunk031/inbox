@@ -46,7 +46,6 @@ import { runModTool } from './mod-task-run'
 import { postToolReminder, toolCallReminder, withToolCallReminder } from './mod-task-reminder'
 import { pressOn, pruned, type SendOutcome } from './session-presses'
 import { isCompareInBackground } from './clients'
-import { agentsAttentionCount, agentsInputForPane } from './agents-page'
 import { showsRunningMark, type SessionView } from './session-view'
 import {
   childrenCutOff,
@@ -107,7 +106,6 @@ import {
 import { ghIn } from './gh'
 import { isGhUnstartable, pathProbe, placeChange, runOf, sessionFolder, type CommandCalls } from './mod-commands'
 import { delegatesInHerdr } from './herdr'
-import { watchLocalAgents, stopAgentsCheck } from './mod-agents'
 import type { HerdrFile } from './herdr-press-file'
 import { applyHerdrFile } from './herdr-app'
 import {
@@ -137,6 +135,8 @@ import {
   screenTabOf,
   shownTabs,
   drawnTabOf,
+  upgradePageTab,
+  upgradeShownTab,
   tabBadge,
   inboxCommandText,
   type ShownTab,
@@ -285,7 +285,6 @@ import { panePrBlocks, panePrRows } from './pane-prs'
 import { paneStatusLines } from './pane-status-lines'
 import { paneStatus } from './pane-status'
 import { paneTimeline } from './pane-timeline'
-import { paneAgents } from './pane-agents'
 import { paneHelp } from './pane-help'
 import { adjustScroll, clearDocument, documentActions, scrollBy } from './pane-document'
 import { foldOf, upgradedUnfolded, withFold } from './fold-keys'
@@ -1023,7 +1022,8 @@ async function upgradeState($: EngineInterface): Promise<Ledger> {
 
       return isShownTab(renamed) && isRowTab(renamed) ? renamed : 'needsYou'
     }),
-    update($, PAGE, p => (isShownTab(p) ? p : null)),
+    update($, PAGE, upgradePageTab),
+    update($, SHOWN, s => (s ? { ...s, tab: upgradeShownTab(s.tab) } : null)),
     update($, SELECTION, upgradeSelection),
     update($, UNFOLDED, upgradedUnfolded),
     update($, TIMELINE_SELECTION, upgradedTimelineSelection),
@@ -1272,24 +1272,12 @@ async function writeRowTab($: EngineInterface, tab: Tab) {
 
 async function readPage($: EngineInterface): Promise<PageTab | null> {
   const page = await read($, PAGE)
-  return page !== null && drawnTabOf(page, mod.isNextBuild, true, paneState.paneLook === 'terminal') === page
-    ? page
-    : null
+  return page !== null && drawnTabOf(page, mod.isNextBuild, true) === page ? page : null
 }
 
 async function readRowTab($: EngineInterface): Promise<Tab | null> {
   const [page, tab] = await Promise.all([readPage($), read($, TAB)])
   return page === null ? tab : null
-}
-
-function followLocalAgents(isShown: boolean, isDemo: boolean, $: EngineInterface) {
-  if (!isShown || isDemo) return stopAgentsCheck(paneState)
-  watchLocalAgents(
-    paneState,
-    (ms, fn) => $.clock.every(ms, fn),
-    runOf(commandCalls($)),
-    () => redrawPane($),
-  )
 }
 
 async function showTab($: EngineInterface, tab: ShownTab) {
@@ -2905,7 +2893,6 @@ export const register: Register = on => {
 
   on('ui.close', { id: PANE }, async ($, e, next) => {
     cancelUndoScroll()
-    stopAgentsCheck(paneState)
     clearDocument()
     const r = await next(e)
     void syncShown($, { isOpen: false }).then(() => syncLook($, false))
@@ -3104,17 +3091,14 @@ export const register: Register = on => {
     const tab: Tab = isShownTab(savedTab) && isRowTab(savedTab) ? savedTab : 'needsYou'
     const isStatusShown = savedPage === 'overview'
     const isTimelineShown = savedPage === 'timeline'
-    const isAgentsShown = look === 'terminal' && savedPage === 'agents'
-    const isPageShown = isStatusShown || isTimelineShown || isAgentsShown
-    paneState.agentsPageShown = isAgentsShown
+    const isPageShown = isStatusShown || isTimelineShown
     const shownTab: ShownTab = savedPage ?? tab
     const { document, ...reader } = documentActions(
       documentFile($),
       () => redrawPane($),
       by => scrollBy(by, () => $.ui.scroll({ in: PANE, to: 'end' })).catch(() => undefined),
     )
-    const tabList = shownTabs(mod.isNextBuild, true, look === 'terminal')
-    followLocalAgents(isAgentsShown, isDemo, $)
+    const tabList = shownTabs(mod.isNextBuild, true)
     if (look === 'terminal')
       animateRunningMarks(
         showsRunningMark(view, shownTab, isHelpShown, kind => unfolded.includes(kind)),
@@ -3269,15 +3253,8 @@ export const register: Register = on => {
       prs: shownPrs.filter(x => x.state.is === 'open' && prNeedsYou(x.pr, isThreadSent)).length,
       timeline: view.timeline.openTasks,
     }
-    const agentsCount =
-      look === 'terminal'
-        ? agentsAttentionCount(
-            agentsInputForPane(view.agents, now, isDemo, paneState.localAgents, paneState.agentsUnavailable),
-          )
-        : 0
-    const badgeOf = (id: ShownTab) => tabBadge(id, counts, agentsCount)
-    const tabTone = (id: ShownTab) =>
-      id === 'agents' ? (agentsCount > 0 ? pal.tone.issue : undefined) : isRowTab(id) ? pal.tone[id] : undefined
+    const badgeOf = (id: ShownTab) => tabBadge(id, counts)
+    const tabTone = (id: ShownTab) => (isRowTab(id) ? pal.tone[id] : undefined)
     const tabText = (id: ShownTab, name: string) => `${name}${badgeOf(id) === null ? '' : ` ${badgeOf(id)}`}`
     const hasRail = isInline && look === 'terminal' && e.props.bodyColumns >= INLINE_RAIL_AT
     const railWidth = Math.max(...tabList.map(t => cellWidth(tabText(t.id, t.label)))) + 2 * TAB_PAD.length
@@ -3425,7 +3402,7 @@ export const register: Register = on => {
       .map(([, n]) => n)
       .sort((a, b) => b.at - a.at)[0]
 
-    const keyList = helpKeys(look, mod.isNextBuild, shownTab, statusPressRows.length > 0, true, look === 'terminal')
+    const keyList = helpKeys(look, mod.isNextBuild, shownTab, statusPressRows.length > 0, true)
     const keyColumn = Math.max(0, ...keyList.map(k => cellWidth(k.keys))) + 2
 
     const { banner, tabs, rail, statusBlock, footer, isTabRowFit, desktopTabLines } = paneFrame(
@@ -3499,20 +3476,6 @@ export const register: Register = on => {
       },
       handlers,
     )
-    const agentsView = paneAgents({
-      Box,
-      Text,
-      pal,
-      view,
-      listColumns,
-      now,
-      isDemo,
-      groupEmpty,
-      groupTitle,
-      section,
-      sections,
-      titleGap,
-    })
     const { emptyState, needsYouView, findingsView, documentView } = paneAskTabs(
       {
         listColumns,
@@ -3643,7 +3606,6 @@ export const register: Register = on => {
     const { helpView } = paneHelp({
       isNextBuild: mod.isNextBuild,
       includeTimeline: true,
-      includeAgents: look === 'terminal',
       pal,
       keyList,
       Box,
@@ -3745,13 +3707,11 @@ export const register: Register = on => {
           ? statusView()
           : isTimelineShown
             ? timelineView
-            : isAgentsShown
-              ? agentsView
-              : tab === 'findings'
-                ? findingsView()
-                : tab === 'prs'
-                  ? prsView()
-                  : needsYouView()
+            : tab === 'findings'
+              ? findingsView()
+              : tab === 'prs'
+                ? prsView()
+                : needsYouView()
     const drawn = (
       <Box flexDirection="column" minHeight={e.props.scroll.bodyRows} backgroundColor={pal.body}>
         {showsDemoNotices ? (
