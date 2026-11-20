@@ -155,7 +155,7 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
       view: timelineView,
       footer,
       move(step: number) {
-        const id = moveTimelineSelection(page.rows, timelineSelection, step)
+        const id = moveTimelineSelection(page.rows, page.selected?.row.task.id ?? null, step)
         if (id) void selectTimelineRow(id)
       },
     }
@@ -425,7 +425,7 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
     footer,
     async move(step: number) {
       if (page.mode !== 'tree') return
-      const id = moveTimelineSelection(page.rows, timelineSelection, step)
+      const id = moveTimelineSelection(page.rows, page.selected?.row.task.id ?? null, step)
       if (id) await selectTimelineRow(id, `timeline-title-${id}`)
     },
   }

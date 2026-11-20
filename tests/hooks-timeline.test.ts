@@ -5,6 +5,7 @@ import type { TabsProps } from '../hooks/tabs-client'
 import { prMarkId } from '../hooks/pr-rows'
 import { applyPrPress } from '../hooks/pr-tab'
 import { cellWidth } from '../hooks/text'
+import { COMPLETED_FOLD_ID } from '../hooks/timeline-page'
 import type { Session } from '../types'
 import { w, world } from './hooks-world'
 import { PANE } from './hooks-helpers'
@@ -163,6 +164,40 @@ test('the next-build pane draws Timeline with its saved selection and folded bra
   expect(text, 'the saved selection row').toContain('Other')
   expect(text, 'the saved selection marker').toContain('> ○ ')
   expect(text, 'the saved folded branch').not.toContain('Child')
+})
+
+test('k and j navigate from the summary when saved selection is hidden', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  world($, on, [])
+  w.files = ['/.next-build']
+  let selection: { value: string | null; version: number } = { value: 'finished', version: 1 }
+  on('state.get', { plugin: 'inbox', key: 'timelineSelection' } as const, () => {
+    return { value: selection as never }
+  })
+  on('state.set', { plugin: 'inbox', key: 'timelineSelection' } as const, (_$, event) => {
+    selection = { value: event.value as string | null, version: selection.version + 1 }
+    return { value: { isSet: true as const, version: selection.version } }
+  })
+
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  for (const [task_id, status] of [
+    ['active-first', 'queued'],
+    ['active-last', 'working'],
+    ['finished', 'done'],
+  ] as const) {
+    await $.tool.call({ tool: 'mcp__inbox__tasks', operation: 'add', task_id, title: task_id, status })
+  }
+  const pane = await $.ui.mount(PANE)
+  await pane.press({ key: 'tab-key-timeline' })
+  await clock.settle()
+
+  expect((await pane.find({ key: `timeline-title-${COMPLETED_FOLD_ID}` }))?.props.autoFocus).toBe(true)
+  await pane.press({ key: 'previous' })
+  await clock.settle()
+  expect(selection.value).toBe('active-last')
+  await pane.press({ key: 'next' })
+  await clock.settle()
+  expect(selection.value).toBe('active-first')
 })
 
 test('Timeline opens a selected task detail and returns to the selected tree row', async ($, on) => {
