@@ -3,6 +3,7 @@ import type { PaneBase } from './pane-context'
 import type { PaneRowParts } from './pane-row-parts'
 import { timelineChip, timelineRowBackground, timelineRowLead, timelineToneColor } from './pane-timeline'
 import { timelineStatusPresentation, type TimelineState } from './timeline-page'
+import { ROW_COLUMNS } from './pane-sizes'
 import { cellWidth } from './text'
 import { paneState } from './mod-state'
 
@@ -60,20 +61,15 @@ export function paneAgents({
     agentsInputForPane(view.agents, now, isDemo, paneState.localAgents, paneState.agentsUnavailable),
     width,
   )
-  const orchestrators = page.rows.filter(
-    row => (row.kind === 'root' && row.key !== 'meta-root') || row.kind === 'progress',
-  )
-  const metaTasks = page.rows.filter(row => row.kind === 'task' || row.key === 'meta-root')
-  const localAgents = page.rows.filter(row => row.kind === 'agent')
-  const groups = [
-    { title: 'Orchestrators', count: orchestrators.length, rows: orchestrators },
-    { title: 'Meta tasks', count: metaTasks.length, rows: metaTasks },
-    { title: 'Local agents', count: localAgents.length, rows: localAgents },
-  ]
-  const groupViews = groups.map(({ title, count, rows }) => {
+  const groupViews = page.groups.map(({ row: group, rows }) => {
+    const { text: title, count = rows.length } = group
     const rowViews = rows.map(row => {
       const status = timelineStatusPresentation(timelineState(row.status))
-      const mark = timelineRowLead({ prefix: row.prefix ?? '', mark: status.mark }, false)
+      const connector = row.hasLaterSibling ? '├─ ' : '└─ '
+      const rawPrefix = `${row.guides.join('')}${connector}`
+      const markColumn = ROW_COLUMNS.tree.handleAt + (row.depth - 1) * 3
+      const prefix = `${rawPrefix}${' '.repeat(Math.max(0, markColumn - 2 - cellWidth(rawPrefix)))}`
+      const mark = timelineRowLead({ prefix, mark: status.mark }, false)
       const label = chipLabel(row.status, status.label)
       const backgroundColor = timelineRowBackground(pal, false)
       const color = timelineToneColor(pal, status.tone)
@@ -91,12 +87,20 @@ export function paneAgents({
               <Text color={color}>{mark}</Text>
             </Box>
             <Box flexDirection="row" flexGrow={1} flexShrink={1} minWidth={0}>
-              <Box flexGrow={1} flexShrink={1} minWidth={0}>
+              <Box
+                width={Math.max(0, paneWidth - 2 - cellWidth(mark) - (label ? cellWidth(label) + 3 : 0))}
+                flexShrink={0}
+              >
                 <Text color={color} wrap="truncate-end">
                   {row.text}
                 </Text>
               </Box>
               {label ? <Box flexShrink={0}>{timelineChip({ Box, Text, pal }, label, status.tone)}</Box> : null}
+              {label ? (
+                <Box width={1}>
+                  <Text> </Text>
+                </Box>
+              ) : null}
             </Box>
           </Box>
         </Box>

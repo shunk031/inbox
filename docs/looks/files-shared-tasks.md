@@ -5,6 +5,7 @@ Part of [the look map](../looks.md#files).
 | File | Role |
 | --- | --- |
 | `hooks/task-tree.ts` | Shared module. Pure task-tree operations, validated task links, bounded notes and history, the durable marker for a PR merge already applied to a task, weighted progress segments and percentage, and the Status subject and milestone migration used by `upgradeSession`. |
+| `hooks/task-prune.ts` | Shared module. Keeps the newest finished task roots and removes older roots with their subtrees. |
 | `hooks/task-mismatches.ts` | Shared module. Applies explicit task-status conflict and retraction lines from Status, clears a mismatch when a successful task update agrees with its claim, and upgrades saved mismatch state. |
 | `hooks/task-text.ts` | Shared module. The current task text, chosen by the newer of its detail and latest note with its time. |
 | `hooks/task-projection.ts` | Shared task-tree projection and the operations hosts provide for locking and atomic publication. |

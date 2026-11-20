@@ -129,6 +129,25 @@ export function fixtureState(fixture) {
     })
     state.taskTree = tasks
     state.prViews = { ...state.prViews, views: { [pr.ref]: pr }, isGhMissing: false }
+  } else if (fixture === 'agents-busy') {
+    data.findings = [
+      {
+        id: 'snapshot-stale-root',
+        kind: 'progress',
+        title: 'Snapshot stale root',
+        detail: 'An invented feed row exercises the Stale chip.',
+        path: null,
+        at: NOW - 20 * 60_000,
+        feedKey: 'herdr/local/snapshot-root',
+        feedSource: 'snapshot',
+        feedOwned: true,
+        owner: { machine: 'local', agent: 'snapshot-root' },
+      },
+    ]
+    state.taskTree = [
+      task('snapshot-agents-working', null, 'Snapshot working task', 'working'),
+      task('snapshot-agents-waiting', null, 'Snapshot waiting task', 'waits-on-other'),
+    ]
   } else if (fixture === 'detail-empty' || fixture === 'detail-busy') {
     const empty = fixture === 'detail-empty'
     state.taskTree = empty ? [task('snapshot-detail-empty', null, 'Snapshot detail empty', 'working')] : tasks
@@ -143,7 +162,13 @@ export const registry = VIEWS.flatMap(view =>
       scenario,
       width,
       fixture:
-        view === 'help' ? `help-${scenario}` : view.endsWith('-detail') ? `detail-${scenario}` : `base-${scenario}`,
+        view === 'agents' && scenario === 'busy'
+          ? 'agents-busy'
+          : view === 'help'
+            ? `help-${scenario}`
+            : view.endsWith('-detail')
+              ? `detail-${scenario}`
+              : `base-${scenario}`,
       file: `${view}-${scenario}-${width}.txt`,
     })),
   ),

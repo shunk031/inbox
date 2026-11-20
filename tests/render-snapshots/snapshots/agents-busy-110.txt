@@ -1,29 +1,29 @@
                                      ✕
- ▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄▄ ▄▄▄▄▄
-  Asks 2   Timeline 3   Agents   PRs
-─▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀─▀▀▀▀▀──
+ ▄▄▄▄▄▄ ▄▄▄▄▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄▄▄▄ ▄▄▄▄▄
+  Asks   Timeline 2   Agents 1   PRs
+─▀▀▀▀▀▀─▀▀▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀──
 
- Herdr agent list unavailable; local
- agent status is not current.
-   Orchestrators
+   Orchestrators · 1
    │
-   └─   No open orchestrators
+    └─ ○ stale 20m · local/sna… Stale
 
 
-   Meta tasks · 4
+   Meta tasks · 3
    │
-    ○ This session · meta · 50% comple…
+    └─ ○ This session · meta · 0% comp…
 
-    ◐ 50% · No owner · Sn… In progress
+       ├─ ◐ 0% · No owne… In progress
 
-      ◐ 0% · No owner · S… In progress
-
-        ✕ 0% · No owner · 深…  Waiting
+       └─ ✕ 0% · No owner · … Waiting
 
 
-   Local agents
+   Local agents · 1
    │
-   └─   No open local agents
+    └─ ◐ snapshot-local-… In progress
+
+
+
+
 
 
 

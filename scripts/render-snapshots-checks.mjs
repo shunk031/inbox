@@ -133,6 +133,133 @@ export function checkFrame(entry, frame, width) {
   return errors
 }
 
+function styledCells(line) {
+  const cells = []
+  const style = { foreground: null, background: null, inverse: false }
+  const tokens = line.match(/\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07]*(?:\x07|\x1b\\)|[^\x1b]+/gu) ?? []
+  let offset = 0
+  for (const token of tokens) {
+    if (token.startsWith('\x1b[')) {
+      if (token.endsWith('m')) {
+        const codes = token
+          .slice(2, -1)
+          .split(';')
+          .map(value => Number(value || 0))
+        for (let i = 0; i < codes.length; i++) {
+          const code = codes[i]
+          if (code === 0) Object.assign(style, { foreground: null, background: null, inverse: false })
+          else if (code === 7) style.inverse = true
+          else if (code === 27) style.inverse = false
+          else if (code === 39) style.foreground = null
+          else if (code === 49) style.background = null
+          else if (code === 38 || code === 48) {
+            const mode = codes[i + 1]
+            const color =
+              mode === 5
+                ? `${code};5;${codes[i + 2]}`
+                : mode === 2
+                  ? `${code};2;${codes.slice(i + 2, i + 5).join(';')}`
+                  : `${code}`
+            if (code === 38) style.foreground = color
+            else style.background = color
+            i += mode === 5 ? 2 : mode === 2 ? 4 : 0
+          } else if ((code >= 30 && code <= 37) || (code >= 90 && code <= 97)) style.foreground = `${code}`
+          else if ((code >= 40 && code <= 47) || (code >= 100 && code <= 107)) style.background = `${code}`
+        }
+      }
+      offset += token.length
+      continue
+    }
+    for (const part of new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(token)) {
+      const width = cellWidth(part.segment)
+      for (let i = 0; i < width; i++)
+        cells.push({
+          char: part.segment,
+          foreground: style.foreground,
+          background: style.background,
+          inverse: style.inverse,
+          start: offset + part.index,
+          end: offset + part.index + part.segment.length,
+        })
+    }
+    offset += token.length
+  }
+  return cells
+}
+
+function chipBoxes(entry, ansiFrame, paneWidth) {
+  const lines = ansiFrame.split('\n')
+  const first = entry.width - paneWidth
+  const after = first + paneWidth
+  const boxes = []
+  lines.forEach((line, row) => {
+    const cells = styledCells(line)
+    for (let at = first; at < Math.min(after, cells.length); at++) {
+      const label = cells[at]
+      if (!label?.background || (!label.inverse && label.foreground !== '38;5;16') || !/[A-Za-z]/u.test(label.char))
+        continue
+      const labelStyle = cell =>
+        cell?.background === label.background && (label.inverse ? cell.inverse : cell.foreground === label.foreground)
+      let start = at
+      let end = at
+      while (start > first && labelStyle(cells[start - 1])) start--
+      while (end + 1 < after && labelStyle(cells[end + 1])) end++
+      const text = cells
+        .slice(start, end + 1)
+        .map(cell => cell.char)
+        .join('')
+        .trim()
+      if (!/^[A-Za-z][A-Za-z ]{0,15}$/u.test(text)) continue
+      let boxStart = start
+      let boxEnd = end
+      while (boxStart > first && cells[boxStart - 1]?.background === label.background) boxStart--
+      while (boxEnd + 1 < cells.length && cells[boxEnd + 1]?.background === label.background) boxEnd++
+      let left = 0
+      let right = 0
+      for (let i = boxStart; i < start && cells[i]?.char === ' '; i++) left++
+      for (let i = boxEnd; i > end && cells[i]?.char === ' '; i--) right++
+      boxes.push({ row, cells, start: boxStart, end: boxEnd, labelStart: start, labelEnd: end, text, left, right })
+      at = end
+    }
+  })
+  return boxes
+}
+
+export function checkChipBoxes(entry, ansiFrame, paneWidth) {
+  const errors = []
+  for (const box of chipBoxes(entry, ansiFrame, paneWidth)) {
+    const row = `line-${box.row + 1}:${box.text}`
+    const add = (...args) => errors.push(failure(entry, row, ...args))
+    if (box.left !== 1 || box.right !== 1)
+      add('1 cell on each side', `left=${box.left} right=${box.right}`, 'chip box padding')
+    const after = box.cells[box.end + 1]
+    if (box.end + 1 >= entry.width || after?.char !== ' ' || after.background === box.cells[box.labelStart]?.background)
+      add('1 clear cell before pane edge', after?.char === ' ' ? 1 : 0, 'chip box right margin')
+    if (box.end >= entry.width)
+      add(
+        `<${entry.width - (entry.width - paneWidth)}`,
+        box.end - (entry.width - paneWidth),
+        'chip runs past pane right edge',
+      )
+  }
+  return errors
+}
+
+export function stripChipRightPadding(ansiFrame, entry, paneWidth, label) {
+  const box = chipBoxes(entry, ansiFrame, paneWidth).find(item => item.text === label && item.right === 1)
+  if (!box) throw Error(`chip mutation target not found: ${label}`)
+  const pad = box.cells[box.labelEnd + 1]
+  const lines = ansiFrame.split('\n')
+  const line = lines[box.row]
+  lines[box.row] =
+    line.slice(0, pad.start) +
+    '\x1b[49m' +
+    line.slice(pad.start, pad.end) +
+    `\x1b[${pad.background}m` +
+    line.slice(pad.end)
+  return lines.join('\n')
+}
+
 const describe = name => {
   const entry = registry.find(item => item.file === name)
   if (entry) return entry
@@ -194,5 +321,15 @@ export function runMutationProofs(frames) {
   for (const [name, line] of proofs) {
     if (!line) throw Error(`mutation proof did not fail: ${name}`)
     process.stdout.write(`PROOF ${name}: ${line}\n`)
+  }
+  for (const [name, file, label] of [
+    ['Agents', 'agents-busy-110.txt', 'Stale'],
+    ['Timeline', 'timeline-busy-200.txt', 'In progress'],
+  ]) {
+    const item = frames.get(file)
+    const mutated = stripChipRightPadding(item.ansiFrame, item.entry, item.paneWidth, label)
+    const line = checkChipBoxes(item.entry, mutated, item.paneWidth).find(error => error.includes('chip box padding'))
+    if (!line) throw Error(`mutation proof did not fail: ${name} chip right padding`)
+    process.stdout.write(`PROOF ${name} chip right padding removed: ${line}\n`)
   }
 }
