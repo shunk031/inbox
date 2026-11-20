@@ -17,7 +17,9 @@ test('/clear and /resume switch the inbox to the other conversation, and each ke
   await turn('add a greeting cli')
   expect(w.stored.has('p:/tmp/project')).toBe(false)
   const pane = await $.ui.mount(PANE)
-  await pane.press({ key: 'answer-i1-0' })
+  const answer = pane.press({ key: 'answer-i1-0' })
+  await clock.advance(SETTLED_MS)
+  await answer
   await $.session.end({ reason: 'clear', sessionId: 'session-1', resume: { id: 'session-1' } })
   await $.classic.SessionStart({ source: 'clear', session_id: 'session-2' })
   w.ledgerReply = 'NEW: decide | 1 | Pin the Node version? | Yes / No | Yes'
@@ -48,10 +50,16 @@ test('an answer held for Undo when /clear switches conversations sends once its 
   await $.turn.complete({ answer: 'ok', durationMs: 5, isAborted: false, turnId: 't1', reason: 'answer' })
   await clock.settle()
   const pane = await $.ui.mount(PANE)
-  await pane.press({ key: 'answer-i1-0' })
+  let pressReturned = false
+  const answer = pane.press({ key: 'answer-i1-0' }).then(() => (pressReturned = true))
+  await clock.advance(1)
   await $.session.end({ reason: 'clear', sessionId: 'session-1', resume: { id: 'session-1' } })
+  await clock.settle()
+  expect(pressReturned).toBe(true)
+  await answer
+  expect(w.sent).toEqual([])
   await $.classic.SessionStart({ source: 'clear', session_id: 'session-2' })
-  await clock.advance(SETTLED_MS)
+  await clock.advance(SETTLED_MS - 1)
   expect(w.sent).toEqual([])
 
   await $.session.end({ reason: 'resume', sessionId: 'session-2', resume: { id: 'session-2' } })

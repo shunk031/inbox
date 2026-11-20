@@ -292,7 +292,7 @@ export type Session = {
     pressedAt: number | null
     /** The local press identity; null for older records or messages without a row. */
     deliveryId: string | null
-    phase?: 'attempting' | 'accepted' | 'uncertain'
+    phase?: 'attempting' | 'accepted' | 'uncertain' | 'deferred'
   }[]
   lastActions: Record<string, LastAction>
   /**

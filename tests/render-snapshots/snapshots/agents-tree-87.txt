@@ -1,0 +1,34 @@
+    Asks            Orchestrators · 4
+    Timeline 6      │
+    Agents          ├─ ○ local/worker-A · Feed A · Sample tree row. · n… Unknown
+    PRs             │
+                    ├─ ○ local/worker-B · Feed B · Sample tree row. · n… Unknown
+                    │
+                    ├─ ○ local/worker-C · Feed C · Sample tree row. · n… Unknown
+                    │
+                    └─ ○ local/worker-D · Feed D · Sample tree row. · n… Unknown
+
+                    Meta tasks · 7
+                    │
+                    └─ ○ This session · meta · 0% complete · 0.0/1.0 weight
+                       └─ ○ 0% · No owner · Root task                    Unknown
+                          ├─ ○ 0% · No owner · Task A                    Unknown
+                          │  └─ ○ 0% · No owner · Nested task            Unknown
+                          │
+                          ├─ ○ 0% · No owner · Task B                    Unknown
+                          │
+                          ├─ ○ 0% · No owner · Task C                    Unknown
+                          │
+                          └─ ○ 0% · No owner · Task D                    Unknown
+
+                    Local agents · 1
+                    │
+                    └─ ◐ snapshot-local-worker                       In progress
+
+
+
+
+
+
+
+   Help                                                                     v0.4.0

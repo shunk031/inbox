@@ -32,10 +32,20 @@ function cropInboxPane(capture, width) {
   for (const line of lines)
     for (const m of line.matchAll(/│/g)) {
       const col = cellWidth(line.slice(0, m.index))
-      if (col >= Math.floor(width / 3)) counts.set(col, (counts.get(col) ?? 0) + 1)
+      if (col >= Math.floor(width / 3) && col < width - 20) counts.set(col, (counts.get(col) ?? 0) + 1)
     }
   const [divider, rows] = [...counts].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0] ?? []
-  if (!divider || rows < 20) return null
+  const minRows = width <= 87 ? 12 : 20
+  if (!divider || rows < minRows) {
+    const frame = lines.filter(line => line.startsWith('│') && line.endsWith('│') && cellWidth(line) === width)
+    if (width <= 87 && frame.length >= minRows)
+      return {
+        text: frame.map(line => line.slice(1, -1).replace(/ +$/u, '')).join('\n'),
+        paneWidth: width - 2,
+        dividerColumn: 0,
+      }
+    return null
+  }
   const paneWidth = width - divider - 1
   const frame = lines.flatMap(line => {
     const prefix = cutToCells(line, divider + 1)
@@ -44,7 +54,7 @@ function cropInboxPane(capture, width) {
       : []
   })
   while (frame.at(-1) === '') frame.pop()
-  if (frame.length < 20) return null
+  if (frame.length < minRows) return null
   return { text: frame.join('\n'), paneWidth, dividerColumn: divider }
 }
 const focusedHelp = frame => {
@@ -75,6 +85,14 @@ export function ready(entry, frame) {
   const has = text => pageMarker(frame, text)
   if (entry.view === 'help') return has('Keys') && has('Tabs') && frame.includes('●  Working')
   if (entry.view === 'prs') return has(marker(entry)) && !has('Refreshing PRs')
+  if (entry.view === 'agents' && entry.fixture === 'agents-tree') {
+    const connectors = [...frame.matchAll(/├─|└─/gu)].length
+    return (
+      ['Orchestrators', 'Meta tasks', 'Local agents'].every(has) &&
+      connectors >= 11 &&
+      (entry.width !== 87 || ['snapshot-local-worker', 'In progress'].every(has))
+    )
+  }
   if (entry.view === 'agents' && entry.fixture === 'agents-busy') {
     const required = [marker(entry), 'Stale', 'In progress', 'Waiting', 'snapshot-local']
     const missing = required.filter(text => !has(text))
@@ -95,14 +113,14 @@ export function ready(entry, frame) {
 async function wait(socket, session, width, predicate, label, mode = 'pane', timeout = 45_000) {
   const end = Date.now() + timeout
   let last = ''
+  let previous
   while (Date.now() < end) {
-    const capture = tmux(socket, 'capture-pane', ...(mode === 'ansi' ? ['-e'] : []), '-p', '-t', `${session}:0.0`)
+    const capture = tmux(socket, 'capture-pane', '-N', '-e', '-p', '-t', `${session}:0.0`)
     const crop =
       mode === 'pane' ? cropInboxPane(capture, width) : { text: mode === 'raw' ? stripAnsi(capture) : capture }
     last = crop?.text ?? stripAnsi(capture).slice(-1600)
-    if (crop) {
-      if (predicate(crop.text)) return crop
-    }
+    if (crop && predicate(crop.text) && capture === previous) return { ...crop, capture }
+    previous = capture
     await pause(125)
   }
   throw Error(`timed out waiting for ${label}${last ? `\nLast frame:\n${last}` : ''}`)
@@ -137,7 +155,7 @@ function writeConfig(config, home, pluginDir, sessionId, fixture) {
   const fakeGh = path.join(bin, 'gh')
   writeFileSync(fakeGh, '#!/bin/sh\nprintf "gh is disabled in render snapshot fixtures\\n" >&2\nexit 1\n')
   chmodSync(fakeGh, 0o755)
-  if (fixture === 'agents-busy') {
+  if (fixture === 'agents-busy' || fixture === 'agents-tree') {
     const fakeHerdr = path.join(bin, 'herdr')
     writeFileSync(
       fakeHerdr,
@@ -216,7 +234,7 @@ export async function capture(entry, pluginDir, root, socket, claude) {
       '-x',
       String(terminalWidth),
       '-y',
-      String(HEIGHT),
+      String(entry.height ?? HEIGHT),
       '-c',
       pluginDir,
       command,
@@ -239,7 +257,7 @@ export async function capture(entry, pluginDir, root, socket, claude) {
           ? 'Snapshot empty report'
           : entry.fixture === 'detail-busy'
             ? 'Snapshot report'
-            : entry.fixture === 'agents-busy' || entry.fixture.endsWith('empty')
+            : entry.fixture === 'agents-busy' || entry.fixture === 'agents-tree' || entry.fixture.endsWith('empty')
               ? 'Nothing needed'
               : 'Snapshot question'
     await wait(
@@ -285,7 +303,7 @@ export async function capture(entry, pluginDir, root, socket, claude) {
       frame => ready(entry, frame),
       `${entry.view} ${entry.scenario}`,
     )
-    const ansiFrame = tmux(socket, 'capture-pane', '-N', '-e', '-p', '-t', `${session}:0.0`)
+    const ansiFrame = crop.capture
     process.stdout.write(`CAPTURE ${entry.file}\n`)
     return { entry, frame: crop.text, ansiFrame, paneWidth: crop.paneWidth }
   } finally {

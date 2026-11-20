@@ -73,6 +73,7 @@ import { prSharedStore } from './mod-pr-shared'
 import { refreshStatus, type StatusCall, type StatusRecords, type RecordFiles } from './status-records'
 import { upgradedTimelineDetailOpen, upgradedTimelineFolded, upgradedTimelineSelection } from './timeline-state'
 import { startPress, wakeAfterSettle as wakeSessionAfterSettle } from './host-press'
+import { abortAnswerPressWaits, releaseAnswerInPress, retryDeferredAnswers, withAnswerPressWait } from './held-sends'
 import type { Ask, CatchUpReply, SessionHost } from './session-host'
 import { callReport, MODEL } from './inbox-model'
 import { demoView, isDemoCopy } from './demo'
@@ -216,11 +217,11 @@ import {
 } from './pane-keys'
 import {
   arrived,
+  deliverPrompt,
   forgetStored,
   messageText,
   noteStored,
   settleRewrite,
-  stored,
   withLostSendsUncertain,
 } from './mod-delivery'
 import { NO_OLD_PRESENCE, NO_OLD_PR_VIEWS, sessionFromOldFields } from './mod-old-fields'
@@ -288,6 +289,10 @@ import { paneAgents } from './pane-agents'
 import { paneHelp } from './pane-help'
 import { adjustScroll, clearDocument, documentActions, scrollBy } from './pane-document'
 import { foldOf, upgradedUnfolded, withFold } from './fold-keys'
+
+function later($: EngineInterface, ms: number, run: () => unknown) {
+  return $.clock.after(ms, () => void Promise.resolve(run()).catch(() => undefined))
+}
 
 function documentFile($: EngineInterface) {
   return modDocumentFile(
@@ -700,35 +705,32 @@ async function perform(
   }
 }
 
-/** Sends text as the person's prompt; Claude may store it early, and another plugin may rewrite it. */
+/** Sends as the person and reconciles any rewrite. */
 async function deliver($: EngineInterface, owner: Owner, text: string, deliveryId: string): Promise<SendOutcome> {
-  if (!isCurrent(owner)) return { state: 'rejected', reason: 'the conversation changed first' }
-  const since = stored.count
-  type Submitted = { entered: string } | { notSent: string }
-  const sent = await $.prompt.submit({ text, asUser: true }).then(
-    (r): Submitted => (r.drop === undefined ? { entered: r.text } : { notSent: r.drop }),
-    (err: unknown): Submitted =>
-      (stored.at.get(text) ?? 0) > since
-        ? { entered: text }
-        : { notSent: (err instanceof Error ? err.message : String(err)) || 'the session refused it' },
-  )
-  if ('notSent' in sent) return { state: 'rejected', reason: sent.notSent }
-  const entered = sent.entered
-  if (entered === text) return { state: 'accepted', queuedId: null }
-  let outcome: SendOutcome = { state: 'accepted', queuedId: null, entered }
-  const { heldRows } = await read($, SESSION)
-  await changeSession(
-    $,
-    owner,
-    s => {
-      const settled = settleRewrite(s, deliveryId, text, entered, since)
-      outcome = settled?.outcome ?? { state: 'accepted', queuedId: null, entered }
-      return settled?.state ?? s
+  return deliverPrompt(
+    {
+      isCurrent: () => isCurrent(owner),
+      read: () => read($, SESSION),
+      submit: () => $.prompt.submit({ text, asUser: true }),
+      rewrite: async (entered, since) => {
+        let outcome: SendOutcome = { state: 'accepted', queuedId: null, entered }
+        const { heldRows } = await read($, SESSION)
+        await changeSession(
+          $,
+          owner,
+          s => {
+            const settled = settleRewrite(s, deliveryId, text, entered, since)
+            outcome = settled?.outcome ?? { state: 'accepted', queuedId: null, entered }
+            return settled?.state ?? s
+          },
+          new Set(heldRows),
+        )
+        return outcome
+      },
     },
-    new Set(heldRows),
+    text,
+    deliveryId,
   )
-
-  return outcome
 }
 
 /** The shipped comparison template. */
@@ -847,13 +849,6 @@ function redrawWhileUndoLasts($: EngineInterface, expiresAt: number) {
     await openLeftRows($)
     await finishPendingUndoScroll($)
   })
-}
-
-function later($: EngineInterface, waitMs: number, run: () => unknown) {
-  void (async () => {
-    await $.clock.sleep(waitMs)
-    await run()
-  })().catch(() => undefined)
 }
 
 /** Redraws when a Compare press reaches its limit. */
@@ -1682,7 +1677,7 @@ async function pollPrs($: EngineInterface) {
   await fetchPrs($, isTabShown)
 }
 
-/** Settles held answers and Fixes after Undo, then sends Done messages. */
+/** Settles held Answers and Fixes after Undo, removes dismissed PRs once their rows settle, and sends Done messages. */
 async function wakeAfterSettle($: EngineInterface) {
   await wakeSessionAfterSettle(hostOf($, currentOwner()))
 }
@@ -1695,7 +1690,17 @@ async function wakeForHeldSends($: EngineInterface) {
   if (dueTimes.length > 0) later($, Math.max(0, Math.min(...dueTimes) - now), () => wakeAfterSettle($))
 }
 
-async function runPress($: EngineInterface, p: RowPress | PrPress, surface: UiPressArgument['surface']) {
+function runPress($: EngineInterface, p: RowPress | PrPress, surface: UiPressArgument['surface']) {
+  return withAnswerPressWait(p.action, pressRowId(p), signal => runPressNow($, p, surface, signal))
+}
+
+async function runPressNow(
+  $: EngineInterface,
+  p: RowPress | PrPress,
+  surface: UiPressArgument['surface'],
+  answerWait: AbortSignal,
+) {
+  const owner = currentOwner()
   const mayStayOnRow = isPrPress(p)
     ? ['pr-open', 'pr-refresh', 'thread-open', 'log', 'check-rerun'].includes(p.action)
     : p.action === 'step'
@@ -1718,7 +1723,8 @@ async function runPress($: EngineInterface, p: RowPress | PrPress, surface: UiPr
     })
     await update($, TYPING, t => (t === p.id ? null : t))
   }
-  const started = await startPress(hostOf($, currentOwner(), surface), p, false, await readHolds($))
+  const pressHost = hostOf($, owner, surface)
+  const started = await startPress(pressHost, p, false, await readHolds($))
   const effects = started.effects
   if (!effects) {
     const outcome = await started.finish()
@@ -1758,7 +1764,15 @@ async function runPress($: EngineInterface, p: RowPress | PrPress, surface: UiPr
   // Clear success notes after effects; queued messages show Queued and age from QUEUED_AFTER_MS.
   if (sends) later($, QUEUED_AFTER_MS, () => redraw($))
   const outcome = await started.finish()
-  if (outcome.wakesAfterSettle) later($, SETTLED_MS, () => wakeAfterSettle($))
+  if (outcome.wakesAfterSettle && !isPrPress(p) && p.action === 'answer') {
+    await releaseAnswerInPress(
+      pressHost,
+      rowId,
+      (ms, run) => later($, ms, run),
+      () => isCurrent(owner),
+      answerWait,
+    )
+  } else if (outcome.wakesAfterSettle) later($, SETTLED_MS, () => wakeAfterSettle($))
   if (effects.some(effect => effect.kind !== 'send')) later($, SETTLED_MS, () => redraw($))
   if (!isPressConfirmed(outcome)) await keepReply()
   if (!outcome.isRowFailed) return
@@ -2357,8 +2371,8 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await registerInboxCommand($)
     const r = await next(e)
-    // Desktop sessions can attach before or after this hook; register here to offer tools on the first prompt.
-    // -p, SDK and VS Code draw nothing, so leave the mod off.
+    // Register here; desktop can attach before or after this hook.
+    // Leave -p, SDK and VS Code off because they draw nothing.
     const isDesktop = (await $.session.surfaces()).includes('desktop') || (await isStartedByDesktopApp($))
     if (e.isInteractive || isDesktop) await turnOn($)
 
@@ -2373,16 +2387,14 @@ export const register: Register = on => {
 
   on('classic.SessionStart', { source: ['clear', 'resume', 'fork'] }, async ($, e, next) => {
     const r = await next(e)
-    // $.session.id() still names the previous conversation here, so the new id comes
-    // from the event. A start with --resume also raises this, for the conversation
-    // session.start already loaded.
+    // Use e.session_id; session.id() can be stale on resume.
     if (mod.isOn && e.session_id !== conversation.id)
       await loadConversation($, e.session_id, e.source, e.source === 'fork' ? conversation.id : undefined)
 
     return r
   })
 
-  // The Claude app starts a new session in a spare folder and runs SessionStart only once it moves it to the project.
+  // Desktop moves its spare session folder before SessionStart.
   on('classic.SessionStart', { source: 'startup' }, async ($, e, next) => {
     const r = await next(e)
     const seen = conversation.root
@@ -2395,6 +2407,7 @@ export const register: Register = on => {
   })
 
   on('session.end', async ($, e, next) => {
+    abortAnswerPressWaits()
     await taskProjection?.release(conversation.id)
     sessionState.endReason = e.reason
     sessionState.loadRevision++
@@ -2409,7 +2422,7 @@ export const register: Register = on => {
         publishStatus($, true),
       ])
     }
-    // /clear, /resume and /branch (which reports resume) go on in this process with another conversation.
+    // /clear, /resume and /branch continue here with another conversation.
     if (mod.isOn && (e.reason === 'clear' || e.reason === 'resume')) {
       conversation.generation += 1
       await Promise.all([
@@ -2437,7 +2450,7 @@ export const register: Register = on => {
 
   on('prompt.submit', async ($, e, next) => {
     if (!mod.isOn) return next(e)
-    // Detect conversation changes on the first prompt when classic.SessionStart is skipped. A reload that ran it leaves ids equal.
+    // Compare ids on the first prompt when SessionStart was skipped; reloads that ran it already match.
     const sessionId = await $.session.id()
     if (sessionId !== conversation.id) {
       const reason = sessionState.endReason
@@ -2471,7 +2484,9 @@ export const register: Register = on => {
       if (carry) notes.unshift(carry)
     }
 
-    return notes.length === 0 ? next(e) : next({ ...e, context: [...(e.context ?? []), ...notes] })
+    const result = await next(notes.length === 0 ? e : { ...e, context: [...(e.context ?? []), ...notes] })
+    if (isTyped) later($, 0, () => retryDeferredAnswers(hostOf($, currentOwner())))
+    return result
   })
 
   on('turn.start', async ($, e, next) => {
@@ -3489,8 +3504,7 @@ export const register: Register = on => {
       Text,
       pal,
       view,
-      e,
-      hasRail,
+      listColumns,
       now,
       isDemo,
       groupEmpty,

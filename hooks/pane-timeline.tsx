@@ -17,7 +17,7 @@ export function timelineChip({ Box, Text, pal }: TimelineStyle, label: string, t
   )
 }
 
-export function timelineRowLead(row: { prefix: string; mark: string }, selected: boolean) {
+function timelineRowLead(row: { prefix: string; mark: string }, selected: boolean) {
   return `${selected ? '> ' : '  '}${row.prefix}${row.mark} `
 }
 
