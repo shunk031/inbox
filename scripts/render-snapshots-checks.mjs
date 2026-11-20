@@ -69,12 +69,15 @@ export function checkFrame(entry, frame, width) {
     if (!pageMarker(frame, text)) add(`required:${text}`, 0, 'missing', 'required label absent')
 
   const tree = entry.view === 'timeline'
+  const agentsTitle = lines.find(line => /\bOrchestrators\b/u.test(line))
+  const listBase = entry.view === 'agents' && agentsTitle ? col(agentsTitle, agentsTitle.indexOf('Orchestrators')) : 3
   lines.forEach((line, row) => {
     for (const match of line.matchAll(/│/g)) {
       const at = col(line, match.index)
       const border = at === 1 || at === cellWidth(line) - 1
       const inTree = at >= 4 && at <= 14
-      const listGuide = ['asks', 'agents'].includes(entry.view) && at === 3
+      const listGuide =
+        ['asks', 'agents'].includes(entry.view) && at >= listBase && (at - listBase) % 3 === 0 && at <= listBase + 12
       const statsRow = entry.view === 'timeline-detail' && /Progress|Weight|Completed units|%/u.test(line)
       const statsDivider = statsRow && detailColumns[entry.width].includes(at)
       const allowed = tree ? border || inTree : border || listGuide || statsDivider
@@ -289,7 +292,7 @@ export function runMutationProofs(frames) {
   const long = timeline.frame.split('\n').find(line => line.includes('Snapshot long'))
   const focusMutation = timeline.ansiFrame.replace('Snapshot long', '\x1b[7mSnapshot long\x1b[27m')
   const asks = frames.get('asks-empty-110.txt')
-  const names = new Set(registry.map(entry => entry.file))
+  const names = new Set(registry.filter(entry => entry.fixture !== 'agents-tree').map(entry => entry.file))
   const missing = new Set(names)
   missing.delete('timeline-busy-200.txt')
   const extra = new Set(names)

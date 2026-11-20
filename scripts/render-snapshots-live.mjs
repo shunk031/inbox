@@ -32,10 +32,20 @@ function cropInboxPane(capture, width) {
   for (const line of lines)
     for (const m of line.matchAll(/│/g)) {
       const col = cellWidth(line.slice(0, m.index))
-      if (col >= Math.floor(width / 3)) counts.set(col, (counts.get(col) ?? 0) + 1)
+      if (col >= Math.floor(width / 3) && col < width - 20) counts.set(col, (counts.get(col) ?? 0) + 1)
     }
   const [divider, rows] = [...counts].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0] ?? []
-  if (!divider || rows < 20) return null
+  const minRows = width <= 87 ? 12 : 20
+  if (!divider || rows < minRows) {
+    const frame = lines.filter(line => line.startsWith('│') && line.endsWith('│') && cellWidth(line) === width)
+    if (width <= 87 && frame.length >= minRows)
+      return {
+        text: frame.map(line => line.slice(1, -1).replace(/ +$/u, '')).join('\n'),
+        paneWidth: width - 2,
+        dividerColumn: 0,
+      }
+    return null
+  }
   const paneWidth = width - divider - 1
   const frame = lines.flatMap(line => {
     const prefix = cutToCells(line, divider + 1)
@@ -44,7 +54,7 @@ function cropInboxPane(capture, width) {
       : []
   })
   while (frame.at(-1) === '') frame.pop()
-  if (frame.length < 20) return null
+  if (frame.length < minRows) return null
   return { text: frame.join('\n'), paneWidth, dividerColumn: divider }
 }
 const focusedHelp = frame => {
@@ -75,6 +85,10 @@ export function ready(entry, frame) {
   const has = text => pageMarker(frame, text)
   if (entry.view === 'help') return has('Keys') && has('Tabs') && frame.includes('●  Working')
   if (entry.view === 'prs') return has(marker(entry)) && !has('Refreshing PRs')
+  if (entry.view === 'agents' && entry.fixture === 'agents-tree') {
+    const connectors = [...frame.matchAll(/├─|└─/gu)].length
+    return ['Orchestrators', 'Meta tasks', 'Local agents'].every(has) && connectors >= 11
+  }
   if (entry.view === 'agents' && entry.fixture === 'agents-busy') {
     const required = [marker(entry), 'Stale', 'In progress', 'Waiting', 'snapshot-local']
     const missing = required.filter(text => !has(text))
@@ -133,7 +147,7 @@ function writeConfig(config, home, pluginDir, sessionId, fixture) {
   const fakeGh = path.join(bin, 'gh')
   writeFileSync(fakeGh, '#!/bin/sh\nprintf "gh is disabled in render snapshot fixtures\\n" >&2\nexit 1\n')
   chmodSync(fakeGh, 0o755)
-  if (fixture === 'agents-busy') {
+  if (fixture === 'agents-busy' || fixture === 'agents-tree') {
     const fakeHerdr = path.join(bin, 'herdr')
     writeFileSync(
       fakeHerdr,
@@ -142,6 +156,19 @@ function writeConfig(config, home, pluginDir, sessionId, fixture) {
     chmodSync(fakeHerdr, 0o755)
   }
   return bin
+}
+function copyReadOnlyFeeds(source, destination) {
+  mkdirSync(destination, { recursive: true })
+  const files = readdirSync(source, { withFileTypes: true }).filter(
+    entry => entry.isFile() && entry.name.endsWith('.json'),
+  )
+  for (const entry of files) {
+    const copy = path.join(destination, entry.name)
+    writeFileSync(copy, readFileSync(path.join(source, entry.name)))
+    chmodSync(copy, 0o444)
+  }
+  chmodSync(destination, 0o555)
+  return files.length
 }
 export function storeKeys(env = process.env) {
   const config = env.CLAUDE_CONFIG_DIR || path.join(env.HOME || os.homedir(), '.claude')
@@ -175,7 +202,7 @@ export function isolate(root, home, config, env = process.env) {
   if (![h, c].every(value => value.startsWith(temp)))
     throw Error('refusing isolated paths outside the runner temp directory')
 }
-export async function capture(entry, pluginDir, root, socket, claude) {
+export async function capture(entry, pluginDir, root, socket, claude, { feedSource } = {}) {
   const run = path.join(root, entry.file.replace(/\.txt$/u, ''))
   const home = path.join(run, 'home')
   const config = path.join(run, 'config')
@@ -185,6 +212,8 @@ export async function capture(entry, pluginDir, root, socket, claude) {
   const id = randomUUID()
   const session = `snap-${entry.fixture}-${entry.view}-${entry.width}`
   const bin = writeConfig(config, home, pluginDir, id, entry.fixture)
+  const feedCopy = feedSource ? path.join(config, 'feeds') : null
+  if (feedSource && copyReadOnlyFeeds(feedSource, feedCopy) === 0) throw Error('no regular JSON feed files to copy')
   const env = {
     HOME: home,
     CLAUDE_CONFIG_DIR: config,
@@ -195,6 +224,7 @@ export async function capture(entry, pluginDir, root, socket, claude) {
     LC_ALL: 'C.UTF-8',
     TZ: 'UTC',
     CLAUDE_CODE_NO_FLICKER: '1',
+    ...(feedCopy ? { INBOX_FEED: feedCopy } : {}),
   }
   const vars = Object.entries(env)
     .map(([key, value]) => `${key}=${quote(value)}`)
@@ -211,7 +241,7 @@ export async function capture(entry, pluginDir, root, socket, claude) {
       '-x',
       String(entry.width),
       '-y',
-      String(HEIGHT),
+      String(entry.height ?? HEIGHT),
       '-c',
       pluginDir,
       command,
@@ -227,21 +257,7 @@ export async function capture(entry, pluginDir, root, socket, claude) {
     )
     send(socket, session, '/inbox', true)
     send(socket, session, 'Enter')
-    const initial =
-      entry.fixture === 'detail-empty'
-        ? 'Snapshot empty report'
-        : entry.fixture === 'detail-busy'
-          ? 'Snapshot report'
-          : entry.fixture === 'agents-busy' || entry.fixture.endsWith('empty')
-            ? 'Nothing needed'
-            : 'Snapshot question'
-    await wait(
-      socket,
-      session,
-      entry.width,
-      frame => pageMarker(frame, initial),
-      `initial inbox pane for ${entry.fixture}`,
-    )
+    await wait(socket, session, entry.width, frame => pageMarker(frame, 'Asks'), 'initial inbox pane')
     const timelineDetail = frame =>
       pageMarker(frame, entry.scenario === 'empty' ? 'Snapshot detail empty' : 'Snapshot root')
     const childSelected = frame => {

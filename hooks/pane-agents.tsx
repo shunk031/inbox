@@ -1,9 +1,9 @@
 import { agentsInputForPane, agentsPage } from './agents-page'
 import type { PaneBase } from './pane-context'
 import type { PaneRowParts } from './pane-row-parts'
-import { timelineChip, timelineRowBackground, timelineRowLead, timelineToneColor } from './pane-timeline'
+import { timelineChip, timelineRowBackground, timelineToneColor } from './pane-timeline'
 import { timelineStatusPresentation, type TimelineState } from './timeline-page'
-import { ROW_COLUMNS } from './pane-sizes'
+import { TREE_LINE_AT } from './pane-sizes'
 import { cellWidth } from './text'
 import { paneState } from './mod-state'
 
@@ -57,24 +57,40 @@ export function paneAgents({
 }: AgentsPaneBase) {
   const width = e.props.bodyColumns - 2 - (hasRail ? 5 : 0)
   const paneWidth = cellWidth(' '.repeat(e.props.bodyColumns - (hasRail ? 5 : 0)))
+  const treeBridge = (group: string, guides: readonly string[], index = 0) => {
+    const prefix = `${' '.repeat(TREE_LINE_AT)}${guides.join('')}│`
+    return (
+      <Box key={`bridge-${group}-${index}`} flexDirection="row">
+        <Box width={cellWidth(prefix)} flexShrink={0}>
+          <Text color={pal.line}>{prefix}</Text>
+        </Box>
+      </Box>
+    )
+  }
   const page = agentsPage(
     agentsInputForPane(view.agents, now, isDemo, paneState.localAgents, paneState.agentsUnavailable),
     width,
   )
   const groupViews = page.groups.map(({ row: group, rows }) => {
     const { text: title, count = rows.length } = group
-    const rowViews = rows.map(row => {
+    const siblingParents = new Set<string>()
+    const parentAtDepth: string[] = []
+    const connectedRows = rows.flatMap((row, index) => {
+      const parent = row.depth === 1 ? group.key : (parentAtDepth[row.depth - 2] ?? group.key)
+      const isFirstSibling = !siblingParents.has(parent)
+      siblingParents.add(parent)
+      parentAtDepth[row.depth - 1] = row.key
+      parentAtDepth.length = row.depth
       const status = timelineStatusPresentation(timelineState(row.status))
       const connector = row.hasLaterSibling ? '├─ ' : '└─ '
       const rawPrefix = `${row.guides.join('')}${connector}`
-      const markColumn = ROW_COLUMNS.tree.handleAt + (row.depth - 1) * 3
-      const prefix = `${rawPrefix}${' '.repeat(Math.max(0, markColumn - 2 - cellWidth(rawPrefix)))}`
-      const mark = timelineRowLead({ prefix, mark: status.mark }, false)
+      const mark = ` ${rawPrefix}${status.mark} `
       const label = chipLabel(row.status, status.label)
       const backgroundColor = timelineRowBackground(pal, false)
       const color = timelineToneColor(pal, status.tone)
 
-      return (
+      return [
+        ...(!isFirstSibling ? [treeBridge(group.key, row.guides, index)] : []),
         <Box
           key={`agents-${row.kind}-${row.key}`}
           width={paneWidth}
@@ -88,7 +104,7 @@ export function paneAgents({
             </Box>
             <Box flexDirection="row" flexGrow={1} flexShrink={1} minWidth={0}>
               <Box
-                width={Math.max(0, paneWidth - 2 - cellWidth(mark) - (label ? cellWidth(label) + 3 : 0))}
+                width={Math.max(0, paneWidth - 2 - cellWidth(mark) - (label ? cellWidth(label) + 4 : 0))}
                 flexShrink={0}
               >
                 <Text color={color} wrap="truncate-end">
@@ -103,20 +119,15 @@ export function paneAgents({
               ) : null}
             </Box>
           </Box>
-        </Box>
-      )
+        </Box>,
+      ]
     })
 
     return section([
       groupTitle(title, count),
-      ...titleGap(),
-      ...(rowViews.length === 0
-        ? [groupEmpty(title)]
-        : [
-            <Box flexDirection="column" gap={1}>
-              {rowViews}
-            </Box>,
-          ]),
+      ...(rows.length
+        ? [treeBridge(group.key, [], -1), ...connectedRows]
+        : [...titleGap(), treeBridge(group.key, [], -1), groupEmpty(title)]),
     ])
   })
 

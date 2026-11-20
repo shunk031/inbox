@@ -46,9 +46,13 @@ test('store key inventory follows CLAUDE_CONFIG_DIR and treats missing store as 
 })
 
 test('registry covers every terminal view, scenario, and width once', () => {
-  assert.equal(registry.length, 28)
+  assert.equal(registry.length, 31)
   assert.equal(new Set(registry.map(entry => entry.file)).size, registry.length)
-  assert.deepEqual(new Set(registry.map(entry => entry.width)), new Set([110, 200]))
+  assert.deepEqual(new Set(registry.map(entry => entry.width)), new Set([87, 110, 200]))
+  assert.deepEqual(
+    registry.filter(entry => entry.fixture === 'agents-tree').map(entry => entry.width),
+    [87, 110, 200],
+  )
 })
 
 test('Help snapshots open through the existing footer control', () => {
@@ -95,6 +99,14 @@ test('pane crop preserves leading and interior spaces while removing the dock di
   assert.equal(cropped.paneWidth, 39)
   assert.equal(cropped.text.split('\n')[12], '  x  y')
   assert.equal(cropped.text.endsWith('\n'), false)
+})
+
+test('pane crop handles the 87-column single-pane border', () => {
+  const capture = Array.from({ length: 14 }, (_, index) => `│${(index === 5 ? 'Asks' : '').padEnd(85)}│`).join('\n')
+  const cropped = cropInboxPane(capture, 87)
+  assert.equal(cropped.paneWidth, 85)
+  assert.equal(cropped.dividerColumn, 0)
+  assert.equal(cropped.text.split('\n')[5], 'Asks')
 })
 
 test('ANSI stripping removes CSI and OSC control sequences', () => {

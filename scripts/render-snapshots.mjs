@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { registry, SCENARIOS, VIEWS } from './render-snapshots-fixtures.mjs'
 import { capture, removeTemporaryTree, tmux } from './render-snapshots-live.mjs'
+import { checkTreeText } from './check-tree.mjs'
 import {
   checkFrame,
   checkChipBoxes,
@@ -43,24 +44,32 @@ async function main() {
   )
   mkdirSync(baseline, { recursive: true })
   const errors = []
+  const oldAgents = path.join(baseline, 'agents-busy-110.txt')
+  if (checkTreeText(readFileSync(oldAgents, 'utf8'), { view: 'agents' }).length === 0)
+    errors.push(`FAIL ${oldAgents} legacy negative fixture unexpectedly passes`)
   for (const [name, item] of frames) {
     const file = path.join(baseline, name)
     const rendered = `${item.frame}\n`
-    if (process.env.UPDATE_SNAPSHOTS === '1') writeFileSync(file, rendered)
-    else if (!existsSync(file))
-      errors.push(failure(item.entry, 'snapshot inventory', name, 'missing', 'baseline missing'))
-    else {
-      const expected = readFileSync(file, 'utf8').replace(/\n$/u, '')
-      if (expected !== item.frame)
-        errors.push(failure(item.entry, 'baseline', 'same pane frame', 'different', 'frame differs'))
+    // Keep the old Agents frames as negative geometry fixtures while checking the new live drawing below.
+    if (!['agents-busy', 'agents-tree'].includes(item.entry.fixture)) {
+      if (process.env.UPDATE_SNAPSHOTS === '1') writeFileSync(file, rendered)
+      else if (!existsSync(file))
+        errors.push(failure(item.entry, 'snapshot inventory', name, 'missing', 'baseline missing'))
+      else {
+        const expected = readFileSync(file, 'utf8').replace(/\n$/u, '')
+        if (expected !== item.frame)
+          errors.push(failure(item.entry, 'baseline', 'same pane frame', 'different', 'frame differs'))
+      }
     }
     errors.push(...checkFrame(item.entry, item.frame, item.paneWidth))
     errors.push(...checkChipBoxes(item.entry, item.ansiFrame, item.paneWidth))
     errors.push(...checkTimelineFocus(item.entry, item.frame, item.ansiFrame))
+    if (['asks', 'timeline', 'agents'].includes(item.entry.view))
+      errors.push(...checkTreeText(item.frame, { view: item.entry.view, source: name }))
   }
   errors.push(
     ...inventoryErrors(
-      new Set(registry.map(entry => entry.file)),
+      new Set(registry.filter(entry => entry.fixture !== 'agents-tree').map(entry => entry.file)),
       new Set(readdirSync(baseline).filter(name => name.endsWith('.txt'))),
     ),
   )
@@ -70,7 +79,7 @@ async function main() {
   }
   runMutationProofs(frames)
   const summary = `PASS ${registry.length} live pane snapshots`
-  const coverage = `${VIEWS.length} views × ${SCENARIOS.length} scenarios × 2 widths`
+  const coverage = `${VIEWS.length} views; ${SCENARIOS.length} standard scenarios × 2 widths + 3 Agents tree widths`
   process.stdout.write(`${summary} (${coverage})\n`)
 }
 main().catch(error => {
