@@ -1,5 +1,5 @@
 // Built by herdr/build.ts with Bun 1.4.4 from herdr/src and hooks/. Do not edit.
-// Built at 2026-11-20T10:55:29.738Z. 226968 characters follow.
+// Built at 2026-11-20T11:10:52.376Z. 226936 characters follow.
 
 // src/main.ts
 import { View, div as div5 } from "gpui-kit";
@@ -3681,8 +3681,7 @@ function timelineData(tree, segments, stalledSince, warnings, now, taskStatusMis
         warnings: [
           ...warnings.filter((warning) => warning.taskId === task.id).map((warning) => warning.message),
           ...mismatchByTask.has(task.id) ? [mismatchByTask.get(task.id)] : []
-        ],
-        isCompletedFold: false
+        ]
       });
       visit(childrenOfTask, depth + 1, depth === 0 ? guides : [...guides, hasLaterSibling ? "│  " : "   "]);
     });

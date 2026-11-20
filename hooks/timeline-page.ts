@@ -60,7 +60,7 @@ type TimelineNode = {
   mark: string
   alternate: boolean
   warnings: string[]
-  isCompletedFold: boolean
+  isCompletedFold?: boolean
   actions: TimelineRowAction[]
 }
 type TimelineProgressCard = {
@@ -249,7 +249,6 @@ export function timelineData(
           ...warnings.filter(warning => warning.taskId === task.id).map(warning => warning.message),
           ...(mismatchByTask.has(task.id) ? [mismatchByTask.get(task.id)!] : []),
         ],
-        isCompletedFold: false,
       })
       visit(childrenOfTask, depth + 1, depth === 0 ? guides : [...guides, hasLaterSibling ? '│  ' : '   '])
     })

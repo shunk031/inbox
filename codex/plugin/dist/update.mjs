@@ -3702,8 +3702,7 @@ function timelineData(tree, segments, stalledSince, warnings, now, taskStatusMis
         warnings: [
           ...warnings.filter((warning) => warning.taskId === task.id).map((warning) => warning.message),
           ...mismatchByTask.has(task.id) ? [mismatchByTask.get(task.id)] : []
-        ],
-        isCompletedFold: false
+        ]
       });
       visit(childrenOfTask, depth + 1, depth === 0 ? guides : [...guides, hasLaterSibling ? "\u2502  " : "   "]);
     });

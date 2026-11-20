@@ -240,6 +240,7 @@ test('Timeline hides no open roots and shows one row when all roots are finished
 })
 
 test('Timeline keeps finished roots inline unless the completed fold is enabled', () => {
+  const tree = [task('open')]
   const data = timelineData(
     [task('open'), task('done', { status: 'done' }), task('dropped', { status: 'dropped' })],
     segments,
@@ -248,10 +249,28 @@ test('Timeline keeps finished roots inline unless the completed fold is enabled'
     now,
   )
   const page = timelinePage(data, null, upgradedTimelineFolded(undefined))
+  const mainRows = timelineData(tree, segments, {}, [], now).rows
+  const mainRowsWithoutFoldOption = mainRows.map(({ isCompletedFold: _isCompletedFold, ...row }) => ({
+    ...row,
+    hasVisibleChildren: false,
+    treeLead: '     ',
+    detailLead: '     ',
+    actions: [
+      {
+        action: 'detail',
+        id: 'open',
+        label: 'Open details',
+        hotkey: 'enter',
+        kind: 'view',
+        emphasis: 'normal',
+      },
+    ],
+  }))
 
   expect(page.rows.map(row => row.task.id)).toEqual(['open', 'done', 'dropped'])
   expect(page.rows.some(row => row.isCompletedFold)).toBe(false)
   expect(page.completedRootIds).toEqual([])
+  expect(timelinePage(timelineData(tree, segments, {}, [], now), null, []).rows).toEqual(mainRowsWithoutFoldOption)
 })
 
 test('folding a selected parent hides its children and keeps the parent selected', () => {

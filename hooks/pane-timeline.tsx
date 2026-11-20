@@ -101,7 +101,7 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
                   plain
                   key={`timeline-title-${row.task.id}`}
                   label={row.task.title}
-                  onPress={() => selectOrToggleDone(row.task.id, row.isCompletedFold)}
+                  onPress={() => selectOrToggleDone(row.task.id, row.isCompletedFold === true)}
                 />
                 {!row.isCompletedFold ? (
                   <Text color={pal.muted}>{` · ${row.statusLabel} · ${row.percent}`}</Text>
