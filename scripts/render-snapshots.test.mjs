@@ -1,11 +1,19 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { checkTreeText } from './check-tree.mjs'
 import { checkChipBoxes, checkFrame, stripChipRightPadding } from './render-snapshots-checks.mjs'
-import { cropInboxPane, isolate, ready, storeKeys, stripAnsi } from './render-snapshots-live.mjs'
+import {
+  cropInboxPane,
+  isolate,
+  ready,
+  saveRawTimeoutFrame,
+  storeKeys,
+  stripAnsi,
+  wait,
+} from './render-snapshots-live.mjs'
 import { fixtureState, PLUGIN_STORE, registry } from './render-snapshots-fixtures.mjs'
 
 test('isolation accepts a missing real config path and still refuses unsafe paths', t => {
@@ -73,13 +81,93 @@ test('tree trunks stay continuous through descendant and wrapped rows', () => {
   assert.ok(check('Local agents\n   │\n   └─ A\n      │').some(error => error.includes('orphan-trunk-column=6')))
 })
 
-test('Timeline tree checks ignore paired box borders and reject orphan trunks', () => {
+test('tree checks reject heading trunks without children, connectors without headings, and off-column trunks', () => {
+  const check = text => checkTreeText(text, { view: 'agents' })
+  const oneChild = 'Local agents\n   │\n   └─ A'
+  assert.deepEqual(check(oneChild), [])
+  assert.ok(check(oneChild.replace('\n   └─ A', '')).some(error => error.includes('orphan-trunk-column=3')))
+  assert.ok(
+    checkTreeText(oneChild.replace('\n   └─ A', ''), { view: 'agents', requireTree: true }).some(error =>
+      error.includes('no-tree-found'),
+    ),
+  )
+  assert.ok(
+    check(oneChild.replace('Local agents\n   │\n', '')).some(error => error.includes('missing-heading-trunk-column=3')),
+  )
+  assert.ok(check(oneChild.replace('   └─ A', '   └─ A\n   │')).some(error => error.includes('orphan-trunk-column=3')))
+  assert.ok(
+    check(oneChild.replace('   └─ A', '   └─ A\n      │')).some(error => error.includes('orphan-trunk-column=6')),
+  )
+  const siblings = 'Local agents\n   │\n   ├─ A\n   │\n   └─ B'
+  const offColumn = siblings.replace('   │\n   └─ B', '    │\n   └─ B')
+  assert.ok(check(offColumn).some(error => error.includes('orphan-trunk-column=4')))
+})
+
+test('unframed captures still receive tree checks', () => {
+  const frame = 'Local agents\n   │\n   └─ A'
+  assert.deepEqual(checkTreeText(frame, { view: 'agents' }), [])
+  const broken = frame.replace('   └─ A', '   └─ A\n      │')
+  assert.ok(checkTreeText(broken, { view: 'agents' }).some(error => error.includes('orphan-trunk-column=6')))
+})
+
+test('pane extraction ignores sidebar rows but checks the pane tree', () => {
+  const rows = Array.from({ length: 30 }, (_, index) =>
+    `${' '.repeat(40)}│${['Local agents', '   │', '   ├─ A', '   │', '   └─ B'][index] ?? ''}`.padEnd(92),
+  )
+  const frame = ['Sidebar\n   │\n   └─ A', ...rows].join('\n')
+  assert.deepEqual(checkTreeText(frame, { view: 'agents' }), [])
+})
+
+test('Timeline exempts only paired box borders and rejects edges outside them', () => {
   const frame = 'Progress\n ┌──┐\n │  │\n └──┘\n      │\n      └─ child'
   assert.deepEqual(checkTreeText(frame, { view: 'timeline' }), [])
   const broken = frame.replace('      │\n      └─ child', '     │\n      └─ child')
   assert.ok(checkTreeText(broken, { view: 'timeline' }).some(error => error.includes('orphan-trunk-column=5')))
   const outsideBorder = frame.replace('      │\n      └─ child', '    │\n      └─ child')
   assert.ok(checkTreeText(outsideBorder, { view: 'timeline' }).some(error => error.includes('orphan-trunk-column=4')))
+  const unpairedBox = frame.replace(' └──┘', ' └─┘')
+  assert.ok(checkTreeText(unpairedBox, { view: 'timeline' }).some(error => error.includes('orphan-trunk-column=4')))
+})
+
+test('current tree snapshots pass the geometry checker', () => {
+  for (const entry of registry.filter(
+    candidate => ['asks', 'timeline', 'agents'].includes(candidate.view) && candidate.fixture !== 'agents-busy',
+  )) {
+    const file = path.join(process.cwd(), 'tests/render-snapshots/snapshots', entry.file)
+    assert.deepEqual(checkTreeText(readFileSync(file, 'utf8'), { view: entry.view, source: entry.file }), [])
+  }
+})
+
+test('list gutters allow deeper guides only for Agents', () => {
+  const asks = registry.find(entry => entry.file === 'asks-empty-110.txt')
+  const agents = registry.find(entry => entry.file === 'agents-empty-110.txt')
+  assert.equal(
+    checkFrame(asks, 'Nothing needed\n   │ item', 110).some(error => error.includes('stray │')),
+    false,
+  )
+  assert.ok(checkFrame(asks, 'Nothing needed\n      │ item', 110).some(error => error.includes('stray │')))
+  assert.equal(
+    checkFrame(agents, 'Orchestrators\n      │ item', 110).some(error => error.includes('stray │')),
+    false,
+  )
+})
+
+test('capture and readiness timeouts save their last raw frame', async t => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), 'render-snapshot-timeout-'))
+  t.after(() => rmSync(directory, { recursive: true, force: true }))
+  for (const mode of ['raw', 'pane']) {
+    let saved
+    await assert.rejects(
+      wait('socket', 'session', 87, () => false, 'readiness', mode, 1, {
+        captureFrame: () => 'raw terminal frame',
+        onTimeout: (frame, label) => {
+          saved = saveRawTimeoutFrame(directory, `${label}.txt`, frame)
+        },
+      }),
+      /timed out waiting for readiness/u,
+    )
+    assert.equal(readFileSync(saved, 'utf8'), 'raw terminal frame')
+  }
 })
 
 test('Help snapshots open through the existing footer control', () => {
@@ -112,6 +200,14 @@ test('Agents and report readiness wait for settled fixture content', () => {
   const treeFrame = `Orchestrators\nMeta tasks\nLocal agents\nsnapshot-local-worker\nIn\nprogress\n${'├─\n'.repeat(11)}`
   assert.equal(ready(tree, treeFrame.replace('snapshot-local-worker', '')), false)
   assert.equal(ready(tree, treeFrame), true)
+  const tree110 = registry.find(candidate => candidate.fixture === 'agents-tree' && candidate.width === 110)
+  const connectors = '├─\n'.repeat(11)
+  assert.equal(ready(tree110, `Orchestrators\nMeta tasks\nLocal agents\n${connectors}`), false)
+  assert.equal(ready(tree110, `Orchestrators\nMeta tasks\nLocal agents\nsnapshot-local…\n${connectors}`), false)
+  assert.equal(
+    ready(tree110, `Orchestrators\nMeta tasks\nLocal agents\nsnapshot-local…\nIn progress\n${connectors}`),
+    true,
+  )
   const report = registry.find(candidate => candidate.view === 'asks-detail' && candidate.scenario === 'busy')
   assert.equal(ready(report, 'Snapshot report\nBack to inbox\nOpening report…'), false)
   assert.equal(

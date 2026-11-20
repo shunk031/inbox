@@ -202,7 +202,7 @@ export const registry = [
     view: 'agents',
     scenario: 'tree',
     width,
-    height: 120,
+    height: 108,
     fixture: 'agents-tree',
     file: `agents-tree-${width}.txt`,
   })),

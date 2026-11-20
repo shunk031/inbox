@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpath
 import os from 'node:os'
 import path from 'node:path'
 import { registry, SCENARIOS, VIEWS } from './render-snapshots-fixtures.mjs'
-import { capture, removeTemporaryTree, tmux } from './render-snapshots-live.mjs'
+import { capture, removeTemporaryTree, saveRawTimeoutFrame, tmux } from './render-snapshots-live.mjs'
 import { checkTreeText } from './check-tree.mjs'
 import {
   checkFrame,
@@ -21,6 +21,9 @@ async function main() {
   const root = mkdtempSync(path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'inbox-render-snapshots-'))
   const socket = `inbox-render-${process.pid}`
   const frames = new Map()
+  let rawFrames
+  const rawFrameDirectory = () =>
+    (rawFrames ??= mkdtempSync(path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'inbox-render-failures-')))
   const claude = execFileSync('which', ['claude'], { encoding: 'utf8' }).trim()
   const pin = readFileSync('.github/workflows/plugin-tests.yml', 'utf8').match(/claude-code@([\d.]+)/u)?.[1]
   const version = execFileSync(claude, ['--version'], { encoding: 'utf8' })
@@ -30,7 +33,14 @@ async function main() {
   assert.equal(version, pin, `Claude Code is ${version ?? 'unknown'}; workflow pins ${pin}`)
   try {
     tmux(socket, 'start-server')
-    for (const entry of registry) frames.set(entry.file, await capture(entry, plugin, root, socket, claude))
+    for (const entry of registry) {
+      const onTimeout = (frame, label) => {
+        if (frame === undefined) return
+        const file = saveRawTimeoutFrame(rawFrameDirectory(), entry.file, frame)
+        process.stderr.write(`Raw timeout frame saved: ${file} (${label})\n`)
+      }
+      frames.set(entry.file, await capture(entry, plugin, root, socket, claude, { onTimeout }))
+    }
   } finally {
     try {
       tmux(socket, 'kill-server')
@@ -50,16 +60,19 @@ async function main() {
   for (const [name, item] of frames) {
     const file = path.join(baseline, name)
     const rendered = `${item.frame}\n`
-    // Keep the old Agents frames as negative geometry fixtures while checking the new live drawing below.
-    if (!['agents-busy', 'agents-tree'].includes(item.entry.fixture)) {
+    let snapshotFrame = item.frame
+    // The old Agents busy fixture predates the connector change; compare the new tree baselines.
+    if (item.entry.fixture !== 'agents-busy') {
       if (process.env.UPDATE_SNAPSHOTS === '1') writeFileSync(file, rendered)
       else if (!existsSync(file))
         errors.push(failure(item.entry, 'snapshot inventory', name, 'missing', 'baseline missing'))
       else {
-        const expected = readFileSync(file, 'utf8').replace(/\n$/u, '')
-        if (expected !== item.frame)
+        snapshotFrame = readFileSync(file, 'utf8').replace(/\n$/u, '')
+        if (snapshotFrame !== item.frame)
           errors.push(failure(item.entry, 'baseline', 'same pane frame', 'different', 'frame differs'))
       }
+      if (['asks', 'timeline', 'agents'].includes(item.entry.view))
+        errors.push(...checkTreeText(snapshotFrame, { view: item.entry.view, source: `snapshot:${name}` }))
     }
     errors.push(...checkFrame(item.entry, item.frame, item.paneWidth))
     errors.push(...checkChipBoxes(item.entry, item.ansiFrame, item.paneWidth))
@@ -69,15 +82,15 @@ async function main() {
   }
   errors.push(
     ...inventoryErrors(
-      new Set(registry.filter(entry => entry.fixture !== 'agents-tree').map(entry => entry.file)),
+      new Set(registry.map(entry => entry.file)),
       new Set(readdirSync(baseline).filter(name => name.endsWith('.txt'))),
     ),
   )
   if (errors.length) {
-    const rawFrames = mkdtempSync(path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'inbox-render-failures-'))
+    const directory = rawFrameDirectory()
     for (const [name, item] of frames)
-      writeFileSync(path.join(rawFrames, name.replace(/\.txt$/u, '.ansi')), item.ansiFrame)
-    process.stderr.write(`Raw frames saved: ${rawFrames}\n`)
+      writeFileSync(path.join(directory, name.replace(/\.txt$/u, '.ansi')), item.ansiFrame)
+    process.stderr.write(`Raw frames saved: ${directory}\n`)
     errors.forEach(line => process.stderr.write(`${line}\n`))
     throw Error(`${errors.length} render snapshot failure(s)`)
   }

@@ -77,7 +77,8 @@ export function checkFrame(entry, frame, width) {
       const border = at === 1 || at === cellWidth(line) - 1
       const inTree = at >= 4 && at <= 14
       const listGuide =
-        ['asks', 'agents'].includes(entry.view) && at >= listBase && (at - listBase) % 3 === 0 && at <= listBase + 12
+        (entry.view === 'agents' && at >= listBase && (at - listBase) % 3 === 0 && at <= listBase + 12) ||
+        (entry.view === 'asks' && at === 3)
       const statsRow = entry.view === 'timeline-detail' && /Progress|Weight|Completed units|%/u.test(line)
       const statsDivider = statsRow && detailColumns[entry.width].includes(at)
       const allowed = tree ? border || inTree : border || listGuide || statsDivider

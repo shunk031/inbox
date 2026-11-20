@@ -35,9 +35,12 @@ test('a reply becomes open items, and "1. yes" carries the question', async ($, 
   expect(unchanged.context?.join('\n') ?? '').not.toContain('Waiting on the user')
 
   const pane = await $.ui.mount(PANE)
-  await pane.press({ key: 'answer-i1-0' })
+  const answer = pane.press({ key: 'answer-i1-0' })
+  w.inFlight.push(answer)
   expect(w.sent).toEqual([])
   await clock.advance(SETTLED_MS)
+  await Promise.all(w.inFlight)
+  w.inFlight = []
   expect(w.sent).toEqual(['Re "Use Node or Python?": Node'])
   expect(await pane.find({ key: 'row-i1' })).toBeUndefined()
   await $.turn.complete({ answer: 'Using Node.', durationMs: 5, isAborted: false, turnId: 't2', reason: 'answer' })
@@ -86,8 +89,11 @@ test('a question with 7 options shows 4 until [All 7 options], draws its steps a
   expect([await hotkey('answer-i1-6'), await hotkey('help-i1-0'), await hotkey('help-i1-1')]).toEqual(['i', 'l', 'm'])
   expect(await hotkey('help-i1-2')).toBeUndefined()
   expect((await pane.find({ key: 'help-i1-2' }))?.props.label).toBe('Run c script')
-  await pane.press({ key: 'answer-i1-6' })
+  const answer = pane.press({ key: 'answer-i1-6' })
+  w.inFlight.push(answer)
   await clock.advance(SETTLED_MS)
+  await Promise.all(w.inFlight)
+  w.inFlight = []
   expect(w.sent).toEqual(['Re "Which color?": Violet'])
 })
 
@@ -105,8 +111,11 @@ test('once the person answers or closes the last waiting row, a row from a later
   w.ledgerReply = 'NEW: decide | 1 | Use Node or Python? | Node / Python | Node'
   await reply('add a greeting cli', 't1')
   const pane = await $.ui.mount(PANE)
-  await pane.press({ key: 'answer-i1-0' })
+  const answer = pane.press({ key: 'answer-i1-0' })
+  w.inFlight.push(answer)
   await clock.advance(SETTLED_MS)
+  await Promise.all(w.inFlight)
+  w.inFlight = []
 
   w.ledgerReply = 'CLOSED: i1 | Node chosen\nNEW: decide | 1 | Name the command greet? | Yes / No | Yes'
   await reply('use node', 't2')

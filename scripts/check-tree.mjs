@@ -16,6 +16,7 @@ function paneLines(text) {
       if (column >= Math.floor(width / 3) && column < width - 20) dividers.set(column, (dividers.get(column) ?? 0) + 1)
     }
   const [divider, count] = [...dividers].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0] ?? []
+  // A frame without a stable dock divider stays intact and is still checked as plain text.
   if (!divider || count < 20) return lines
   return lines.flatMap(line => {
     const prefix = cutToCells(line, divider + 1)
@@ -42,16 +43,24 @@ function boxBorders(lines) {
     if (bottomLeft && bottomRight) bottoms.push({ line: index, left: bottomLeft.column, right: bottomRight.column })
   })
   const edges = new Set()
+  const pairedBottoms = new Set()
+  // Only one-to-one top and bottom corners define a box edge exemption.
   for (const top of tops) {
     const bottom = bottoms.find(
-      candidate => candidate.line > top.line && candidate.left === top.left && candidate.right === top.right,
+      candidate =>
+        candidate.line > top.line &&
+        candidate.left === top.left &&
+        candidate.right === top.right &&
+        !pairedBottoms.has(candidate.line),
     )
-    if (!bottom) continue
-    rows.add(top.line)
-    rows.add(bottom.line)
-    for (let line = top.line + 1; line < bottom.line; line++) {
-      edges.add(`${line}:${top.left}`)
-      edges.add(`${line}:${top.right}`)
+    if (bottom) {
+      pairedBottoms.add(bottom.line)
+      rows.add(top.line)
+      rows.add(bottom.line)
+      for (let line = top.line + 1; line < bottom.line; line++) {
+        edges.add(`${line}:${top.left}`)
+        edges.add(`${line}:${top.right}`)
+      }
     }
   }
   return { edges, rows }
@@ -70,6 +79,7 @@ function blocks(lines, view) {
   if (view === 'timeline') return [{ start: 0, end: lines.length, name: 'Timeline' }]
   const heading = view === 'agents' ? AGENT_HEADINGS : ASKS_HEADINGS
   const starts = lines.flatMap((line, index) => (heading.test(line.trim()) ? [index] : []))
+  // A connector without a recognized heading stays in a synthetic block and fails its heading-trunk check.
   return starts.length
     ? starts.map((start, index) => ({
         start,
@@ -91,55 +101,59 @@ export function checkTreeText(text, { view = 'auto', source = 'frame', requireTr
   for (const block of blocks(lines, kind)) {
     const rows = []
     for (let index = block.start; index < block.end; index++) {
-      if (timelineBorders.rows.has(index)) continue
-      for (const glyph of glyphColumns(lines[index] ?? '', GLYPHS)) rows.push({ ...glyph, line: index })
+      // Paired box top and bottom rows contain corner glyphs, not tree connectors.
+      if (!timelineBorders.rows.has(index))
+        for (const glyph of glyphColumns(lines[index] ?? '', GLYPHS)) rows.push({ ...glyph, line: index })
     }
-    if (!rows.length) continue
-    trees++
-    const first = rows[0]
     const headerTrunks =
       kind === 'timeline'
         ? []
-        : lines.slice(block.start + 1, first.line).flatMap(line => glyphColumns(line, /│/gu).map(glyph => glyph.column))
-    // Asks' inline look omits titleGap for an empty group.
-    const inlineEmpty =
-      kind === 'agents' &&
-      block.name === 'Local agents' &&
-      rows.length === 1 &&
-      first.column > 3 &&
-      headerTrunks.length === 0 &&
-      /No open /u.test(lines[first.line] ?? '')
-    if (inlineEmpty) headerTrunks.push(first.column)
-    const expectedBase =
-      kind === 'timeline'
-        ? Math.min(...rows.map(row => row.column))
-        : (headerTrunks.find(column => column <= first.column && (first.column - column) % 3 === 0) ?? 3)
-    for (const row of rows) {
-      if (row.column < expectedBase || (row.column - expectedBase) % 3 !== 0)
-        fail(block.name, row.line, `connector-column=${row.column} expected=${expectedBase}+3n`)
-    }
+        : lines
+            .slice(block.start + 1, rows[0]?.line ?? block.end)
+            .flatMap(line => glyphColumns(line, /│/gu).map(glyph => glyph.column))
+    if (rows.length) {
+      trees++
+      const first = rows[0]
+      const expectedBase =
+        kind === 'timeline'
+          ? Math.min(...rows.map(row => row.column))
+          : (headerTrunks.find(column => column <= first.column && (first.column - column) % 3 === 0) ?? 3)
+      for (const row of rows) {
+        if (row.column < expectedBase || (row.column - expectedBase) % 3 !== 0)
+          fail(block.name, row.line, `connector-column=${row.column} expected=${expectedBase}+3n`)
+      }
 
-    if (kind !== 'timeline') {
-      if (!headerTrunks.includes(expectedBase))
-        fail(block.name, first.line, `missing-heading-trunk-column=${expectedBase}`)
-      if (block.name === 'Local agents' && headerTrunks.filter(column => column === expectedBase).length > 1)
-        fail(block.name, block.start + 1, `duplicate-heading-trunk-column=${expectedBase}`)
-      if (first.line > block.start + 1 && !(lines[first.line - 1] ?? '').trim())
-        fail(block.name, first.line - 1, 'blank-break-before-first-child')
-    }
+      // Timeline has no group headings; Asks and Agents require their heading trunk.
+      if (kind !== 'timeline') {
+        if (!headerTrunks.includes(expectedBase))
+          fail(block.name, first.line, `missing-heading-trunk-column=${expectedBase}`)
+        if (block.name === 'Local agents' && headerTrunks.filter(column => column === expectedBase).length > 1)
+          fail(block.name, block.start + 1, `duplicate-heading-trunk-column=${expectedBase}`)
+        if (first.line > block.start + 1 && !(lines[first.line - 1] ?? '').trim())
+          fail(block.name, first.line - 1, 'blank-break-before-first-child')
+      }
 
-    for (const row of rows) {
-      const later = rows.find(candidate => candidate.line > row.line && candidate.column === row.column)
-      for (let line = row.line + 1; later && line <= later.line; line++)
-        if (!hasTreeAt(lines[line] ?? '', row.column)) fail(block.name, line, `missing-continuity-column=${row.column}`)
-    }
+      for (const row of rows) {
+        const later = rows.find(candidate => candidate.line > row.line && candidate.column === row.column)
+        for (let line = row.line + 1; later && line <= later.line; line++)
+          if (!hasTreeAt(lines[line] ?? '', row.column))
+            fail(block.name, line, `missing-continuity-column=${row.column}`)
+      }
 
-    for (let line = block.start; line < block.end; line++) {
-      const row = lines[line] ?? ''
-      for (const { column } of glyphColumns(row, /│/gu)) {
-        if (kind === 'timeline' && timelineBorders.edges.has(`${line}:${column}`)) continue
-        if (!rows.some(candidate => candidate.line > line && candidate.column === column))
-          fail(block.name, line, `orphan-trunk-column=${column}`)
+      for (let line = block.start; line < block.end; line++) {
+        for (const { column } of glyphColumns(lines[line] ?? '', /│/gu)) {
+          // A paired box's interior edge is the only vertical guide exempt from the orphan check.
+          const pairedBoxEdge = kind === 'timeline' && timelineBorders.edges.has(`${line}:${column}`)
+          const hasLaterConnector = rows.some(candidate => candidate.line > line && candidate.column === column)
+          if (!pairedBoxEdge && !hasLaterConnector) fail(block.name, line, `orphan-trunk-column=${column}`)
+        }
+      }
+    } else {
+      for (let line = block.start; line < block.end; line++) {
+        for (const { column } of glyphColumns(lines[line] ?? '', /│/gu)) {
+          const pairedBoxEdge = kind === 'timeline' && timelineBorders.edges.has(`${line}:${column}`)
+          if (!pairedBoxEdge) fail(block.name, line, `orphan-trunk-column=${column}`)
+        }
       }
     }
   }

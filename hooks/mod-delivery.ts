@@ -22,6 +22,46 @@ export function uncertainRecord(text: string): Session['sent'][number] {
   }
 }
 
+/** Retains the exact host-stop refusal for an Answer and leaves every other refusal unchanged. */
+function refusalOutcome(s: Session, deliveryId: string, reason: string): SendOutcome {
+  const attempt = s.sent.find(x => x.deliveryId === deliveryId)
+  const row = attempt?.row ? s.lastActions[attempt.row] : undefined
+  return reason === 'the session was stopped and nobody has sent input since' &&
+    attempt?.press?.action === 'answer' &&
+    row?.delivery?.state === 'queued' &&
+    row.delivery.id === deliveryId
+    ? { state: 'deferred', reason }
+    : { state: 'rejected', reason }
+}
+
+/** Submits as the person, confirming a stored rewrite or preserving an eligible Answer refusal. */
+export async function deliverPrompt(
+  host: {
+    isCurrent(): boolean
+    read(): Promise<Session>
+    submit(): Promise<{ text?: string; drop?: string }>
+    rewrite(entered: string, since: number): Promise<SendOutcome>
+  },
+  text: string,
+  deliveryId: string,
+): Promise<SendOutcome> {
+  if (!host.isCurrent()) return { state: 'rejected', reason: 'the conversation changed first' }
+  const since = stored.count
+  const sent: { entered: string } | { notSent: string } = await host.submit().then(
+    r => (r.drop === undefined ? { entered: r.text! } : { notSent: r.drop }),
+    (err: unknown) =>
+      (stored.at.get(text) ?? 0) > since
+        ? { entered: text }
+        : { notSent: (err instanceof Error ? err.message : String(err)) || 'the session refused it' },
+  )
+  if ('notSent' in sent)
+    return host.isCurrent()
+      ? refusalOutcome(await host.read(), deliveryId, sent.notSent)
+      : { state: 'rejected', reason: sent.notSent }
+  if (sent.entered === text) return { state: 'accepted', queuedId: null }
+  return host.rewrite(sent.entered, since)
+}
+
 function isUntracked(record: Session['sent'][number]): boolean {
   return record.phase === 'uncertain' && record.deliveryId === null
 }
@@ -52,7 +92,7 @@ export function withLostSendsUncertain<S extends Session>(s: S): S {
  * each, and the sent record each matched. A rewritten message is confirmed from these, since its row may be stored
  * before `$.prompt.submit` returns.
  */
-export const stored = {
+const stored = {
   count: 0,
   at: new Map<string, number>(),
   by: new Map<string, { count: number; deliveryId: string | null }>(),
