@@ -3,7 +3,6 @@ import {
   completeTask,
   createTask,
   moveTask,
-  pruneFinishedTaskRoots,
   TASK_DEPTH_LIMIT,
   TASK_HISTORY_DETAIL_LENGTH,
   TASK_NODE_LIMIT,
@@ -15,6 +14,7 @@ import {
   taskLinksFromInput,
   updateTask,
 } from './task-tree'
+import { pruneFinishedTaskRoots } from './task-prune'
 import type { TaskNode, TaskStatus, TaskTree } from '../types'
 
 const TASK_ID_LENGTH = 100

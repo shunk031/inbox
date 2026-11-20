@@ -2922,7 +2922,6 @@ var TASK_NOTES_LIMIT = 40;
 var TASK_NOTE_LENGTH = 2000;
 var TASK_HISTORY_DETAIL_LENGTH = 2000;
 var TASK_NODE_LIMIT = 200;
-var FINISHED_TASK_ROOT_LIMIT = 20;
 var TASK_DEPTH_LIMIT = 8;
 var TASK_TITLE_LENGTH = 100;
 var TASK_WEIGHT_MIN = 0.1;
@@ -2948,36 +2947,6 @@ function notesOf(notes) {
 }
 function hasValidWeight(weight) {
   return Number.isFinite(weight) && weight >= TASK_WEIGHT_MIN && weight <= TASK_WEIGHT_MAX;
-}
-function pruneFinishedTaskRoots(tree) {
-  const children = new Map;
-  for (const task of tree)
-    children.set(task.parentId, [...children.get(task.parentId) ?? [], task]);
-  const finished = [];
-  const visit = (task) => {
-    const descendants = (children.get(task.id) ?? []).map(visit);
-    return {
-      done: (task.status === "done" || task.status === "dropped") && descendants.every((child) => child.done),
-      at: Math.max(task.updatedAt, ...descendants.map((child) => child.at))
-    };
-  };
-  for (const [index, root] of (children.get(null) ?? []).entries()) {
-    const result = visit(root);
-    if (result.done)
-      finished.push({ id: root.id, at: result.at, index });
-  }
-  if (finished.length <= FINISHED_TASK_ROOT_LIMIT)
-    return { tree, deletedIds: [] };
-  const removedRoots = new Set(finished.sort((a, b) => b.at - a.at || b.index - a.index).slice(FINISHED_TASK_ROOT_LIMIT).map((root) => root.id));
-  const deleted = new Set;
-  const remove = (task) => {
-    deleted.add(task.id);
-    for (const child of children.get(task.id) ?? [])
-      remove(child);
-  };
-  for (const root of removedRoots)
-    remove(tree.find((task) => task.id === root));
-  return { tree: tree.filter((task) => !deleted.has(task.id)), deletedIds: [...deleted] };
 }
 function taskGitHubLink(value) {
   const match = /^https:\/\/[^/?#]+\/([A-Za-z0-9](?:[A-Za-z0-9-]{0,38})?)\/([A-Za-z0-9_.-]{1,100})\/(pull|issues)\/([1-9]\d*)$/.exec(value);
@@ -6872,6 +6841,39 @@ function tasksDescription(host) {
 When one exists, link the PR, issue or owner agent so finished or stalled work can be noticed.`;
 }
 
+// ../hooks/task-prune.ts
+var FINISHED_TASK_ROOT_LIMIT = 20;
+function pruneFinishedTaskRoots(tree) {
+  const children = new Map;
+  for (const task of tree)
+    children.set(task.parentId, [...children.get(task.parentId) ?? [], task]);
+  const finished = [];
+  const visit = (task) => {
+    const descendants = (children.get(task.id) ?? []).map(visit);
+    return {
+      done: (task.status === "done" || task.status === "dropped") && descendants.every((child) => child.done),
+      at: Math.max(task.updatedAt, ...descendants.map((child) => child.at))
+    };
+  };
+  for (const [index, root] of (children.get(null) ?? []).entries()) {
+    const result = visit(root);
+    if (result.done)
+      finished.push({ id: root.id, at: result.at, index });
+  }
+  if (finished.length <= FINISHED_TASK_ROOT_LIMIT)
+    return { tree, deletedIds: [] };
+  const removedRoots = new Set(finished.sort((a, b) => b.at - a.at || b.index - a.index).slice(FINISHED_TASK_ROOT_LIMIT).map((root) => root.id));
+  const deleted = new Set;
+  const remove = (task) => {
+    deleted.add(task.id);
+    for (const child of children.get(task.id) ?? [])
+      remove(child);
+  };
+  for (const root of removedRoots)
+    remove(tree.find((task) => task.id === root));
+  return { tree: tree.filter((task) => !deleted.has(task.id)), deletedIds: [...deleted] };
+}
+
 // ../hooks/task-tool.ts
 var TASK_ID_LENGTH = 100;
 var TASK_LINK_FIELDS = ["pr", "issue", "owner_agent", "owner_machine"];
@@ -8068,7 +8070,7 @@ function timelineLinkPlan(task, lastActions) {
 }
 function timelinePage(data, selectedId, folded, lastActions = {}, isDetailOpen = false) {
   const nodes = new Map(data.rows.map((row) => [row.task.id, row]));
-  const foldedIds = new Set(folded.filter((id) => nodes.has(id)));
+  const foldedIds = new Set(folded);
   const visibleRows = data.rows.filter((row) => {
     let parent = row.task.parentId;
     while (parent !== null) {
