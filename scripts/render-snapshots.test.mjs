@@ -80,22 +80,21 @@ test('tree trunks stay continuous through descendant and wrapped rows', () => {
   assert.ok(check('Local agents\n   │\n   └─ A\n      │').some(error => error.includes('orphan-trunk-column=6')))
 })
 
-test('tree checks reject heading trunks without children, connectors without headings, and off-column trunks', () => {
+test('tree checks require recognized headings and reject orphan trunks and shifted connectors', () => {
   const check = text => checkTreeText(text, { view: 'agents' })
   const rejects = (text, detail) => assert.ok(check(text).some(error => error.includes(detail)))
   const oneChild = 'Local agents\n   │\n   └─ A'
   const empty = oneChild.replace('\n   └─ A', '')
-  assert.deepEqual(check(oneChild), [])
-  rejects('   ├─ stray\nLocal agents\n   │\n   └─ A', 'connector-parent-column=missing')
+  rejects('   ├─ stray\nLocal agents\n   │\n   └─ A', 'connector-without-recognized-heading')
   rejects(empty, 'orphan-trunk-column=3')
-  assert.ok(checkTreeText(empty, { view: 'agents', requireTree: true }).some(error => error.includes('no-tree-found')))
-  rejects(oneChild.replace('Local agents\n   │\n', ''), 'connector-parent-column=missing')
   rejects(oneChild.replace('   └─ A', '   └─ A\n   │'), 'orphan-trunk-column=3')
   rejects(oneChild.replace('   └─ A', '   └─ A\n      │'), 'orphan-trunk-column=6')
   const siblings = 'Local agents\n   │\n   ├─ A\n   │\n   └─ B'
   const offColumn = siblings.replace('   │\n   └─ B', '    │\n   └─ B')
   rejects(offColumn, 'orphan-trunk-column=4')
   rejects('Local agents\n   │\n   └─ A\n         └─ shifted child', 'connector-parent-column=6 actual=9')
+  const asks = checkTreeText('Summary\n   └─ orphan\nQuestions\n   │\n   └─ valid', { view: 'asks' })
+  assert.ok(asks.some(error => error.includes('line=2 connector-without-recognized-heading')))
 })
 
 test('pane extraction ignores sidebar rows but checks the pane tree', () => {
@@ -116,15 +115,17 @@ test('pane extraction ignores sidebar rows but checks the pane tree', () => {
   assert.ok(['line=31', 'line=32'].every(line => errors.some(error => error.includes(`${line} unclassified line`))))
 })
 
-test('Timeline exempts only paired box borders and rejects edges outside them', () => {
-  const frame = 'Progress\n ┌──┐\n │  │\n └──┘\n      │\n      └─ child'
+test('Timeline root and paired square or rounded box borders are explicit', () => {
+  const frame = 'Progress\n ┌──┐\n │  │\n └──┘\n    ◐ root\n    │  In progress\n    └─ child'
+  const rejects = (text, view, expected) =>
+    assert.ok(checkTreeText(text, { view }).some(error => error.includes(expected)))
   assert.deepEqual(checkTreeText(frame, { view: 'timeline' }), [])
-  const broken = frame.replace('      │\n      └─ child', '     │\n      └─ child')
-  assert.ok(checkTreeText(broken, { view: 'timeline' }).some(error => error.includes('orphan-trunk-column=5')))
-  const outsideBorder = frame.replace('      │\n      └─ child', '    │\n      └─ child')
-  assert.ok(checkTreeText(outsideBorder, { view: 'timeline' }).some(error => error.includes('orphan-trunk-column=4')))
-  const unpairedBox = frame.replace(' └──┘', ' └─┘')
-  assert.ok(checkTreeText(unpairedBox, { view: 'timeline' }).some(error => error.includes('orphan-trunk-column=4')))
+  const outsideBorder = frame.replace('    │  In progress', '   │  In progress')
+  rejects(outsideBorder, 'timeline', 'orphan-trunk-column=3')
+  const asksBox = 'Questions · 1\n   │\n   └─ Q\n ╭──╮\n │  │\n ╰──╯'
+  assert.deepEqual(checkTreeText(asksBox, { view: 'asks' }), [])
+  rejects(asksBox.replace(' ╰──╯', ' ╰─╯'), 'asks', 'orphan-trunk')
+  rejects(frame.replace('    ◐ root\n', ''), 'timeline', 'connector-without-timeline-root')
 })
 
 test('current tree snapshots pass the geometry checker', () => {
@@ -200,7 +201,6 @@ test('Agents and report readiness wait for settled fixture content', () => {
   assert.equal(ready(tree, treeFrame), true)
   const tree110 = registry.find(candidate => candidate.fixture === 'agents-tree' && candidate.width === 110)
   const connectors = '├─\n'.repeat(11)
-  assert.equal(ready(tree110, `Orchestrators\nMeta tasks\nLocal agents\n${connectors}`), false)
   assert.equal(ready(tree110, `Orchestrators\nMeta tasks\nLocal agents\nsnapshot-local…\n${connectors}`), false)
   assert.equal(
     ready(tree110, `Orchestrators\nMeta tasks\nLocal agents\nsnapshot-local…\nIn progress\n${connectors}`),

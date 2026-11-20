@@ -2,17 +2,17 @@ import { readFileSync } from 'node:fs'
 import { cellWidth, cutToCells } from '../hooks/text.ts'
 
 const ANSI = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))/gu
+const HEADING_PREFIX = /^\s*(?:(?:Asks|Timeline|Agents|PRs)(?:\s+\d+)?\s+)?(?:▸|▲|✦|↻)?\s*/u
 const HEADINGS = {
-  agents: /\b(?:Orchestrators|Meta tasks|Local agents)\b/u,
-  asks: /\b(?:Questions|Tasks|Findings|Legacy findings|Potential issues|Ideas|Opportunities)\b/u,
+  agents: /^(Orchestrators|Meta tasks|Local agents)(?:\s*·\s*\d+)?\s*$/u,
+  asks: /^(Questions|Tasks|Issues|Findings|Legacy findings|Opportunities|Progress)(?:\s*·\s*\d+)?\s*$/u,
 }
 const CONNECTORS = /├─|└─/gu
+const TIMELINE_ROOT = /^(?: {4}| {2}> )([●◐✕○▸▾]) \S/u
+const heading = (line, view) => line.replace(HEADING_PREFIX, '').match(HEADINGS[view])
 const glyphs = (line, pattern) =>
-  [...line.matchAll(pattern)].map(match => ({ text: match[0], column: cellWidth(line.slice(0, match.index)) }))
-const atCell = (line, column) => {
-  const cell = cutToCells(line, column + 1)
-  return cellWidth(cell) === column + 1 && cell.endsWith('│')
-}
+  [...line.matchAll(pattern)].map(match => ({ column: cellWidth(line.slice(0, match.index)) }))
+const atCell = (line, column) => glyphs(line, /│/gu).some(glyph => glyph.column === column)
 function paneLines(text) {
   const lines = text.replace(ANSI, '').replace(/\r/gu, '').split('\n')
   if (lines.at(-1) === '') lines.pop()
@@ -29,8 +29,7 @@ function paneLines(text) {
   const pane = { lines: [], lineNumbers: [], unclassified: [] }
   lines.forEach((line, index) => {
     if (atCell(line, divider)) {
-      const prefix = cutToCells(line, divider + 1)
-      pane.lines.push(line.slice(prefix.length).trimEnd())
+      pane.lines.push(line.slice(cutToCells(line, divider + 1).length).trimEnd())
       pane.lineNumbers.push(index + 1)
     } else if (index >= first && index <= last) pane.unclassified.push(index + 1)
     else if (index < first && line.slice(cutToCells(line, divider).length).trim()) pane.unclassified.push(index + 1)
@@ -44,16 +43,18 @@ function boxBorders(lines) {
     rows = new Set(),
     edges = new Set()
   lines.forEach((text, line) => {
-    const left = text.indexOf('┌'),
-      right = text.indexOf('┐'),
-      bottomLeft = text.indexOf('└'),
-      bottomRight = text.indexOf('┘')
-    if (left >= 0 && right > left)
-      tops.push({ line, left: cellWidth(text.slice(0, left)), right: cellWidth(text.slice(0, right)) })
+    const left = text.search(/[┌╭]/u),
+      right = text.search(/[┐╮]/u),
+      bottomLeft = text.search(/[└╰]/u),
+      bottomRight = text.search(/[┘╯]/u)
+    const col = index => cellWidth(text.slice(0, index))
+    if (left >= 0 && right > left) tops.push({ line, left: col(left), right: col(right), round: text[left] === '╭' })
     if (bottomLeft < 0 || bottomRight < 0) return
-    const l = cellWidth(text.slice(0, bottomLeft)),
-      r = cellWidth(text.slice(0, bottomRight))
-    const index = tops.findLastIndex(top => top.line < line && top.left === l && top.right === r)
+    const l = col(bottomLeft),
+      r = col(bottomRight)
+    const index = tops.findLastIndex(
+      top => top.line < line && top.left === l && top.right === r && top.round === (text[bottomLeft] === '╰'),
+    )
     if (index < 0) return
     const [top] = tops.splice(index, 1)
     rows.add(top.line).add(line)
@@ -61,101 +62,95 @@ function boxBorders(lines) {
   })
   return { edges, rows }
 }
-const viewOf = (lines, requested) => {
-  const text = lines.join('\n')
-  return requested !== 'auto'
-    ? requested
-    : /\b(?:Orchestrators|Meta tasks|Local agents)\b/u.test(text)
-      ? 'agents'
-      : /Progress.*(?:leaf tasks|complete)|Elapsed:/u.test(text)
-        ? 'timeline'
-        : 'asks'
-}
-function headingsOf(lines, view, connectors) {
-  if (view === 'timeline') return []
-  const headings = lines.flatMap((line, index) => {
-    const match = line.match(HEADINGS[view])
-    return match ? [{ line: index, name: match[0] }] : []
-  })
-  if (view === 'asks' && connectors.length) {
-    const first = connectors.find(row => !headings.some(heading => heading.line < row.line))
-    const title =
-      first && lines.findLastIndex((line, index) => index < first.line && line.trim() && !/[│├└]/u.test(line))
-    if (first && title >= 0) headings.push({ line: title, name: 'asks', trunk: first.column })
-  }
-  return headings.sort((a, b) => a.line - b.line)
+function viewOf(lines, requested) {
+  if (requested !== 'auto') return requested
+  const matches = ['agents', 'asks', 'timeline'].filter(view =>
+    lines.some(line => (view === 'timeline' ? /\bElapsed:|\bProgress\b.*leaf tasks/u.test(line) : heading(line, view))),
+  )
+  return matches.length === 1 ? matches[0] : undefined
 }
 
 export function checkTreeText(text, { view = 'auto', source = 'frame', requireTree = false } = {}) {
   const { lines, lineNumbers, unclassified } = paneLines(text)
   const kind = viewOf(lines, view)
   const errors = unclassified.map(line => `FAIL ${source} line=${line} unclassified line`)
-  const borders = kind === 'timeline' ? boxBorders(lines) : { edges: new Set(), rows: new Set() }
+  if (!kind) return [...errors, `FAIL ${source} tree=auto line=1 unclassified view`]
+  const borders = boxBorders(lines)
   const fail = (line, detail, tree = kind) =>
     errors.push(`FAIL ${source} tree=${tree} line=${lineNumbers[line] ?? line + 1} ${detail}`)
   const connectors = lines.flatMap((line, row) =>
     borders.rows.has(row)
       ? []
-      : glyphs(line, CONNECTORS).map(glyph => ({ ...glyph, line: row, mark: glyph.column + 3 })),
+      : glyphs(line, CONNECTORS).map(glyph => ({ ...glyph, line: row, mark: glyph.column + 3, children: [] })),
   )
   const guides = lines.flatMap((line, row) =>
     glyphs(line, /│/gu)
       .filter(glyph => !borders.edges.has(`${row}:${glyph.column}`))
       .map(glyph => ({ ...glyph, line: row })),
   )
-  const headings = headingsOf(lines, kind, connectors)
-  for (const heading of headings) {
-    const next = headings.find(row => row.line > heading.line)?.line ?? lines.length
-    const children = (heading.roots = connectors.filter(row => row.line > heading.line && row.line < next))
-    if (!children.length) continue
+  const sections = lines.flatMap((line, index) => {
+    const match = kind === 'timeline' ? line.match(TIMELINE_ROOT) : heading(line, kind)
+    return match
+      ? [
+          {
+            line: index,
+            name: kind === 'timeline' ? 'Timeline root' : match[1],
+            column: kind === 'timeline' ? cellWidth(line.slice(0, line.indexOf(match[1]))) : undefined,
+            children: [],
+          },
+        ]
+      : []
+  })
+  for (const section of sections) {
+    const next = sections.find(row => row.line > section.line)?.line ?? lines.length
+    const children = connectors.filter(row => row.line > section.line && row.line < next)
     const first = children[0]
-    heading.trunk ??= guides.find(row => row.line > heading.line && row.line < first.line)?.column
-    if (heading.trunk === undefined) fail(first.line, 'missing-heading-trunk-column')
-  }
-  let timelineRoot
-  if (kind === 'timeline' && connectors.length) {
-    const first = connectors[0]
-    const trunk = guides.findLast(row => row.line < first.line && row.column === first.column)
-    if (trunk) {
-      timelineRoot = { line: trunk.line, trunk: trunk.column, name: 'Timeline' }
-      timelineRoot.roots = connectors
-    } else fail(first.line, 'missing-heading-trunk-column', 'Timeline')
+    if (first && kind !== 'timeline') {
+      const trunk = guides.find(row => row.line > section.line && row.line < first.line)
+      section.column = trunk?.column
+      if (!trunk) fail(first.line, 'heading-requires-trunk-before-connectors', section.name)
+    }
   }
   for (const row of connectors) {
-    const heading = headings.findLast(item => item.line < row.line)
-    const section = kind === 'timeline' ? timelineRoot : heading
-    const previous = section?.roots?.findLast(item => item.line < row.line)
-    const prior = section?.roots?.findLast(item => item.line < row.line && item.mark === row.column)
-    row.parent = prior ?? (section?.trunk === row.column ? section : undefined)
-    if (row.parent) (row.parent.nodes ??= []).push(row)
-    else
+    const section = sections.findLast(item => item.line < row.line)
+    const prior = connectors.findLast(
+      item => item.line > (section?.line ?? row.line) && item.line < row.line && item.mark === row.column,
+    )
+    row.parent = prior ?? (section?.column === row.column ? section : undefined)
+    if (row.parent) row.parent.children.push(row)
+    else if (!section)
+      fail(row.line, kind === 'timeline' ? 'connector-without-timeline-root' : 'connector-without-recognized-heading')
+    else {
       fail(
         row.line,
-        `connector-parent-column=${previous?.mark ?? section?.trunk ?? 'missing'} actual=${row.column}`,
-        section?.name ?? kind,
+        `connector-parent-column=${connectors.findLast(item => item.line > section.line && item.line < row.line)?.mark ?? section.column ?? 'missing'} actual=${row.column}`,
+        section.name,
       )
+    }
   }
   const expectedGuides = new Set()
-  const span = (from, to, column, detail, tree) => {
+  const span = (from, to, column, detail, tree, required = false) => {
+    if (required && !guides.some(row => row.line > from && row.line < to && row.column === column))
+      fail(to, `${detail}=${column}`, tree)
     for (let line = from + 1; line < to; line++) {
       if (guides.some(row => row.line === line && row.column === column)) expectedGuides.add(`${line}:${column}`)
       else fail(line, `${detail}=${column}`, tree)
     }
   }
-  const parents = [...headings, ...connectors, ...(timelineRoot ? [timelineRoot] : [])]
-  for (const heading of parents) {
-    const rows = heading.roots ?? heading.nodes
-    if (!rows) continue
-    const first = rows[0]
-    if (heading.trunk !== undefined)
-      span(heading.line, first.line, heading.trunk, 'missing-heading-trunk-column', heading.name)
-    if (heading === timelineRoot) expectedGuides.add(`${heading.line}:${heading.trunk}`)
-  }
+  const parents = [...sections, ...connectors]
   for (const parent of parents) {
-    const rows = parent.nodes
-    if (!rows) continue
+    const rows = parent.children
+    if (!rows.length) continue
     rows.sort((a, b) => a.line - b.line)
-    if (parent.mark !== undefined) span(parent.line, rows[0].line, parent.mark, 'missing-continuity-column', kind)
+    const column = parent.mark ?? parent.column
+    span(
+      parent.line,
+      rows[0].line,
+      column,
+      parent.name === 'Timeline root' ? 'missing-timeline-root-guide' : 'missing-continuity-column',
+      parent.name,
+      parent.name !== undefined,
+    )
     for (let index = 1; index < rows.length; index++) {
       const before = rows[index - 1],
         after = rows[index]
@@ -164,7 +159,8 @@ export function checkTreeText(text, { view = 'auto', source = 'frame', requireTr
   }
   for (const guide of guides)
     if (!expectedGuides.has(`${guide.line}:${guide.column}`)) fail(guide.line, `orphan-trunk-column=${guide.column}`)
-  if (requireTree && !connectors.some(row => row.parent)) errors.push(`FAIL ${source} no-tree-found`)
+  if (requireTree && !(kind === 'timeline' ? sections.length : connectors.some(row => row.parent)))
+    errors.push(`FAIL ${source} no-tree-found`)
   return errors
 }
 
@@ -175,8 +171,7 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
     process.exitCode = 2
   } else {
     const errors = checkTreeText(readFileSync(file, 'utf8'), { source: file, requireTree: true })
-    if (errors.length) errors.forEach(error => process.stderr.write(`${error}\n`))
-    else process.stdout.write(`PASS ${file}\n`)
+    process[errors.length ? 'stderr' : 'stdout'].write(errors.length ? `${errors.join('\n')}\n` : `PASS ${file}\n`)
     if (errors.length) process.exitCode = 1
   }
 }
