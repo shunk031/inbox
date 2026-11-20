@@ -16,6 +16,7 @@ const CLOSED_WARNING = 'PR closed without merge' as const
 const OWNER_IDLE_WARNING = 'Owner idle 15m+' as const
 const OWNER_FINISHED_WARNING = 'Owner finished, task open' as const
 const OWNER_IDLE_AFTER_MS = 15 * 60_000
+const OWNER_FINISHED_AFTER_MS = 2 * 60_000
 
 export function taskOwnerKey(owner: TaskOwner): string {
   return JSON.stringify([owner.machine, owner.agent])
@@ -46,7 +47,7 @@ export function applyTaskOwnerFacts(
     if (task.status !== 'working' || !owner || !fact || fact.state === 'working') continue
     stalledSince[task.id] = fact.since
     if (at - fact.since >= OWNER_IDLE_AFTER_MS) warnings.push({ taskId: task.id, owner, message: OWNER_IDLE_WARNING })
-    if (fact.state === 'done' || fact.state === 'idle')
+    if ((fact.state === 'done' || fact.state === 'idle') && at - fact.since >= OWNER_FINISHED_AFTER_MS)
       warnings.push({ taskId: task.id, owner, message: OWNER_FINISHED_WARNING })
   }
   const segments = weightedTaskProgressSegments(tree, new Set(Object.keys(stalledSince)))

@@ -2,6 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import { SESSION_VERSION } from '../hooks/session-version'
 import { PRESS_GUARD_MS, SETTLED_MS } from '../hooks/timing'
 import { statusPage } from '../hooks/status-page'
+import { taskOwnerKey } from '../hooks/task-facts'
 import { taskTreeFromStatus } from '../hooks/task-tree'
 import type { Session } from '../types'
 import { w, world } from './hooks-world'
@@ -90,6 +91,45 @@ test('the Claude mod keeps a task tree already present in its saved session', as
 
   expect(session!.taskTree).toEqual(migratedTree)
   expect(session!.taskTree[0]?.links).toEqual(migratedTree[0]?.links)
+})
+
+test('a live owner refresh survives bringing the saved session back', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  world($, on, [], { HOME: '/home/test' })
+  const owner = { agent: 'owner-refresh', machine: 'local' }
+  const ownerKey = taskOwnerKey(owner)
+  const tree = taskTreeFromStatus(savedTaskSession().ledger.overview).map((task, index) =>
+    index === 0 ? { ...task, status: 'working' as const, links: { owner } } : task,
+  )
+  const saved = {
+    ...SAVED_SESSION,
+    ...savedTaskSession(tree),
+    taskOwnerFacts: { [ownerKey]: { state: 'done' as const, since: 1 } },
+    taskOwnerFactCheckedAt: 1,
+  }
+  w.stored.set('s:session-1', JSON.stringify(saved))
+  w.ghAnswers.push({
+    match: argv => argv[0] === 'herdr' && argv[1] === 'agent' && argv[2] === 'get' && argv[3] === owner.agent,
+    stdout: JSON.stringify({ result: { agent: { agent_status: 'working' } } }),
+  })
+  let session: Session | null = null
+  on('state.set', { plugin: 'inbox', key: 'session' } as const, (_$, event, next) => {
+    session = event.value as Session
+    return next(event)
+  })
+
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  expect(JSON.parse(w.stored.get('s:session-1')!).taskOwnerFacts[ownerKey].state).toBe('working')
+
+  await $.session.end({ reason: 'clear', sessionId: 'session-1', resume: { id: 'session-1' } })
+  await $.classic.SessionStart({ source: 'clear', session_id: 'session-2' })
+  await clock.settle()
+  await $.session.end({ reason: 'resume', sessionId: 'session-2', resume: { id: 'session-2' } })
+  await $.classic.SessionStart({ source: 'resume', session_id: 'session-1' })
+  await clock.settle()
+
+  expect(session!.taskOwnerFacts[ownerKey]).toMatchObject({ state: 'working' })
 })
 
 test('a restored session exports its existing task tree as soon as it loads, without a task change', async ($, on) => {

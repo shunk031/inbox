@@ -805,6 +805,7 @@ async function commit(
   $: EngineInterface,
   owner: Owner,
   change: (s: Session) => Session | Promise<Session>,
+  skipTaskExport = false,
 ): Promise<Session> {
   const [typing, drafts] = await Promise.all([read($, TYPING), read($, DRAFTS)])
   const { before, after, isDrawn } = await changeSession(
@@ -813,7 +814,7 @@ async function commit(
     change,
     new Set(Object.keys(heldReplies(typing, drafts))),
   )
-  await taskProjection?.exportTree(owner.id, before, after)
+  if (!skipTaskExport) await taskProjection?.exportTree(owner.id, before, after)
   if (!isDrawn || after === before) return after
   void publishStatus($)
   void followNewRows($).catch(() => undefined)
@@ -821,7 +822,7 @@ async function commit(
   return after
 }
 
-/** At `expiresAt`, redraws the pane and runs that Undo's end work. On the terminal, one loop redraws to the last end. */
+/** Runs Undo end work at its expiry; terminal redraws through the final frame. */
 function redrawWhileUndoLasts($: EngineInterface, expiresAt: number) {
   const ends = paneState.undoEnds
   if (ends.has(expiresAt)) return
@@ -868,7 +869,7 @@ async function redrawAtCompareEnd($: EngineInterface) {
   })
 }
 
-/** Redraws once the pane draws the loaded session, so its render times Undo, and again as its results and notes clear. */
+/** Redraws after the loaded frame so Undo can animate, and after results or notes settle. */
 async function redrawAfterReload($: EngineInterface) {
   const { lastActions, notes, now } = await drawnState($)
   const times = [
@@ -1159,7 +1160,7 @@ async function readHolds($: EngineInterface): Promise<Holds> {
   return { replies: heldReplies(typing, drafts), discarded, shownSince, listInput: paneState.listInput }
 }
 
-/** Notes a press, key, click or pointer move on the pane, so a row due to fold waits until the person stops. */
+/** Records pane input so a due row waits until the person stops. */
 async function noteListInput($: EngineInterface) {
   paneState.listInput = withListInput(paneState.listInput, await $.clock.now())
 }
@@ -1599,7 +1600,7 @@ async function isPrsTabShown($: EngineInterface) {
   return (await readRowTab($)) === 'prs' && (await isPaneShown($))
 }
 
-/** The tab the pane shows, as the inbox model is told: the page tab when one shows, else the row tab. */
+/** Tab shown to the inbox model: page tab when open, otherwise row tab. */
 async function shownScreenTab($: EngineInterface): Promise<ScreenTab> {
   const [page, tab] = await Promise.all([readPage($), read($, TAB)])
 
@@ -1681,8 +1682,7 @@ async function pollPrs($: EngineInterface) {
   await fetchPrs($, isTabShown)
 }
 
-/** Takes a dismissed PR off the tab once its row settles, unless it is still tracked or the Dismiss was undone. */
-/** Sends held answers and Fixes after Undo's settle window, then tells Claude about Done rows. */
+/** Settles held answers and Fixes after Undo, then sends Done messages. */
 async function wakeAfterSettle($: EngineInterface) {
   await wakeSessionAfterSettle(hostOf($, currentOwner()))
 }
@@ -2103,6 +2103,12 @@ async function initializeInbox($: EngineInterface) {
       write: (path, text) => $.fs.write(path, text),
       home: () => $.env.get('HOME'),
       now: () => $.clock.now(),
+      updateSession: async (sessionId, change) => {
+        const owner = currentOwner()
+        return owner.id === sessionId
+          ? commit($, owner, change, true)
+          : (await changeSaved(saveEngine($), sessionId, change)).after
+      },
       log: text => $.ui.log(text, { to: 'debug' }),
     },
     processRun($),
@@ -2231,9 +2237,8 @@ async function applyConversation(
   conversation.root = sessionRoot
   paneState.recordedRows = null
   sessionState.isReadingAgain = false
-  // A reload stops any update the previous load had running, and state outlives
-  // it, so an update in flight at load was cut off: record it as failed.
-  // The theme read at the start is gone after /clear, so each conversation reads it.
+  // Reload cuts off in-flight updates while saved state survives, so record them as failed.
+  // /clear loses the initial theme, so reread it for each conversation.
   const [current] = await Promise.all([upgradeState($), syncTheme($)])
   const loadedAt = await $.clock.now()
   // The pane now shows another conversation, so it starts a new showing.
@@ -2265,7 +2270,7 @@ async function applyConversation(
   if (tabPrs(ledger).length > 0) void fetchPrs($, false)
 }
 
-/** Restores a saved session before it runs. A fork takes its parent's ledger; pending sends become unconfirmed. */
+/** Restores saved state; forks use the parent ledger and mark pending sends uncertain. */
 async function bringBack(
   $: EngineInterface,
   saved: SavedRecord | undefined,
@@ -2287,7 +2292,7 @@ async function bringBack(
   if (isBrought) await taskProjection?.exportTree(currentOwner().id, emptySession(), await read($, SESSION))
 }
 
-/** Brings back a saved ledger once the store reads it again, under the turns the session ran meanwhile. */
+/** Restores saved ledger once reads settle, under turns since it was saved. */
 async function restore($: EngineInterface, saved: SavedRecord) {
   conversation.generation += 1
   const loaded = upgradeSession(saved).ledger
