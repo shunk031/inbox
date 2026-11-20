@@ -14,6 +14,7 @@ import {
   taskLinksFromInput,
   updateTask,
 } from './task-tree'
+import { pruneFinishedTaskRoots } from './task-prune'
 import type { TaskNode, TaskStatus, TaskTree } from '../types'
 
 const TASK_ID_LENGTH = 100
@@ -111,6 +112,8 @@ export function taskTreeAnswer(tree: TaskTree, input: Record<string, unknown>, n
       ...(linkInput.links ? { links: linkInput.links } : {}),
     }
     result = createTask(tree, node, 'agent')
+    if (!result.ok && result.reason === 'limit' && tree.length >= TASK_NODE_LIMIT)
+      result = createTask(pruneFinishedTaskRoots(tree, node.parentId ?? undefined).tree, node, 'agent')
   } else if (operation === 'update') {
     const current = tree.find(task => task.id === id)
     if (!current) return failure(tree, { ok: false, reason: 'unknown-task' }, id)
@@ -186,5 +189,10 @@ export function taskTreeAnswer(tree: TaskTree, input: Record<string, unknown>, n
       return { taskTree: tree, result: `Not saved: note must be at most ${TASK_NOTE_LENGTH} characters.` }
     result = addTaskNote(tree, id, note, now, 'agent')
   }
-  return failure(tree, result, id)
+  const shouldPrune =
+    operation === 'add' ||
+    operation === 'complete' ||
+    (operation === 'update' && (input.status === 'done' || input.status === 'dropped'))
+  if (!result.ok || !shouldPrune) return failure(tree, result, id)
+  return { ...failure(tree, result, id), taskTree: pruneFinishedTaskRoots(result.tree).tree }
 }

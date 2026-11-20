@@ -437,8 +437,9 @@ export function moveTimelineSelection(
   step: number,
 ): string | null {
   if (rows.length === 0) return null
-  const at = rows.findIndex(row => row.task.id === selectedId)
-  const to = ((at < 0 ? (step < 0 ? 0 : -1) : at) + step + rows.length) % rows.length
+  const selected = rows.findIndex(row => row.task.id === selectedId)
+  const at = selectedId === null ? -1 : Math.max(0, selected)
+  const to = (at + step + rows.length) % rows.length
   return rows[to]!.task.id
 }
 

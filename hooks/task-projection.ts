@@ -1,6 +1,8 @@
 import { parseFeed } from './feed'
 import type { Feed, FeedEntry } from './feed'
 import { currentTaskText } from './task-text'
+import { taskFactsAfterTreeUpdate } from './task-mismatches'
+import { pruneFinishedTaskRoots } from './task-prune'
 import { TASK_HISTORY_LIMIT, TASK_NODE_LIMIT } from './task-tree'
 import type { Session, TaskFactWarning, TaskNode, TaskOwner, TaskStatusMismatch, TaskTree } from '../types'
 
@@ -257,14 +259,20 @@ export function createTaskProjection(files: ProjectionFiles, path: string | null
 
           if (needsImport) {
             const feed = original && original.trim() !== '' ? importedFeed(original) : null
-            current = await save(saved => ({
-              ...saved,
-              taskTree: feed ? mergeProjectedTasks(saved.taskTree, feed) : saved.taskTree,
-              taskTreeProjectionVersion: TASK_PROJECTION_VERSION,
-              taskTreeProjectionInvalidAt: invalidFeed
-                ? (saved.taskTreeProjectionInvalidAt ?? now)
-                : saved.taskTreeProjectionInvalidAt,
-            }))
+            current = await save(saved => {
+              const taskTree = pruneFinishedTaskRoots(
+                feed ? mergeProjectedTasks(saved.taskTree, feed) : saved.taskTree,
+              ).tree
+              return {
+                ...saved,
+                taskTree,
+                ...taskFactsAfterTreeUpdate(taskTree, saved),
+                taskTreeProjectionVersion: TASK_PROJECTION_VERSION,
+                taskTreeProjectionInvalidAt: invalidFeed
+                  ? (saved.taskTreeProjectionInvalidAt ?? now)
+                  : saved.taskTreeProjectionInvalidAt,
+              }
+            })
           } else if (invalidFeed && current.taskTreeProjectionInvalidAt === null) {
             current = await save(saved => ({ ...saved, taskTreeProjectionInvalidAt: now }))
           }

@@ -7,6 +7,7 @@ import { registry, SCENARIOS, VIEWS } from './render-snapshots-fixtures.mjs'
 import { capture, removeTemporaryTree, tmux } from './render-snapshots-live.mjs'
 import {
   checkFrame,
+  checkChipBoxes,
   checkTimelineFocus,
   failure,
   inventoryErrors,
@@ -54,6 +55,7 @@ async function main() {
         errors.push(failure(item.entry, 'baseline', 'same pane frame', 'different', 'frame differs'))
     }
     errors.push(...checkFrame(item.entry, item.frame, item.paneWidth))
+    errors.push(...checkChipBoxes(item.entry, item.ansiFrame, item.paneWidth))
     errors.push(...checkTimelineFocus(item.entry, item.frame, item.ansiFrame))
   }
   errors.push(
