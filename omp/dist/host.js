@@ -13662,6 +13662,7 @@ function pressFile(text) {
 }
 
 // ../hooks/held-sends.ts
+var answerPressWaits = new Set;
 function dueRows(s, now) {
   return Object.entries(s.lastActions).filter(([, a]) => a.delivery?.state === "held" && a.delivery.until <= now).map(([id]) => id);
 }
@@ -13683,13 +13684,23 @@ function refusedHeld(s, id, reason) {
     ledger: last.kind === "mark" ? reopenOnFailure(s.ledger, id, last.at) : s.ledger
   };
 }
-async function releaseOne(host, id, isEarly) {
+async function releaseOne(host, id, isEarly, retryId) {
   let attempt = null;
   const started = host.update(async (s) => {
     attempt = null;
+    const deferred = retryId && s.sent.find((s) => s.deliveryId === retryId && s.row === id && s.phase === "deferred");
     const last = s.lastActions[id];
     const held = last?.delivery;
     const now = await host.now();
+    if (deferred && deferred.pressedAt !== null && held?.state === "queued" && held.id === retryId) {
+      attempt = { deliveryId: retryId, text: deferred.text, at: deferred.pressedAt };
+      return {
+        ...s,
+        sent: s.sent.map((s) => s === deferred ? { ...s, phase: "attempting" } : s)
+      };
+    }
+    if (retryId)
+      return s;
     if (!last || held?.state !== "held" || held.until > now && !isEarly)
       return s;
     await host.prepare?.(s);
@@ -13723,15 +13734,16 @@ async function releaseOne(host, id, isEarly) {
   if (!sending)
     return;
   const outcome = await host.deliver(await host.read(), sending.text, sending.deliveryId).catch((err) => ({ state: "unconfirmed", reason: err instanceof Error ? err.message : String(err) }));
+  const finalOutcome = retryId && outcome.state === "deferred" ? { state: "rejected", reason: outcome.reason } : outcome;
   await host.update((s) => {
-    const after = completedAttempt(s, sending.deliveryId, outcome);
-    if (outcome.state === "deferred")
+    const after = completedAttempt(s, sending.deliveryId, finalOutcome);
+    if (finalOutcome.state === "deferred")
       return after;
-    if (outcome.state === "unconfirmed")
+    if (finalOutcome.state === "unconfirmed")
       return { ...after, lastActions: withUnconfirmed(after.lastActions, sending.text, sending.at, sending.deliveryId) };
-    if (outcome.state !== "rejected")
+    if (finalOutcome.state !== "rejected")
       return after;
-    const lastActions = withFailure(after.lastActions, [id], sending.at, outcome.reason, sending.deliveryId);
+    const lastActions = withFailure(after.lastActions, [id], sending.at, finalOutcome.reason, sending.deliveryId);
     const last = lastActions[id];
     const isRowFailed = last?.delivery?.state === "failed" && last.delivery.id === sending.deliveryId;
     return {

@@ -73,7 +73,7 @@ import { prSharedStore } from './mod-pr-shared'
 import { refreshStatus, type StatusCall, type StatusRecords, type RecordFiles } from './status-records'
 import { upgradedTimelineDetailOpen, upgradedTimelineFolded, upgradedTimelineSelection } from './timeline-state'
 import { startPress, wakeAfterSettle as wakeSessionAfterSettle } from './host-press'
-import { releaseAnswerInPress, retryDeferredAnswers } from './held-sends'
+import { abortAnswerPressWaits, releaseAnswerInPress, retryDeferredAnswers, withAnswerPressWait } from './held-sends'
 import type { Ask, CatchUpReply, SessionHost } from './session-host'
 import { callReport, MODEL } from './inbox-model'
 import { demoView, isDemoCopy } from './demo'
@@ -289,6 +289,10 @@ import { paneAgents } from './pane-agents'
 import { paneHelp } from './pane-help'
 import { adjustScroll, clearDocument, documentActions, scrollBy } from './pane-document'
 import { foldOf, upgradedUnfolded, withFold } from './fold-keys'
+
+function later($: EngineInterface, ms: number, run: () => unknown) {
+  return $.clock.after(ms, () => void Promise.resolve(run()).catch(() => undefined))
+}
 
 function documentFile($: EngineInterface) {
   return modDocumentFile(
@@ -845,13 +849,6 @@ function redrawWhileUndoLasts($: EngineInterface, expiresAt: number) {
     await openLeftRows($)
     await finishPendingUndoScroll($)
   })
-}
-
-function later($: EngineInterface, waitMs: number, run: () => unknown) {
-  void (async () => {
-    await $.clock.sleep(waitMs)
-    await run()
-  })().catch(() => undefined)
 }
 
 /** Redraws when a Compare press reaches its limit. */
@@ -1693,7 +1690,16 @@ async function wakeForHeldSends($: EngineInterface) {
   if (dueTimes.length > 0) later($, Math.max(0, Math.min(...dueTimes) - now), () => wakeAfterSettle($))
 }
 
-async function runPress($: EngineInterface, p: RowPress | PrPress, surface: UiPressArgument['surface']) {
+function runPress($: EngineInterface, p: RowPress | PrPress, surface: UiPressArgument['surface']) {
+  return withAnswerPressWait(!isPrPress(p) && p.action === 'answer', signal => runPressNow($, p, surface, signal))
+}
+
+async function runPressNow(
+  $: EngineInterface,
+  p: RowPress | PrPress,
+  surface: UiPressArgument['surface'],
+  answerWait: AbortSignal,
+) {
   const owner = currentOwner()
   const mayStayOnRow = isPrPress(p)
     ? ['pr-open', 'pr-refresh', 'thread-open', 'log', 'check-rerun'].includes(p.action)
@@ -1762,8 +1768,9 @@ async function runPress($: EngineInterface, p: RowPress | PrPress, surface: UiPr
     await releaseAnswerInPress(
       pressHost,
       rowId,
-      ms => $.clock.sleep(ms),
+      (ms, run) => later($, ms, run),
       () => isCurrent(owner),
+      answerWait,
     )
   } else if (outcome.wakesAfterSettle) later($, SETTLED_MS, () => wakeAfterSettle($))
   if (effects.some(effect => effect.kind !== 'send')) later($, SETTLED_MS, () => redraw($))
@@ -2364,8 +2371,8 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await registerInboxCommand($)
     const r = await next(e)
-    // Desktop sessions can attach before or after this hook; register here to offer tools on the first prompt.
-    // -p, SDK and VS Code draw nothing, so leave the mod off.
+    // Register here; desktop can attach before or after this hook.
+    // Leave -p, SDK and VS Code off because they draw nothing.
     const isDesktop = (await $.session.surfaces()).includes('desktop') || (await isStartedByDesktopApp($))
     if (e.isInteractive || isDesktop) await turnOn($)
 
@@ -2380,16 +2387,14 @@ export const register: Register = on => {
 
   on('classic.SessionStart', { source: ['clear', 'resume', 'fork'] }, async ($, e, next) => {
     const r = await next(e)
-    // $.session.id() still names the previous conversation here, so the new id comes
-    // from the event. A start with --resume also raises this, for the conversation
-    // session.start already loaded.
+    // Use e.session_id; session.id() can be stale on resume.
     if (mod.isOn && e.session_id !== conversation.id)
       await loadConversation($, e.session_id, e.source, e.source === 'fork' ? conversation.id : undefined)
 
     return r
   })
 
-  // The Claude app starts a new session in a spare folder and runs SessionStart only once it moves it to the project.
+  // Desktop moves its spare session folder before SessionStart.
   on('classic.SessionStart', { source: 'startup' }, async ($, e, next) => {
     const r = await next(e)
     const seen = conversation.root
@@ -2402,6 +2407,7 @@ export const register: Register = on => {
   })
 
   on('session.end', async ($, e, next) => {
+    abortAnswerPressWaits()
     await taskProjection?.release(conversation.id)
     sessionState.endReason = e.reason
     sessionState.loadRevision++
@@ -2416,7 +2422,7 @@ export const register: Register = on => {
         publishStatus($, true),
       ])
     }
-    // /clear, /resume and /branch (which reports resume) go on in this process with another conversation.
+    // /clear, /resume and /branch continue here with another conversation.
     if (mod.isOn && (e.reason === 'clear' || e.reason === 'resume')) {
       conversation.generation += 1
       await Promise.all([
@@ -2444,7 +2450,7 @@ export const register: Register = on => {
 
   on('prompt.submit', async ($, e, next) => {
     if (!mod.isOn) return next(e)
-    // Detect conversation changes on the first prompt when classic.SessionStart is skipped. A reload that ran it leaves ids equal.
+    // Compare ids on the first prompt when SessionStart was skipped; reloads that ran it already match.
     const sessionId = await $.session.id()
     if (sessionId !== conversation.id) {
       const reason = sessionState.endReason

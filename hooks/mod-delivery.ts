@@ -22,22 +22,16 @@ export function uncertainRecord(text: string): Session['sent'][number] {
   }
 }
 
-/** Whether this exact refused delivery is an Answer the Claude host can accept after the next person prompt. */
-function deferredAnswerReason(s: Session, deliveryId: string, reason: string): string | null {
+/** Retains the exact host-stop refusal for an Answer and leaves every other refusal unchanged. */
+function refusalOutcome(s: Session, deliveryId: string, reason: string): SendOutcome {
   const attempt = s.sent.find(x => x.deliveryId === deliveryId)
   const row = attempt?.row ? s.lastActions[attempt.row] : undefined
   return reason === 'the session was stopped and nobody has sent input since' &&
     attempt?.press?.action === 'answer' &&
     row?.delivery?.state === 'queued' &&
     row.delivery.id === deliveryId
-    ? reason
-    : null
-}
-
-/** Retains the exact host-stop refusal for an Answer press and leaves every other refusal unchanged. */
-function refusalOutcome(s: Session, deliveryId: string, reason: string): SendOutcome {
-  const deferred = deferredAnswerReason(s, deliveryId, reason)
-  return deferred ? { state: 'deferred', reason: deferred } : { state: 'rejected', reason }
+    ? { state: 'deferred', reason }
+    : { state: 'rejected', reason }
 }
 
 /** Submits as the person, confirming a stored rewrite or preserving an eligible Answer refusal. */
@@ -53,10 +47,9 @@ export async function deliverPrompt(
 ): Promise<SendOutcome> {
   if (!host.isCurrent()) return { state: 'rejected', reason: 'the conversation changed first' }
   const since = stored.count
-  type Submitted = { entered: string } | { notSent: string }
-  const sent = await host.submit().then(
-    (r): Submitted => (r.drop === undefined ? { entered: r.text! } : { notSent: r.drop }),
-    (err: unknown): Submitted =>
+  const sent: { entered: string } | { notSent: string } = await host.submit().then(
+    r => (r.drop === undefined ? { entered: r.text! } : { notSent: r.drop }),
+    (err: unknown) =>
       (stored.at.get(text) ?? 0) > since
         ? { entered: text }
         : { notSent: (err instanceof Error ? err.message : String(err)) || 'the session refused it' },

@@ -18,8 +18,8 @@ test('/clear and /resume switch the inbox to the other conversation, and each ke
   expect(w.stored.has('p:/tmp/project')).toBe(false)
   const pane = await $.ui.mount(PANE)
   const answer = pane.press({ key: 'answer-i1-0' })
-  w.inFlight.push(answer)
-  await clock.advance(1)
+  await clock.advance(SETTLED_MS)
+  await answer
   await $.session.end({ reason: 'clear', sessionId: 'session-1', resume: { id: 'session-1' } })
   await $.classic.SessionStart({ source: 'clear', session_id: 'session-2' })
   w.ledgerReply = 'NEW: decide | 1 | Pin the Node version? | Yes / No | Yes'
@@ -39,8 +39,6 @@ test('/clear and /resume switch the inbox to the other conversation, and each ke
   await clock.settle()
   expect(await pane.find({ text: /Pin the Node version\?/ })).toBeDefined()
   expect(await pane.find({ text: /Use Node or Python\?/ })).toBeUndefined()
-  await clock.advance(SETTLED_MS)
-  await answer
 })
 
 test('an answer held for Undo when /clear switches conversations sends once its conversation loads again, with no turn ending', async ($, on) => {
@@ -52,10 +50,14 @@ test('an answer held for Undo when /clear switches conversations sends once its 
   await $.turn.complete({ answer: 'ok', durationMs: 5, isAborted: false, turnId: 't1', reason: 'answer' })
   await clock.settle()
   const pane = await $.ui.mount(PANE)
-  const answer = pane.press({ key: 'answer-i1-0' })
-  w.inFlight.push(answer)
+  let pressReturned = false
+  const answer = pane.press({ key: 'answer-i1-0' }).then(() => (pressReturned = true))
   await clock.advance(1)
   await $.session.end({ reason: 'clear', sessionId: 'session-1', resume: { id: 'session-1' } })
+  await clock.settle()
+  expect(pressReturned).toBe(true)
+  await answer
+  expect(w.sent).toEqual([])
   await $.classic.SessionStart({ source: 'clear', session_id: 'session-2' })
   await clock.advance(SETTLED_MS - 1)
   expect(w.sent).toEqual([])
@@ -64,7 +66,6 @@ test('an answer held for Undo when /clear switches conversations sends once its 
   await $.classic.SessionStart({ source: 'resume', session_id: 'session-1' })
   await clock.settle()
   expect(w.sent).toEqual(['Re "Use Node or Python?": Node'])
-  await answer
 })
 
 test('where classic.SessionStart is skipped, the first prompt after /clear, /resume and /branch loads that conversation and carries its open questions', async ($, on) => {

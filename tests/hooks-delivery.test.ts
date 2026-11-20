@@ -1,10 +1,26 @@
 import { expect, mock, test } from 'claude-code/testing'
+import type { Engine } from 'claude-code/testing'
+import type { On } from 'claude-code'
 import { PRESS_GUARD_MS, QUEUED_AFTER_MS, SETTLED_MS } from '../hooks/timing'
 import { RUNNING_FRAMES } from '../hooks/help'
+import { waitForPressWindow } from '../hooks/held-sends'
 import { deliverPrompt } from '../hooks/mod-delivery'
-import { emptySession } from '../hooks/session-files'
 import { w, arrive, arriveFirst, world } from './hooks-world'
 import { BAND, PANE, selectRow, replyKey } from './hooks-helpers'
+
+async function answerPane($: Engine, on: On) {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  world($, on, [])
+  on('ui.focus', () => ({}))
+  w.paneState = { isShown: true, isFocused: true }
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  await $.prompt.submit({ text: 'add a greeting cli', wait: false, origin: { kind: 'composer' } })
+  await $.turn.complete({ answer: 'Plan ready.', durationMs: 5, isAborted: false, turnId: 't1', reason: 'answer' })
+  await clock.settle()
+  const pane = await $.ui.mount(PANE)
+  await clock.settle()
+  return { clock, pane }
+}
 
 test('a press whose submit stays pending through a turn reads Queued instead of Not confirmed until the message runs', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
@@ -183,16 +199,7 @@ test('a second Explain press while the first is out sends nothing, and the first
 })
 
 test('Undo works while an Answer press is holding the host vouch, and cancels its send', async ($, on) => {
-  const clock = mock.clock(on, { now: 1_000_000 })
-  world($, on, [])
-  on('ui.focus', () => ({}))
-  w.paneState = { isShown: true, isFocused: true }
-  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
-  await $.prompt.submit({ text: 'add a greeting cli', wait: false, origin: { kind: 'composer' } })
-  await $.turn.complete({ answer: 'Plan ready.', durationMs: 5, isAborted: false, turnId: 't1', reason: 'answer' })
-  await clock.settle()
-  const pane = await $.ui.mount(PANE)
-  await clock.settle()
+  const { clock, pane } = await answerPane($, on)
   expect(await pane.find({ key: 'answer-i1-0' })).toBeDefined()
   const answer = pane.press({ key: 'answer-i1-0' })
   w.inFlight.push(answer)
@@ -211,16 +218,7 @@ test('Undo works while an Answer press is holding the host vouch, and cancels it
 })
 
 test('the exact host-stop refusal stays queued, then retries once after a human prompt', async ($, on) => {
-  const clock = mock.clock(on, { now: 1_000_000 })
-  world($, on, [])
-  on('ui.focus', () => ({}))
-  w.paneState = { isShown: true, isFocused: true }
-  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
-  await $.prompt.submit({ text: 'add a greeting cli', wait: false, origin: { kind: 'composer' } })
-  await $.turn.complete({ answer: 'Plan ready.', durationMs: 5, isAborted: false, turnId: 't1', reason: 'answer' })
-  await clock.settle()
-  const pane = await $.ui.mount(PANE)
-  await clock.settle()
+  const { clock, pane } = await answerPane($, on)
   expect(await pane.find({ key: 'answer-i1-0' })).toBeDefined()
   const message = 'Re "Use Node or Python?": Node'
   w.submitAnswer = { drop: 'the session was stopped and nobody has sent input since' }
@@ -244,44 +242,38 @@ test('the exact host-stop refusal stays queued, then retries once after a human 
   expect(w.sent).toEqual([message, message])
 })
 
+test('closing the pane leaves a held Answer to send when its Undo window ends', async ($, on) => {
+  const { clock, pane } = await answerPane($, on)
+  const answer = pane.press({ key: 'answer-i1-0' })
+  await clock.advance(1)
+  await pane.unmount()
+  expect(w.sent).toEqual([])
+  await clock.advance(SETTLED_MS)
+  await answer
+  expect(w.sent).toEqual(['Re "Use Node or Python?": Node'])
+})
+
+test('aborting the Answer wait cancels its timer', async () => {
+  const wait = new AbortController()
+  let timer = true
+  const waiting = waitForPressWindow(SETTLED_MS, wait.signal, () => ({ cancel: () => (timer = false) }))
+  wait.abort()
+  await waiting
+  expect(timer).toBe(false)
+})
+
 test('the host-stop refusal stays rejected if its conversation changes during submit', async () => {
   const reason = 'the session was stopped and nobody has sent input since'
-  const deliveryId = 'delivery-1'
-  const text = 'Re "Use Node or Python?": Node'
-  const session = emptySession()
-  session.lastActions.i1 = {
-    kind: 'mark',
-    action: 'answer',
-    text: 'Node',
-    at: 1,
-    turnsStarted: 0,
-    delivery: { state: 'queued', message: text, id: deliveryId },
-  }
-  session.sent.push({
-    text,
-    press: { id: 'i1', action: 'answer' },
-    at: 1,
-    row: 'i1',
-    queuedId: null,
-    pressedAt: 1,
-    deliveryId,
-    phase: 'attempting',
-  })
   let current = true
-
   const outcome = await deliverPrompt(
     {
       isCurrent: () => current,
-      read: async () => session,
-      submit: async () => {
-        current = false
-        return { drop: reason }
-      },
-      rewrite: async () => ({ state: 'accepted', queuedId: null }),
+      read: async () => Promise.reject(new Error('conversation changed before reading')),
+      submit: async () => ((current = false), { drop: reason }),
+      rewrite: async () => Promise.reject(new Error('refused send cannot be rewritten')),
     },
-    text,
-    deliveryId,
+    'Re "Use Node or Python?": Node',
+    'delivery-1',
   )
-
   expect(outcome).toEqual({ state: 'rejected', reason })
 })
