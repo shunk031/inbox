@@ -99,17 +99,22 @@ test('Asks tree reconstruction enforces continuity, parent columns and recognize
 test('exact empty states pass only without tree rows', () => {
   const asks = "Nothing needed\nClaude's questions and the tasks\nonly you can do show up here."
   const timeline = 'Timeline\nNo tasks have been recorded for this session.'
+  const rejects = (text, detail) => paneOnly(text, { view: 'asks' }).some(error => error.includes(detail))
   assert.deepEqual(paneOnly(asks, { view: 'asks' }), [])
   assert.deepEqual(paneOnly(timeline, { view: 'timeline' }), [])
+  assert.ok(rejects('Nothing needed\nNot the empty hint', 'missing-recognized-heading'))
+  assert.ok(rejects(`${asks}\n   └─ stray`, 'connector-without-recognized-heading'))
+  const terminal = rows =>
+    checkTreeText(rows.map(row => `${' '.repeat(40)}│${row}`).join('\n'), {
+      view: 'asks',
+      inputMode: 'pane-in-terminal',
+      dividerColumn: 40,
+      paneWidth: 51,
+    })
+  const pane = ['Nothing needed', "Claude's questions and the tasks", 'only you can do show up here.', 'Help v0.4.0']
+  assert.deepEqual(terminal(pane), [])
   assert.ok(
-    paneOnly('Nothing needed\nNot the empty hint', { view: 'asks' }).some(error =>
-      error.includes('missing-recognized-heading'),
-    ),
-  )
-  assert.ok(
-    paneOnly(`${asks}\n   └─ stray`, { view: 'asks' }).some(error =>
-      error.includes('connector-without-recognized-heading'),
-    ),
+    terminal([...pane.slice(0, 3), 'extra text', pane[3]]).some(error => error.includes('missing-recognized-heading')),
   )
 })
 
@@ -120,26 +125,19 @@ test('terminal tree checks classify every row and require the detected divider',
     `${' '.repeat(40)}│${['Questions', '   │', '   ├─ A', '   │', '   └─ B'][index] ?? ''}`.padEnd(92),
   )
   assert.deepEqual(check(rows.join('\n'), 40, 51), [])
-  assert.deepEqual(
-    check(
-      [
-        ...rows,
-        '🤖 terminal model footer',
-        '⬇️ terminal usage footer',
-        '🟢 GenAI GW footer',
-        '⏵⏵ terminal shortcuts',
-      ].join('\n'),
-      40,
-      51,
-    ),
-    [],
-  )
+  const chrome = [
+    'Claude Code v2.1.321',
+    'Nothing needed [ Open inbox ]',
+    '◐ medium · /effort',
+    '⏵⏵ bypass permissions on · 2 shells · ← 1 agent',
+  ]
+  assert.deepEqual(check([...rows, ...chrome].join('\n'), 40, 51), [])
+  const unclassified = frame => check(frame, 40, 51).some(error => error.includes('unclassified line'))
+  assert.ok(unclassified([...rows, `${' '.repeat(44)}│`, 'Claude Code v2.1.321'].join('\n')))
   assert.ok(check(`broken row\n${rows.join('\n')}`, 40, 51).some(error => error.includes('line=1 unclassified line')))
   rows[2] = `${rows[2].slice(0, 40)} ${rows[2].slice(41)}`
   assert.ok(check(rows.join('\n'), 40, 51).some(error => error.includes('line=3 unclassified line')))
   rows[29] = `${rows[4].slice(0, 40)} ${rows[4].slice(41)}`
-  assert.ok(check(rows.join('\n'), 40, 51).some(error => error.includes('line=30 unclassified line')))
-  rows[29] = `${' '.repeat(40)}└─ Claude Code v`.padEnd(92)
   assert.ok(check(rows.join('\n'), 40, 51).some(error => error.includes('line=30 unclassified line')))
 })
 

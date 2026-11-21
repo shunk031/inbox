@@ -18,15 +18,22 @@ const heading = (line, view) => line.replace(HEADING_PREFIX, '').match(HEADINGS[
 const glyphs = (line, pattern) =>
   [...line.matchAll(pattern)].map(match => ({ column: cellWidth(line.slice(0, match.index)) }))
 const atCell = (line, column) => glyphs(line, /│/gu).some(glyph => glyph.column === column)
-function hasEmptyState(lines, view) {
+function hasEmptyState(lines, view, inputMode) {
   const [title, hint] = EMPTY_STATES[view]
-  const content = lines.map(line => line.trim()).filter(Boolean)
+  const content = lines.map(line => line.trim())
   const start = content.indexOf(title)
   if (start < 0) return false
   let wrapped = ''
-  for (const line of content.slice(start + 1)) {
+  for (let index = start + 1; index < content.length; index++) {
+    const line = content[index]
+    if (!line) continue
     wrapped = wrapped ? `${wrapped} ${line}` : line
-    if (wrapped === hint) return true
+    if (wrapped === hint) {
+      const rest = content.slice(index + 1).filter(Boolean)
+      return inputMode === 'pane-only'
+        ? content.filter(Boolean).join(' ') === `${title} ${hint}`
+        : rest.length === 1 && /^Help\s+v\d+(?:\.\d+)+$/u.test(rest[0])
+    }
     if (!hint.startsWith(wrapped)) return false
   }
   return false
@@ -108,8 +115,8 @@ export function checkTreeText(text, { view, source = 'frame', inputMode, divider
         ]
       : []
   })
-  if (!sections.length && hasEmptyState(lines, view) && !connectors.length && !guides.length && !unclassified.length)
-    return errors
+  const empty = !sections.length && hasEmptyState(lines, view, inputMode)
+  if (empty && !connectors.length && !guides.length && !unclassified.length) return errors
   if (!sections.length) fail(0, view === 'timeline' ? 'missing-timeline-root' : 'missing-recognized-heading')
   else if (!connectors.length) fail(sections[0].line, 'recognized-heading-without-connectors', sections[0].name)
   for (const section of sections) {
