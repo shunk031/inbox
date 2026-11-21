@@ -50,6 +50,15 @@ export function toneSvg(tone: ToneName, mark: string): string {
 }
 /** A muted mark's color in an Svg, in the light and dark appearances. */
 export const MUTED_MARK = { light: '#595959', dark: '#a8a8a8' }
+export function timelineBarSvg(parts: readonly { tone: string; mark: string; count: number }[], cells: number): string {
+  const color = (name: string, mode: 'light' | 'dark') =>
+    name === 'muted' ? MUTED_MARK[mode] : toneColors((name === 'key' ? 'needsYou' : name) as ToneName)[mode]
+  const runs = parts.map(part => `<tspan class="${part.tone}">${part.mark.repeat(part.count)}</tspan>`).join('')
+  const styles = (mode: 'light' | 'dark') =>
+    ['done', 'key', 'error', 'muted'].map(name => `.${name}{fill:${color(name, mode)}}`).join('')
+  const width = cells * DESKTOP_CELL_PT
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${DESKTOP_LINE_PT}" viewBox="0 0 ${width} ${DESKTOP_LINE_PT}"><style>text{font:13px monospace}${styles('light')}@media(prefers-color-scheme:dark){${styles('dark')}}</style><text x="0" y="${DESKTOP_LINE_PT / 2}" dominant-baseline="central" textLength="${width}" lengthAdjust="spacingAndGlyphs">${runs}</text></svg>`
+}
 /** A mark in an Svg `cells` wide: its `shape` when it has one, else its text. */
 function markSvg(mark: string, shape: string | null, lightMark: string, darkMark: string, cells = 1): string {
   const width = cells * DESKTOP_CELL_PT

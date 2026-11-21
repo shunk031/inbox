@@ -179,8 +179,8 @@ test('terminal Timeline aligns every status chip with its title and keeps warnin
   )
 })
 
-for (const bodyColumns of [48, 49] as const) {
-  test(`terminal Timeline leaves two cells after a truncated CJK title at ${bodyColumns} columns`, async ($, on) => {
+for (const bodyColumns of [70, 71] as const) {
+  test(`terminal Timeline keeps a fixed bar after a truncated CJK title at ${bodyColumns} columns`, async ($, on) => {
     const clock = mock.clock(on, { now: 1_000_000 })
     world($, on, [])
     w.files = ['/.next-build']
@@ -203,16 +203,17 @@ for (const bodyColumns of [48, 49] as const) {
     const titleLead = await pane.find({ key: 'timeline-title-lead-cjk-boundary' })
     const chipLead = await pane.find({ key: 'timeline-chip-lead-cjk-boundary' })
     const gap = await pane.find({ key: 'timeline-row-bar-gap-cjk-boundary' })
-    const bar = await pane.find({ key: 'timeline-row-bar-cjk-boundary' })
+    const progress = await pane.find({ key: 'timeline-row-progress-cjk-boundary' })
     expect(title?.text.endsWith('…'), 'the CJK title is truncated at the cell budget').toBe(true)
-    expect(titleArea?.props.width).toBe(bodyColumns === 48 ? 20 : 21)
-    expect((titleArea?.props.width as number) % 2).toBe(bodyColumns === 48 ? 0 : 1)
+    expect(titleArea?.props.width).toBe(bodyColumns === 70 ? 42 : 43)
+    expect((titleArea?.props.width as number) % 2).toBe(bodyColumns === 70 ? 0 : 1)
     expect(gap?.props.width).toBe(2)
-    expect(bar).toBeTruthy()
+    expect(cellWidth(progress?.text.match(/[━─]+/u)?.[0] ?? '')).toBe(10)
+    expect(progress?.text).toContain('0.00%')
     expect(chipLead?.props.width).toBe(titleLead?.props.width)
     expect(
       (titleArea?.props.width as number) - cellWidth(title?.text ?? '') + (gap?.props.width as number),
-      'the rendered ellipsis and fixed gap leave at least two cells before the bar',
+      'the rendered ellipsis and fixed gap leave at least two cells before the percent',
     ).toBeGreaterThanOrEqual(2)
   })
 }

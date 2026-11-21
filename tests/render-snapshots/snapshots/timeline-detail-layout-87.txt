@@ -19,9 +19,9 @@
  配置確認用のメモです。
 
  History
- 1m · fixture · Task created
- 1m · fixture · Task detail updated
- now · fixture · Note added
+ 1h · fixture · Task created
+ 1h · fixture · Task detail updated
+ 1h · fixture · Note added
 
 
 

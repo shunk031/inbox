@@ -93,7 +93,7 @@ export function ready(entry, frame) {
   const has = text => pageMarker(frame, text)
   if (entry.view === 'help') return has('Keys') && has('Tabs') && frame.includes('●  Working')
   if (entry.view === 'prs') return has(marker(entry)) && !has('Refreshing PRs')
-  if (entry.view === 'timeline-detail') return has('Snapshot') && has('Back')
+  if (entry.view === 'timeline-detail') return has('Snapshot') && has('Back') && has('Progress')
   if (entry.view === 'asks-detail')
     return (
       has('Snapshot') &&
@@ -153,7 +153,7 @@ async function press(socket, session, width, key, predicate, label, timeout = 15
   }
   throw last ?? Error(`timed out waiting for ${label}`)
 }
-function writeConfig(config, home, pluginDir, sessionId, fixture) {
+function writeConfig(config, home, pluginDir, sessionId, fixture, view) {
   const settings = {
     hasCompletedOnboarding: true,
     primaryApiKey: 'sk-ant-placeholder-for-local-render-only',
@@ -163,7 +163,7 @@ function writeConfig(config, home, pluginDir, sessionId, fixture) {
   writeFileSync(path.join(home, '.claude.json'), JSON.stringify(settings))
   const store = path.join(config, 'plugins', 'store')
   mkdirSync(store, { recursive: true })
-  writeFileSync(path.join(store, PLUGIN_STORE), JSON.stringify({ [`s:${sessionId}`]: fixtureState(fixture) }))
+  writeFileSync(path.join(store, PLUGIN_STORE), JSON.stringify({ [`s:${sessionId}`]: fixtureState(fixture, view) }))
   const bin = path.join(config, 'bin')
   mkdirSync(bin, { recursive: true })
   const fakeGh = path.join(bin, 'gh')
@@ -213,7 +213,7 @@ export async function capture(entry, pluginDir, root, socket, claude, { onTimeou
   isolate(root, home, config)
   const id = randomUUID()
   const session = `snap-${entry.fixture}-${entry.view}-${entry.width}`
-  const bin = writeConfig(config, home, pluginDir, id, entry.fixture)
+  const bin = writeConfig(config, home, pluginDir, id, entry.fixture, entry.view)
   const env = {
     HOME: home,
     CLAUDE_CONFIG_DIR: config,
@@ -280,15 +280,7 @@ export async function capture(entry, pluginDir, root, socket, claude, { onTimeou
       45_000,
       { onTimeout },
     )
-    const timelineDetail = frame =>
-      pageMarker(
-        frame,
-        entry.fixture.startsWith('timeline-detail-layout')
-          ? 'Snapshot timeline'
-          : entry.scenario === 'empty'
-            ? 'Snapshot detail empty'
-            : 'Snapshot root',
-      )
+    const timelineDetail = frame => pageMarker(frame, 'Snapshot') && pageMarker(frame, 'Progress')
     const childSelected = frame => {
       const row = frame.split('\n').find(line => line.includes('折り返し用'))
       return row?.slice(0, row.indexOf('折り返し用')).includes('>') ?? false

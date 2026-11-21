@@ -228,7 +228,7 @@ test('cell checks report a shifted Timeline chip with its fixture column', () =>
   const frame = lines.join('\n')
   const failures = checkFrame(entry, frame, 70)
   assert.ok(failures.some(line => line.includes('chip does not start on its title column')))
-  assert.ok(failures.some(line => line.includes('bar and percentage must share the title line')))
+  assert.ok(failures.some(line => line.includes('row cannot be classified')))
 })
 
 test('chip box checks require one padded cell on each side and space before the pane edge', () => {

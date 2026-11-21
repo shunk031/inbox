@@ -376,11 +376,11 @@ function weightedAverage(values: [number, number][]): number {
   return total ? values.reduce((sum, [value, weight]) => sum + value * weight, 0) / total : 0
 }
 
-/** Shares each root's weight across its active children and reports the work in each task state. */
+/** Shares a task's weight across its active children and reports the work in each task state. */
 export function weightedTaskProgressSegments(
   tree: TaskTree,
   stalledTasks: ReadonlySet<string> = new Set(),
-  rootId?: string,
+  taskId?: string,
 ): TaskProgressSegments {
   const children = new Map<string | null, TaskNode[]>()
   for (const task of tree) children.set(task.parentId, [...(children.get(task.parentId) ?? []), task])
@@ -407,8 +407,8 @@ export function weightedTaskProgressSegments(
     else segments.queued += weight
   }
 
-  for (const root of children.get(null) ?? [])
-    if (rootId === undefined || root.id === rootId) add(root, root.weight, new Set())
+  const tasks = taskId === undefined ? (children.get(null) ?? []) : tree.filter(task => task.id === taskId)
+  for (const task of tasks) add(task, task.weight, new Set())
 
   return segments
 }

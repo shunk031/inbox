@@ -16,3 +16,4 @@ export const BANNER_PAD_Y_PT = 8
 
 /** The space between two banners, in points. */
 export const BANNER_GAP_PT = 8
+export const timelineRowBarWidth = (bodyColumns: number) => (bodyColumns >= 68 ? 10 : 0)
