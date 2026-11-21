@@ -14,29 +14,23 @@ const EMPTY_STATES = {
   asks: ['Nothing needed', "Claude's questions and the tasks only you can do show up here."],
   timeline: ['Timeline', 'No tasks have been recorded for this session.'],
 }
+const EMPTY_CHROME = /^(?:✕|[▄▀─ ]+|Asks\s+Timeline\s+\d+\s+PRs|[┌└].*[┐┘]|│.*│)$/u
 const heading = (line, view) => line.replace(HEADING_PREFIX, '').match(HEADINGS[view])
 const glyphs = (line, pattern) =>
   [...line.matchAll(pattern)].map(match => ({ column: cellWidth(line.slice(0, match.index)) }))
 const atCell = (line, column) => glyphs(line, /│/gu).some(glyph => glyph.column === column)
-function hasEmptyState(lines, view, inputMode) {
-  const [title, hint] = EMPTY_STATES[view]
-  const content = lines.map(line => line.trim())
-  const start = content.indexOf(title)
-  if (start < 0) return false
-  let wrapped = ''
-  for (let index = start + 1; index < content.length; index++) {
-    const line = content[index]
-    if (!line) continue
-    wrapped = wrapped ? `${wrapped} ${line}` : line
-    if (wrapped === hint) {
-      const rest = content.slice(index + 1).filter(Boolean)
-      return inputMode === 'pane-only'
-        ? content.filter(Boolean).join(' ') === `${title} ${hint}`
-        : rest.length === 1 && /^Help\s+v\d+(?:\.\d+)+$/u.test(rest[0])
-    }
-    if (!hint.startsWith(wrapped)) return false
-  }
-  return false
+function hasEmptyState(lines, view, mode) {
+  const content = lines.map(line => line.trim()).filter(Boolean)
+  const start = content.indexOf(EMPTY_STATES[view][0])
+  const body = content
+    .slice(start)
+    .join(' ')
+    .replace(mode === 'pane-in-terminal' ? / Help\s+v\d+(?:\.\d+)+$/u : /$^/u, '')
+  return (
+    start >= 0 &&
+    content.slice(0, start).every(line => mode === 'pane-in-terminal' && EMPTY_CHROME.test(line)) &&
+    body === EMPTY_STATES[view].join(' ')
+  )
 }
 const paneRow = (line, divider, width) =>
   divider === 0 && line.startsWith('│') && line.endsWith('│') && cellWidth(line) === width + 2

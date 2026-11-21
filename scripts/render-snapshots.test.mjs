@@ -113,6 +113,7 @@ test('exact empty states pass only without tree rows', () => {
     })
   const pane = ['Nothing needed', "Claude's questions and the tasks", 'only you can do show up here.', 'Help v0.4.0']
   assert.deepEqual(terminal(pane), [])
+  assert.ok(terminal(['✕', '▄', 'Asks Timeline 0 PRs', '─', 'extra', ...pane]).length)
   assert.ok(
     terminal([...pane.slice(0, 3), 'extra text', pane[3]]).some(error => error.includes('missing-recognized-heading')),
   )
