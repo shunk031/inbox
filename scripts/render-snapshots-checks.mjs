@@ -1,10 +1,16 @@
 import { cellWidth } from '../hooks/text.ts'
-import { registry } from './render-snapshots-fixtures.mjs'
+import { wrapErrors, wrapText } from '../hooks/line-wrap.ts'
+import { JAPANESE_DETAIL, registry } from './render-snapshots-fixtures.mjs'
 
 const stripAnsi = text => text.replace(/\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))/g, '')
 export const marker = entry =>
   ({
-    asks: entry.scenario === 'empty' ? 'Nothing needed' : 'Snapshot question',
+    asks:
+      entry.scenario === 'empty'
+        ? 'Nothing needed'
+        : entry.scenario === 'japanese'
+          ? 'Snapshot Japanese'
+          : 'Snapshot question',
     timeline: entry.scenario === 'empty' ? 'No tasks have been recorded' : 'Snapshot root',
     prs: entry.scenario === 'empty' ? 'No PRs' : 'Snapshot pull request',
     'timeline-detail': 'Snapshot',
@@ -66,6 +72,25 @@ export const failure = (entry, row, expected, actual, reason) =>
   `expected-column=${expected} actual-column=${actual} ${reason}`
 
 const detailHeadings = new Set(['Detail', 'Updated', 'Note', 'History', 'Links'])
+function checkJapaneseAskWrap(entry, frame, paneWidth) {
+  if (entry.view !== 'asks' || entry.scenario !== 'japanese') return []
+  const lines = frame.split('\n')
+  const first = lines.findIndex(line => line.includes('候補の比較を')),
+    tail = lines.findIndex(line => line.includes('終え'))
+  const last = tail < 0 ? -1 : lines[tail].includes('終える。') ? tail : tail + 1
+  if (first < 0 || last < first)
+    return [failure(entry, 'Japanese detail', 'complete detail visible', 'missing', 'fixture detail is clipped')]
+  const base = cellWidth(lines[first].slice(0, lines[first].indexOf('候補の比較を')))
+  const actual = lines.slice(first, last + 1).map(line => line.slice(base).trimEnd())
+  const width = paneWidth - 8,
+    expected = wrapText(JAPANESE_DETAIL, width, cellWidth)
+  return [
+    ...(actual.length !== expected.length || actual.some((line, index) => line !== expected[index]?.text)
+      ? ['rendered detail lines differ from the shared wrapper']
+      : []),
+    ...wrapErrors(expected, width, cellWidth, actual),
+  ].map(reason => failure(entry, 'Japanese detail', `Japanese wrap property at ${width} columns`, 'failed', reason))
+}
 export function checkLeftEdges(entry, frame) {
   if (entry.view !== 'timeline-detail') return []
   const lines = frame.split('\n')
@@ -173,6 +198,7 @@ export function checkFrame(entry, frame, width) {
       if (gap !== 1) add('Back control gap', 'Back end + 1', col(header, title), `observed gap is ${gap} cells`)
     }
   }
+  errors.push(...checkJapaneseAskWrap(entry, frame, width))
   return errors
 }
 

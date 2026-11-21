@@ -1,9 +1,9 @@
 import { rowsIn, settledIn } from './action-plan'
 import { bannerOf, emptyText, isResumable, READING_TEXT, stopBanner } from './banners'
 import { isMaybeStale } from './band'
-import { DESKTOP_CHARS_PER_CELL } from './desktop-metrics'
+import { DESKTOP_CHARS_PER_CELL, desktopTextPt } from './desktop-metrics'
 import { FINDING_GROUPS, HELD_MARK } from './help'
-import { linkLabel } from './inline'
+import { linkLabel, parseInline } from './inline'
 import { safeDocumentMarkdown } from './pane-document'
 import { READ_FAILED_TEXT } from './mod-sessions'
 import { sessionState } from './mod-state'
@@ -26,7 +26,8 @@ import {
   type RowView,
   waitingCount,
 } from './rows'
-import { type TerminalSpan, terminalTextLines } from './terminal-text'
+import { type TerminalSpan, terminalTextLines, wrappedSpanLines } from './terminal-text'
+import { cellWidth } from './text'
 import { ago } from './text'
 
 export function clippedDocumentPreview(preview: string | null, width: number, lines: number) {
@@ -73,7 +74,27 @@ export function paneAskRows(
     ) : null
     const subtitleLines = [contextLine, holdsUp, recLine].filter(line => line !== null)
     const preview = documentPreviewLine(r)
-
+    const wrapInline = (text: string, width: number, muted = false) =>
+      terminalText(
+        wrappedSpanLines(
+          parseInline(text).map(span => ({ ...span, ...(muted ? { isMuted: true as const } : {}) })),
+          width,
+          look === 'desktop' ? desktopTextPt : cellWidth,
+        ),
+      )
+    const wrapSubtitle = (width: number) => (
+      <Box flexDirection="column">
+        {r.contextDisplayLine ? <Text>{wrapInline(r.contextDisplayLine, width, true)}</Text> : null}
+        {holdsUp}
+        {r.recLine ? <Text>{wrapInline(r.recLine, width, true)}</Text> : null}
+      </Box>
+    )
+    const wrapBody = (width: number) => (
+      <Box flexDirection="column" rowGap={blankLine}>
+        {r.detail ? <Text>{wrapInline(r.detail, width)}</Text> : null}
+        {preview ? <Text>{wrapInline(preview, width, true)}</Text> : null}
+      </Box>
+    )
     return {
       id: r.id,
       view: r,
@@ -100,6 +121,8 @@ export function paneAskRows(
             ) : null}
           </Box>
         ) : null,
+      ...(subtitleLines.length > 0 ? { wrapSubtitle } : {}),
+      ...(r.detail || preview ? { wrapBody } : {}),
       clippedBody: (lines, width) => {
         if (lines < 1 || (!r.detail && !preview)) return null
         const { spans: previewLines, bodyLines: detailLines } = clippedDocumentPreview(preview, width, lines)
