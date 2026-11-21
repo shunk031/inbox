@@ -4738,6 +4738,18 @@ function closedLineAction(d) {
     return { label: ROW_COPY.undo, press: { id: d.id, action: "undo" } };
   return d.how === "dismissed" ? { label: ROW_COPY.reopen, press: { id: d.id, action: "undo" } } : null;
 }
+var NO_BACKGROUND_GIVEN = "No background given";
+var NO_EFFECT_GIVEN = "No effect given";
+function questionContextOf(item) {
+  const context = item?.context;
+  return context?.trim() ? context : NO_BACKGROUND_GIVEN;
+}
+function contextLineOf(type, item) {
+  return type === "question" ? item?.context || null : null;
+}
+function contextDisplayLineOf(type, item) {
+  return type === "question" ? questionContextOf(item) : null;
+}
 function recLineOf(item) {
   return item?.rec && item.recReason ? `Why ${item.rec}: ${item.recReason}` : null;
 }
@@ -4747,14 +4759,42 @@ function documentPreviewLine(row) {
   return `Report preview: ${row.documentPreview || baseName(row.document) || "Markdown document"}`;
 }
 function optionDescriptionsOf(item, actions) {
-  const descriptions = item?.optionDescriptions;
-  if (!descriptions)
+  if (!item)
     return [];
   return actions.flatMap((a) => {
-    if (a.press.action !== "answer" || !Object.hasOwn(descriptions, a.press.option))
+    if (a.press.action !== "answer")
+      return [];
+    const descriptions = item.optionDescriptions;
+    if (!descriptions || !Object.hasOwn(descriptions, a.press.option))
       return [];
     const description = descriptions[a.press.option];
-    return [{ label: clipLabel(linkLabel(a.press.option), OPTION_LABEL_CHARS), description, isFolded: a.isFolded }];
+    return [
+      {
+        label: clipLabel(linkLabel(a.press.option), OPTION_LABEL_CHARS),
+        description,
+        isMissing: false,
+        isFolded: a.isFolded
+      }
+    ];
+  });
+}
+function optionEffectsOf(item, actions) {
+  if (!item)
+    return [];
+  return actions.flatMap((a) => {
+    if (a.press.action !== "answer")
+      return [];
+    const descriptions = item.optionDescriptions ?? {};
+    const description = Object.hasOwn(descriptions, a.press.option) ? descriptions[a.press.option] : undefined;
+    const isMissing = !description?.trim();
+    return [
+      {
+        label: clipLabel(linkLabel(a.press.option), OPTION_LABEL_CHARS),
+        description: isMissing ? NO_EFFECT_GIVEN : description,
+        isMissing,
+        isFolded: a.isFolded
+      }
+    ];
   });
 }
 function rowHandle(row) {
@@ -7701,9 +7741,11 @@ function inboxView({
       feedback,
       actions,
       optionDescriptions: optionDescriptionsOf(row.item, actions),
+      optionEffects: optionEffectsOf(row.item, actions),
       holdsUpLine: held.length > 0 ? `${HOLDS_UP_TEXT} ${held.join(", ")}` : null,
       recLine: state.is === "open" ? recLineOf(row.item) : null,
-      contextLine: state.is === "open" ? row.item?.context ?? null : null
+      contextLine: state.is === "open" ? contextLineOf(row.type, row.item) : null,
+      contextDisplayLine: contextDisplayLineOf(row.type, row.item)
     };
   };
   const itemRow = (item) => {

@@ -153,6 +153,16 @@ test('Timeline counts only leaf tasks under a parent', () => {
   expect(page.rows[0]?.leafProgress).toBe('1/2 leaf tasks done')
 })
 
+test('Timeline shows no leaf count for a parent with only dropped children', () => {
+  const tree: TaskTree = [
+    task('parent', { status: 'dropped' }),
+    task('dropped-child', { parentId: 'parent', status: 'dropped' }),
+  ]
+  const page = timelineData(tree, segments, {}, [], now)
+
+  expect(page.rows[0]?.leafProgress).toBeNull()
+})
+
 test('Timeline counts open tasks without counting completed or dropped tasks', () => {
   const tree: TaskTree = [
     task('working', { status: 'working' }),

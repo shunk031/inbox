@@ -37,10 +37,13 @@ function cropInboxPane(capture, width) {
   const [divider, rows] = [...counts].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0] ?? []
   const minRows = width <= 87 ? 12 : 20
   if (!divider || rows < minRows) {
-    const frame = lines.filter(line => line.startsWith('│') && line.endsWith('│') && cellWidth(line) === width)
+    const frame = lines
+      .filter(line => line.startsWith('│') && line.endsWith('│') && cellWidth(line) === width)
+      .map(line => line.slice(1, -1).replace(/ +$/u, ''))
+    while (frame.at(-1) === '') frame.pop()
     if (width <= 87 && frame.length >= minRows)
       return {
-        text: frame.map(line => line.slice(1, -1).replace(/ +$/u, '')).join('\n'),
+        text: frame.join('\n'),
         paneWidth: width - 2,
         dividerColumn: 0,
       }
@@ -273,22 +276,26 @@ export async function capture(entry, pluginDir, root, socket, claude, { onTimeou
     )
     send(socket, session, '/inbox', true)
     send(socket, session, 'Enter')
-    const initial = entry.fixture.startsWith('timeline-detail-layout')
-      ? 'Timeline'
-      : entry.fixture === 'detail-empty'
-        ? 'Snapshot empty report'
-        : entry.fixture === 'detail-busy'
-          ? 'Snapshot report'
-          : entry.fixture.endsWith('empty')
-            ? 'Nothing needed'
-            : 'Snapshot question'
+    const initial =
+      entry.view === 'asks' && entry.width <= 87
+        ? 'Asks'
+        : entry.fixture.startsWith('timeline-detail-layout')
+          ? 'Timeline'
+          : entry.fixture === 'detail-empty'
+            ? 'Snapshot empty report'
+            : entry.fixture === 'detail-busy'
+              ? 'Snapshot report'
+              : entry.fixture.endsWith('empty')
+                ? 'Nothing needed'
+                : 'Snapshot question'
+    const initialPane = entry.view === 'asks' && entry.width <= 87 ? 'raw' : 'pane'
     await wait(
       socket,
       session,
       terminalWidth,
       frame => pageMarker(frame, initial),
       `initial inbox pane for ${entry.fixture}`,
-      'pane',
+      initialPane,
       45_000,
       { onTimeout },
     )

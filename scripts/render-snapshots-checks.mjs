@@ -105,6 +105,10 @@ export function checkFrame(entry, frame, width) {
   for (const text of required)
     if (!pageMarker(frame, text)) add(`required:${text}`, 0, 'missing', 'required label absent')
 
+  if (entry.view === 'asks' && entry.scenario === 'busy')
+    for (const text of [entry.width <= 87 ? marker(entry) : 'Questions', 'No background given', 'No effect given'])
+      if (!pageMarker(frame, text)) add(`required:${text}`, 0, 'missing', 'required question label absent')
+
   const tree = entry.view === 'timeline'
   const listBase = 3
   lines.forEach((line, row) => {
@@ -115,7 +119,8 @@ export function checkFrame(entry, frame, width) {
       const listGuide = entry.view === 'asks' && at >= listBase && (at - listBase) % 3 === 0 && at <= listBase + 12
       const statsRow = entry.view === 'timeline-detail' && /Progress|Weight|Completed units|%/u.test(line)
       const statsDivider = statsRow && (detailColumns[entry.width]?.includes(at) ?? false)
-      const allowed = tree ? border || inTree : border || listGuide || statsDivider
+      const narrowAsksDivider = entry.view === 'asks' && entry.width <= 87 && at === 20
+      const allowed = tree ? border || inTree : border || listGuide || statsDivider || narrowAsksDivider
       if (!allowed)
         add(
           `line-${row + 1}`,
