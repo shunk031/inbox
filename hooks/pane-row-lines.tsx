@@ -269,6 +269,13 @@ export function paneRowLines({
             {withDoneMark(meta, line.afterDoneMark)}
           </Text>
         ) : null}
+        {row.view?.type === 'question' && row.view.contextDisplayLine ? (
+          <Box paddingLeft={line.before?.length ?? 0}>
+            <Text wrap="truncate-end" color={pal.muted}>
+              {clipLabel(row.view.contextDisplayLine, Math.max(12, width))}
+            </Text>
+          </Box>
+        ) : null}
         {holdsUpLine ? (
           <Box paddingLeft={line.before?.length ?? 0}>
             <Text color={pal.muted}>
@@ -332,6 +339,7 @@ export function paneRowLines({
       note: holdsUpLineOf(row.view) ?? '',
       noteMark: holdsUpLineOf(row.view) ? { text: HELD_MARK.mark, color: pal.mark[HELD_MARK.tone] } : null,
       recNote: row.view?.recLine ?? '',
+      context: row.view?.type === 'question' ? (row.view.contextDisplayLine ?? '') : '',
       side: sideAge(row),
       padY: DESKTOP_ROW_PAD,
       charsPerCell: DESKTOP_CLIP_CHARS_PER_CELL,

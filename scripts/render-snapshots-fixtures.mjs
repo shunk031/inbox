@@ -56,12 +56,21 @@ const question = {
   context: 'A neutral fixture exercises a long, wrapped question.',
   detail: 'The report and question are invented test data.',
   options: ['Keep the labels', 'Shorten the labels'],
+  optionDescriptions: { 'Keep the labels': 'Preserves the invented labels for this example.' },
   rec: 'Keep the labels',
   helps: [],
   turn: 1,
   at: NOW - 30_000,
   from: 'record',
 }
+const noBackground = {
+  ...question,
+  id: 'snapshot-no-background',
+  ask: 'Snapshot question without background',
+  context: undefined,
+  detail: undefined,
+}
+const withContext = { ...question, detail: undefined }
 const reportQuestion = empty => ({
   ...question,
   id: empty ? 'snapshot-empty-report' : 'snapshot-report-question',
@@ -118,15 +127,15 @@ export function fixtureState(fixture, view) {
     isHelpShown: false,
   }
   const data = state.ledger
-  if (fixture === 'base-busy' || fixture === 'fold-done') {
+  if (fixture === 'base-busy' || fixture === 'fold-done' || fixture === 'asks-busy') {
     Object.assign(data, {
-      items: [question],
+      items: fixture === 'asks-busy' ? [noBackground, withContext] : [question],
       findings: [report(false)],
       prs: [pr.ref],
       updates: 1,
       turn: 1,
       batchTurn: 1,
-      nextId: 2,
+      nextId: fixture === 'asks-busy' ? 3 : 2,
     })
     const finished = task('snapshot-finished-root', null, 'Snapshot finished root', 'done')
     state.taskTree = fixture === 'fold-done' ? [...tasks, finished] : tasks
@@ -150,20 +159,27 @@ export function fixtureState(fixture, view) {
 }
 export const registry = [
   ...VIEWS.flatMap(view =>
-    SCENARIOS.flatMap(scenario =>
-      widths.map(width => ({
+    SCENARIOS.flatMap(scenario => [
+      ...[...widths, ...(view === 'asks' && scenario === 'busy' ? [87] : [])].map(width => ({
         view,
         scenario,
         width,
         fixture:
-          view === 'help' ? `help-${scenario}` : view.endsWith('-detail') ? `detail-${scenario}` : `base-${scenario}`,
+          view === 'asks' && scenario === 'busy'
+            ? 'asks-busy'
+            : view === 'help'
+              ? `help-${scenario}`
+              : view.endsWith('-detail')
+                ? `detail-${scenario}`
+                : `base-${scenario}`,
         file: `${view}-${scenario}-${width}.txt`,
       })),
-    ),
+    ]),
   ),
 ]
 const foldDone = { view: 'timeline', scenario: 'fold-done', fixture: 'fold-done' }
 registry.push(...widths.map(width => ({ ...foldDone, width, file: `timeline-fold-done-${width}.txt` })))
+registry.push({ view: 'asks', scenario: 'empty', fixture: 'base-empty', width: 87, file: 'asks-empty-87.txt' })
 registry.push(
   ...timelineDetailWidths.map(width => ({
     view: 'timeline-detail',

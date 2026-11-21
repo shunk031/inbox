@@ -42,7 +42,8 @@ A difference is on purpose when a look cannot do something or the product decide
 
 | Look | Terminal | Codex and omp | Reason |
 | --- | --- | --- | --- |
-| Timeline header width | Fills the progress card's inner width. | Keeps the existing 28-cell track. | The terminal-first change sizes its native card; Codex and omp keep their current card layouts while drawing the shared bar parts. |
+| Timeline header width | Fills the progress card's inner width. | Keeps the existing 28-cell track. | Codex and omp keep the pre-change 28-cell track ([code](https://github.com/shunk031/inbox/blob/a1f176749abbd5b6b149f9a334c8500a3ed9873b/hooks/timeline-page.ts#L268)). Filling the card there is tracked in [shunk031/inbox#83](https://github.com/shunk031/inbox/issues/83). |
+| Missing background and effect markers | Terminal and desktop show muted `No background given` and `No effect given` lines. Codex, omp and Herdr do not draw these markers yet. |
 
 A row that covers a host difference names its feature id in backticks in the first column. `hooks/clients.ts` lists the feature ids. `hooks/client-support.ts` classifies each as `full`, `different` or `unsupported` for each client: `claude-code` for the terminal and desktop looks, plus `codex` and `omp`. `scripts/check-structure.mjs` fails when a feature that is not `full` has no row in the table that covers its host, and when a row names an id the record lacks. The main table covers `claude-code` and `codex`. The omp table covers `omp`.
 

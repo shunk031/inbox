@@ -1,5 +1,7 @@
 import { cellWidth } from '../hooks/text.ts'
 import { registry } from './render-snapshots-fixtures.mjs'
+import { barTracks, checkTimelineBars, failure, taskMarkers } from './render-snapshots-bar-checks.mjs'
+export { failure }
 
 const stripAnsi = text => text.replace(/\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))/g, '')
 export const marker = entry =>
@@ -26,7 +28,6 @@ export const isTerminalChrome = (line, width) =>
   ((cellWidth(line) === width && /^─+$/u.test(line)) ||
     /^(?:╭─+╮|╰─+╯)$/u.test(line.trim()) ||
     TERMINAL_ROWS.some(pattern => pattern.test(line.trim())))
-const taskMarkers = ['Snapshot root', '折り返し用', 'Snapshot long', '深い階層']
 const inverseVideo = line => {
   let inverse = false
   for (const match of line.matchAll(/\x1b\[([\d;]*)m|([^\x1b])/gu)) {
@@ -61,55 +62,6 @@ export function checkTimelineFocus(entry, frame, ansiFrame) {
 }
 const col = (line, index) => cellWidth(line.slice(0, index))
 const detailColumns = { 87: [26, 28, 51, 53], 110: [19, 21], 200: [27, 29, 52, 54] }
-export const failure = (entry, row, expected, actual, reason) =>
-  `FAIL view=${entry.view} scenario=${entry.scenario} width=${entry.width} row=${row} ` +
-  `expected-column=${expected} actual-column=${actual} ${reason}`
-
-const barTracks = line => [...line.matchAll(/(?<![┌╭└╰├┤▀━─])([━─]+)(?![┐╮└╰├┤▀━─])/gu)].map(([, track]) => track)
-const progressPercent = line => line?.match(/(\d+(?:\.\d+)?)%/u)?.[1]
-
-function checkTimelineBars(entry, frame) {
-  if (entry.view !== 'timeline') return []
-  const lines = frame.split('\n'),
-    errors = [],
-    fail = (...args) => errors.push(failure(entry, ...args))
-  const heading = lines.findIndex(line => line.includes('Progress'))
-  const header = lines.findIndex((line, i) => i > heading && barTracks(line).length)
-  const top = lines.slice(0, heading).findLast(line => /[┌╭].*[┐╮]/u.test(line))
-  const left = top?.search(/[┌╭]/u) ?? -1,
-    right = top?.search(/[┐╮]/u) ?? -1
-  const inner = left >= 0 && right > left ? cellWidth(top.slice(left, right + 1)) - 4 : 0
-  if (heading < 0 || header < 0 || inner < 1)
-    fail('header bar', 'track and card width', 'missing', 'bar cannot be classified')
-  lines.forEach((line, i) => {
-    const tracks = barTracks(line)
-    if (!tracks.length && line.includes('━'))
-      fail(`line-${i + 1}`, 'classifiable bar', line, 'bar cannot be classified')
-    if (!tracks.length) return
-    if (tracks.length !== 1) return fail(`line-${i + 1}`, 'one bar', tracks.join(','), 'bar cannot be classified')
-    const track = tracks[0],
-      value = i === header ? (progressPercent(lines[heading]) ?? progressPercent(lines[i + 1])) : progressPercent(line)
-    if (!/^━*─*$/u.test(track)) fail(`line-${i + 1}`, '━*─*', track, 'bar fill must precede its unfilled track')
-    if (value === undefined) fail(`line-${i + 1}`, 'printed percent', track, 'bar cannot be classified')
-    else if ([...track].filter(mark => mark === '━').length !== Math.round((Number(value) * track.length) / 100))
-      fail(
-        `line-${i + 1}`,
-        Math.round((Number(value) * track.length) / 100),
-        [...track].filter(mark => mark === '━').length,
-        'filled cells do not match the printed percent',
-      )
-    if (i === header && track.length !== inner)
-      fail('header bar', inner, track.length, 'header track does not fill the card content width')
-  })
-  if (entry.scenario === 'busy')
-    for (const marker of taskMarkers) {
-      const row = lines.findIndex(line => line.includes(marker))
-      if (row < 0 || !barTracks(lines[row]).length)
-        fail(`row:${marker}`, 'title-line bar', 'missing', 'bar cannot be classified')
-    }
-  return errors
-}
-
 const detailHeadings = new Set(['Detail', 'Updated', 'Note', 'History', 'Links'])
 export function checkLeftEdges(entry, frame) {
   if (entry.view !== 'timeline-detail') return []
@@ -151,6 +103,10 @@ export function checkFrame(entry, frame, width) {
     if (!pageMarker(frame, text)) add(`required:${text}`, 0, 'missing', 'required label absent')
   errors.push(...checkTimelineBars(entry, frame))
 
+  if (entry.view === 'asks' && entry.scenario === 'busy')
+    for (const text of [entry.width <= 87 ? marker(entry) : 'Questions', 'No background given', 'No effect given'])
+      if (!pageMarker(frame, text)) add(`required:${text}`, 0, 'missing', 'required question label absent')
+
   const tree = entry.view === 'timeline'
   const listBase = 3
   lines.forEach((line, row) => {
@@ -161,7 +117,8 @@ export function checkFrame(entry, frame, width) {
       const listGuide = entry.view === 'asks' && at >= listBase && (at - listBase) % 3 === 0 && at <= listBase + 12
       const statsRow = entry.view === 'timeline-detail' && /Progress|Weight|Completed units|%/u.test(line)
       const statsDivider = statsRow && (detailColumns[entry.width]?.includes(at) ?? false)
-      const allowed = tree ? border || inTree : border || listGuide || statsDivider
+      const narrowAsksDivider = entry.view === 'asks' && entry.width <= 87 && at === 20
+      const allowed = tree ? border || inTree : border || listGuide || statsDivider || narrowAsksDivider
       if (!allowed)
         add(
           `line-${row + 1}`,
@@ -354,18 +311,22 @@ export function runMutationProofs(frames) {
   const barLines = timeline.frame.split('\n'),
     heading = barLines.findIndex(line => line.includes('Progress'))
   const headerRow = barLines.findIndex((line, i) => i > heading && barTracks(line).length)
-  const child = barLines.findIndex(line => line.includes('折り返し用'))
-  const childRow = barTracks(barLines[child] ?? '').length ? child : -1
+  const childRow = barLines.findIndex(line => line.includes('折り返し用')),
+    longRow = barLines.findIndex(line => line.includes('Snapshot long'))
   const mutateBar = (row, transform) => {
-    const track = barTracks(barLines[row] ?? '')[0]
+    const line = barLines[row] ?? '',
+      track = barTracks(line.slice(line.indexOf(taskMarkers.find(marker => line.includes(marker)) ?? '')))[0]
     return track && barLines.map((line, i) => (i === row ? line.replace(track, transform(track)) : line)).join('\n')
   }
   const barCheck = (frame, text) => frame && checkTimelineBars(timeline.entry, frame).find(line => line.includes(text))
   const barProofs = [
     ['one extra filled cell', mutateBar(headerRow, track => `━${track}`), 'filled cells do not match'],
     ['filled cell after unfilled', mutateBar(headerRow, track => track.replace('━─', '─━')), 'bar fill must precede'],
-    ['header track shortened', mutateBar(headerRow, track => track.slice(0, -1)), 'header track does not fill'],
+    ['header track shortened', mutateBar(headerRow, track => track.slice(0, -1)), 'track width'],
     ['completed child emptied', mutateBar(childRow, track => '─'.repeat(track.length)), 'filled cells do not match'],
+    ['one-cell row bar', mutateBar(childRow, () => '━'), 'track width'],
+    ['non-first row bar removed', mutateBar(longRow, () => ''), 'row bar presence'],
+    ['track merged with a connector', mutateBar(longRow, () => '└──'), 'track width'],
   ].map(([name, frame, text]) => [name, barCheck(frame, text)])
   const focusMutation = timeline.ansiFrame.replace('Snapshot long', '\x1b[7mSnapshot long\x1b[27m')
   const asks = frames.get('asks-empty-110.txt')

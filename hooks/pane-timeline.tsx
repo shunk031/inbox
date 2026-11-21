@@ -1,6 +1,7 @@
 import type { PaneBase, PaneHandlers, PaneSvg } from './pane-context'
 import { cellWidth, cutToCells } from './text'
 import { moveTimelineSelection, timelineBar, timelinePage, toggleTimelineBranch } from './timeline-page'
+import { timelineRowBarWidth } from './layout'
 import type { TimelinePage } from './timeline-page'
 import { DESKTOP_CELL_PT, DESKTOP_LINE_PT } from './pane-sizes'
 import { timelineBarSvg } from './desktop-svg'
@@ -83,6 +84,8 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
         </Text>
       )
     }
+    const rowBar = (row: TimelinePage['rows'][number], width: number) =>
+      bar(timelineBar(row.progressSegments, width), width, `timeline-row-bar-${row.task.id}`, `${row.percent} complete`)
     const timelineView = (
       <Box flexDirection="column">
         <Box flexDirection="column">
@@ -108,12 +111,10 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
           const selection = selected ? page.selected : null
           const rowLead = `${selected ? '> ' : '  '}${row.prefix}${row.mark} `
           const suffix = row.isCompletedFold ? '' : ` · ${row.statusLabel} · ${row.percent}`
-          const barWidth = row.isCompletedFold
-            ? 0
-            : Math.max(1, Math.min(10, context.bodyColumns - cellWidth(rowLead) - 14 - 2 - cellWidth(suffix)))
+          const barWidth = row.isCompletedFold ? 0 : timelineRowBarWidth(context.bodyColumns)
           const titleCells = Math.max(
             1,
-            context.bodyColumns - cellWidth(rowLead) - (row.isCompletedFold ? 0 : 2 + barWidth + cellWidth(suffix)),
+            context.bodyColumns - cellWidth(rowLead) - cellWidth(suffix) - (barWidth ? 12 : 0),
           )
           const title =
             cellWidth(row.task.title) > titleCells
@@ -131,13 +132,8 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
                 />
                 {!row.isCompletedFold ? (
                   <Box flexDirection="row" flexShrink={0}>
-                    <Text color={pal.muted}>{'  '}</Text>
-                    {bar(
-                      timelineBar(row.progressSegments, barWidth),
-                      barWidth,
-                      `timeline-row-bar-${row.task.id}`,
-                      `${row.percent} complete`,
-                    )}
+                    {barWidth ? <Text color={pal.muted}>{'  '}</Text> : null}
+                    {barWidth ? rowBar(row, barWidth) : null}
                     <Text color={pal.muted}>{` · ${row.statusLabel} · ${row.percent}`}</Text>
                   </Box>
                 ) : null}
@@ -207,6 +203,7 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
   const chip = (label: string, tone: string, key?: string) => timelineChip({ Box, Text, pal }, label, tone, key)
   const bar = (parts: ReturnType<typeof timelineBar>) =>
     parts.map(part => <Text color={color(part.tone)}>{part.mark.repeat(part.count)}</Text>)
+  const rowBar = (row: TimelinePage['rows'][number], width: number) => bar(timelineBar(row.progressSegments, width))
 
   const progressCard = (
     <Box width={paneWidth} flexDirection="column" borderStyle="single" paddingX={1}>
@@ -319,10 +316,8 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
             const chipLead = terminalTreeLead(row, chipLeadWidth)
             const warningLead = terminalTreeLead(row, titleLeadWidth)
             const percent = row.isCompletedFold ? '' : row.percent.padStart(7)
-            const barWidth = row.isCompletedFold
-              ? 0
-              : Math.max(1, Math.min(10, bodyColumns - 2 - titleLeadWidth - 20 - 2 - 1 - cellWidth(percent)))
-            const progressCells = row.isCompletedFold ? 0 : 3 + barWidth + cellWidth(percent)
+            const barWidth = row.isCompletedFold ? 0 : timelineRowBarWidth(bodyColumns)
+            const progressCells = row.isCompletedFold ? 0 : cellWidth(percent) + (barWidth ? 13 : 2)
             const titleCells = Math.max(1, bodyColumns - 2 - cellWidth(rowLead) - progressCells)
             const title =
               cellWidth(row.task.title) > titleCells
@@ -370,10 +365,8 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
                       <Box key={`timeline-row-bar-gap-${row.task.id}`} width={2} flexShrink={0}>
                         <Text>{'  '}</Text>
                       </Box>
-                      <Box key={`timeline-row-bar-${row.task.id}`} width={barWidth} flexDirection="row" flexShrink={0}>
-                        {bar(timelineBar(row.progressSegments, barWidth))}
-                      </Box>
-                      <Text color={color(row.tone)}>{` ${percent}`}</Text>
+                      {barWidth ? rowBar(row, barWidth) : null}
+                      <Text color={color(row.tone)}>{`${barWidth ? ' ' : ''}${percent}`}</Text>
                     </Box>
                   ) : null}
                 </Box>

@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
+import { cellWidth } from '../hooks/text.ts'
 import { checkTreeText } from './check-tree.mjs'
 import { checkChipBoxes, checkFrame, checkLeftEdges, stripChipRightPadding } from './render-snapshots-checks.mjs'
 import {
@@ -55,12 +56,16 @@ test('store key inventory follows CLAUDE_CONFIG_DIR and treats missing store as 
 })
 
 test('registry covers every remaining terminal view, scenario, and width once', () => {
-  assert.equal(registry.length, 29)
+  assert.equal(registry.length, 31)
   assert.equal(new Set(registry.map(entry => entry.file)).size, registry.length)
   assert.deepEqual(new Set(registry.map(entry => entry.width)), new Set([87, 110, 200]))
   assert.deepEqual(
     registry.filter(entry => entry.fixture === 'fold-done').map(entry => entry.width),
     [200, 110],
+  )
+  assert.deepEqual(
+    registry.filter(entry => entry.view === 'asks').map(({ scenario, width }) => `${scenario}:${width}`),
+    'empty:200 empty:110 busy:200 busy:110 busy:87 empty:87'.split(' '),
   )
   assert.deepEqual(
     registry
@@ -200,11 +205,13 @@ test('pane crop preserves leading and interior spaces while removing the dock di
 })
 
 test('pane crop handles the 87-column single-pane border', () => {
-  const capture = Array.from({ length: 14 }, (_, index) => `│${(index === 5 ? 'Asks' : '').padEnd(85)}│`).join('\n')
-  const cropped = cropInboxPane(capture, 87)
+  const frame = readFileSync(new URL('../tests/render-snapshots/snapshots/asks-busy-87.txt', import.meta.url), 'utf8')
+    .trimEnd()
+    .split('\n')
+  const cropped = cropInboxPane(frame.map(row => `│${row}${' '.repeat(85 - cellWidth(row))}│`).join('\n'), 87)
   assert.equal(cropped.paneWidth, 85)
   assert.equal(cropped.dividerColumn, 0)
-  assert.equal(cropped.text.split('\n')[5], 'Asks')
+  assert.equal(cropped.text, frame.join('\n'))
 })
 
 test('ANSI stripping removes CSI and OSC control sequences', () => {
@@ -221,7 +228,7 @@ test('cell checks report a shifted Timeline chip with its fixture column', () =>
   const frame = lines.join('\n')
   const failures = checkFrame(entry, frame, 70)
   assert.ok(failures.some(line => line.includes('chip does not start on its title column')))
-  assert.ok(failures.some(line => line.includes('bar and percentage must share the title line')))
+  assert.ok(failures.some(line => line.includes('row cannot be classified')))
 })
 
 test('chip box checks require one padded cell on each side and space before the pane edge', () => {

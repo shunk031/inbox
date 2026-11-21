@@ -327,8 +327,8 @@ test('terminal Timeline keeps Japanese titles, row metadata and detail guides at
   expect(title?.text).not.toContain(longTitle)
   expect(cellWidth(title?.text ?? '')).toBeGreaterThanOrEqual(19)
   expect(cellWidth(title?.text ?? '')).toBeLessThanOrEqual(36)
-  const rootBar = await pane.find({ key: 'timeline-row-bar-long-root' })
-  expect(rootBar, 'the row bar remains visible on its title line').toBeTruthy()
+  const rootProgress = await pane.find({ key: 'timeline-row-progress-long-root' })
+  expect(rootProgress?.text.match(/[━─]+/u), 'narrow rows omit the bar').toBeNull()
   const lines = (await pane.findAll({ type: 'Text' })).map(line => line.text)
   expect(
     lines.some(line => line.startsWith('> ○ ')),
@@ -399,7 +399,7 @@ test('terminal Timeline aligns percentages, strips rows, and separates only top-
     status: 'dropped',
   } as never)
 
-  const pane = await $.ui.mount(PANE)
+  const pane = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 110 } })
   await pane.press({ key: 'tab-key-timeline' })
   await clock.settle()
 
@@ -422,7 +422,9 @@ test('terminal Timeline aligns percentages, strips rows, and separates only top-
   expect(percentages).toEqual(['   0.00%', '  40.00%', ' 100.00%'])
   expect(percentages.map(text => cellWidth(text ?? ''))).toEqual([8, 8, 8])
   const bars = await Promise.all(
-    ['zero', 'forty', 'forty-done'].map(async id => (await pane.find({ key: `timeline-row-bar-${id}` }))?.text ?? ''),
+    ['zero', 'forty', 'forty-done'].map(
+      async id => (await pane.find({ key: `timeline-row-progress-${id}` }))?.text.match(/[━─]+/u)?.[0] ?? '',
+    ),
   )
   expect(bars.map(text => cellWidth(text))).toEqual([10, 10, 10])
   const text = (await pane.findAll({ type: 'Text' })).map(node => node.text)
