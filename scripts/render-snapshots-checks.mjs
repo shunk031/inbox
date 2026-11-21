@@ -13,6 +13,19 @@ export const marker = entry =>
   })[entry.view]
 
 export const pageMarker = (frame, text) => frame.replace(/\s+/gu, ' ').includes(text)
+const TERMINAL_ROWS = [
+  /^(?:⚠ Remote managed settings failed|policy applied|for details|runs first|event on past it|Claude Code v\d+(?:\.\d+)+)$/u,
+  /^(?:(?:Opus|Sonnet|Haiku) [\d.]+(?: \([^)]*\))? · API Usage Billing|▝▝|❯|⏺ inbox:|⎿ +inbox:|◐ medium · \/effort|⏸ manual mode on · gh auth login for PR status · ← for agents|Nothing needed +\[ Open inbox \])$/u,
+  /^🤖 [^|]+ \| 💰\$[\d,.]+ session \/ \$[\d,.]+ today \/ \$[\d,.]+ block \([^)]*\) \| 🔥\$[\d,.]+\/hr \| 🧠[\d,]+ \(\d+%\) \| Account: [^|]+ \| Weekly: [\d.]+% \| Weekly Fable: [\d.]+%$/u,
+  /^⬇️? +In: [\d,.]+[kM]? \| ⬆️? Out: [\d,.]+[kM]? \| 💾 Cached: [\d,.]+[kM]? \| 📊 Total: [\d,.]+[kM]? \| 🧠 Ctx: [\d,.]+[kM]? \| 📈 Ctx Used: [\d.]+% \| 👤 Ctx\(u\) Used: [\d.]+%$/u,
+  /^🟢 GenAI GW \$[\d.]+\/10m · 📅 \d+% \([^)]*\) · ⏳ [^·]+ · 👤 \$[\d.]+\/10m · \d+% \([^)]*\)$/u,
+  /^⏵⏵ [a-z -]+ on · \d+ shells? · ← \d+ agents?$/u,
+]
+export const isTerminalChrome = (line, width) =>
+  !/[│├└]/u.test(line) &&
+  ((cellWidth(line) === width && /^─+$/u.test(line)) ||
+    /^(?:╭─+╮|╰─+╯)$/u.test(line.trim()) ||
+    TERMINAL_ROWS.some(pattern => pattern.test(line.trim())))
 const taskMarkers = ['Snapshot root', '折り返し用', 'Snapshot long', '深い階層']
 const inverseVideo = line => {
   let inverse = false

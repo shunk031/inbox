@@ -70,15 +70,20 @@ const focusedHelp = frame => {
   }
   return inverse
 }
-async function focusHelp(socket, session) {
+async function focusHelp(socket, session, onTimeout) {
   let frame = tmux(socket, 'capture-pane', '-e', '-p', '-t', `${session}:0.0`)
   const end = Date.now() + 20_000
   for (let i = 0; i < 100 && Date.now() < end; i++) {
     const before = frame
     send(socket, session, 'Tab')
-    frame = (await wait(socket, session, 0, next => next !== before, 'Help navigation', 'ansi', end - Date.now())).text
+    frame = (
+      await wait(socket, session, 0, next => next !== before, 'Help navigation', 'ansi', end - Date.now(), {
+        onTimeout,
+      })
+    ).text
     if (focusedHelp(frame)) return
   }
+  onTimeout?.(frame, 'Help focus')
   throw Error('could not focus the existing Help footer button')
 }
 export function ready(entry, frame) {
@@ -95,12 +100,25 @@ export function ready(entry, frame) {
     )
   return has(marker(entry))
 }
-async function wait(socket, session, width, predicate, label, mode = 'pane', timeout = 45_000) {
+export async function wait(
+  socket,
+  session,
+  width,
+  predicate,
+  label,
+  mode = 'pane',
+  timeout = 45_000,
+  { onTimeout, captureFrame } = {},
+) {
   const end = Date.now() + timeout
   let last = ''
   let previous
+  let lastCapture
   while (Date.now() < end) {
-    const capture = tmux(socket, 'capture-pane', '-N', '-e', '-p', '-t', `${session}:0.0`)
+    const capture = captureFrame
+      ? captureFrame()
+      : tmux(socket, 'capture-pane', '-N', '-e', '-p', '-t', `${session}:0.0`)
+    lastCapture = capture
     const crop =
       mode === 'pane' ? cropInboxPane(capture, width) : { text: mode === 'raw' ? stripAnsi(capture) : capture }
     last = crop?.text ?? stripAnsi(capture).slice(-1600)
@@ -108,15 +126,23 @@ async function wait(socket, session, width, predicate, label, mode = 'pane', tim
     previous = capture
     await pause(125)
   }
+  onTimeout?.(lastCapture, label)
   throw Error(`timed out waiting for ${label}${last ? `\nLast frame:\n${last}` : ''}`)
 }
-async function press(socket, session, width, key, predicate, label, timeout = 15_000) {
+export function saveRawTimeoutFrame(directory, name, frame) {
+  const file = path.join(directory, name.replace(/\.txt$/u, '.timeout.ansi'))
+  writeFileSync(file, frame)
+  return file
+}
+async function press(socket, session, width, key, predicate, label, timeout = 15_000, onTimeout) {
   const end = Date.now() + timeout
   let last
   while (Date.now() < end) {
     send(socket, session, key)
     try {
-      return await wait(socket, session, width, predicate, label, 'pane', Math.min(1_500, end - Date.now()))
+      return await wait(socket, session, width, predicate, label, 'pane', Math.min(1_500, end - Date.now()), {
+        onTimeout,
+      })
     } catch (error) {
       if (!String(error).startsWith('Error: timed out waiting for')) throw error
       last = error
@@ -174,7 +200,7 @@ export function isolate(root, home, config, env = process.env) {
   if (![h, c].every(value => value.startsWith(temp)))
     throw Error('refusing isolated paths outside the runner temp directory')
 }
-export async function capture(entry, pluginDir, root, socket, claude) {
+export async function capture(entry, pluginDir, root, socket, claude, { onTimeout } = {}) {
   const run = path.join(root, entry.file.replace(/\.txt$/u, ''))
   const home = path.join(run, 'home')
   const config = path.join(run, 'config')
@@ -224,6 +250,7 @@ export async function capture(entry, pluginDir, root, socket, claude) {
       'Claude prompt',
       'raw',
       45_000,
+      { onTimeout },
     )
     send(socket, session, '/inbox', true)
     send(socket, session, 'Enter')
@@ -242,6 +269,9 @@ export async function capture(entry, pluginDir, root, socket, claude) {
       terminalWidth,
       frame => pageMarker(frame, initial),
       `initial inbox pane for ${entry.fixture}`,
+      'pane',
+      45_000,
+      { onTimeout },
     )
     const timelineDetail = frame =>
       pageMarker(
@@ -266,9 +296,18 @@ export async function capture(entry, pluginDir, root, socket, claude) {
       'asks-detail': [['v', frame => ready(entry, frame)]],
     }
     for (const [key, predicate] of steps[entry.view] ?? [])
-      await press(socket, session, terminalWidth, key, predicate, `${entry.view} ${entry.scenario} ${key}`)
+      await press(
+        socket,
+        session,
+        terminalWidth,
+        key,
+        predicate,
+        `${entry.view} ${entry.scenario} ${key}`,
+        15_000,
+        onTimeout,
+      )
     if (entry.view === 'help') {
-      await focusHelp(socket, session)
+      await focusHelp(socket, session, onTimeout)
       send(socket, session, 'Enter')
     }
     const crop = await wait(
@@ -277,10 +316,13 @@ export async function capture(entry, pluginDir, root, socket, claude) {
       terminalWidth,
       frame => ready(entry, frame),
       `${entry.view} ${entry.scenario}`,
+      'pane',
+      45_000,
+      { onTimeout },
     )
     const ansiFrame = crop.capture
     process.stdout.write(`CAPTURE ${entry.file}\n`)
-    return { entry, frame: crop.text, ansiFrame, paneWidth: crop.paneWidth }
+    return { entry, frame: crop.text, ansiFrame, paneWidth: crop.paneWidth, dividerColumn: crop.dividerColumn }
   } finally {
     try {
       tmux(socket, 'kill-session', '-t', session)
