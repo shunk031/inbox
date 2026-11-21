@@ -21,6 +21,7 @@ import { statusPage } from './status-page'
 import { applyTaskOwnerFacts, taskOwnerKey } from './task-facts'
 import { timelineData } from './timeline-page'
 import type { TimelineData } from './timeline-page'
+import type { LocalAgent } from './herdr'
 import type { InboxView } from './view'
 import type { StatusPage } from './status-page'
 import type { Holds } from './timing'
@@ -128,6 +129,7 @@ export function sessionView(
   holds: Holds = NO_HOLDS,
   notes: Record<string, RowNote> = {},
   timelineTaskTree: TaskTree = s.taskTree,
+  localAgents: readonly LocalAgent[] = [],
 ): SessionView {
   const l = s.ledger
   const lastActions = withoutStalePending(s.lastActions, now)
@@ -175,6 +177,8 @@ export function sessionView(
       taskTimelineWarnings(s, timelineTaskTree, now),
       now,
       s.taskStatusMismatches,
+      ownerFacts,
+      localAgents,
     ),
     taskProgressSegments: taskOwnerView.segments,
     taskStalledSince: taskOwnerView.stalledSince,

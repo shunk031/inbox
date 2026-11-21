@@ -10,6 +10,7 @@ import { sessionView, type SessionView } from './session-view'
 import type { Holds } from './timing'
 import { taskReminderSession } from './task-reminder'
 import { taskTreeFromStatus } from './task-tree'
+import type { LocalAgent } from './herdr'
 
 /** The drawn conversation's session. `revision` counts its writes, so a write computed from an older one is retried. */
 export type ModSession = Session & { revision: number }
@@ -87,6 +88,7 @@ export function drawnState(
   now: number,
   holds: Holds,
   settleWindowMs: number,
+  localAgents: readonly LocalAgent[] = [],
 ): DemoCopy & { view: SessionView; isDemo: boolean; showsDemoNotices: boolean; isUnread: boolean; now: number } {
   const { ledger, stop, prViews, lastActions, presence } = session
   const turns = { turnsStarted: presence.turnsStarted, turnsApplied: presence.turnsApplied }
@@ -107,6 +109,7 @@ export function drawnState(
     holds,
     drawn.notes,
     demo?.timelineTaskTree,
+    demo?.localAgents ?? localAgents,
   )
 
   return {

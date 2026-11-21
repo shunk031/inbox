@@ -37,6 +37,9 @@ const tasks = [
   ],
   ['snapshot-deep', 'snapshot-long', '深い階層の待機中タスク', 'waits-on-other', 'A nested waiting task.'],
 ].map(fields => task(...fields))
+const timelineTasks = tasks.map(value =>
+  value.id === 'snapshot-root' ? { ...value, links: { owner: { machine: 'local', agent: 'snapshot-worker' } } } : value,
+)
 const ledger = () => ({
   ...Object.fromEntries(
     'items unrecordedDecisions closed findings closedFindings untrackedWork prs'.split(' ').map(key => [key, []]),
@@ -138,7 +141,7 @@ export function fixtureState(fixture) {
       nextId: fixture === 'asks-busy' ? 3 : 2,
     })
     const finished = task('snapshot-finished-root', null, 'Snapshot finished root', 'done')
-    state.taskTree = fixture === 'fold-done' ? [...tasks, finished] : tasks
+    state.taskTree = fixture === 'fold-done' ? [...timelineTasks, finished] : timelineTasks
     state.prViews = { ...state.prViews, views: { [pr.ref]: pr }, isGhMissing: false }
   } else if (fixture.startsWith('timeline-detail-layout')) {
     const detail = '狭い画面でも左端と折り返し位置を確認する中立的な説明です。'.repeat(3)
@@ -152,7 +155,7 @@ export function fixtureState(fixture) {
     state.taskTree = [item]
   } else if (fixture === 'detail-empty' || fixture === 'detail-busy') {
     const empty = fixture === 'detail-empty'
-    state.taskTree = empty ? [task('snapshot-detail-empty', null, 'Snapshot detail empty', 'working')] : tasks
+    state.taskTree = empty ? [task('snapshot-detail-empty', null, 'Snapshot detail empty', 'working')] : timelineTasks
     data.items = [reportQuestion(empty)]
   } else if (fixture !== 'base-empty') throw Error(`Unknown fixture: ${fixture}`)
   return shift(state, Date.now() - NOW)

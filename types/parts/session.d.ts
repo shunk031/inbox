@@ -101,6 +101,8 @@ export type DemoCopy = {
   notes: Record<string, RowNote>
   /** Sample task tree shown only by Timeline; Status keeps its own sample rows. */
   timelineTaskTree: TaskTree
+  /** Sample local Herdr agents shown only by Timeline. */
+  localAgents?: { machine: string; name: string; status: 'idle' | 'working' | 'blocked' | 'done' | 'unknown' }[]
   turns: Turns
 }
 

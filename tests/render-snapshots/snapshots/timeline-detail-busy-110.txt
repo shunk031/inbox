@@ -5,6 +5,8 @@
 
  b: ‹ Back Snapshot …     In progress
 
+ Owner local/snapshot-worker · working
+
  ┌─────────────────┐ ┌───────────────┐
  │ Progress        │ │ Weight        │
  │ 50.00%          │ │ 1             │
@@ -24,8 +26,6 @@
 
  History
  1m · fixture · Task created
-
-
 
 
 

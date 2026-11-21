@@ -3,12 +3,15 @@ import type {
   TaskFactWarning,
   TaskHistoryEvent,
   TaskNode,
+  TaskOwnerFacts,
   TaskProgressSegments,
   TaskStatusMismatch,
   TaskTree,
 } from '../types'
 import { prMarkId } from './pr-rows'
 import { shortAgo } from './rows'
+import type { LocalAgent } from './herdr'
+import { taskOwnerKey } from './task-facts'
 import { weightedTaskProgress, weightedTaskProgressSegments } from './task-tree'
 import type { PrAction } from './pr-press'
 import type { ActionView } from './rows'
@@ -48,6 +51,8 @@ type TimelineNode = {
   hasVisibleChildren: boolean
   progress: number
   percent: string
+  leafProgress: string | null
+  ownerText: string | null
   progressBar: TimelineBarPart[]
   completedUnits: { done: number; total: number }
   status: TimelineState
@@ -196,6 +201,23 @@ function completedLeaves(tree: TaskTree, rootIds?: string | readonly string[]): 
   return count
 }
 
+function ownerText(
+  task: TaskNode,
+  ownerFacts: TaskOwnerFacts,
+  localAgents: readonly LocalAgent[],
+  now: number,
+): string | null {
+  const owner = task.links?.owner
+  if (!owner) return null
+  const fact = ownerFacts[taskOwnerKey(owner)]
+  const live = localAgents.find(agent => agent.machine === owner.machine && agent.name === owner.agent)
+  const state = live?.status ?? fact?.state
+  if (!state) return `Owner ${owner.machine}/${owner.agent}`
+  const label = state === 'done' ? 'Turn finished' : state
+  const age = live || !fact ? '' : ` ${shortAgo(Math.max(0, now - fact.since))}`
+  return `Owner ${owner.machine}/${owner.agent} · ${label}${age}`
+}
+
 function progressStatus(segments: TaskProgressSegments): TimelineState {
   if (segments.stalled > 0) return 'stalled'
   if (segments.working > 0 || (segments.done > 0 && segments.done < segments.total)) return 'working'
@@ -211,6 +233,8 @@ export function timelineData(
   warnings: readonly TaskFactWarning[],
   now: number,
   taskStatusMismatches: readonly TaskStatusMismatch[] = [],
+  ownerFacts: TaskOwnerFacts = {},
+  localAgents: readonly LocalAgent[] = [],
 ): TimelineData {
   const children = new Map<string | null, TaskNode[]>()
   for (const task of tree) children.set(task.parentId, [...(children.get(task.parentId) ?? []), task])
@@ -240,6 +264,11 @@ export function timelineData(
         hasChildren: childrenOfTask.length > 0,
         progress: progress.value,
         percent: progress.label,
+        leafProgress:
+          childrenOfTask.length > 0 && completedUnits.total > 0
+            ? `${completedUnits.done}/${completedUnits.total} leaf tasks done`
+            : null,
+        ownerText: ownerText(task, ownerFacts, localAgents, now),
         progressBar: timelineBar(weightedTaskProgressSegments(tree, stalled, task.id), 10),
         completedUnits,
         status,
@@ -354,6 +383,8 @@ export function timelinePage(
         hasChildren: false,
         progress: 100,
         percent: '100.00%',
+        leafProgress: null,
+        ownerText: null,
         progressBar: [],
         completedUnits: { done: completedRootIds.length, total: completedRootIds.length },
         status: 'done',

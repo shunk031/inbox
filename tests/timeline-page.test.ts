@@ -87,6 +87,8 @@ test('Timeline summarizes weighted completion and counts completed leaf tasks', 
     elapsed: '1m',
   })
   expect(page.rows[0]?.percent).toBe('21.43%')
+  expect(page.rows[0]?.leafProgress).toBe('2/5 leaf tasks done')
+  expect(page.rows.find(row => row.task.id === 'done-a')?.leafProgress).toBeNull()
   expect(page.rows.find(row => row.task.id === 'done-a')).toMatchObject({
     percent: '100.00%',
     statusLabel: 'Completed',
@@ -97,6 +99,68 @@ test('Timeline summarizes weighted completion and counts completed leaf tasks', 
     tone: 'error',
     mark: '✕',
   })
+})
+
+test('Timeline owner text prefers a matching live Herdr status and falls back to the saved owner fact', () => {
+  const agents = ['worker', 'saved-worker', 'finished-worker']
+  const fact = { state: 'idle' as const, since: now - 60_000 }
+  const page = timelineData(
+    agents.map(agent => task(agent, { links: { owner: { machine: 'local', agent } } })),
+    segments,
+    {},
+    [],
+    now,
+    [],
+    Object.fromEntries(agents.map(agent => [JSON.stringify(['local', agent]), fact])),
+    [
+      { machine: 'local', name: 'worker', status: 'working' },
+      { machine: 'local', name: 'finished-worker', status: 'done' },
+    ],
+  )
+
+  expect(page.rows.map(row => row.ownerText)).toEqual([
+    'Owner local/worker · working',
+    'Owner local/saved-worker · idle 1m',
+    'Owner local/finished-worker · Turn finished',
+  ])
+})
+
+test('Timeline reports leaf task counts for parents and no count for leaves', () => {
+  const tree = [
+    task('parent', { status: 'queued' }),
+    task('child-a', { parentId: 'parent', status: 'done' }),
+    task('child-b', { parentId: 'parent', status: 'done' }),
+  ]
+  const page = timelineData(tree, segments, {}, [], now)
+
+  expect(page.rows.map(row => [row.task.id, row.statusLabel, row.leafProgress])).toEqual([
+    ['parent', 'Not started', '2/2 leaf tasks done'],
+    ['child-a', 'Completed', null],
+    ['child-b', 'Completed', null],
+  ])
+})
+
+test('Timeline counts only leaf tasks under a parent', () => {
+  const tree: TaskTree = [
+    task('parent', { status: 'queued' }),
+    task('done-leaf', { parentId: 'parent', status: 'done' }),
+    task('working-child', { parentId: 'parent', status: 'working' }),
+    task('open-leaf', { parentId: 'working-child', status: 'queued' }),
+  ]
+  const page = timelineData(tree, segments, {}, [], now)
+
+  expect(page.progressCard).toMatchObject({ leavesDone: 1, leavesTotal: 2 })
+  expect(page.rows[0]?.leafProgress).toBe('1/2 leaf tasks done')
+})
+
+test('Timeline shows no leaf count for a parent with only dropped children', () => {
+  const tree: TaskTree = [
+    task('parent', { status: 'dropped' }),
+    task('dropped-child', { parentId: 'parent', status: 'dropped' }),
+  ]
+  const page = timelineData(tree, segments, {}, [], now)
+
+  expect(page.rows[0]?.leafProgress).toBeNull()
 })
 
 test('Timeline counts open tasks without counting completed or dropped tasks', () => {

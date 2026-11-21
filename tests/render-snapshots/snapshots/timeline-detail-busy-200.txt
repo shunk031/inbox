@@ -5,6 +5,8 @@
 
  b: ‹ Back Snapshot root 日本語のレイアウト確認 日本語のレイアウト確認…     In progress
 
+ Owner local/snapshot-worker · working
+
  ┌─────────────────────────┐ ┌──────────────────────┐ ┌────────────────────────────────┐
  │ Progress                │ │ Weight               │ │ Completed units                │
  │ 50.00%                  │ │ 1                    │ │ 1 / 2                          │
@@ -18,8 +20,6 @@
 
  History
  1m · fixture · Task created
-
-
 
 
 

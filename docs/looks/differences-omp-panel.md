@@ -4,6 +4,7 @@ Part of [the look map](../looks.md#omp).
 
 | Topic | omp | Why | Where |
 | --- | --- | --- | --- |
+| `timeline-live-owner-status` | Keeps its sampled owner facts and percentage rows and does not poll the local Herdr agent list yet. | The terminal look ships first; omp's live status view follows later. | `hooks/timeline-page.ts`, `hooks/mod-local-agents.ts` |
 | `timeline-completed-fold` | Finished roots stay inline. | The terminal look ships first; the other looks follow later. | `hooks/timeline-page.ts`, `omp/src/panel-entries.ts` |
 | Timeline titles | A long title wraps under its tree mark while the bar, percent, and status chip keep their full cells. Wrapped task detail starts under its tree guide. | The panel draws ANSI text at a known cell width, so it can wrap titles before placing the fixed metadata. | `omp/src/panel-draw.ts` |
 | Timeline row bands | Alternate task rows keep the panel's existing fill. | The terminal follows Asks, Finds and PRs, which have no bands; omp retains its own Timeline row treatment. | `omp/src/panel-draw.ts:timelineLine` |
