@@ -67,6 +67,23 @@ test('Stop blocks an unfenced question when no record or close ran in the turn',
   })
 })
 
+test('Stop treats CR, LF and CRLF as line endings for the question line', async ($, on) => {
+  mock.clock(on, { now: 1_000_000 })
+  world($, on, [])
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  for (const [index, message] of [
+    'Status: ready\r❓ Should we deploy?',
+    'Status: ready\n❓ Should we deploy?',
+    'Status: ready\r\n❓ Should we deploy?',
+  ].entries()) {
+    await $.turn.start({ text: 'go', turnId: `line-ending-${index}` })
+    const blocked = await $.classic.Stop({ last_assistant_message: message } as never)
+    expect(blocked).toMatchObject({
+      block: 'Record this question with the inbox record tool and close the superseded item.',
+    })
+  }
+})
+
 test('Stop allows a question after the inbox record tool runs', async ($, on) => {
   mock.clock(on, { now: 1_000_000 })
   world($, on, [])

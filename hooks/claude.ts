@@ -26,7 +26,7 @@ export function inboxToolOf(tool: string) {
 
 function hasUnfencedQuestionLine(text: string): boolean {
   let fence: { marker: string; length: number } | null = null
-  for (const line of text.split(/\r?\n/)) {
+  for (const line of text.split(/\r\n|\r|\n/)) {
     if (fence) {
       const close = /^ {0,3}(`+|~+)[ \t]*$/.exec(line)
       const closeMarker = close?.[1] ?? ''
