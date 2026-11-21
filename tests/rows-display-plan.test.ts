@@ -52,7 +52,7 @@ test('missing effect is one muted suffix, and the label shrinks first when it do
 })
 test('question context does not change screenText or inbox text sent to the model', () => {
   const modelText = (context?: string) => {
-    const ledger = { ...EMPTY, turn: 1, items: [{ ...item, ...(context ? { context } : {}) }] }
+    const ledger = { ...EMPTY, turn: 1, items: [{ ...item, context }] }
     return `${screenText(CLAUDE_CODE, true, { label: 'Asks', isPage: false })}\n${inboxText(CLAUDE_CODE, ledger, true)}`
   }
   const expected =
