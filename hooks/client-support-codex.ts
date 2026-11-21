@@ -197,4 +197,8 @@ export const CODEX_SUPPORT: ClientSupport['support'] = {
     reason:
       'Codex keeps its sampled owner facts and does not poll the local Herdr agent list yet; the terminal look ships first.',
   },
+  'stop-question-guard': {
+    kind: 'unsupported',
+    reason: 'This guard runs in the Claude Code mod Stop hook; Codex uses a separate hook host.',
+  },
 }

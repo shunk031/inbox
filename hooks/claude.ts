@@ -11,6 +11,58 @@ const NL = '\n'
 /** Claude Code's AskUserQuestion result, from 2.1.318 to 2.1.323, when it holds no answer and no reply. */
 const UNANSWERED_DIALOG = 'The user did not answer the questions.'
 
+export const RECORD_TOOL = 'mcp__inbox__record'
+export const CLOSE_TOOL = 'mcp__inbox__close'
+export const ORDER_TOOL = 'mcp__inbox__order_prs'
+export const TASKS_TOOL = 'mcp__inbox__tasks'
+
+export function inboxToolOf(tool: string) {
+  if (tool === RECORD_TOOL) return 'record'
+  if (tool === CLOSE_TOOL) return 'close'
+  if (tool === ORDER_TOOL) return 'order_prs'
+  if (tool === TASKS_TOOL) return 'tasks'
+  return null
+}
+
+function hasUnfencedQuestionLine(text: string): boolean {
+  let fence: { marker: string; length: number } | null = null
+  for (const line of text.split(/\r\n|\r|\n/)) {
+    if (fence) {
+      const close = /^ {0,3}(`+|~+)[ \t]*$/.exec(line)
+      const closeMarker = close?.[1] ?? ''
+      if (closeMarker && closeMarker.slice(0, 1) === fence.marker && closeMarker.length >= fence.length) fence = null
+      continue
+    }
+    if (line.startsWith('❓')) return true
+    const open = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line)
+    const openMarker = open?.[1] ?? ''
+    const info = open?.[2] ?? ''
+    if (!openMarker || (openMarker.slice(0, 1) === '`' && info.includes('`'))) continue
+    fence = { marker: openMarker.slice(0, 1), length: openMarker.length }
+  }
+  return false
+}
+
+export function questionStopResult<T>(
+  result: T,
+  input: { last_assistant_message?: string; stop_hook_active?: boolean },
+  isOn: boolean,
+  inboxRecordOrCloseCalled: boolean,
+): T | (T & { block: string }) {
+  if (
+    !isOn ||
+    input.stop_hook_active ||
+    inboxRecordOrCloseCalled ||
+    !hasUnfencedQuestionLine(input.last_assistant_message ?? '')
+  )
+    return result
+
+  return {
+    ...result,
+    block: 'Record this question with the inbox record tool and close the superseded item.',
+  }
+}
+
 export function dialogOutcome(ran: { text?: string; isError?: true; deny?: string; result?: unknown }): DialogOutcome {
   if (ran.isError || typeof ran.deny === 'string' || ran.text?.trim() === UNANSWERED_DIALOG)
     return { kind: 'dismissed' }

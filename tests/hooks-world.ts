@@ -498,6 +498,7 @@ export function world($: Engine, on: On, prompts: string[], vars: Record<string,
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('turn.start', (_$, e) => ({ turnId: e.turnId }))
   on('classic.StopFailure', () => ({}))
+  on('classic.Stop', () => ({}))
   on('classic.PermissionRequest', () => ({}))
   on('classic.PostToolUse', () => ({}))
   on('classic.PostToolUseFailure', () => ({}))

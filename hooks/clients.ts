@@ -95,6 +95,7 @@ export type FeatureId =
   | 'timeline'
   | 'timeline-completed-fold'
   | 'timeline-live-owner-status'
+  | 'stop-question-guard'
 
 type FeatureSupport = { kind: 'full' } | { kind: 'different' | 'unsupported'; reason: string }
 export type ClientSupport = { support: Record<FeatureId, FeatureSupport> }

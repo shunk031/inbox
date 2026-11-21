@@ -11645,7 +11645,8 @@ var CLAUDE_CODE_SUPPORT = {
   "task-status-mismatch": { kind: "full" },
   timeline: { kind: "full" },
   "timeline-completed-fold": { kind: "full" },
-  "timeline-live-owner-status": { kind: "full" }
+  "timeline-live-owner-status": { kind: "full" },
+  "stop-question-guard": { kind: "full" }
 };
 
 // ../hooks/client-support-codex.ts
@@ -11822,6 +11823,10 @@ var CODEX_SUPPORT = {
   "timeline-live-owner-status": {
     kind: "different",
     reason: "Codex keeps its sampled owner facts and does not poll the local Herdr agent list yet; the terminal look ships first."
+  },
+  "stop-question-guard": {
+    kind: "unsupported",
+    reason: "This guard runs in the Claude Code mod Stop hook; Codex uses a separate hook host."
   }
 };
 
@@ -11960,6 +11965,10 @@ var OMP_SUPPORT = {
   "timeline-live-owner-status": {
     kind: "different",
     reason: "omp keeps its sampled owner facts and does not poll the local Herdr agent list yet; the terminal look ships first."
+  },
+  "stop-question-guard": {
+    kind: "unsupported",
+    reason: "This guard runs in the Claude Code mod Stop hook; omp uses a separate hook host."
   }
 };
 

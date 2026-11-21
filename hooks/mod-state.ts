@@ -54,6 +54,7 @@ class SessionState {
   /** Why the last conversation ended, until the next conversation loads. */
   endReason: string | null = null
   stepTexts: string[] = []
+  inboxRecordOrCloseCalled = false
   /** True once an API error has set this turn's stop. */
   hasStopFromError = false
   turnBox: string | null = null
@@ -73,6 +74,7 @@ export const sessionState = new SessionState()
 
 export function resetTurn() {
   sessionState.stepTexts = []
+  sessionState.inboxRecordOrCloseCalled = false
   sessionState.turnBox = null
   sessionState.isDialogDismissed = false
 }

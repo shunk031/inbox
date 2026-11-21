@@ -94,11 +94,17 @@ import { systemText } from './ledger-prompt'
 import { readInboxInstructions } from './mod-instructions'
 import {
   commandRowLine,
+  CLOSE_TOOL,
   dialogOutcome,
+  inboxToolOf,
+  ORDER_TOOL,
+  RECORD_TOOL,
   resetTime,
   readCommandRow,
+  questionStopResult,
   stopKindOf,
   stopOfMessage,
+  TASKS_TOOL,
   transcriptText,
   TURN_BOX_TOOL,
   turnBoxText,
@@ -334,10 +340,6 @@ const IS_HELP_SHOWN = atom({ plugin: 'inbox', key: 'isHelpShown' } as const, fal
 const DEMO = atom({ plugin: 'inbox', key: 'demo' } as const, null as DemoCopy | null)
 const DEMO_RECORDING = atom({ plugin: 'inbox', key: 'isDemoRecording' } as const, false)
 
-const RECORD_TOOL = 'mcp__inbox__record'
-const CLOSE_TOOL = 'mcp__inbox__close'
-const ORDER_TOOL = 'mcp__inbox__order_prs'
-const TASKS_TOOL = 'mcp__inbox__tasks'
 /** Recent tool result lines by use id. */
 const PERSON_LINES = atom({ plugin: 'inbox', key: 'personLines' } as const, {} as Record<string, string>)
 
@@ -2550,16 +2552,8 @@ export const register: Register = on => {
   }))
 
   on('tool.call', async ($, e, next) => {
-    const inboxTool =
-      e.tool === RECORD_TOOL
-        ? 'record'
-        : e.tool === CLOSE_TOOL
-          ? 'close'
-          : e.tool === ORDER_TOOL
-            ? 'order_prs'
-            : e.tool === TASKS_TOOL
-              ? 'tasks'
-              : null
+    const inboxTool = inboxToolOf(String(e.tool))
+    if (inboxTool === 'record' || inboxTool === 'close') sessionState.inboxRecordOrCloseCalled = true
     if (inboxTool) {
       return {
         result: await runTool(
@@ -2732,6 +2726,11 @@ export const register: Register = on => {
     })
 
     return r
+  })
+
+  on('classic.Stop', async (_$, e, next) => {
+    const r = await next(e)
+    return questionStopResult(r, e as never, mod.isOn, sessionState.inboxRecordOrCloseCalled)
   })
 
   on('turn.step', async function* (_$, e, next) {

@@ -103,4 +103,5 @@ export const CLAUDE_CODE_SUPPORT: ClientSupport['support'] = {
   timeline: { kind: 'full' },
   'timeline-completed-fold': { kind: 'full' },
   'timeline-live-owner-status': { kind: 'full' },
+  'stop-question-guard': { kind: 'full' },
 }
