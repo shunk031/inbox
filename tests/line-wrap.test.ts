@@ -8,6 +8,11 @@ const sample =
 
 test('CJK wrapping fits, hangs nested lists and avoids illegal breaks', () => {
   for (const width of [12, 20, 75]) expect(wrapErrors(wrapText(sample, width, measure), width, measure)).toEqual([])
+  expect(wrapText('「猫」', 4, measure).map(({ text }) => text)).toEqual(['「猫」'])
+  const punctuation = wrapText('日本、', 4, measure)
+  expect(punctuation.map(({ text }) => text)).toEqual(['日', '本、'])
+  expect(wrapErrors(punctuation, 4, measure)).toEqual([])
+  expect(wrapErrors(wrapText('foo bar', 6, measure), 6, measure)).toEqual([])
   const list = '- 1 体目と同じ方法で判定する。\n  - 約 13 件を手元の 3 モデルで確認した。'
   const nestedAt = list.indexOf('  - 約')
   const plan = wrapText(list, 12, measure)

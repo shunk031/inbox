@@ -33,7 +33,7 @@ export function wrapText(text: string, width: number, measure: (text: string) =>
         sourceEnd: end - (line.length - kept.length),
         prefix,
         wrapped: next !== null,
-        nextUnit: next,
+        nextUnit: next === null ? null : `${/ +$/u.test(line) ? ' ' : ''}${next}`,
       })
       line = ''
       prefix = hanging
@@ -80,7 +80,19 @@ export function wrapText(text: string, width: number, measure: (text: string) =>
         let take = ''
         while (chars.length && measure(prefix + line + take + chars[0]) <= limit) take += chars.shift()
         if (!take) take = chars.shift() ?? rest
-        const next = chars.join('')
+        let next = chars.join('')
+        while (next && (NO_START.test(Array.from(next)[0]!) || NO_END.test(Array.from(take).at(-1) ?? ''))) {
+          const moved = Array.from(take).pop()
+          if (!moved) break
+          take = take.slice(0, -moved.length)
+          chars.unshift(moved)
+          next = chars.join('')
+        }
+        if (!take) {
+          take = rest
+          chars.length = 0
+          next = ''
+        }
         line += take
         end = restStart + take.length
         const skipped = next.length - next.trimStart().length
