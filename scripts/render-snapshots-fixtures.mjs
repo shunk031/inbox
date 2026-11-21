@@ -179,6 +179,7 @@ export const registry = [
 ]
 const foldDone = { view: 'timeline', scenario: 'fold-done', fixture: 'fold-done' }
 registry.push(...widths.map(width => ({ ...foldDone, width, file: `timeline-fold-done-${width}.txt` })))
+registry.push({ view: 'asks', scenario: 'empty', fixture: 'base-empty', width: 87, file: 'asks-empty-87.txt' })
 registry.push(
   ...timelineDetailWidths.map(width => ({
     view: 'timeline-detail',

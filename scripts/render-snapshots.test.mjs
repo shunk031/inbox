@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
+import { cellWidth } from '../hooks/text.ts'
 import { checkTreeText } from './check-tree.mjs'
 import { checkChipBoxes, checkFrame, checkLeftEdges, stripChipRightPadding } from './render-snapshots-checks.mjs'
 import {
@@ -64,7 +65,7 @@ test('registry covers every remaining terminal view, scenario, and width once', 
   )
   assert.deepEqual(
     registry.filter(entry => entry.view === 'asks').map(({ scenario, width }) => `${scenario}:${width}`),
-    'empty:200 empty:110 busy:200 busy:110 busy:87'.split(' '),
+    'empty:200 empty:110 busy:200 busy:110 busy:87 empty:87'.split(' '),
   )
   assert.deepEqual(
     registry
@@ -204,11 +205,13 @@ test('pane crop preserves leading and interior spaces while removing the dock di
 })
 
 test('pane crop handles the 87-column single-pane border', () => {
-  const capture = Array.from({ length: 14 }, (_, index) => `│${(index === 5 ? 'Asks' : '').padEnd(85)}│`).join('\n')
-  const cropped = cropInboxPane(capture, 87)
+  const frame = readFileSync(new URL('../tests/render-snapshots/snapshots/asks-busy-87.txt', import.meta.url), 'utf8')
+    .trimEnd()
+    .split('\n')
+  const cropped = cropInboxPane(frame.map(row => `│${row}${' '.repeat(85 - cellWidth(row))}│`).join('\n'), 87)
   assert.equal(cropped.paneWidth, 85)
   assert.equal(cropped.dividerColumn, 0)
-  assert.equal(cropped.text.split('\n')[5], 'Asks')
+  assert.equal(cropped.text, frame.join('\n'))
 })
 
 test('ANSI stripping removes CSI and OSC control sequences', () => {
