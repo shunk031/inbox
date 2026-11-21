@@ -90,7 +90,18 @@ export function ready(entry, frame) {
   const has = text => pageMarker(frame, text)
   if (entry.view === 'help') return has('Keys') && has('Tabs') && frame.includes('●  Working')
   if (entry.view === 'prs') return has(marker(entry)) && !has('Refreshing PRs')
-  if (entry.view === 'timeline-detail') return has('Snapshot') && has('Back')
+  if (entry.view === 'timeline' && entry.scenario === 'busy')
+    return (
+      has(marker(entry)) &&
+      has('1/2 leaf tasks done') &&
+      (entry.width < 200 || has('Owner local/snapshot-worker · working'))
+    )
+  if (entry.view === 'timeline-detail')
+    return (
+      has('Snapshot') &&
+      has('Back') &&
+      (entry.fixture !== 'detail-busy' || has('Owner local/snapshot-worker · working'))
+    )
   if (entry.view === 'asks-detail')
     return (
       has('Snapshot') &&
@@ -166,6 +177,14 @@ function writeConfig(config, home, pluginDir, sessionId, fixture) {
   const fakeGh = path.join(bin, 'gh')
   writeFileSync(fakeGh, '#!/bin/sh\nprintf "gh is disabled in render snapshot fixtures\\n" >&2\nexit 1\n')
   chmodSync(fakeGh, 0o755)
+  if (fixture === 'base-busy' || fixture === 'detail-busy') {
+    const fakeHerdr = path.join(bin, 'herdr')
+    writeFileSync(
+      fakeHerdr,
+      `#!/bin/sh\nprintf '%s\\n' '{"result":{"agents":[{"name":"snapshot-worker","agent_status":"working"}]}}'\n`,
+    )
+    chmodSync(fakeHerdr, 0o755)
+  }
   return bin
 }
 export function storeKeys(env = process.env) {

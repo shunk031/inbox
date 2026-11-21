@@ -137,4 +137,9 @@ export const OMP_SUPPORT: ClientSupport['support'] = {
     kind: 'different',
     reason: 'omp keeps finished Timeline roots inline while the terminal look ships the fold first.',
   },
+  'timeline-live-owner-status': {
+    kind: 'different',
+    reason:
+      'omp keeps its sampled owner facts and does not poll the local Herdr agent list yet; the terminal look ships first.',
+  },
 }

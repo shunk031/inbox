@@ -10,15 +10,15 @@
  └─────────────────────────────────────────────────────────────────────────────────────┘
 
     ◐ Snapshot root 日本語のレイアウト確認 日本語のレイアウト確認 …  ━━━━━━━━━━  50.00%
+    │ 1/2 leaf tasks done · Owner local/snapshot-worker · working
     │  In progress
   > ├─ ● 折り返し用の日本語タイトルと子の説明                        ────────── 100.00%
     │     Completed
     └─ ◐ Snapshot long 表示幅とセル位置を確かめる 表示幅とセル位置…  ──────────   0.00%
+       │ 0/1 leaf tasks done
        │  In progress
        └─ ✕ 深い階層の待機中タスク                                   ──────────   0.00%
              Waiting
-
-
 
 
 

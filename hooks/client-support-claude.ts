@@ -102,4 +102,5 @@ export const CLAUDE_CODE_SUPPORT: ClientSupport['support'] = {
   'task-status-mismatch': { kind: 'full' },
   timeline: { kind: 'full' },
   'timeline-completed-fold': { kind: 'full' },
+  'timeline-live-owner-status': { kind: 'full' },
 }

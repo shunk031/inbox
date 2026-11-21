@@ -284,7 +284,7 @@ test('Timeline opens a selected task detail and returns to the selected tree row
   expect((await pane.find({ key: 'timeline-title-lead-child' }))?.text.startsWith('> ')).toBe(true)
 })
 
-test('terminal Timeline keeps Japanese titles, row metadata and detail guides at a narrow dock width', async ($, on) => {
+test('narrow Timeline keeps Japanese titles, metadata and guides', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   world($, on, [])
   w.files = ['/.next-build']
@@ -323,23 +323,21 @@ test('terminal Timeline keeps Japanese titles, row metadata and detail guides at
   await clock.settle()
 
   const title = await pane.find({ key: 'timeline-title-long-root' })
-  expect(title?.text.endsWith('…'), 'the long title is truncated with an ellipsis').toBe(true)
+  expect(title?.text.endsWith('…'), 'title is truncated').toBe(true)
   expect(title?.text).not.toContain(longTitle)
   expect(cellWidth(title?.text ?? '')).toBeGreaterThanOrEqual(20)
   expect(cellWidth(title?.text ?? '')).toBeLessThanOrEqual(30)
-  expect(
-    await pane.find({ key: 'timeline-row-bar-long-root' }),
-    'the bar is dropped to preserve title width',
-  ).not.toBeTruthy()
+  expect(await pane.find({ key: 'timeline-row-bar-long-root' }), 'bar hides to preserve title width').not.toBeTruthy()
   const lines = (await pane.findAll({ type: 'Text' })).map(line => line.text)
   expect(
     lines.some(line => line.startsWith('> ○ ')),
-    'the mark and tree prefix stay on the title line',
+    'tree prefix stays on title line',
   ).toBe(true)
-  expect(lines, 'the status chip keeps its label').toContain('Not started')
+  expect(lines, 'chip label stays visible').toContain('Not started')
+  expect(lines.some(line => line.includes('0/2 leaf tasks done'))).toBe(true)
   expect(
     lines.some(line => line.trim() === '0.00%'),
-    'the row percentage keeps every character',
+    'row percentage stays intact',
   ).toBe(true)
   expect((await pane.find({ key: 'timeline-progress-bar' }))?.props.flexDirection).toBe('column')
 
@@ -360,7 +358,7 @@ test('terminal Timeline keeps Japanese titles, row metadata and detail guides at
   expect(detailText).toContain('A newer Japanese note')
 })
 
-test('terminal Timeline aligns percentages, strips rows, and separates only top-level trees', async ($, on) => {
+test('terminal Timeline aligns percentages, counts and trees', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   world($, on, [])
   w.files = ['/.next-build']
@@ -428,9 +426,12 @@ test('terminal Timeline aligns percentages, strips rows, and separates only top-
   )
   expect(bars.map(text => cellWidth(text))).toEqual([12, 12, 12])
   const text = (await pane.findAll({ type: 'Text' })).map(node => node.text)
+  expect(text.some(line => line.includes('1/2 leaf tasks done'))).toBe(true)
+  expect(text).toContain('In progress')
+  expect(text).toContain('Not started')
   expect(
     text.some(line => line.trim() === '3'),
-    'three open tasks appear beside Timeline',
+    'Timeline shows three open tasks',
   ).toBe(true)
 })
 
@@ -458,6 +459,7 @@ test('the desktop Timeline keeps the existing inline tree while this look is pen
       task_id,
       ...(parent_id ? { parent_id } : {}),
       title: task_id,
+      ...(task_id === 'plan' ? { owner_machine: 'local', owner_agent: 'plan' } : {}),
     })
   }
   const pane = await $.ui.mount({ ...PANE, surface: 'desktop', props: { ...PANE.props, bodyColumns: 120 } })
@@ -481,6 +483,8 @@ test('the desktop Timeline keeps the existing inline tree while this look is pen
   const text = (await pane.findAll({ type: 'Text' })).map(node => node.text)
   expect(text.some(line => line.includes('Task plan'))).toBe(true)
   expect(text).not.toContain('Progress')
+  expect(await pane.find({ key: 'timeline-metadata-plan' })).toBeTruthy()
+  expect(text.some(line => line.includes('Owner local/plan') && !line.includes('Not started'))).toBe(true)
 })
 
 test('the terminal Timeline shows Opening and Opened for GitHub Enterprise PR and issue links', async ($, on) => {

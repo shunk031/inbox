@@ -1,5 +1,5 @@
 // Built by herdr/build.ts with Bun 1.4.4 from herdr/src and hooks/. Do not edit.
-// Built at 2026-11-20T17:26:29.335Z. 226201 characters follow.
+// Built at 2026-11-21T03:03:56.973Z. 227096 characters follow.
 
 // src/main.ts
 import { View, div as div5 } from "gpui-kit";
@@ -3627,6 +3627,19 @@ function completedLeaves(tree, rootIds) {
     visit(root, false);
   return count;
 }
+function ownerText(task, ownerFacts, localAgents, now) {
+  const owner = task.links?.owner;
+  if (!owner)
+    return null;
+  const fact = ownerFacts[taskOwnerKey(owner)];
+  const live = localAgents.find((agent) => agent.machine === owner.machine && agent.name === owner.agent);
+  const state = live?.status ?? fact?.state;
+  if (!state)
+    return `Owner ${owner.machine}/${owner.agent}`;
+  const label = state === "done" ? "Turn finished" : state;
+  const age = live || !fact ? "" : ` ${shortAgo(Math.max(0, now - fact.since))}`;
+  return `Owner ${owner.machine}/${owner.agent} · ${label}${age}`;
+}
 function progressStatus(segments) {
   if (segments.stalled > 0)
     return "stalled";
@@ -3638,7 +3651,7 @@ function progressStatus(segments) {
     return "done";
   return "queued";
 }
-function timelineData(tree, segments, stalledSince, warnings, now, taskStatusMismatches = []) {
+function timelineData(tree, segments, stalledSince, warnings, now, taskStatusMismatches = [], ownerFacts = {}, localAgents = []) {
   const children = new Map;
   for (const task of tree)
     children.set(task.parentId, [...children.get(task.parentId) ?? [], task]);
@@ -3666,6 +3679,8 @@ function timelineData(tree, segments, stalledSince, warnings, now, taskStatusMis
         hasChildren: childrenOfTask.length > 0,
         progress: progress.value,
         percent: progress.label,
+        leafProgress: childrenOfTask.length > 0 && completedUnits.total > 0 ? `${completedUnits.done}/${completedUnits.total} leaf tasks done` : null,
+        ownerText: ownerText(task, ownerFacts, localAgents, now),
         progressBar: timelineBar(weightedTaskProgressSegments(tree, stalled, task.id), 10),
         completedUnits,
         status,
@@ -3739,7 +3754,7 @@ function updateRecovery(s) {
     return "unreadable";
   return presence.failedAttempts > 1 ? "failed-again" : "waiting";
 }
-function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timelineTaskTree = s.taskTree) {
+function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timelineTaskTree = s.taskTree, localAgents = []) {
   const l = s.ledger;
   const lastActions = withoutStalePending(s.lastActions, now);
   const inbox = inboxView({
@@ -3776,7 +3791,7 @@ function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timel
     turns: { turnsStarted: s.presence.turnsStarted, turnsApplied: s.presence.turnsApplied },
     prs: prTabOf(s, lastActions, now, holds, settleWindowMs),
     statusPage: statusPage(s, now, new Set(Object.keys(taskOwnerView.stalledSince))),
-    timeline: timelineData(timelineTaskTree, timelineOwnerView.segments, timelineOwnerView.stalledSince, taskTimelineWarnings(s, timelineTaskTree, now), now, s.taskStatusMismatches),
+    timeline: timelineData(timelineTaskTree, timelineOwnerView.segments, timelineOwnerView.stalledSince, taskTimelineWarnings(s, timelineTaskTree, now), now, s.taskStatusMismatches, ownerFacts, localAgents),
     taskProgressSegments: taskOwnerView.segments,
     taskStalledSince: taskOwnerView.stalledSince,
     feedStalledSince,

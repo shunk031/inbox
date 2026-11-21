@@ -94,6 +94,7 @@ export type FeatureId =
   | 'task-status-mismatch'
   | 'timeline'
   | 'timeline-completed-fold'
+  | 'timeline-live-owner-status'
 
 type FeatureSupport = { kind: 'full' } | { kind: 'different' | 'unsupported'; reason: string }
 export type ClientSupport = { support: Record<FeatureId, FeatureSupport> }

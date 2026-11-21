@@ -1,4 +1,5 @@
 import type { PaneBase, PaneHandlers } from './pane-context'
+import { timelineDesktopMetadata } from './pane-timeline-metadata'
 import { cellWidth, cutToCells } from './text'
 import { moveTimelineSelection, timelinePage, toggleTimelineBranch } from './timeline-page'
 import type { TimelinePage } from './timeline-page'
@@ -88,15 +89,14 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
         ) : null}
         {page.rows.map(row => {
           const selected = row.task.id === page.selected?.row.task.id
+          const lead = timelineRowLead(row, selected)
+          const leadCells = cellWidth(lead)
+          const metadata = [row.leafProgress, row.ownerText].filter(Boolean).join(' · ')
           const selection = selected ? page.selected : null
           return (
             <Box key={`timeline-${row.task.id}`} flexDirection="column">
               <Box flexDirection="row">
-                <Text color={color(row.tone)}>
-                  {selected ? '> ' : '  '}
-                  {row.prefix}
-                  {row.mark}{' '}
-                </Text>
+                <Text color={color(row.tone)}>{lead}</Text>
                 <Button
                   plain
                   key={`timeline-title-${row.task.id}`}
@@ -107,6 +107,15 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
                   <Text color={pal.muted}>{` · ${row.statusLabel} · ${row.percent}`}</Text>
                 ) : null}
               </Box>
+              {timelineDesktopMetadata({
+                Box,
+                Text,
+                pal,
+                bodyColumns: context.bodyColumns,
+                leadCells,
+                taskId: row.task.id,
+                metadata,
+              })}
               {row.warnings.map(warning => (
                 <Text color={pal.tone.issue ?? pal.muted}>{`${row.treeLead}⚠ ${warning}`}</Text>
               ))}
@@ -228,6 +237,7 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
         </Box>
         <Box flexShrink={0}>{chip(selected.row.statusLabel, selected.row.tone)}</Box>
       </Box>
+      {selected.row.ownerText ? <Text color={pal.muted}>{selected.row.ownerText}</Text> : null}
       <Box flexDirection="row" flexWrap="wrap" gap={1}>
         {(
           [
@@ -306,6 +316,7 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
                 ? `${cutToCells(row.task.title, Math.max(0, titleCells - 1))}…`
                 : row.task.title
             const [firstTitleLine = '', ...continuationTitleLines] = title.split('\n')
+            const metadata = [row.leafProgress, row.ownerText].filter(Boolean).join(' · ')
             return (
               <Box
                 key={`timeline-${row.task.id}`}
@@ -381,6 +392,11 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
                     </Box>
                   </Box>
                 ))}
+                {metadata ? (
+                  <Text color={pal.muted} wrap="truncate-end">
+                    {`${terminalTreeLead(row, titleLeadWidth)}${metadata}`}
+                  </Text>
+                ) : null}
                 {!row.isCompletedFold ? (
                   <Box key={`timeline-status-line-${row.task.id}`} flexDirection="row">
                     <Box key={`timeline-chip-lead-${row.task.id}`} width={chipLeadWidth} flexShrink={0}>

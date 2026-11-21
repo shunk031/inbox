@@ -106,6 +106,7 @@ import {
 import { ghIn } from './gh'
 import { isGhUnstartable, pathProbe, placeChange, runOf, sessionFolder, type CommandCalls } from './mod-commands'
 import { delegatesInHerdr } from './herdr'
+import { watchLocalAgents, stopLocalAgentsCheck } from './mod-local-agents'
 import type { HerdrFile } from './herdr-press-file'
 import { applyHerdrFile } from './herdr-app'
 import {
@@ -1280,6 +1281,22 @@ async function readRowTab($: EngineInterface): Promise<Tab | null> {
   return page === null ? tab : null
 }
 
+function followLocalAgents(isShown: boolean, isDemo: boolean, $: EngineInterface) {
+  paneState.timelineShown = isShown && !isDemo
+  if (!paneState.timelineShown) {
+    stopLocalAgentsCheck(paneState)
+    paneState.localAgents = []
+    return
+  }
+  watchLocalAgents(
+    paneState,
+    (ms, fn) => $.clock.after(ms, fn),
+    (ms, fn) => $.clock.every(ms, fn),
+    runOf(commandCalls($)),
+    () => redrawPane($),
+  )
+}
+
 async function showTab($: EngineInterface, tab: ShownTab) {
   cancelUndoScroll()
   clearDocument()
@@ -2004,6 +2021,7 @@ async function drawnState($: EngineInterface): Promise<ReturnType<typeof makeDra
     now,
     holds,
     SETTLED_MS,
+    paneState.localAgents,
   )
   redrawAtNextFold($, state.view, session.presence.lastTypedMessageAt, now)
 
@@ -2357,6 +2375,7 @@ function redrawPane($: EngineInterface) {
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
+    followLocalAgents(false, false, $)
     await registerInboxCommand($)
     const r = await next(e)
     // Register here; desktop can attach before or after this hook.
@@ -2395,6 +2414,7 @@ export const register: Register = on => {
   })
 
   on('session.end', async ($, e, next) => {
+    followLocalAgents(false, false, $)
     abortAnswerPressWaits()
     await taskProjection?.release(conversation.id)
     sessionState.endReason = e.reason
@@ -2893,6 +2913,8 @@ export const register: Register = on => {
 
   on('ui.close', { id: PANE }, async ($, e, next) => {
     cancelUndoScroll()
+    paneState.timelineShown = false
+    stopLocalAgentsCheck(paneState)
     clearDocument()
     const r = await next(e)
     void syncShown($, { isOpen: false }).then(() => syncLook($, false))
@@ -3099,6 +3121,7 @@ export const register: Register = on => {
       by => scrollBy(by, () => $.ui.scroll({ in: PANE, to: 'end' })).catch(() => undefined),
     )
     const tabList = shownTabs(mod.isNextBuild, true)
+    followLocalAgents(isTimelineShown, isDemo, $)
     if (look === 'terminal')
       animateRunningMarks(
         showsRunningMark(view, shownTab, isHelpShown, kind => unfolded.includes(kind)),

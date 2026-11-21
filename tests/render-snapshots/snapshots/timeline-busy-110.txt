@@ -12,15 +12,15 @@
  └───────────────────────────────────┘
 
     ◐ Snapshot root 日本語の…  50.00%
+    │ 1/2 leaf tasks done · Owner lo…
     │  In progress
   > ├─ ● 折り返し用の日本語…  100.00%
     │     Completed
     └─ ◐ Snapshot long 表示…    0.00%
+       │ 0/1 leaf tasks done
        │  In progress
        └─ ✕ 深い階層の待機中…   0.00%
              Waiting
-
-
 
 
 

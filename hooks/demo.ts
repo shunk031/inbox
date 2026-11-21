@@ -83,6 +83,10 @@ function subject(
 export function demoView(now: number, agent: string): DemoCopy {
   return {
     timelineTaskTree: demoTaskTree(now),
+    localAgents: [
+      { machine: 'workstation', name: 'reviewer', status: 'working' },
+      { machine: 'workstation', name: 'builder', status: 'blocked' },
+    ],
     ledger: {
       overview: {
         head: { title: 'Pinch to dismiss', description: 'Adding a pinch that dismisses glances' },

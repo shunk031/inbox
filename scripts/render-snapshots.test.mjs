@@ -178,7 +178,11 @@ test('PR readiness waits until remote refresh status settles', () => {
   assert.equal(ready(entry, 'Snapshot pull request\nPR status unavailable'), true)
 })
 
-test('report readiness waits for settled fixture content', () => {
+test('Timeline and report readiness wait for settled fixture content', () => {
+  const timeline = registry.find(candidate => candidate.view === 'timeline' && candidate.scenario === 'busy')
+  const timelineFrame = 'Snapshot root\n1/2 leaf tasks done\nOwner local/snapshot-worker · working'
+  assert.equal(ready(timeline, 'Snapshot root'), false)
+  assert.equal(ready(timeline, timelineFrame), true)
   const report = registry.find(candidate => candidate.view === 'asks-detail' && candidate.scenario === 'busy')
   assert.equal(ready(report, 'Snapshot report\nBack to inbox\nOpening report…'), false)
   assert.equal(
@@ -221,14 +225,15 @@ test('cell checks report a shifted Timeline chip with its fixture column', () =>
   const frame = lines.join('\n')
   const failures = checkFrame(entry, frame, 70)
   assert.ok(failures.some(line => line.includes('chip does not start on its title column')))
-  assert.ok(failures.some(line => line.includes('bar and percentage must share the title line')))
+  assert.ok(failures.some(line => line.includes('bar must share the title line')))
+  assert.ok(failures.some(line => line.includes('percentage must share the title line')))
 })
 
 test('chip box checks require one padded cell on each side and space before the pane edge', () => {
   const entry = { view: 'timeline', scenario: 'busy', width: 20 }
-  const frame = `${'\x1b[48;5;153m '}\x1b[38;5;16mIn progress\x1b[39m \x1b[49m `
+  const frame = `${'\x1b[48;5;153m '}\x1b[38;5;16mStale\x1b[39m \x1b[49m `
   assert.deepEqual(checkChipBoxes(entry, frame, 20), [])
-  const missingRight = stripChipRightPadding(frame, entry, 20, 'In progress')
+  const missingRight = stripChipRightPadding(frame, entry, 20, 'Stale')
   assert.ok(checkChipBoxes(entry, missingRight, 20).some(line => line.includes('chip box padding')))
   assert.ok(checkChipBoxes(entry, frame.trimEnd(), 20).some(line => line.includes('chip box right margin')))
 })
