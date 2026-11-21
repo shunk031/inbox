@@ -1,8 +1,9 @@
 type SourceRange = { sourceStart: number; sourceEnd: number }
 type WrapLine = SourceRange & { text: string; prefix: string; wrapped: boolean; nextUnit: string | null }
 const CJK = /^[\u3000-\u30ff\u3400-\u9fff\uf900-\ufaff\uff00-\uffef\u{20000}-\u{3fffd}]$/u
-const NO_START = /^[、。，．・：；？！ー」』）］｝〕〉》ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮヵヶゕゖ]$/u
-const NO_END = /^[「『（［｛〔〈《]$/u
+const NO_START =
+  /^[’”）〕］｝〉》」』】〗⦆｠〙»〟)\]\}‐〜゠–!！?？‼⁇⁈⁉・:：;；。．.,、，ヽヾゝゞ々〻ーぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶㇰ-ㇿｧｨｩｪｫｬｭｮｯ｡｣､･ｰﾞﾟ]$/u
+const NO_END = /^[‘“（〔［｛〈《「『【⦅｟〘〖«〝｢({\[]$/u // JLReq character classes: https://www.w3.org/TR/jlreq/#character_classes
 const blocked = (left: string, right: string) => NO_START.test(right) || NO_END.test(left)
 function kinsokuCluster(left: string, right: string): string {
   const [before, after] = [Array.from(left), Array.from(right)]
@@ -106,7 +107,6 @@ export function wrapText(text: string, width: number, measure: (text: string) =>
   }
   return output
 }
-
 export function wrapErrors(
   plans: WrapLine[],
   width: number,

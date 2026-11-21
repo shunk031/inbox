@@ -1,14 +1,12 @@
 import { expect, test } from 'claude-code/testing'
 import { cellWidth } from '../hooks/text'
 import { wrapErrors, wrapText } from '../hooks/line-wrap'
-
 const checked = (text: string, width: number) => {
   const plan = wrapText(text, width, cellWidth)
   expect(wrapErrors(plan, width, cellWidth)).toEqual([])
   return plan
 }
-const sample =
-  'A mixed ASCII/Japanese sentence 日本語の続き。\na deliberatelylongasciiwordthatmustfit\n- 1 体目と同じ方法で判定する。\n  - 約 13 件を手元の 3 モデルで確認した。'
+const sample = `A mixed ASCII/Japanese sentence 日本語の続き。\na deliberatelylongasciiwordthatmustfit\n- 1 体目と同じ方法で判定する。\n  - 約 13 件を手元の 3 モデルで確認した。`
 test('CJK wrapping fits, hangs nested lists and avoids illegal breaks', () => {
   for (const width of [12, 20, 75]) checked(sample, width)
   expect(checked('「猫」', 4).map(({ text }) => text)).toEqual(['「猫', '」'])
@@ -24,3 +22,5 @@ test('CJK wrapping fits, hangs nested lists and avoids illegal breaks', () => {
   const line = checked('手元の 3 モデルで判定した。', 12)[0]!
   expect(wrapErrors([{ ...line, text: '手元の 3', wrapped: true, nextUnit: 'モ' }], 12, cellWidth)).not.toEqual([])
 })
+const noStartChars = `’”）〕］｝〉》」』】〗⦆｠〙»〟)]}‐〜゠–!！?？‼⁇⁈⁉・:：;；。．.,、，ヽヾゝゞ々〻ーぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶㇰㇱㇲㇳㇴㇵㇶㇷㇸㇹㇺㇻㇼㇽㇾㇿｧｨｩｪｫｬｭｮｯ｡｣､･ｰﾞﾟ`
+test('JLReq no-start characters', () => [...noStartChars].forEach(char => checked(`日本語${char}`, 4)))
