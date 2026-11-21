@@ -14,11 +14,11 @@ function kinsokuCluster(left: string, right: string): string {
   return [...before.slice(start), ...after.slice(0, end)].join('')
 }
 export function wrapText(text: string, width: number, measure: (text: string) => number): WrapLine[] {
-  const limit = Math.max(1, width),
-    output: WrapLine[] = []
-  const paragraphs = text.split('\n')
+  const parts = text.split('\n'),
+    max = Math.max(1, width)
+  const output: WrapLine[] = []
   let offset = 0
-  for (const [paragraphIndex, paragraph] of paragraphs.entries()) {
+  for (const [paragraphIndex, paragraph] of parts.entries()) {
     const marker = /^( *)(- )/u.exec(paragraph)?.[0] ?? ''
     const hanging = marker ? ' '.repeat(marker.length) : ''
     let prefix = '',
@@ -34,14 +34,14 @@ export function wrapText(text: string, width: number, measure: (text: string) =>
         sourceEnd: end - (line.length - kept.length),
         prefix,
         wrapped: next !== null,
-        nextUnit: next === null ? null : `${/ +$/u.test(line) ? ' ' : ''}${next}`,
+        nextUnit: next === null ? null : `${line.slice(kept.length)}${next}`,
       })
       line = ''
       prefix = hanging
       firstLine = false
       start = end
     }
-    const measureLine = (next: string) => measure(prefix + (line.replace(/ +$/u, ' ') + next).trimEnd())
+    const measureLine = (next: string) => measure(prefix + (line + next).trimEnd())
     const units: { text: string; start: number }[] = []
     let part = '',
       partStart = offset + marker.length,
@@ -66,38 +66,35 @@ export function wrapText(text: string, width: number, measure: (text: string) =>
     for (const unit of units) {
       let rest = unit.text,
         restStart = unit.start
-      if (line.length > (firstLine ? marker.length : 0) && measureLine(rest) > limit) {
+      if (line.length > (firstLine ? marker.length : 0) && measureLine(rest) > max) {
         const skipped = rest.length - rest.trimStart().length
-        rest = rest.trimStart()
         emit(rest)
+        rest = rest.trimStart()
         start = restStart = unit.start + skipped
       }
-      end -= line.length - (line = line.replace(/ +$/u, ' ')).length
-      while (rest && measureLine(rest) > limit) {
+      while (rest && measureLine(rest) > max) {
         const chars = Array.from(rest)
         let count = chars.length
-        while (count && measureLine(chars.slice(0, count).join('')) > limit) count--
+        while (count && measureLine(chars.slice(0, count).join('')) > max) count--
         if (!count) {
           if (!line.trim()) throw new RangeError('wrap width cannot fit the next character')
           const skipped = rest.length - rest.trimStart().length
-          emit((rest = rest.trimStart()))
+          emit(rest)
+          rest = rest.trimStart()
           start = restStart += skipped
           continue
         }
-        while (
-          count > 1 &&
-          count < chars.length &&
-          blocked(chars[count - 1]!, chars[count]!) &&
-          measure(kinsokuCluster(chars.slice(0, count).join(''), chars.slice(count).join(''))) <= limit
-        )
-          count--
+        const fitsKinsoku = (at: number) =>
+          blocked(chars[at - 1]!, chars[at]!) &&
+          measure(kinsokuCluster(chars.slice(0, at).join(''), chars.slice(at).join(''))) <= max
+        while (count > 1 && count < chars.length && fitsKinsoku(count)) count--
         const take = chars.slice(0, count).join(''),
           next = chars.slice(count).join('')
         line += take
         end = restStart + take.length
         const skipped = next.length - next.trimStart().length
         rest = next.trimStart()
-        if (rest) emit(rest)
+        if (rest) emit(next)
         restStart = end + skipped
       }
       if (rest) {
@@ -107,7 +104,7 @@ export function wrapText(text: string, width: number, measure: (text: string) =>
       }
     }
     if (line || !paragraph) emit(null)
-    offset += paragraph.length + (paragraphIndex < paragraphs.length - 1 ? 1 : 0)
+    offset += paragraph.length + (paragraphIndex < parts.length - 1 ? 1 : 0)
   }
   return output
 }
