@@ -95,8 +95,6 @@ export function paneAskRows(
         {preview ? <Text>{wrapInline(preview, width, true)}</Text> : null}
       </Box>
     )
-    const hasWideText = (text: string | null) => text !== null && cellWidth(text) > text.length
-
     return {
       id: r.id,
       view: r,
@@ -123,10 +121,8 @@ export function paneAskRows(
             ) : null}
           </Box>
         ) : null,
-      ...(subtitleLines.length > 0 && [r.contextDisplayLine, holdsUpLine, r.recLine].some(hasWideText)
-        ? { wrapSubtitle }
-        : {}),
-      ...([r.detail, preview].some(hasWideText) ? { wrapBody } : {}),
+      ...(subtitleLines.length > 0 ? { wrapSubtitle } : {}),
+      ...(r.detail || preview ? { wrapBody } : {}),
       clippedBody: (lines, width) => {
         if (lines < 1 || (!r.detail && !preview)) return null
         const { spans: previewLines, bodyLines: detailLines } = clippedDocumentPreview(preview, width, lines)

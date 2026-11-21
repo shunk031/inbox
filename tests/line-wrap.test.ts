@@ -9,6 +9,7 @@ const checked = (text: string, width: number) => {
 const sample = `A mixed ASCII/Japanese sentence 日本語の続き。\na deliberatelylongasciiwordthatmustfit\n- 1 体目と同じ方法で判定する。\n  - 約 13 件を手元の 3 モデルで確認した。`
 test('CJK wrapping fits, hangs nested lists and avoids illegal breaks', () => {
   for (const width of [12, 20, 75]) checked(sample, width)
+  expect(checked('𠀀'.repeat(3), 4).map(({ text }) => text)).toEqual(['𠀀𠀀', '𠀀'])
   expect(checked('「猫」', 4).map(({ text }) => text)).toEqual(['「猫', '」'])
   expect(checked('あゕ', 2).map(({ text }) => text)).toEqual(['あ', 'ゕ'])
   expect(checked('日本、', 4).map(({ text }) => text)).toEqual(['日', '本、'])
