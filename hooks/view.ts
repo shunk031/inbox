@@ -10,7 +10,17 @@ import { isHeldSend, isUndoable } from './pressed'
 import { FINDING_GROUPS } from './help'
 import { isSettledInPlace, canUndoClose, isUndoLeft, pendingDeliveryAt, earliestOf } from './timing'
 import type { ListInput } from './timing'
-import { closedRowState, optionDescriptionsOf, isWaitingRow, outcomeLabel, closedMark, recLineOf } from './rows'
+import {
+  closedRowState,
+  optionDescriptionsOf,
+  optionEffectsOf,
+  contextLineOf,
+  contextDisplayLineOf,
+  isWaitingRow,
+  outcomeLabel,
+  closedMark,
+  recLineOf,
+} from './rows'
 import type { RowView, ClosedDelivery, ResultMark, RowState } from './rows'
 import { doneLabel, feedbackOf, fixLabel, feedbackIn, pressUnderWaySince, pressFeedbackIn } from './feedback'
 import type { ShownTab } from './tabs'
@@ -233,9 +243,11 @@ export function inboxView({
       | 'feedback'
       | 'actions'
       | 'optionDescriptions'
+      | 'optionEffects'
       | 'holdsUpLine'
       | 'recLine'
       | 'contextLine'
+      | 'contextDisplayLine'
       | 'document'
       | 'documentPreview'
     >,
@@ -262,9 +274,11 @@ export function inboxView({
       feedback,
       actions,
       optionDescriptions: optionDescriptionsOf(row.item, actions),
+      optionEffects: optionEffectsOf(row.item, actions),
       holdsUpLine: held.length > 0 ? `${HOLDS_UP_TEXT} ${held.join(', ')}` : null,
       recLine: state.is === 'open' ? recLineOf(row.item) : null,
-      contextLine: state.is === 'open' ? (row.item?.context ?? null) : null,
+      contextLine: state.is === 'open' ? contextLineOf(row.type, row.item) : null,
+      contextDisplayLine: contextDisplayLineOf(row.type, row.item),
     }
   }
   const itemRow = (item: Item): RowView => {

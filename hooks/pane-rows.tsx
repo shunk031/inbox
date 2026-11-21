@@ -20,10 +20,9 @@ import {
   TERMINAL_SIDE_CELLS,
   TREE_LINE_AT,
 } from './pane-sizes'
-import { DOT, ROW_COPY, shownOptionDescriptions } from './rows'
-import { lineCount, SELECTION_BAR, type TreePos, wrappedSpanLines } from './terminal-text'
-import { parseInline } from './inline'
-import { cellWidth } from './text'
+import { DOT, ROW_COPY, optionDescriptionLine, shownOptionEffects } from './rows'
+import { lineCount, SELECTION_BAR, type TreePos } from './terminal-text'
+import { cellWidth, clipLabel } from './text'
 
 export function paneRows(
   {
@@ -34,7 +33,6 @@ export function paneRows(
     Box,
     space,
     Text,
-    terminalText,
     pal,
     Input,
     typing,
@@ -150,7 +148,6 @@ export function paneRows(
     const isTyping = Input !== null && !!row.typeHint && typing === row.id
     const textWidth = listColumns - 1 - columns.textAt
     const wrapWidth = look === 'desktop' ? desktopRowTextPt : textWidth
-    const measureText = look === 'desktop' ? desktopTextPt : cellWidth
     const submitLabel = look === 'desktop' ? ROW_COPY.send : 'send'
     /** The terminal draws `⏎` and the submit label beside the field. */
     const terminalFieldColumns = textWidth - cellWidth(`⏎ ${submitLabel}`) - 1
@@ -208,16 +205,30 @@ export function paneRows(
         ? row.clippedBody(bodyLines, textWidth)
         : (row.wrapBody?.(wrapWidth) ?? row.body ?? null)
     const subtitle = row.wrapSubtitle?.(wrapWidth) ?? row.subtitle
-    const described = row.view ? shownOptionDescriptions(row.view, optionsShown.includes(row.id)) : []
+    const described = row.view ? shownOptionEffects(row.view, optionsShown.includes(row.id)) : []
     const descriptionsBlock =
       described.length > 0 ? (
         <Box flexDirection="column" marginTop={blankLine}>
           {described.map(o => {
-            const spans = [
-              { text: `${o.label}: ` },
-              ...parseInline(o.description).map(span => ({ ...span, isMuted: true as const })),
-            ]
-            return <Text>{terminalText(wrappedSpanLines(spans, wrapWidth, measureText))}</Text>
+            const width = look === 'desktop' ? titleWidth : textWidth
+            if (o.isMissing) {
+              const line = optionDescriptionLine(o, text =>
+                look === 'desktop' ? desktopTextPt(text) <= desktopRowTextPt : cellWidth(text) <= width,
+              )
+              return (
+                <Text key={`option-${o.label}`} wrap="truncate-end">
+                  <Text>{line.label}</Text>
+                  <Text color={pal.muted}>{line.suffix}</Text>
+                </Text>
+              )
+            }
+            const line = clipLabel(`${o.label}: ${o.description}`, width)
+            return (
+              <Text key={`option-${o.label}`} wrap="truncate-end">
+                <Text>{line.slice(0, o.label.length)}</Text>
+                <Text color={pal.muted}>{line.slice(o.label.length)}</Text>
+              </Text>
+            )
           })}
         </Box>
       ) : null

@@ -25,7 +25,7 @@ const send = (socket, session, key, literal = false) =>
   tmux(socket, 'send-keys', '-t', `${session}:0.0`, ...(literal ? ['-l'] : []), key)
 const stripAnsi = text => text.replace(ANSI, '').replace(/\r/g, '')
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
-function cropInboxPane(capture, width) {
+function cropInboxPane(capture, width, acceptShortPane = () => false) {
   const lines = stripAnsi(capture).split('\n')
   if (lines.at(-1) === '') lines.pop()
   const counts = new Map()
@@ -37,10 +37,14 @@ function cropInboxPane(capture, width) {
   const [divider, rows] = [...counts].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0] ?? []
   const minRows = width <= 87 ? 12 : 20
   if (!divider || rows < minRows) {
-    const frame = lines.filter(line => line.startsWith('│') && line.endsWith('│') && cellWidth(line) === width)
-    if (width <= 87 && frame.length >= minRows)
+    const frame = lines
+      .filter(line => line.startsWith('│') && line.endsWith('│') && cellWidth(line) === width)
+      .map(line => line.slice(1, -1).replace(/ +$/u, ''))
+    while (frame.at(-1) === '') frame.pop()
+    const text = frame.join('\n')
+    if (width <= 87 && (frame.length >= minRows || (width === 75 && acceptShortPane(text))))
       return {
-        text: frame.map(line => line.slice(1, -1).replace(/ +$/u, '')).join('\n'),
+        text,
         paneWidth: width - 2,
         dividerColumn: 0,
       }
@@ -88,6 +92,14 @@ async function focusHelp(socket, session, onTimeout) {
 }
 export function ready(entry, frame) {
   const has = text => pageMarker(frame, text)
+  if (entry.fixture === 'asks-japanese' && entry.width === 75)
+    return (
+      has('Snapshot Japanese question.') &&
+      has('作られた日本語の質問です。') &&
+      has('候補の比較を行う。') &&
+      has('GPU 約 10 分で終える。') &&
+      has('b: 元の形を保つ')
+    )
   if (entry.view === 'help') return has('Keys') && has('Tabs') && frame.includes('●  Working')
   if (entry.view === 'prs') return has(marker(entry)) && !has('Refreshing PRs')
   if (entry.view === 'timeline-detail') return has('Snapshot') && has('Back')
@@ -120,7 +132,9 @@ export async function wait(
       : tmux(socket, 'capture-pane', '-N', '-e', '-p', '-t', `${session}:0.0`)
     lastCapture = capture
     const crop =
-      mode === 'pane' ? cropInboxPane(capture, width) : { text: mode === 'raw' ? stripAnsi(capture) : capture }
+      mode === 'pane'
+        ? cropInboxPane(capture, width, predicate)
+        : { text: mode === 'raw' ? stripAnsi(capture) : capture }
     last = crop?.text ?? stripAnsi(capture).slice(-1600)
     if (crop && predicate(crop.text) && capture === previous) return { ...crop, capture }
     previous = capture
@@ -254,24 +268,28 @@ export async function capture(entry, pluginDir, root, socket, claude, { onTimeou
     )
     send(socket, session, '/inbox', true)
     send(socket, session, 'Enter')
-    const initial = entry.fixture.startsWith('timeline-detail-layout')
-      ? 'Timeline'
-      : entry.fixture === 'asks-japanese'
-        ? 'Snapshot Japanese'
-        : entry.fixture === 'detail-empty'
-          ? 'Snapshot empty report'
-          : entry.fixture === 'detail-busy'
-            ? 'Snapshot report'
-            : entry.fixture.endsWith('empty')
-              ? 'Nothing needed'
-              : 'Snapshot question'
+    const initial =
+      entry.view === 'asks' && entry.width <= 87
+        ? 'Asks'
+        : entry.fixture === 'asks-japanese'
+          ? 'Snapshot Japanese'
+          : entry.fixture.startsWith('timeline-detail-layout')
+            ? 'Timeline'
+            : entry.fixture === 'detail-empty'
+              ? 'Snapshot empty report'
+              : entry.fixture === 'detail-busy'
+                ? 'Snapshot report'
+                : entry.fixture.endsWith('empty')
+                  ? 'Nothing needed'
+                  : 'Snapshot question'
+    const initialPane = entry.view === 'asks' && entry.width <= 87 ? 'raw' : 'pane'
     await wait(
       socket,
       session,
       terminalWidth,
       frame => pageMarker(frame, initial),
       `initial inbox pane for ${entry.fixture}`,
-      'pane',
+      initialPane,
       45_000,
       { onTimeout },
     )

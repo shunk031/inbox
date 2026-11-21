@@ -67,9 +67,9 @@ export function paneAskRows(
         {inlineText(r.recLine)}
       </Text>
     ) : null
-    const contextLine = r.contextLine ? (
+    const contextLine = r.contextDisplayLine ? (
       <Text key="context" color={pal.muted} wrap="wrap">
-        {inlineText(r.contextLine)}
+        {inlineText(r.contextDisplayLine)}
       </Text>
     ) : null
     const subtitleLines = [contextLine, holdsUp, recLine].filter(line => line !== null)
@@ -84,7 +84,7 @@ export function paneAskRows(
       )
     const wrapSubtitle = (width: number) => (
       <Box flexDirection="column">
-        {r.contextLine ? <Text>{wrapInline(r.contextLine, width, true)}</Text> : null}
+        {r.contextDisplayLine ? <Text>{wrapInline(r.contextDisplayLine, width, true)}</Text> : null}
         {holdsUp}
         {r.recLine ? <Text>{wrapInline(r.recLine, width, true)}</Text> : null}
       </Box>
@@ -95,6 +95,7 @@ export function paneAskRows(
         {preview ? <Text>{wrapInline(preview, width, true)}</Text> : null}
       </Box>
     )
+    const hasWideText = (text: string | null) => text !== null && cellWidth(text) > text.length
 
     return {
       id: r.id,
@@ -122,8 +123,10 @@ export function paneAskRows(
             ) : null}
           </Box>
         ) : null,
-      ...(subtitleLines.length > 0 ? { wrapSubtitle } : {}),
-      ...(r.detail || preview ? { wrapBody } : {}),
+      ...(subtitleLines.length > 0 && [r.contextDisplayLine, holdsUpLine, r.recLine].some(hasWideText)
+        ? { wrapSubtitle }
+        : {}),
+      ...([r.detail, preview].some(hasWideText) ? { wrapBody } : {}),
       clippedBody: (lines, width) => {
         if (lines < 1 || (!r.detail && !preview)) return null
         const { spans: previewLines, bodyLines: detailLines } = clippedDocumentPreview(preview, width, lines)

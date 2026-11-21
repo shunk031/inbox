@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
+import { cellWidth } from '../hooks/text.ts'
 import { checkTreeText } from './check-tree.mjs'
 import { checkChipBoxes, checkFrame, checkLeftEdges, stripChipRightPadding } from './render-snapshots-checks.mjs'
 import {
@@ -55,19 +56,16 @@ test('store key inventory follows CLAUDE_CONFIG_DIR and treats missing store as 
 })
 
 test('registry covers every remaining terminal view, scenario, and width once', () => {
-  assert.equal(registry.length, 31)
+  assert.equal(registry.length, 33)
   assert.equal(new Set(registry.map(entry => entry.file)).size, registry.length)
   assert.deepEqual(new Set(registry.map(entry => entry.width)), new Set([75, 87, 110, 200]))
   assert.deepEqual(
-    registry.filter(entry => entry.scenario === 'japanese').map(entry => [entry.view, entry.width]),
-    [
-      ['asks', 75],
-      ['asks', 110],
-    ],
-  )
-  assert.deepEqual(
     registry.filter(entry => entry.fixture === 'fold-done').map(entry => entry.width),
     [200, 110],
+  )
+  assert.deepEqual(
+    registry.filter(entry => entry.view === 'asks').map(({ scenario, width }) => `${scenario}:${width}`),
+    'empty:200 empty:110 busy:200 busy:110 busy:87 empty:87 japanese:75 japanese:110'.split(' '),
   )
   assert.deepEqual(
     registry
@@ -194,6 +192,25 @@ test('report readiness waits for settled fixture content', () => {
   )
 })
 
+test('the narrow Japanese pane is ready only after its complete card is visible', () => {
+  const entry = registry.find(candidate => candidate.file === 'asks-japanese-75.txt')
+  const partial = 'Snapshot Japanese question.\n作られた日本語の質問です。'
+  const complete = `${partial}\n候補の比較を行う。\nGPU 約 10 分で終える。\nb: 元の形を保つ`
+  assert.equal(ready(entry, partial), false)
+  assert.equal(ready(entry, complete), true)
+
+  const capture = complete
+    .split('\n')
+    .map(line => `│${line}${' '.repeat(73 - cellWidth(line))}│`)
+    .join('\n')
+  assert.equal(cropInboxPane(capture, 75), null)
+  assert.equal(cropInboxPane(capture, 75, frame => ready(entry, frame)).text, complete)
+  assert.equal(
+    cropInboxPane(capture, 87, frame => ready(entry, frame)),
+    null,
+  )
+})
+
 test('pane crop preserves leading and interior spaces while removing the dock divider', () => {
   const capture = Array.from(
     { length: 30 },
@@ -207,11 +224,13 @@ test('pane crop preserves leading and interior spaces while removing the dock di
 })
 
 test('pane crop handles the 87-column single-pane border', () => {
-  const capture = Array.from({ length: 14 }, (_, index) => `│${(index === 5 ? 'Asks' : '').padEnd(85)}│`).join('\n')
-  const cropped = cropInboxPane(capture, 87)
+  const frame = readFileSync(new URL('../tests/render-snapshots/snapshots/asks-busy-87.txt', import.meta.url), 'utf8')
+    .trimEnd()
+    .split('\n')
+  const cropped = cropInboxPane(frame.map(row => `│${row}${' '.repeat(85 - cellWidth(row))}│`).join('\n'), 87)
   assert.equal(cropped.paneWidth, 85)
   assert.equal(cropped.dividerColumn, 0)
-  assert.equal(cropped.text.split('\n')[5], 'Asks')
+  assert.equal(cropped.text, frame.join('\n'))
 })
 
 test('ANSI stripping removes CSI and OSC control sequences', () => {

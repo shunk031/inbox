@@ -18,28 +18,10 @@
           比べる。GPU 約 10 分で終え
           る。
 
-      短縮する: GPU 約 10 分で比べ
-      る。
-      元の形を保つ: 1 体目と同じ方法
-      を使う。
+      短縮する: GPU 約 10 分で比べる…
+      元の形を保つ: 1 体目と同じ方法…
 
       a: 短縮する (recommended)
       b: 元の形を保つ
       t: Reply  e: Explain
       x: Dismiss
-
-
-
-   Tasks
-   │
-   └─   No open tasks
-
-
-
-
-
-
-
-
-
-  Help                         v0.4.0
