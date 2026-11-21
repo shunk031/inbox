@@ -15,7 +15,7 @@ export const marker = entry =>
 export const pageMarker = (frame, text) => frame.replace(/\s+/gu, ' ').includes(text)
 const TERMINAL_ROWS = [
   /^(?:⚠ Remote managed settings failed|policy applied|for details|runs first|event on past it|Claude Code v\d+(?:\.\d+)+)$/u,
-  /^(?:(?:Opus|Sonnet|Haiku) [\d.]+(?: \([^)]*\))? · API Usage Billing|▝▝|❯|⏺ inbox:|⎿ +inbox:|◐ medium · \/effort|⏸ manual mode on · gh auth login for PR status · ← for agents|Nothing needed +\[ Open inbox \])$/u,
+  /^(?:(?:Opus|Sonnet|Haiku) [\d.]+(?: \([^)]*\))? · API Usage Billing|▝▝|❯|⏺ inbox:|⎿ +inbox:|◐ medium · \/effort|⏸ manual mode on · (?:gh auth login for PR status|\? for shortcuts) · ← for agents|Nothing needed +\[ Open inbox \])$/u,
   /^🤖 [^|]+ \| 💰\$[\d,.]+ session \/ \$[\d,.]+ today \/ \$[\d,.]+ block \([^)]*\) \| 🔥\$[\d,.]+\/hr \| 🧠[\d,]+ \(\d+%\) \| Account: [^|]+ \| Weekly: [\d.]+% \| Weekly Fable: [\d.]+%$/u,
   /^⬇️? +In: [\d,.]+[kM]? \| ⬆️? Out: [\d,.]+[kM]? \| 💾 Cached: [\d,.]+[kM]? \| 📊 Total: [\d,.]+[kM]? \| 🧠 Ctx: [\d,.]+[kM]? \| 📈 Ctx Used: [\d.]+% \| 👤 Ctx\(u\) Used: [\d.]+%$/u,
   /^🟢 GenAI GW \$[\d.]+\/10m · 📅 \d+% \([^)]*\) · ⏳ [^·]+ · 👤 \$[\d.]+\/10m · \d+% \([^)]*\)$/u,
@@ -65,6 +65,51 @@ export const failure = (entry, row, expected, actual, reason) =>
   `FAIL view=${entry.view} scenario=${entry.scenario} width=${entry.width} row=${row} ` +
   `expected-column=${expected} actual-column=${actual} ${reason}`
 
+const barTracks = line => [...line.matchAll(/(?<![┌╭└╰├┤▀━─])([━─]+)(?![┐╮└╰├┤▀━─])/gu)].map(([, track]) => track)
+const progressPercent = line => line?.match(/(\d+(?:\.\d+)?)%/u)?.[1]
+
+function checkTimelineBars(entry, frame) {
+  if (entry.view !== 'timeline') return []
+  const lines = frame.split('\n'),
+    errors = [],
+    fail = (...args) => errors.push(failure(entry, ...args))
+  const heading = lines.findIndex(line => line.includes('Progress'))
+  const header = lines.findIndex((line, i) => i > heading && barTracks(line).length)
+  const top = lines.slice(0, heading).findLast(line => /[┌╭].*[┐╮]/u.test(line))
+  const left = top?.search(/[┌╭]/u) ?? -1,
+    right = top?.search(/[┐╮]/u) ?? -1
+  const inner = left >= 0 && right > left ? cellWidth(top.slice(left, right + 1)) - 4 : 0
+  if (heading < 0 || header < 0 || inner < 1)
+    fail('header bar', 'track and card width', 'missing', 'bar cannot be classified')
+  lines.forEach((line, i) => {
+    const tracks = barTracks(line)
+    if (!tracks.length && line.includes('━'))
+      fail(`line-${i + 1}`, 'classifiable bar', line, 'bar cannot be classified')
+    if (!tracks.length) return
+    if (tracks.length !== 1) return fail(`line-${i + 1}`, 'one bar', tracks.join(','), 'bar cannot be classified')
+    const track = tracks[0],
+      value = i === header ? (progressPercent(lines[heading]) ?? progressPercent(lines[i + 1])) : progressPercent(line)
+    if (!/^━*─*$/u.test(track)) fail(`line-${i + 1}`, '━*─*', track, 'bar fill must precede its unfilled track')
+    if (value === undefined) fail(`line-${i + 1}`, 'printed percent', track, 'bar cannot be classified')
+    else if ([...track].filter(mark => mark === '━').length !== Math.round((Number(value) * track.length) / 100))
+      fail(
+        `line-${i + 1}`,
+        Math.round((Number(value) * track.length) / 100),
+        [...track].filter(mark => mark === '━').length,
+        'filled cells do not match the printed percent',
+      )
+    if (i === header && track.length !== inner)
+      fail('header bar', inner, track.length, 'header track does not fill the card content width')
+  })
+  if (entry.scenario === 'busy')
+    for (const marker of taskMarkers) {
+      const row = lines.findIndex(line => line.includes(marker))
+      if (row < 0 || !barTracks(lines[row]).length)
+        fail(`row:${marker}`, 'title-line bar', 'missing', 'bar cannot be classified')
+    }
+  return errors
+}
+
 const detailHeadings = new Set(['Detail', 'Updated', 'Note', 'History', 'Links'])
 export function checkLeftEdges(entry, frame) {
   if (entry.view !== 'timeline-detail') return []
@@ -104,6 +149,7 @@ export function checkFrame(entry, frame, width) {
     entry.view === 'timeline' ? ['Progress', marker(entry)] : entry.view === 'help' ? ['Keys', 'Tabs'] : [marker(entry)]
   for (const text of required)
     if (!pageMarker(frame, text)) add(`required:${text}`, 0, 'missing', 'required label absent')
+  errors.push(...checkTimelineBars(entry, frame))
 
   const tree = entry.view === 'timeline'
   const listBase = 3
@@ -132,29 +178,10 @@ export function checkFrame(entry, frame, width) {
     const status = root && lines.slice(lines.indexOf(root) + 1).find(line => /^\s+│\s+In progress\s*$/u.test(line))
     if (!root) add('snapshot-root title', 6, 'missing', 'required title row absent')
     else if (titleCol !== 6) add('snapshot-root title', 6, titleCol, 'title starts outside fixture column')
-    if (entry.width === 200 && root && (!/[━─]/u.test(root) || !root.includes('50.00%')))
-      add('snapshot-root bar', 'title line', 'next line or missing', 'bar and percentage must share the title line')
     if (!status) add('snapshot-root chip', titleCol, 'missing', 'required chip absent')
     else {
       const chip = col(status, status.indexOf('In progress') - 1)
       if (chip !== titleCol) add('snapshot-root chip', titleCol, chip, 'chip does not start on its title column')
-    }
-    if (entry.width === 200) {
-      const long = lines.find(line => line.includes('Snapshot long'))
-      const ellipsis = long?.indexOf('…') ?? -1
-      const bar = ellipsis < 0 ? -1 : long.slice(ellipsis + 1).search(/[━─]/u)
-      if (bar < 0)
-        add('snapshot-long bar', 'title line after ellipsis', 'next line or missing', 'bar is not on the title line')
-      else {
-        const gap = col(long, ellipsis + 1 + bar) - col(long, ellipsis) - cellWidth('…')
-        if (gap < 2)
-          add(
-            'snapshot-long ellipsis gap',
-            'ellipsis end + 2',
-            col(long, ellipsis + 1 + bar),
-            `bar gap is ${gap} cells`,
-          )
-      }
     }
   }
 
@@ -324,7 +351,22 @@ export function runMutationProofs(frames) {
   const lines = timeline.frame.split('\n')
   const chip = lines.findIndex(line => /^\s+│\s+In progress\s*$/u.test(line))
   if (chip >= 0) lines[chip] = lines[chip].replace(/^ /u, '')
-  const long = timeline.frame.split('\n').find(line => line.includes('Snapshot long'))
+  const barLines = timeline.frame.split('\n'),
+    heading = barLines.findIndex(line => line.includes('Progress'))
+  const headerRow = barLines.findIndex((line, i) => i > heading && barTracks(line).length)
+  const child = barLines.findIndex(line => line.includes('折り返し用'))
+  const childRow = barTracks(barLines[child] ?? '').length ? child : -1
+  const mutateBar = (row, transform) => {
+    const track = barTracks(barLines[row] ?? '')[0]
+    return track && barLines.map((line, i) => (i === row ? line.replace(track, transform(track)) : line)).join('\n')
+  }
+  const barCheck = (frame, text) => frame && checkTimelineBars(timeline.entry, frame).find(line => line.includes(text))
+  const barProofs = [
+    ['one extra filled cell', mutateBar(headerRow, track => `━${track}`), 'filled cells do not match'],
+    ['filled cell after unfilled', mutateBar(headerRow, track => track.replace('━─', '─━')), 'bar fill must precede'],
+    ['header track shortened', mutateBar(headerRow, track => track.slice(0, -1)), 'header track does not fill'],
+    ['completed child emptied', mutateBar(childRow, track => '─'.repeat(track.length)), 'filled cells do not match'],
+  ].map(([name, frame, text]) => [name, barCheck(frame, text)])
   const focusMutation = timeline.ansiFrame.replace('Snapshot long', '\x1b[7mSnapshot long\x1b[27m')
   const asks = frames.get('asks-empty-110.txt')
   const names = new Set(registry.map(entry => entry.file))
@@ -342,19 +384,13 @@ export function runMutationProofs(frames) {
       check(timeline.frame.replace('Progress', '         ')).find(line => line.includes('required label absent')),
     ],
     [
-      'gap after ellipsis removed',
-      long &&
-        check(timeline.frame.replace(long, long.replace(/… {2,}(?=[━─])/u, '…'))).find(line =>
-          line.includes('bar gap'),
-        ),
-    ],
-    [
       'stray tree guide inserted',
       checkFrame(asks.entry, `│${asks.frame}`, asks.paneWidth).find(line => line.includes('stray │')),
     ],
     ['baseline deleted', inventoryErrors(names, missing).find(line => line.includes('timeline-busy-200.txt'))],
     ['extra baseline added', inventoryErrors(names, extra).find(line => line.includes('unreferenced baseline'))],
     ['focus left on another task', checkTimelineFocus(timeline.entry, timeline.frame, focusMutation)[0]],
+    ...barProofs,
   ]
   for (const [name, line] of proofs) {
     if (!line) throw Error(`mutation proof did not fail: ${name}`)

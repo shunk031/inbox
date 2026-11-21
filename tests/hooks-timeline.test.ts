@@ -325,12 +325,10 @@ test('terminal Timeline keeps Japanese titles, row metadata and detail guides at
   const title = await pane.find({ key: 'timeline-title-long-root' })
   expect(title?.text.endsWith('…'), 'the long title is truncated with an ellipsis').toBe(true)
   expect(title?.text).not.toContain(longTitle)
-  expect(cellWidth(title?.text ?? '')).toBeGreaterThanOrEqual(20)
-  expect(cellWidth(title?.text ?? '')).toBeLessThanOrEqual(30)
-  expect(
-    await pane.find({ key: 'timeline-row-bar-long-root' }),
-    'the bar is dropped to preserve title width',
-  ).not.toBeTruthy()
+  expect(cellWidth(title?.text ?? '')).toBeGreaterThanOrEqual(19)
+  expect(cellWidth(title?.text ?? '')).toBeLessThanOrEqual(36)
+  const rootBar = await pane.find({ key: 'timeline-row-bar-long-root' })
+  expect(rootBar, 'the row bar remains visible on its title line').toBeTruthy()
   const lines = (await pane.findAll({ type: 'Text' })).map(line => line.text)
   expect(
     lines.some(line => line.startsWith('> ○ ')),
@@ -341,7 +339,7 @@ test('terminal Timeline keeps Japanese titles, row metadata and detail guides at
     lines.some(line => line.trim() === '0.00%'),
     'the row percentage keeps every character',
   ).toBe(true)
-  expect((await pane.find({ key: 'timeline-progress-bar' }))?.props.flexDirection).toBe('column')
+  expect((await pane.find({ key: 'timeline-progress-bar' }))?.props.flexDirection).toBe('row')
 
   await pane.press({ key: 'timeline-title-child-a' })
   await clock.settle()
@@ -426,7 +424,7 @@ test('terminal Timeline aligns percentages, strips rows, and separates only top-
   const bars = await Promise.all(
     ['zero', 'forty', 'forty-done'].map(async id => (await pane.find({ key: `timeline-row-bar-${id}` }))?.text ?? ''),
   )
-  expect(bars.map(text => cellWidth(text))).toEqual([12, 12, 12])
+  expect(bars.map(text => cellWidth(text))).toEqual([10, 10, 10])
   const text = (await pane.findAll({ type: 'Text' })).map(node => node.text)
   expect(
     text.some(line => line.trim() === '3'),
@@ -434,7 +432,7 @@ test('terminal Timeline aligns percentages, strips rows, and separates only top-
   ).toBe(true)
 })
 
-test('the desktop Timeline keeps the existing inline tree while this look is pending', async ($, on) => {
+test('the desktop Timeline keeps its inline tree and draws sized SVG progress bars', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   world($, on, [])
   w.files = ['/.next-build']
@@ -478,6 +476,10 @@ test('the desktop Timeline keeps the existing inline tree while this look is pen
   expect(
     (await pane.findAll({ type: 'Button' })).filter(button => button.key?.startsWith('timeline-title-')),
   ).toHaveLength(3)
+  const bars = await pane.findAll({ type: 'Svg' })
+  expect(bars).toHaveLength(4)
+  expect(bars[0]?.props.width).toBe(118 * 8.8)
+  expect(bars[0]?.props.source).toContain('textLength="1038.4"')
   const text = (await pane.findAll({ type: 'Text' })).map(node => node.text)
   expect(text.some(line => line.includes('Task plan'))).toBe(true)
   expect(text).not.toContain('Progress')

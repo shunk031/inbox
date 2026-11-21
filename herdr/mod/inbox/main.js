@@ -1,5 +1,5 @@
 // Built by herdr/build.ts with Bun 1.4.4 from herdr/src and hooks/. Do not edit.
-// Built at 2026-11-20T17:26:29.335Z. 226201 characters follow.
+// Built at 2026-11-21T02:31:27.064Z. 227315 characters follow.
 
 // src/main.ts
 import { View, div as div5 } from "gpui-kit";
@@ -821,7 +821,7 @@ function weightedAverage(values) {
   const total = values.reduce((sum, [, weight]) => sum + weight, 0);
   return total ? values.reduce((sum, [value, weight]) => sum + value * weight, 0) / total : 0;
 }
-function weightedTaskProgressSegments(tree, stalledTasks = new Set, rootId) {
+function weightedTaskProgressSegments(tree, stalledTasks = new Set, taskId) {
   const children = new Map;
   for (const task of tree)
     children.set(task.parentId, [...children.get(task.parentId) ?? [], task]);
@@ -851,9 +851,9 @@ function weightedTaskProgressSegments(tree, stalledTasks = new Set, rootId) {
     else
       segments.queued += weight;
   };
-  for (const root of children.get(null) ?? [])
-    if (rootId === undefined || root.id === rootId)
-      add(root, root.weight, new Set);
+  const tasks = taskId === undefined ? children.get(null) ?? [] : tree.filter((task) => task.id === taskId);
+  for (const task of tasks)
+    add(task, task.weight, new Set);
   return segments;
 }
 function taskTreeFromStatus(status) {
@@ -3542,9 +3542,9 @@ var COMPLETED_FOLD_ID = "inbox:timeline:completed-fold".padEnd(101, "-");
 // ../hooks/timeline-page.ts
 var BAR_MARKS = {
   done: "━",
-  working: "━",
-  stalled: "━",
-  waiting: "━",
+  working: "─",
+  stalled: "─",
+  waiting: "─",
   queued: "─"
 };
 var BAR_TONES = {
@@ -3554,7 +3554,7 @@ var BAR_TONES = {
   waiting: "error",
   queued: "muted"
 };
-var BAR_STATES = Object.keys(BAR_MARKS);
+var BAR_STATES = ["working", "waiting", "stalled", "queued"];
 function timelineTask(task, now) {
   const { createdAt: _createdAt, updatedAt, history, ...details } = task;
   return {
@@ -3568,17 +3568,37 @@ function percent(value) {
   return { value: rounded, label: `${rounded.toFixed(2)}%` };
 }
 function timelineBar(segments, width) {
-  if (segments.total <= 0)
+  const cells = Math.max(0, Math.trunc(width));
+  if (!cells)
     return [];
+  const completion = percent(segments.total > 0 ? segments.done / segments.total : 0).value;
+  const filled = Math.min(cells, Math.round(completion / 100 * cells));
+  const remaining = cells - filled;
+  const parts = [];
+  if (filled > 0)
+    parts.push({ state: "done", mark: BAR_MARKS.done, count: filled, tone: BAR_TONES.done });
+  if (!remaining)
+    return parts;
+  const total = BAR_STATES.reduce((sum, state) => sum + Math.max(0, segments[state]), 0);
   let cumulative = 0;
   let drawn = 0;
-  return BAR_STATES.flatMap((state) => {
-    cumulative += segments[state];
-    const end = Math.round(cumulative / segments.total * width);
+  for (const state of BAR_STATES) {
+    cumulative += total > 0 ? Math.max(0, segments[state]) : state === "queued" ? 1 : 0;
+    const end = total > 0 ? Math.round(cumulative / total * remaining) : cumulative ? remaining : 0;
     const count = Math.max(0, end - drawn);
     drawn = end;
-    return count > 0 ? [{ state, mark: BAR_MARKS[state], count, tone: BAR_TONES[state] }] : [];
-  });
+    if (count > 0)
+      parts.push({ state, mark: BAR_MARKS[state], count, tone: BAR_TONES[state] });
+  }
+  const unassigned = remaining - drawn;
+  if (unassigned > 0) {
+    const queued = parts.find((part) => part.state === "queued");
+    if (queued)
+      queued.count += unassigned;
+    else
+      parts.push({ state: "queued", mark: BAR_MARKS.queued, count: unassigned, tone: BAR_TONES.queued });
+  }
+  return parts;
 }
 function taskStatus(task, stalled) {
   if (stalled.has(task.id))
@@ -3655,7 +3675,8 @@ function timelineData(tree, segments, stalledSince, warnings, now, taskStatusMis
       const connector = depth === 0 ? "" : hasLaterSibling ? "├─ " : "└─ ";
       const status = taskStatus(task, stalled);
       const presentation = timelineStatusPresentation(status);
-      const progress = percent(weightedTaskProgress(tree, task.id));
+      const taskSegments = weightedTaskProgressSegments(tree, stalled, task.id);
+      const progress = percent(taskSegments.total > 0 ? taskSegments.done / taskSegments.total : 0);
       const completedUnits = completedLeaves(tree, task.id);
       rows.push({
         task: timelineTask(task, now),
@@ -3666,7 +3687,8 @@ function timelineData(tree, segments, stalledSince, warnings, now, taskStatusMis
         hasChildren: childrenOfTask.length > 0,
         progress: progress.value,
         percent: progress.label,
-        progressBar: timelineBar(weightedTaskProgressSegments(tree, stalled, task.id), 10),
+        progressBar: timelineBar(taskSegments, 10),
+        progressSegments: taskSegments,
         completedUnits,
         status,
         statusLabel: presentation.label,
@@ -3682,7 +3704,7 @@ function timelineData(tree, segments, stalledSince, warnings, now, taskStatusMis
     });
   };
   visit(children.get(null) ?? [], 0, []);
-  const overall = percent(weightedTaskProgress(tree));
+  const overall = percent(segments.total > 0 ? segments.done / segments.total : 0);
   const state = progressStatus(segments);
   const presentation = timelineStatusPresentation(state);
   const leaves = completedLeaves(tree);
@@ -3697,10 +3719,11 @@ function timelineData(tree, segments, stalledSince, warnings, now, taskStatusMis
       tone: presentation.tone,
       percent: overall.value,
       percentLabel: overall.label,
+      bar: timelineBar(segments, 28),
       leavesDone: leaves.done,
       leavesTotal: leaves.total,
       elapsed: firstCreated === null ? "—" : shortAgo(now - firstCreated),
-      bar: timelineBar(segments, 28)
+      segments
     },
     rows
   };

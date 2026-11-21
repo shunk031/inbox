@@ -40,6 +40,10 @@ Change a rule in its owner. Do not change it in a reader.
 
 A difference is on purpose when a look cannot do something or the product decided it. Anything not listed here is drift.
 
+| Look | Terminal | Codex and omp | Reason |
+| --- | --- | --- | --- |
+| Timeline header width | Fills the progress card's inner width. | Keeps the existing 28-cell track. | The terminal-first change sizes its native card; Codex and omp keep their current card layouts while drawing the shared bar parts. |
+
 A row that covers a host difference names its feature id in backticks in the first column. `hooks/clients.ts` lists the feature ids. `hooks/client-support.ts` classifies each as `full`, `different` or `unsupported` for each client: `claude-code` for the terminal and desktop looks, plus `codex` and `omp`. `scripts/check-structure.mjs` fails when a feature that is not `full` has no row in the table that covers its host, and when a row names an id the record lacks. The main table covers `claude-code` and `codex`. The omp table covers `omp`.
 
 The parts below hold the main table, split by subject. The omp table is in the parts under omp, whose file names start with `differences-omp`. The structure check tells the two tables apart by that name.

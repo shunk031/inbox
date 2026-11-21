@@ -3,11 +3,13 @@ import {
   COMPLETED_FOLD_ID,
   moveTimelineSelection,
   timelineData,
+  timelineBar,
   timelinePage,
   toggleTimelineBranch,
 } from '../hooks/timeline-page'
 import type { TaskFactWarning, TaskNode, TaskProgressSegments, TaskTree } from '../types'
 import { upgradedTimelineFolded } from '../hooks/timeline-state'
+import { weightedTaskProgressSegments } from '../hooks/task-tree'
 
 const now = 1_000_000
 const task = (id: string, change: Partial<TaskNode> = {}): TaskNode => ({
@@ -24,6 +26,7 @@ const task = (id: string, change: Partial<TaskNode> = {}): TaskNode => ({
   ...change,
 })
 const segments: TaskProgressSegments = { total: 4, done: 1, working: 1, stalled: 1, waiting: 0, queued: 1 }
+const barText = (parts: ReturnType<typeof timelineBar>) => parts.map(part => part.mark.repeat(part.count)).join('')
 
 test('Timeline has an empty state and a not-started progress card without tasks', () => {
   const page = timelineData([], { total: 0, done: 0, working: 0, stalled: 0, waiting: 0, queued: 0 }, {}, [], now)
@@ -35,8 +38,12 @@ test('Timeline has an empty state and a not-started progress card without tasks'
     leavesDone: 0,
     leavesTotal: 0,
     elapsed: '—',
-    bar: [],
+    segments: { total: 0, done: 0, working: 0, stalled: 0, waiting: 0, queued: 0 },
   })
+  expect(timelineBar(page.progressCard.segments, 10)).toEqual([
+    { state: 'queued', mark: '─', count: 10, tone: 'muted' },
+  ])
+  expect(page.progressCard.bar).toEqual([{ state: 'queued', mark: '─', count: 28, tone: 'muted' }])
 })
 
 test('Timeline keeps tree order and derives progress, stall age and warnings', () => {
@@ -60,12 +67,43 @@ test('Timeline keeps tree order and derives progress, stall age and warnings', (
     mark: '✕',
     warnings: [warning.message],
   })
-  expect(page.progressCard.bar.map(part => [part.state, part.count, part.tone])).toEqual([
-    ['done', 7, 'done'],
-    ['working', 7, 'key'],
-    ['stalled', 7, 'error'],
-    ['queued', 7, 'muted'],
-  ])
+  expect(page.rows[0]?.progressBar.map(part => [part.state, part.count, part.tone])).toEqual([['stalled', 10, 'error']])
+})
+
+test('Timeline bars fill the rounded displayed percent before status-colored remaining work', () => {
+  const counts = (values: [number, number, number, number, number, number]): TaskProgressSegments => {
+    const [total, done, working, stalled, waiting, queued] = values
+    return { total, done, working, stalled, waiting, queued }
+  }
+  const cases: [Parameters<typeof counts>[0], number, string, string][] = [
+    [[100, 0, 0, 0, 100, 0], 10, '─'.repeat(10), 'error'],
+    [[2, 1, 1, 0, 0, 0], 10, '━━━━━─────', 'done key'],
+    [[10_000, 6_613, 3_387, 0, 0, 0], 31, '━'.repeat(21) + '─'.repeat(10), 'done key'],
+    [[100, 50, 25, 10, 10, 5], 100, '━'.repeat(50) + '─'.repeat(50), 'done key error error muted'],
+  ]
+  for (const [values, width, marks, tones] of cases) {
+    const bar = timelineBar(counts(values), width)
+    expect([barText(bar), bar.map(part => part.tone).join(' ')]).toEqual([marks, tones])
+  }
+})
+
+test('Timeline child rows use their subtree and omit dropped work from percent and bar', () => {
+  const tree: TaskTree = [
+    task('parent', { status: 'working' }),
+    task('child-done', { parentId: 'parent', status: 'done', weight: 1 }),
+    task('child-waiting', { parentId: 'parent', status: 'waits-on-other', weight: 1 }),
+    task('child-dropped', { parentId: 'parent', status: 'dropped', weight: 99 }),
+    task('dropped-root', { status: 'dropped', weight: 99 }),
+  ]
+  const active = weightedTaskProgressSegments(tree)
+  const page = timelineData(tree, active, {}, [], now)
+  const parent = page.rows.find(row => row.task.id === 'parent')!
+  const done = page.rows.find(row => row.task.id === 'child-done')!
+
+  expect([parent.percent, page.progressCard.percentLabel, done.percent].join('|')).toBe('50.00%|50.00%|100.00%')
+  expect(
+    [parent.progressBar, timelineBar(page.progressCard.segments, 10), done.progressBar].map(barText).join('|'),
+  ).toBe('━━━━━─────|━━━━━─────|━━━━━━━━━━')
 })
 
 test('Timeline summarizes weighted completion and counts completed leaf tasks', () => {
