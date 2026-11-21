@@ -4,10 +4,12 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpath
 import os from 'node:os'
 import path from 'node:path'
 import { registry, SCENARIOS, VIEWS } from './render-snapshots-fixtures.mjs'
-import { capture, removeTemporaryTree, tmux } from './render-snapshots-live.mjs'
+import { capture, removeTemporaryTree, saveRawTimeoutFrame, stripAnsi, tmux } from './render-snapshots-live.mjs'
+import { checkTreeText } from './check-tree.mjs'
 import {
   checkFrame,
   checkChipBoxes,
+  checkLeftEdges,
   checkTimelineFocus,
   failure,
   inventoryErrors,
@@ -20,6 +22,10 @@ async function main() {
   const root = mkdtempSync(path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'inbox-render-snapshots-'))
   const socket = `inbox-render-${process.pid}`
   const frames = new Map()
+  for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => tmux(socket, 'kill-server'))
+  let rawFrames
+  const rawFrameDirectory = () =>
+    (rawFrames ??= mkdtempSync(path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'inbox-render-failures-')))
   const claude = execFileSync('which', ['claude'], { encoding: 'utf8' }).trim()
   const pin = readFileSync('.github/workflows/plugin-tests.yml', 'utf8').match(/claude-code@([\d.]+)/u)?.[1]
   const version = execFileSync(claude, ['--version'], { encoding: 'utf8' })
@@ -29,7 +35,14 @@ async function main() {
   assert.equal(version, pin, `Claude Code is ${version ?? 'unknown'}; workflow pins ${pin}`)
   try {
     tmux(socket, 'start-server')
-    for (const entry of registry) frames.set(entry.file, await capture(entry, plugin, root, socket, claude))
+    for (const entry of registry) {
+      const onTimeout = (frame, label) => {
+        if (frame === undefined) return
+        const file = saveRawTimeoutFrame(rawFrameDirectory(), entry.file, frame)
+        process.stderr.write(`Raw timeout frame saved: ${file} (${label})\n`)
+      }
+      frames.set(entry.file, await capture(entry, plugin, root, socket, claude, { onTimeout }))
+    }
   } finally {
     try {
       tmux(socket, 'kill-server')
@@ -55,8 +68,19 @@ async function main() {
         errors.push(failure(item.entry, 'baseline', 'same pane frame', 'different', 'frame differs'))
     }
     errors.push(...checkFrame(item.entry, item.frame, item.paneWidth))
+    errors.push(...checkLeftEdges(item.entry, item.frame))
     errors.push(...checkChipBoxes(item.entry, item.ansiFrame, item.paneWidth))
     errors.push(...checkTimelineFocus(item.entry, item.frame, item.ansiFrame))
+    if (item.entry.view === 'asks' || item.entry.view === 'timeline')
+      errors.push(
+        ...checkTreeText(stripAnsi(item.ansiFrame), {
+          view: item.entry.view,
+          inputMode: 'pane-in-terminal',
+          dividerColumn: item.dividerColumn,
+          paneWidth: item.paneWidth,
+          source: name,
+        }),
+      )
   }
   errors.push(
     ...inventoryErrors(
@@ -65,6 +89,10 @@ async function main() {
     ),
   )
   if (errors.length) {
+    const directory = rawFrameDirectory()
+    for (const [name, item] of frames)
+      writeFileSync(path.join(directory, name.replace(/\.txt$/u, '.ansi')), item.ansiFrame)
+    process.stderr.write(`Raw frames saved: ${directory}\n`)
     errors.forEach(line => process.stderr.write(`${line}\n`))
     throw Error(`${errors.length} render snapshot failure(s)`)
   }

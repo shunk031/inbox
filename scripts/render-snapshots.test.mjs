@@ -1,10 +1,19 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
+import { checkTreeText } from './check-tree.mjs'
 import { checkChipBoxes, checkFrame, checkLeftEdges, stripChipRightPadding } from './render-snapshots-checks.mjs'
-import { cropInboxPane, isolate, ready, storeKeys, stripAnsi } from './render-snapshots-live.mjs'
+import {
+  cropInboxPane,
+  isolate,
+  ready,
+  saveRawTimeoutFrame,
+  storeKeys,
+  stripAnsi,
+  wait,
+} from './render-snapshots-live.mjs'
 import { fixtureState, PLUGIN_STORE, registry } from './render-snapshots-fixtures.mjs'
 
 test('isolation accepts a missing real config path and still refuses unsafe paths', t => {
@@ -64,6 +73,87 @@ test('registry covers every remaining terminal view, scenario, and width once', 
       .toSorted((a, b) => a - b),
     [87, 110, 200],
   )
+})
+
+const paneOnly = (text, options = {}) => checkTreeText(text, { ...options, inputMode: 'pane-only' })
+
+test('Asks tree reconstruction enforces continuity, parent columns and recognized headings', () => {
+  const frame = 'Questions\n   │\n   ├─ A\n   │  ├─ C1\n   │  │  wrap\n   │  └─ C2\n   │\n   └─ B'
+  const check = text => paneOnly(text, { view: 'asks' })
+  assert.deepEqual(check(frame), [])
+  for (const [from, to] of [
+    ['   │  ├─ C1', '      ├─ C1'],
+    ['   │  │  wrap', '      │  wrap'],
+    ['   │\n   └─ B', '   \n   └─ B'],
+  ])
+    assert.ok(check(frame.replace(from, to)).some(error => error.includes('missing-continuity-column=3')))
+  const rejects = (text, detail) => assert.ok(check(text).some(error => error.includes(detail)))
+  const oneChild = 'Questions\n   │\n   └─ A'
+  const siblings = 'Questions\n   │\n   ├─ A\n   │\n   └─ B'
+  rejects('Questions\n   │', 'orphan-trunk-column=3')
+  rejects(frame.replaceAll(/\n   /gu, '\n      '), 'asks-guide-column=3 actual=6')
+  rejects('Help tab has no tree', 'missing-recognized-heading')
+  rejects('   ├─ stray\nQuestions\n   │\n   └─ A', 'connector-without-recognized-heading')
+  rejects(`${oneChild}\n      │`, 'orphan-trunk-column=6')
+  rejects(siblings.replace('   │\n   └─ B', '    │\n   └─ B'), 'orphan-trunk-column=4')
+  rejects(`${oneChild}\n         └─ shifted child`, 'connector-parent-column=6 actual=9')
+  rejects('Summary\n   └─ orphan\nQuestions\n   │\n   └─ valid', 'connector-without-recognized-heading')
+})
+
+test('exact empty states pass only without tree rows', () => {
+  const asks = "Nothing needed\nClaude's questions and the tasks\nonly you can do show up here."
+  const timeline = 'Timeline\nNo tasks have been recorded for this session.'
+  const rejects = (text, detail) => paneOnly(text, { view: 'asks' }).some(error => error.includes(detail))
+  assert.deepEqual(paneOnly(asks, { view: 'asks' }), [])
+  assert.deepEqual(paneOnly(timeline, { view: 'timeline' }), [])
+  assert.ok(rejects('Nothing needed\nNot the empty hint', 'missing-recognized-heading'))
+  assert.ok(rejects(`${asks}\n   └─ stray`, 'connector-without-recognized-heading'))
+  const terminal = rows =>
+    checkTreeText(rows.map(row => `${' '.repeat(40)}│${row}`).join('\n'), {
+      view: 'asks',
+      inputMode: 'pane-in-terminal',
+      dividerColumn: 40,
+      paneWidth: 51,
+    })
+  const pane = ['Nothing needed', "Claude's questions and the tasks", 'only you can do show up here.', 'Help v0.4.0']
+  assert.deepEqual(terminal(pane), [])
+  assert.ok(terminal(['✕', '▄', 'Asks Timeline 0 PRs', '─', 'extra', ...pane]).length)
+  assert.ok(
+    terminal([...pane.slice(0, 3), 'extra text', pane[3]]).some(error => error.includes('missing-recognized-heading')),
+  )
+})
+
+test('terminal tree checks classify every row and require the detected divider', () => {
+  const check = (frame, dividerColumn, paneWidth) =>
+    checkTreeText(frame, { view: 'asks', inputMode: 'pane-in-terminal', dividerColumn, paneWidth })
+  const rows = Array.from({ length: 30 }, (_, index) =>
+    `${' '.repeat(40)}│${['Questions', '   │', '   ├─ A', '   │', '   └─ B'][index] ?? ''}`.padEnd(92),
+  )
+  assert.deepEqual(check(rows.join('\n'), 40, 51), [])
+  const chrome = [
+    'Claude Code v2.1.321',
+    'Nothing needed [ Open inbox ]',
+    '◐ medium · /effort',
+    '⏵⏵ bypass permissions on · 2 shells · ← 1 agent',
+  ]
+  assert.deepEqual(check([...rows, ...chrome].join('\n'), 40, 51), [])
+  const unclassified = frame => check(frame, 40, 51).some(error => error.includes('unclassified line'))
+  assert.ok(unclassified([...rows, `${' '.repeat(44)}│`, 'Claude Code v2.1.321'].join('\n')))
+  assert.ok(check(`broken row\n${rows.join('\n')}`, 40, 51).some(error => error.includes('line=1 unclassified line')))
+  rows[2] = `${rows[2].slice(0, 40)} ${rows[2].slice(41)}`
+  assert.ok(check(rows.join('\n'), 40, 51).some(error => error.includes('line=3 unclassified line')))
+  rows[29] = `${rows[4].slice(0, 40)} ${rows[4].slice(41)}`
+  assert.ok(check(rows.join('\n'), 40, 51).some(error => error.includes('line=30 unclassified line')))
+})
+
+test('Timeline root and paired box borders are explicit', () => {
+  const frame = 'Progress\n ┌──┐\n │  │\n └──┘\n    ◐ root\n    │  In progress\n    └─ child'
+  const rejects = (text, expected) =>
+    assert.ok(paneOnly(text, { view: 'timeline' }).some(error => error.includes(expected)))
+  assert.deepEqual(paneOnly(frame, { view: 'timeline' }), [])
+  rejects(frame.replace('    │  In progress', '   │  In progress'), 'orphan-trunk-column=3')
+  rejects(frame.replace(' └──┘', ' └─┘'), 'orphan-trunk')
+  rejects(frame.replace('    ◐ root\n', ''), 'connector-without-timeline-root')
 })
 
 test('left-edge check catches an indented Detail heading and its text', () => {
@@ -145,4 +235,34 @@ test('chip box checks require one padded cell on each side and space before the 
   const missingRight = stripChipRightPadding(frame, entry, 20, 'In progress')
   assert.ok(checkChipBoxes(entry, missingRight, 20).some(line => line.includes('chip box padding')))
   assert.ok(checkChipBoxes(entry, frame.trimEnd(), 20).some(line => line.includes('chip box right margin')))
+})
+
+test('capture and readiness timeouts save the last raw frame', async t => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), 'render-snapshot-timeout-'))
+  t.after(() => rmSync(directory, { recursive: true, force: true }))
+  for (const mode of ['raw', 'pane']) {
+    let saved
+    await assert.rejects(
+      wait('socket', 'session', 87, () => false, 'readiness', mode, 20, {
+        captureFrame: () => 'raw terminal frame',
+        onTimeout: (frame, label) => {
+          saved = saveRawTimeoutFrame(directory, `${label}.txt`, frame)
+        },
+      }),
+      /timed out waiting for readiness/u,
+    )
+    assert.equal(readFileSync(saved, 'utf8'), 'raw terminal frame')
+  }
+})
+
+test('readiness waits for two identical captures', async () => {
+  let captures = 0
+  const result = await wait('socket', 'session', 87, () => true, 'ready', 'raw', 1_000, {
+    captureFrame: () => {
+      captures++
+      return 'stable frame'
+    },
+  })
+  assert.equal(result.capture, 'stable frame')
+  assert.equal(captures, 2)
 })
