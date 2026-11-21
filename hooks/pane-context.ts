@@ -25,6 +25,7 @@ import type { footerStatus } from './view'
 import type { paletteFor, Tone } from './palettes'
 
 type PaneElements = Elements[RenderSurface]
+export type PaneSvg = Extract<PaneElements, { Svg: unknown }>['Svg']
 
 export type PaneClient =
   | { hasClient: true; elements: Extract<PaneElements, { Client: unknown }> }

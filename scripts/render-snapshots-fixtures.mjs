@@ -131,7 +131,7 @@ const shift = (value, by) =>
           ]),
         )
       : value
-export function fixtureState(fixture) {
+export function fixtureState(fixture, view) {
   if (fixture.startsWith('help-')) fixture = `base-${fixture.slice(5)}`
   const state = {
     version: 1,
@@ -172,7 +172,7 @@ export function fixtureState(fixture) {
     state.taskTree = empty ? [task('snapshot-detail-empty', null, 'Snapshot detail empty', 'working')] : tasks
     data.items = [reportQuestion(empty)]
   } else if (fixture !== 'base-empty') throw Error(`Unknown fixture: ${fixture}`)
-  return shift(state, Date.now() - NOW)
+  return shift(state, Date.now() - NOW - (view === 'timeline-detail' ? 60 * 60_000 : 0))
 }
 export const registry = [
   ...VIEWS.flatMap(view =>

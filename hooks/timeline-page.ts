@@ -9,7 +9,7 @@ import type {
 } from '../types'
 import { prMarkId } from './pr-rows'
 import { shortAgo } from './rows'
-import { weightedTaskProgress, weightedTaskProgressSegments } from './task-tree'
+import { weightedTaskProgressSegments } from './task-tree'
 import type { PrAction } from './pr-press'
 import type { ActionView } from './rows'
 import { COMPLETED_FOLD_ID, timelineCompletedFolded } from './timeline-state'
@@ -49,6 +49,7 @@ type TimelineNode = {
   progress: number
   percent: string
   progressBar: TimelineBarPart[]
+  progressSegments: TaskProgressSegments
   completedUnits: { done: number; total: number }
   status: TimelineState
   statusLabel: string
@@ -65,10 +66,11 @@ type TimelineProgressCard = {
   tone: TimelineTone
   percent: number
   percentLabel: string
+  bar: TimelineBarPart[]
   leavesDone: number
   leavesTotal: number
   elapsed: string
-  bar: TimelineBarPart[]
+  segments: TaskProgressSegments
 }
 type TimelineBase = {
   isEmpty: boolean
@@ -90,21 +92,21 @@ export type TimelinePage = TimelineBase & {
   } | null
 }
 
-const BAR_MARKS: Record<TimelineBarPart['state'], string> = {
+const BAR_MARKS: Record<Exclude<TimelineBarPart['state'], 'dropped'>, string> = {
   done: '━',
-  working: '━',
-  stalled: '━',
-  waiting: '━',
+  working: '─',
+  stalled: '─',
+  waiting: '─',
   queued: '─',
 }
-const BAR_TONES: Record<TimelineBarPart['state'], TimelineTone> = {
+const BAR_TONES: Record<Exclude<TimelineBarPart['state'], 'dropped'>, TimelineTone> = {
   done: 'done',
   working: 'key',
   stalled: 'error',
   waiting: 'error',
   queued: 'muted',
 }
-const BAR_STATES = Object.keys(BAR_MARKS) as TimelineBarPart['state'][]
+const BAR_STATES = ['working', 'waiting', 'stalled', 'queued'] as const
 const HISTORY_TEXT: Record<TaskHistoryEvent['kind'], string> = {
   created: 'Task created',
   updated: 'Task updated',
@@ -137,17 +139,34 @@ function percent(value: number): { value: number; label: string } {
   return { value: rounded, label: `${rounded.toFixed(2)}%` }
 }
 
-function timelineBar(segments: TaskProgressSegments, width: number): TimelineBarPart[] {
-  if (segments.total <= 0) return []
+export function timelineBar(segments: TaskProgressSegments, width: number): TimelineBarPart[] {
+  const cells = Math.max(0, Math.trunc(width))
+  if (!cells) return []
+
+  const completion = percent(segments.total > 0 ? segments.done / segments.total : 0).value
+  const filled = Math.min(cells, Math.round((completion / 100) * cells))
+  const remaining = cells - filled
+  const parts: TimelineBarPart[] = []
+  if (filled > 0) parts.push({ state: 'done', mark: BAR_MARKS.done, count: filled, tone: BAR_TONES.done })
+  if (!remaining) return parts
+
+  const total = BAR_STATES.reduce((sum, state) => sum + Math.max(0, segments[state]), 0)
   let cumulative = 0
   let drawn = 0
-  return BAR_STATES.flatMap(state => {
-    cumulative += segments[state]
-    const end = Math.round((cumulative / segments.total) * width)
+  for (const state of BAR_STATES) {
+    cumulative += total > 0 ? Math.max(0, segments[state]) : state === 'queued' ? 1 : 0
+    const end = total > 0 ? Math.round((cumulative / total) * remaining) : cumulative ? remaining : 0
     const count = Math.max(0, end - drawn)
     drawn = end
-    return count > 0 ? [{ state, mark: BAR_MARKS[state], count, tone: BAR_TONES[state] }] : []
-  })
+    if (count > 0) parts.push({ state, mark: BAR_MARKS[state], count, tone: BAR_TONES[state] })
+  }
+  const unassigned = remaining - drawn
+  if (unassigned > 0) {
+    const queued = parts.find(part => part.state === 'queued')
+    if (queued) queued.count += unassigned
+    else parts.push({ state: 'queued', mark: BAR_MARKS.queued, count: unassigned, tone: BAR_TONES.queued })
+  }
+  return parts
 }
 
 function taskStatus(task: TaskNode, stalled: ReadonlySet<string>): TimelineState {
@@ -229,7 +248,8 @@ export function timelineData(
       const connector = depth === 0 ? '' : hasLaterSibling ? '├─ ' : '└─ '
       const status = taskStatus(task, stalled)
       const presentation = timelineStatusPresentation(status)
-      const progress = percent(weightedTaskProgress(tree, task.id))
+      const taskSegments = weightedTaskProgressSegments(tree, stalled, task.id)
+      const progress = percent(taskSegments.total > 0 ? taskSegments.done / taskSegments.total : 0)
       const completedUnits = completedLeaves(tree, task.id)
       rows.push({
         task: timelineTask(task, now),
@@ -240,7 +260,8 @@ export function timelineData(
         hasChildren: childrenOfTask.length > 0,
         progress: progress.value,
         percent: progress.label,
-        progressBar: timelineBar(weightedTaskProgressSegments(tree, stalled, task.id), 10),
+        progressBar: timelineBar(taskSegments, 10),
+        progressSegments: taskSegments,
         completedUnits,
         status,
         statusLabel: presentation.label,
@@ -257,7 +278,7 @@ export function timelineData(
   }
   visit(children.get(null) ?? [], 0, [])
 
-  const overall = percent(weightedTaskProgress(tree))
+  const overall = percent(segments.total > 0 ? segments.done / segments.total : 0)
   const state = progressStatus(segments)
   const presentation = timelineStatusPresentation(state)
   const leaves = completedLeaves(tree)
@@ -276,10 +297,11 @@ export function timelineData(
       tone: presentation.tone,
       percent: overall.value,
       percentLabel: overall.label,
+      bar: timelineBar(segments, 28),
       leavesDone: leaves.done,
       leavesTotal: leaves.total,
       elapsed: firstCreated === null ? '—' : shortAgo(now - firstCreated),
-      bar: timelineBar(segments, 28),
+      segments,
     },
     rows,
   }

@@ -3386,6 +3386,7 @@ export const register: Register = on => {
         Box,
         Button,
         Text,
+        Svg: 'Svg' in elements ? elements.Svg : undefined,
         pal,
         look,
         view,
