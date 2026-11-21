@@ -166,7 +166,9 @@ export const NO_BACKGROUND_GIVEN = 'No background given'
 export const NO_EFFECT_GIVEN = 'No effect given'
 
 export function questionContextOf(item: Pick<Item, 'context'> | null): string {
-  return item?.context || NO_BACKGROUND_GIVEN
+  const context = item?.context
+
+  return context?.trim() ? context : NO_BACKGROUND_GIVEN
 }
 
 /** Only a question has a recorded context line. */
@@ -215,8 +217,9 @@ export function optionDescriptionsOf(
 
   return actions.flatMap(a => {
     if (a.press.action !== 'answer') return []
-    const description = item.optionDescriptions?.[a.press.option]
-    if (!description) return []
+    const descriptions = item.optionDescriptions
+    if (!descriptions || !Object.hasOwn(descriptions, a.press.option)) return []
+    const description = descriptions[a.press.option]!
 
     return [
       {
@@ -239,12 +242,13 @@ export function optionEffectsOf(
   return actions.flatMap(a => {
     if (a.press.action !== 'answer') return []
     const description = item.optionDescriptions?.[a.press.option]
+    const isMissing = !description?.trim()
 
     return [
       {
         label: clipLabel(linkLabel(a.press.option), OPTION_LABEL_CHARS),
-        description: description || NO_EFFECT_GIVEN,
-        isMissing: !description,
+        description: isMissing ? NO_EFFECT_GIVEN : description!,
+        isMissing,
         isFolded: a.isFolded,
       },
     ]

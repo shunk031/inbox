@@ -2306,7 +2306,8 @@ var ROW_COPY = {
 var NO_BACKGROUND_GIVEN = "No background given";
 var NO_EFFECT_GIVEN = "No effect given";
 function questionContextOf(item) {
-  return item?.context || NO_BACKGROUND_GIVEN;
+  const context = item?.context;
+  return context?.trim() ? context : NO_BACKGROUND_GIVEN;
 }
 function contextLineOf(type, item) {
   return type === "question" ? item?.context || null : null;
@@ -2321,8 +2322,9 @@ function optionDescriptionsOf(item, actions) {
   if (!item) return [];
   return actions.flatMap((a) => {
     if (a.press.action !== "answer") return [];
-    const description = item.optionDescriptions?.[a.press.option];
-    if (!description) return [];
+    const descriptions = item.optionDescriptions;
+    if (!descriptions || !Object.hasOwn(descriptions, a.press.option)) return [];
+    const description = descriptions[a.press.option];
     return [
       {
         label: clipLabel(linkLabel(a.press.option), OPTION_LABEL_CHARS),
@@ -2338,11 +2340,12 @@ function optionEffectsOf(item, actions) {
   return actions.flatMap((a) => {
     if (a.press.action !== "answer") return [];
     const description = item.optionDescriptions?.[a.press.option];
+    const isMissing = !description?.trim();
     return [
       {
         label: clipLabel(linkLabel(a.press.option), OPTION_LABEL_CHARS),
-        description: description || NO_EFFECT_GIVEN,
-        isMissing: !description,
+        description: isMissing ? NO_EFFECT_GIVEN : description,
+        isMissing,
         isFolded: a.isFolded
       }
     ];

@@ -20,9 +20,19 @@ const effect = (notes: Record<string, string>, option: string) =>
   optionEffectsOf({ optionDescriptions: notes }, [answer(option)])[0]?.description
 
 test('context', () => expect(questionContextOf({ context: 'Invented event.' })).toBe('Invented event.'))
-test('missing context stays separate from the row marker', () => {
+test('blank contexts and notes use missing markers', () => {
   expect(contextLineOf('question', null)).toBeNull()
-  expect(contextDisplayLineOf('question', null)).toBe(NO_BACKGROUND_GIVEN)
+
+  const cases = ['', '  ', undefined] as const
+  for (const value of cases) {
+    const item = value === undefined ? null : { context: value }
+    const optionDescriptions: Record<string, string> = value === undefined ? {} : { Try: value }
+    const effectLine = optionDescriptionLine(optionEffectsOf({ optionDescriptions }, [answer('Try')])[0]!)
+
+    expect(contextDisplayLineOf('question', item)).toBe(NO_BACKGROUND_GIVEN)
+    expect(effectLine).toEqual({ label: 'Try', suffix: ': No effect given', suffixTone: 'muted' })
+  }
+
   expect(contextDisplayLineOf('task', null)).toBeNull()
   expect(contextDisplayLineOf('finding', null)).toBeNull()
 })
