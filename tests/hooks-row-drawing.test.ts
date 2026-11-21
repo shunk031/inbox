@@ -248,14 +248,19 @@ test('in the terminal and desktop looks, a question’s context draws whole, mut
     await select('i1')
     const shown = await texts()
     const title = shown.findIndex(t => t.includes('Which cache should the price API use?'))
+    const contextAt = shown.findIndex(t => t.includes('Price lookups take'))
     const why = shown.indexOf('Why In-memory: the API runs as one process')
-    expect([title < shown.indexOf(context), shown.indexOf(context) < why], look).toEqual([true, true])
-    const contextColor = (await pane.find({ type: 'Text', text: context }))?.props.color
+    expect([title < contextAt, contextAt < why], look).toEqual([true, true])
+    const contextColor = (await pane.findAll({ type: 'Text' })).find(t => t.text?.includes('Price lookups take'))?.props
+      .color
     const whyColor = (await pane.find({ type: 'Text', text: 'Why In-memory: the API runs as one process' }))?.props
       .color
     expect(contextColor, look).toBe(whyColor)
 
     await select('i2')
-    expect(await texts(), look).not.toContain(context)
+    expect(
+      (await texts()).some(t => t.includes('Price lookups take')),
+      look,
+    ).toBe(false)
   }
 })

@@ -21,8 +21,9 @@ import {
   TREE_LINE_AT,
 } from './pane-sizes'
 import { DOT, ROW_COPY, shownOptionDescriptions } from './rows'
-import { lineCount, SELECTION_BAR, type TreePos } from './terminal-text'
-import { cellWidth, clipLabel } from './text'
+import { lineCount, SELECTION_BAR, type TreePos, wrappedSpanLines } from './terminal-text'
+import { parseInline } from './inline'
+import { cellWidth } from './text'
 
 export function paneRows(
   {
@@ -33,6 +34,7 @@ export function paneRows(
     Box,
     space,
     Text,
+    terminalText,
     pal,
     Input,
     typing,
@@ -75,6 +77,7 @@ export function paneRows(
       | 'Box'
       | 'space'
       | 'Text'
+      | 'terminalText'
       | 'pal'
       | 'Input'
       | 'typing'
@@ -146,6 +149,8 @@ export function paneRows(
     const { keys, more } = isSelected ? rowActions(row) : { keys: [], more: [] }
     const isTyping = Input !== null && !!row.typeHint && typing === row.id
     const textWidth = listColumns - 1 - columns.textAt
+    const wrapWidth = look === 'desktop' ? desktopRowTextPt : textWidth
+    const measureText = look === 'desktop' ? desktopTextPt : cellWidth
     const submitLabel = look === 'desktop' ? ROW_COPY.send : 'send'
     /** The terminal draws `⏎` and the submit label beside the field. */
     const terminalFieldColumns = textWidth - cellWidth(`⏎ ${submitLabel}`) - 1
@@ -199,19 +204,20 @@ export function paneRows(
           (isStatusUnder ? lineCount(f.text, textWidth) : 0)
         : null
     const body =
-      bodyLines !== null && row.clippedBody && row.body ? row.clippedBody(bodyLines, textWidth) : (row.body ?? null)
+      bodyLines !== null && row.clippedBody && row.body
+        ? row.clippedBody(bodyLines, textWidth)
+        : (row.wrapBody?.(wrapWidth) ?? row.body ?? null)
+    const subtitle = row.wrapSubtitle?.(wrapWidth) ?? row.subtitle
     const described = row.view ? shownOptionDescriptions(row.view, optionsShown.includes(row.id)) : []
     const descriptionsBlock =
       described.length > 0 ? (
         <Box flexDirection="column" marginTop={blankLine}>
           {described.map(o => {
-            const line = clipLabel(`${o.label}: ${o.description}`, look === 'desktop' ? titleWidth : textWidth)
-            return (
-              <Text wrap="truncate-end">
-                <Text>{line.slice(0, o.label.length)}</Text>
-                <Text color={pal.muted}>{line.slice(o.label.length)}</Text>
-              </Text>
-            )
+            const spans = [
+              { text: `${o.label}: ` },
+              ...parseInline(o.description).map(span => ({ ...span, isMuted: true as const })),
+            ]
+            return <Text>{terminalText(wrappedSpanLines(spans, wrapWidth, measureText))}</Text>
           })}
         </Box>
       ) : null
@@ -270,8 +276,8 @@ export function paneRows(
               <Text color={pal.muted}>{unbroken(`${DOT}${f.text}`, row.title, fitsTitleLine)}</Text>
             ) : null}
           </Text>,
-          row.subtitle ?? null,
-          row.body ? <Box marginTop={blankLine}>{row.body}</Box> : null,
+          subtitle ?? null,
+          body ? <Box marginTop={blankLine}>{body}</Box> : null,
           descriptionsBlock,
           status.length > 0 ? (
             <Box flexDirection="column" marginTop={blankLine}>
@@ -324,7 +330,7 @@ export function paneRows(
                 ) : null}
               </Text>,
             )}
-            {row.subtitle}
+            {subtitle}
             {body ? <Box marginTop={blankLine}>{body}</Box> : null}
             {descriptionsBlock}
             {status.length > 0 ? (

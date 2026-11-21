@@ -62,6 +62,21 @@ const question = {
   at: NOW - 30_000,
   from: 'record',
 }
+export const JAPANESE_DETAIL = [
+  '候補の比較を行う。',
+  '- 1 体目を確認する。',
+  '  - 約 13 件を手元の 3 モデルで比べる。GPU 約 10 分で終える。',
+].join('\n')
+const japaneseQuestion = {
+  ...question,
+  ask: 'Snapshot Japanese question.',
+  context: '作られた日本語の質問です。',
+  detail: JAPANESE_DETAIL,
+  options: ['短縮する', '元の形を保つ'],
+  optionDescriptions: { 短縮する: 'GPU 約 10 分で比べる。', 元の形を保つ: '1 体目と同じ方法を使う。' },
+  rec: '短縮する',
+  recReason: '手元の 3 モデルで比べるため。',
+}
 const reportQuestion = empty => ({
   ...question,
   id: empty ? 'snapshot-empty-report' : 'snapshot-report-question',
@@ -118,7 +133,9 @@ export function fixtureState(fixture) {
     isHelpShown: false,
   }
   const data = state.ledger
-  if (fixture === 'base-busy' || fixture === 'fold-done') {
+  if (fixture === 'asks-japanese') {
+    Object.assign(data, { items: [japaneseQuestion], updates: 1, turn: 1, batchTurn: 1, nextId: 2 })
+  } else if (fixture === 'base-busy' || fixture === 'fold-done') {
     Object.assign(data, {
       items: [question],
       findings: [report(false)],
@@ -172,5 +189,15 @@ registry.push(
     width,
     ...(width === 87 ? { terminalWidth: 196 } : {}),
     file: `timeline-detail-layout-${width}.txt`,
+  })),
+)
+registry.push(
+  ...[75, 110].map(width => ({
+    view: 'asks',
+    scenario: 'japanese',
+    width,
+    height: 35,
+    fixture: 'asks-japanese',
+    file: `asks-japanese-${width}.txt`,
   })),
 )

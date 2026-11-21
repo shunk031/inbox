@@ -49,9 +49,11 @@ export type Row = {
   titleAfter?: string
   at?: number
   subtitle?: JSX.Element
+  wrapSubtitle?: (width: number) => JSX.Element
   line?: { before?: string; text: string; after?: string; afterTone?: Tone; age?: string }
   hasSecondLine?: boolean
   body?: JSX.Element | null
+  wrapBody?: (width: number) => JSX.Element | null
   clippedBody?: (lines: number, width: number) => JSX.Element | null
   keys: () => KeyAction[]
   moreKeys?: () => KeyAction[]

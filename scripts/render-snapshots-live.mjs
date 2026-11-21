@@ -229,13 +229,15 @@ export async function capture(entry, pluginDir, root, socket, claude) {
     send(socket, session, 'Enter')
     const initial = entry.fixture.startsWith('timeline-detail-layout')
       ? 'Timeline'
-      : entry.fixture === 'detail-empty'
-        ? 'Snapshot empty report'
-        : entry.fixture === 'detail-busy'
-          ? 'Snapshot report'
-          : entry.fixture.endsWith('empty')
-            ? 'Nothing needed'
-            : 'Snapshot question'
+      : entry.fixture === 'asks-japanese'
+        ? 'Snapshot Japanese'
+        : entry.fixture === 'detail-empty'
+          ? 'Snapshot empty report'
+          : entry.fixture === 'detail-busy'
+            ? 'Snapshot report'
+            : entry.fixture.endsWith('empty')
+              ? 'Nothing needed'
+              : 'Snapshot question'
     await wait(
       socket,
       session,
@@ -289,5 +291,6 @@ export async function capture(entry, pluginDir, root, socket, claude) {
     if (appeared.length) throw Error(`real inbox store gained ${appeared.length} key(s) during ${entry.file}`)
   }
 }
-export const removeTemporaryTree = root => rmSync(root, { recursive: true, force: true })
+export const removeTemporaryTree = root =>
+  rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
 export { cropInboxPane, tmux, stripAnsi }
