@@ -14,8 +14,8 @@ function kinsokuCluster(left: string, right: string): string {
   return [...before.slice(start), ...after.slice(0, end)].join('')
 }
 export function wrapText(text: string, width: number, measure: (text: string) => number): WrapLine[] {
-  const output: WrapLine[] = []
-  const limit = Math.max(1, width)
+  const limit = Math.max(1, width),
+    output: WrapLine[] = []
   const paragraphs = text.split('\n')
   let offset = 0
   for (const [paragraphIndex, paragraph] of paragraphs.entries()) {
@@ -41,13 +41,13 @@ export function wrapText(text: string, width: number, measure: (text: string) =>
       firstLine = false
       start = end
     }
-    const chars = Array.from(paragraph.slice(marker.length))
+    const measureLine = (next: string) => measure(prefix + (line.replace(/ +$/u, ' ') + next).trimEnd())
     const units: { text: string; start: number }[] = []
     let part = '',
       partStart = offset + marker.length,
       at = partStart,
       previous = ''
-    for (const current of chars) {
+    for (const current of Array.from(paragraph.slice(marker.length))) {
       if (
         part &&
         current !== ' ' &&
@@ -66,20 +66,24 @@ export function wrapText(text: string, width: number, measure: (text: string) =>
     for (const unit of units) {
       let rest = unit.text,
         restStart = unit.start
-      if (
-        line.length > (firstLine ? marker.length : 0) &&
-        measure(prefix + line.replace(/ +$/u, ' ') + rest.trimEnd()) > limit
-      ) {
+      if (line.length > (firstLine ? marker.length : 0) && measureLine(rest) > limit) {
         const skipped = rest.length - rest.trimStart().length
         rest = rest.trimStart()
         emit(rest)
-        restStart = unit.start + skipped
-        start = restStart
+        start = restStart = unit.start + skipped
       }
-      while (rest && measure(prefix + line + rest) > limit) {
+      end -= line.length - (line = line.replace(/ +$/u, ' ')).length
+      while (rest && measureLine(rest) > limit) {
         const chars = Array.from(rest)
         let count = chars.length
-        while (count > 1 && measure(prefix + line + chars.slice(0, count).join('')) > limit) count--
+        while (count && measureLine(chars.slice(0, count).join('')) > limit) count--
+        if (!count) {
+          if (!line.trim()) throw new RangeError('wrap width cannot fit the next character')
+          const skipped = rest.length - rest.trimStart().length
+          emit((rest = rest.trimStart()))
+          start = restStart += skipped
+          continue
+        }
         while (
           count > 1 &&
           count < chars.length &&
