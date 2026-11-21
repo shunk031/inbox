@@ -2339,7 +2339,8 @@ function optionEffectsOf(item, actions) {
   if (!item) return [];
   return actions.flatMap((a) => {
     if (a.press.action !== "answer") return [];
-    const description = item.optionDescriptions?.[a.press.option];
+    const descriptions = item.optionDescriptions ?? {};
+    const description = Object.hasOwn(descriptions, a.press.option) ? descriptions[a.press.option] : void 0;
     const isMissing = !description?.trim();
     return [
       {

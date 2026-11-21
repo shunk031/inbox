@@ -1,5 +1,5 @@
 // Built by herdr/build.ts with Bun 1.4.4 from herdr/src and hooks/. Do not edit.
-// Built at 2026-11-21T00:23:10.241Z. 227331 characters follow.
+// Built at 2026-11-21T01:14:32.933Z. 227432 characters follow.
 
 // src/main.ts
 import { View, div as div5 } from "gpui-kit";
@@ -2058,7 +2058,8 @@ function optionEffectsOf(item, actions) {
   return actions.flatMap((a) => {
     if (a.press.action !== "answer")
       return [];
-    const description = item.optionDescriptions?.[a.press.option];
+    const descriptions = item.optionDescriptions ?? {};
+    const description = Object.hasOwn(descriptions, a.press.option) ? descriptions[a.press.option] : undefined;
     const isMissing = !description?.trim();
     return [
       {

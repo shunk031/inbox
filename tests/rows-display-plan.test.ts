@@ -20,7 +20,7 @@ const effect = (notes: Record<string, string>, option: string) =>
   optionEffectsOf({ optionDescriptions: notes }, [answer(option)])[0]?.description
 
 test('context', () => expect(questionContextOf({ context: 'Invented event.' })).toBe('Invented event.'))
-test('blank contexts and notes use missing markers', () => {
+test('blank values and inherited option names use missing markers', () => {
   expect(contextLineOf('question', null)).toBeNull()
 
   const cases = ['', '  ', undefined] as const
@@ -33,11 +33,12 @@ test('blank contexts and notes use missing markers', () => {
     expect(effectLine).toEqual({ label: 'Try', suffix: ': No effect given', suffixTone: 'muted' })
   }
 
-  expect(contextDisplayLineOf('task', null)).toBeNull()
-  expect(contextDisplayLineOf('finding', null)).toBeNull()
+  const optionCases = { Keep: 'Keeps it.', toString: NO_EFFECT_GIVEN }
+  for (const [option, expected] of Object.entries(optionCases))
+    expect(effect({ Keep: 'Keeps it.' }, option)).toBe(expected)
+
+  for (const type of ['task', 'finding'] as const) expect(contextDisplayLineOf(type, null)).toBeNull()
 })
-test('option effect', () => expect(effect({ Keep: 'Keeps it.' }, 'Keep')).toBe('Keeps it.'))
-test('missing option effect', () => expect(effect({}, 'Try')).toBe(NO_EFFECT_GIVEN))
 test('looks without marker drawing keep missing option effects out of their descriptions', () => {
   expect(optionDescriptionsOf({}, [answer('Try')])).toEqual([])
 })

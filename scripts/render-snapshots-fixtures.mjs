@@ -63,6 +63,14 @@ const question = {
   at: NOW - 30_000,
   from: 'record',
 }
+const noBackground = {
+  ...question,
+  id: 'snapshot-no-background',
+  ask: 'Snapshot question without background',
+  context: undefined,
+  detail: undefined,
+}
+const withContext = { ...question, detail: undefined }
 const reportQuestion = empty => ({
   ...question,
   id: empty ? 'snapshot-empty-report' : 'snapshot-report-question',
@@ -121,19 +129,7 @@ export function fixtureState(fixture) {
   const data = state.ledger
   if (fixture === 'base-busy' || fixture === 'fold-done' || fixture === 'asks-busy') {
     Object.assign(data, {
-      items:
-        fixture === 'asks-busy'
-          ? [
-              {
-                ...question,
-                id: 'snapshot-no-background',
-                ask: 'Snapshot question without background',
-                context: undefined,
-                detail: undefined,
-              },
-              { ...question, detail: undefined },
-            ]
-          : [question],
+      items: fixture === 'asks-busy' ? [noBackground, withContext] : [question],
       findings: [report(false)],
       prs: [pr.ref],
       updates: 1,
@@ -164,7 +160,7 @@ export function fixtureState(fixture) {
 export const registry = [
   ...VIEWS.flatMap(view =>
     SCENARIOS.flatMap(scenario => [
-      ...widths.map(width => ({
+      ...[...widths, ...(view === 'asks' && scenario === 'busy' ? [87] : [])].map(width => ({
         view,
         scenario,
         width,
@@ -178,9 +174,6 @@ export const registry = [
                 : `base-${scenario}`,
         file: `${view}-${scenario}-${width}.txt`,
       })),
-      ...(view === 'asks' && scenario === 'busy'
-        ? [{ view, scenario, width: 87, fixture: 'asks-busy', file: 'asks-busy-87.txt' }]
-        : []),
     ]),
   ),
 ]
