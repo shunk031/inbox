@@ -137,4 +137,8 @@ export const OMP_SUPPORT: ClientSupport['support'] = {
     kind: 'different',
     reason: 'omp keeps finished Timeline roots inline while the terminal look ships the fold first.',
   },
+  'stop-question-guard': {
+    kind: 'unsupported',
+    reason: 'This guard runs in the Claude Code mod Stop hook; omp uses a separate hook host.',
+  },
 }
