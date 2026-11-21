@@ -1,5 +1,5 @@
 // Built by herdr/build.ts with Bun 1.4.4 from herdr/src and hooks/. Do not edit.
-// Built at 2026-11-21T01:14:32.933Z. 227432 characters follow.
+// Built at 2026-11-21T03:03:09.847Z. 227461 characters follow.
 
 // src/main.ts
 import { View, div as div5 } from "gpui-kit";
@@ -3448,7 +3448,7 @@ function inboxView({
       optionEffects: optionEffectsOf(row.item, actions),
       holdsUpLine: held.length > 0 ? `${HOLDS_UP_TEXT} ${held.join(", ")}` : null,
       recLine: state.is === "open" ? recLineOf(row.item) : null,
-      contextLine: contextLineOf(row.type, row.item),
+      contextLine: state.is === "open" ? contextLineOf(row.type, row.item) : null,
       contextDisplayLine: contextDisplayLineOf(row.type, row.item)
     };
   };

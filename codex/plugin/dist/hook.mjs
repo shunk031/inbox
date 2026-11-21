@@ -3070,7 +3070,7 @@ function inboxView({
       optionEffects: optionEffectsOf(row.item, actions),
       holdsUpLine: held2.length > 0 ? `${HOLDS_UP_TEXT} ${held2.join(", ")}` : null,
       recLine: state.is === "open" ? recLineOf(row.item) : null,
-      contextLine: contextLineOf(row.type, row.item),
+      contextLine: state.is === "open" ? contextLineOf(row.type, row.item) : null,
       contextDisplayLine: contextDisplayLineOf(row.type, row.item)
     };
   };
