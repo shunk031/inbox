@@ -140,6 +140,23 @@ export function checkFrame(entry, frame, width) {
       const chip = col(status, status.indexOf('In progress') - 1)
       if (chip !== titleCol) add('snapshot-root chip', titleCol, chip, 'chip does not start on its title column')
     }
+    if (entry.width === 200) {
+      const long = lines.find(line => line.includes('Snapshot long'))
+      const ellipsis = long?.indexOf('…') ?? -1
+      const bar = ellipsis < 0 ? -1 : long.slice(ellipsis + 1).search(/[━─]/u)
+      if (bar < 0)
+        add('snapshot-long bar', 'title line after ellipsis', 'next line or missing', 'bar is not on the title line')
+      else {
+        const gap = col(long, ellipsis + 1 + bar) - col(long, ellipsis) - cellWidth('…')
+        if (gap < 2)
+          add(
+            'snapshot-long ellipsis gap',
+            'ellipsis end + 2',
+            col(long, ellipsis + 1 + bar),
+            `bar gap is ${gap} cells`,
+          )
+      }
+    }
   }
 
   if (entry.view === 'timeline-detail') {
@@ -303,11 +320,13 @@ export function inventoryErrors(expected, actual) {
 }
 
 export function runMutationProofs(frames) {
-  const timeline = frames.get('timeline-busy-200.txt')
+  const [timeline, folded] = ['timeline-busy-200.txt', 'timeline-fold-done-200.txt'].map(file => frames.get(file))
+  const noPercent = folded.frame.replace(/(Snapshot root[^\n]*?)\s+\d+(?:\.\d+)?%/u, '$1')
   const check = frame => checkFrame(timeline.entry, frame, timeline.paneWidth)
   const lines = timeline.frame.split('\n')
   const chip = lines.findIndex(line => /^\s+│\s+In progress\s*$/u.test(line))
   if (chip >= 0) lines[chip] = lines[chip].replace(/^ /u, '')
+  const long = timeline.frame.split('\n').find(line => line.includes('Snapshot long'))
   const barLines = timeline.frame.split('\n'),
     heading = barLines.findIndex(line => line.includes('Progress'))
   const headerRow = barLines.findIndex((line, i) => i > heading && barTracks(line).length)
@@ -318,7 +337,7 @@ export function runMutationProofs(frames) {
       track = barTracks(line.slice(line.indexOf(taskMarkers.find(marker => line.includes(marker)) ?? '')))[0]
     return track && barLines.map((line, i) => (i === row ? line.replace(track, transform(track)) : line)).join('\n')
   }
-  const barCheck = (frame, text) => frame && checkTimelineBars(timeline.entry, frame).find(line => line.includes(text))
+  const barCheck = (f, t, e = timeline.entry) => f && checkTimelineBars(e, f).find(x => x.includes(t))
   const barProofs = [
     ['one extra filled cell', mutateBar(headerRow, track => `━${track}`), 'filled cells do not match'],
     ['filled cell after unfilled', mutateBar(headerRow, track => track.replace('━─', '─━')), 'bar fill must precede'],
@@ -327,7 +346,8 @@ export function runMutationProofs(frames) {
     ['one-cell row bar', mutateBar(childRow, () => '━'), 'track width'],
     ['non-first row bar removed', mutateBar(longRow, () => ''), 'row bar presence'],
     ['track merged with a connector', mutateBar(longRow, () => '└──'), 'track width'],
-  ].map(([name, frame, text]) => [name, barCheck(frame, text)])
+    ['fold-done row percent removed', noPercent, 'row cannot be classified', folded.entry],
+  ].map(([name, frame, text, entry]) => [name, barCheck(frame, text, entry)])
   const focusMutation = timeline.ansiFrame.replace('Snapshot long', '\x1b[7mSnapshot long\x1b[27m')
   const asks = frames.get('asks-empty-110.txt')
   const names = new Set(registry.map(entry => entry.file))
@@ -343,6 +363,13 @@ export function runMutationProofs(frames) {
     [
       'required label removed',
       check(timeline.frame.replace('Progress', '         ')).find(line => line.includes('required label absent')),
+    ],
+    [
+      'gap after ellipsis removed',
+      long &&
+        check(timeline.frame.replace(long, long.replace(/… {2,}(?=[━─])/u, '…'))).find(line =>
+          line.includes('bar gap'),
+        ),
     ],
     [
       'stray tree guide inserted',

@@ -15,8 +15,8 @@ export function checkTimelineBars(entry, frame) {
     card = cellWidth(top.slice(top.search(/[┌╭]/u), top.search(/[┐╮]/u) + 1)) - 4,
     width = timelineRowBarWidth(card),
     check = (row, track, value, size) => {
-      const fill = [...track].filter(mark => mark === '━').length,
-        expected = Math.round((Number(value) * track.length) / 100)
+      const fill = [...track].filter(x => x === '━').length,
+        expected = Math.round((+value * track.length) / 100)
       if (track.length !== size) fail(row, size, track.length, 'track width')
       if (!/^━*─*$/u.test(track)) fail(row, '━*─*', track, 'bar fill must precede')
       if (value === undefined) fail(row, 'percent', 'missing', 'bar cannot be classified')
@@ -28,13 +28,15 @@ export function checkTimelineBars(entry, frame) {
   const bottom = lines.findIndex((line, i) => i > b && /[└╰].*[┘╯]/u.test(line))
   lines.forEach((line, i) => {
     const value = percent(line),
-      marker = taskMarkers.find(m => line.includes(m))
-    if (i <= bottom || value === undefined) return
-    const rows = barTracks(marker ? line.slice(line.indexOf(marker)) : '')
-    if (!marker || rows.length !== (width ? 1 : 0)) fail(`row:${i + 1}`, width ? 1 : 0, rows.length, 'row bar presence')
-    if (width && rows.length === 1) check(`row-bar:${i + 1}`, rows[0], value, 10)
+      marker = taskMarkers.find(m => line.includes(m)),
+      rows = barTracks(marker ? line.slice(line.indexOf(marker)) : ''),
+      invalid = marker ? value === undefined : value !== undefined || /[◐●✕○▸▾]/u.test(line)
+    if (i <= bottom || /^ {4}▸ \d+ completed$/u.test(line)) return
+    if (invalid) fail(`row:${i + 1}`, 'task row', 'unclassified', 'row cannot be classified')
+    if (marker && rows.length !== (width ? 1 : 0)) fail(`row:${i + 1}`, width ? 1 : 0, rows.length, 'row bar presence')
+    else if (marker && width) check(`row-bar:${i + 1}`, rows[0], value, 10)
   })
-  if (entry.scenario === 'busy')
+  if (entry.fixture !== 'base-empty')
     taskMarkers
       .filter(marker => !lines.some(line => line.includes(marker) && percent(line) !== undefined))
       .forEach(marker => fail(marker, 'title-line percent', 'missing', 'row cannot be classified'))
