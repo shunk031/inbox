@@ -66,9 +66,9 @@ export function paneAskRows(
         {inlineText(r.recLine)}
       </Text>
     ) : null
-    const contextLine = r.contextLine ? (
+    const contextLine = r.contextDisplayLine ? (
       <Text key="context" color={pal.muted} wrap="wrap">
-        {inlineText(r.contextLine)}
+        {inlineText(r.contextDisplayLine)}
       </Text>
     ) : null
     const subtitleLines = [contextLine, holdsUp, recLine].filter(line => line !== null)
