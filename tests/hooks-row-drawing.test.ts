@@ -1,5 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { LinksProps } from '../hooks/links-client'
+import type { RowProps } from '../hooks/row-client'
 import { demoView } from '../hooks/demo'
 import { PRESS_GUARD_MS, SETTLED_MS } from '../hooks/timing'
 import { inboxView, perTurnStatus } from '../hooks/view'
@@ -205,7 +206,7 @@ test('on desktop at 30 and 56 columns, an unselected row’s title keeps every w
   expect(await shownTitle('i4')).toMatch(/…$/)
 })
 
-test('in the terminal and desktop looks, a question’s context draws whole, muted like its Why line, first under its title, on its selected row only', async ($, on) => {
+test('a question’s context stays whole when selected and remains visible when another row is selected', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   world($, on, [])
   w.paneState = { isShown: true, isFocused: true }
@@ -249,13 +250,19 @@ test('in the terminal and desktop looks, a question’s context draws whole, mut
     const shown = await texts()
     const title = shown.findIndex(t => t.includes('Which cache should the price API use?'))
     const why = shown.indexOf('Why In-memory: the API runs as one process')
-    expect([title < shown.indexOf(context), shown.indexOf(context) < why], look).toEqual([true, true])
-    const contextColor = (await pane.find({ type: 'Text', text: context }))?.props.color
+    const contextStart = shown.findIndex(t => t.startsWith('Price lookups take'))
+    expect([title < contextStart, contextStart < why], look).toEqual([true, true])
+    const contextColor = (await pane.findAll({ type: 'Text' })).find(t => t.text?.startsWith('Price lookups'))?.props
+      .color
     const whyColor = (await pane.find({ type: 'Text', text: 'Why In-memory: the API runs as one process' }))?.props
       .color
     expect(contextColor, look).toBe(whyColor)
 
     await select('i2')
-    expect(await texts(), look).not.toContain(context)
+    const contextStillShown =
+      look === 'desktop'
+        ? ((await pane.find({ key: 'select-i1' }))?.props.props as RowProps | undefined)?.context === context
+        : (await texts()).some(t => t.startsWith('Price lookups take'))
+    expect(contextStillShown, look).toBe(true)
   }
 })

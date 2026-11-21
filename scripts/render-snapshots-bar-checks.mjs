@@ -4,7 +4,7 @@ export const taskMarkers = ['Snapshot root', '折り返し用', 'Snapshot long',
 export const failure = (e, r, x, a, m) => `FAIL ${e.view}/${e.scenario}/${e.width} ${r} ${x}→${a} ${m}`
 export const barTracks = line => [...line.matchAll(/[━─]+/gu)].map(([track]) => track)
 const percent = line => line?.match(/(\d+(?:\.\d+)?)%/u)?.[1]
-export function checkTimelineBars(entry, frame) {
+export function checkTimelineBars(entry, frame, bodyColumns = entry.width) {
   if (entry.view !== 'timeline') return []
   const lines = frame.split('\n'),
     errors = [],
@@ -13,7 +13,7 @@ export function checkTimelineBars(entry, frame) {
     b = lines.findIndex((s, i) => i > h && barTracks(s).length),
     top = lines.slice(0, h).findLast(line => /[┌╭].*[┐╮]/u.test(line)) ?? '',
     card = cellWidth(top.slice(top.search(/[┌╭]/u), top.search(/[┐╮]/u) + 1)) - 4,
-    width = timelineRowBarWidth(card),
+    width = timelineRowBarWidth(bodyColumns),
     check = (row, track, value, size) => {
       const fill = [...track].filter(x => x === '━').length,
         expected = Math.round((+value * track.length) / 100)

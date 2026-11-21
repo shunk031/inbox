@@ -3330,6 +3330,7 @@ export const register: Register = on => {
         Box,
         space,
         Text,
+        terminalText,
         pal,
         Input,
         typing,
