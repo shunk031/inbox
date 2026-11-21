@@ -56,6 +56,88 @@ test(
   },
 )
 
+test('Stop blocks an unfenced question when no record or close ran in the turn', async ($, on) => {
+  mock.clock(on, { now: 1_000_000 })
+  world($, on, [])
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'go', turnId: 'question' })
+  const blocked = await $.classic.Stop({ last_assistant_message: '❓ Should we ship this release?' } as never)
+  expect(blocked).toMatchObject({
+    block: 'Record this question with the inbox record tool and close the superseded item.',
+  })
+})
+
+test('Stop treats CR, LF and CRLF as line endings for the question line', async ($, on) => {
+  mock.clock(on, { now: 1_000_000 })
+  world($, on, [])
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  for (const [index, message] of [
+    'Status: ready\r❓ Should we deploy?',
+    'Status: ready\n❓ Should we deploy?',
+    'Status: ready\r\n❓ Should we deploy?',
+  ].entries()) {
+    await $.turn.start({ text: 'go', turnId: `line-ending-${index}` })
+    const blocked = await $.classic.Stop({ last_assistant_message: message } as never)
+    expect(blocked).toMatchObject({
+      block: 'Record this question with the inbox record tool and close the superseded item.',
+    })
+  }
+})
+
+test('Stop allows a question after the inbox record tool runs', async ($, on) => {
+  mock.clock(on, { now: 1_000_000 })
+  world($, on, [])
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'go', turnId: 'recorded-question' })
+  await $.tool.call({ tool: 'mcp__inbox__record', kind: 'question', ask: 'Should we ship this release?' })
+  const recorded = await $.classic.Stop({ last_assistant_message: '❓ Should we ship this release?' } as never)
+  expect(recorded).not.toHaveProperty('block')
+})
+
+test('Stop allows a question after the inbox close tool runs', async ($, on) => {
+  mock.clock(on, { now: 1_000_000 })
+  world($, on, [])
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'go', turnId: 'closed-question' })
+  await $.tool.call({ tool: 'mcp__inbox__close', id: 'i1', answer: 'Done' } as never)
+  const closed = await $.classic.Stop({ last_assistant_message: '❓ Should we ship this release?' } as never)
+  expect(closed).not.toHaveProperty('block')
+})
+
+test('Stop ignores question markers inside fenced code, including a shorter fence line', async ($, on) => {
+  mock.clock(on, { now: 1_000_000 })
+  world($, on, [])
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'go', turnId: 'fenced-question' })
+
+  for (const answer of [
+    '```\n❓ Is this only an example?\n```',
+    '````\n❓ Is this only an example?\n```\nstill inside\n````',
+  ]) {
+    const result = await $.classic.Stop({ last_assistant_message: answer } as never)
+    expect(result).not.toHaveProperty('block')
+  }
+})
+
+test('Stop always allows a retry', async ($, on) => {
+  mock.clock(on, { now: 1_000_000 })
+  world($, on, [])
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'go', turnId: 'retry-question' })
+
+  const retry = await $.classic.Stop({ last_assistant_message: '❓ Should we ship?', stop_hook_active: true } as never)
+  expect(retry).not.toHaveProperty('block')
+})
+
+test('Stop allows a reply with no question marker', async ($, on) => {
+  mock.clock(on, { now: 1_000_000 })
+  world($, on, [])
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'go', turnId: 'no-question' })
+  const ordinary = await $.classic.Stop({ last_assistant_message: 'The release is ready.' } as never)
+  expect(ordinary).not.toHaveProperty('block')
+})
+
 test('a delayed Resume refusal belongs only to the stop and conversation that sent it', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   world($, on, [])

@@ -48,6 +48,7 @@ The parts below hold the main table, split by subject. The omp table is in the p
 - [Rows, tabs, banners and motion](looks/differences-drawing.md)
 - [The Status page and marks](looks/differences-status-and-marks.md)
 - [How each host runs](looks/differences-hosts.md)
+- [Stop question guard](looks/differences-stop-guard.md)
 - [How each host runs in Herdr](looks/differences-hosts-herdr.md)
 - [The agent and its turns](looks/differences-agent-and-turns.md)
 
@@ -57,6 +58,7 @@ omp draws the terminal's text and handles, with its own keys and a panel it owns
 
 - [The panel and its keys](looks/differences-omp-panel.md)
 - [How omp runs](looks/differences-omp-host.md)
+- [Stop question guard](looks/differences-omp-stop-guard.md)
 
 ### Herdr
 
