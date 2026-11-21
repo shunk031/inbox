@@ -1,0 +1,7 @@
+# Differences on purpose: Stop question guard
+
+Part of [the look map](../looks.md#differences-on-purpose).
+
+| Topic                                       | Terminal                                                                                                                                                                                      | Desktop           | Codex | Why                                                                                                     | Where                                                         |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ----- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| Stop question guard (`stop-question-guard`) | Blocks once when the final reply has a line starting `❓` outside a fenced code block and no `record` or `close` call happened in the turn. The retry passes when `stop_hook_active` is true. | Same as terminal. | None. | The guard uses Claude Code's Stop input and the mod's tool-call event. Codex uses a separate hook host. | `hooks/register.tsx`, `hooks/mod-state.ts`, `hooks/claude.ts` |

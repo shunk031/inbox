@@ -11665,7 +11665,8 @@ var CLAUDE_CODE_SUPPORT = {
   "task-tree-export": { kind: "full" },
   "task-status-mismatch": { kind: "full" },
   timeline: { kind: "full" },
-  "timeline-completed-fold": { kind: "full" }
+  "timeline-completed-fold": { kind: "full" },
+  "stop-question-guard": { kind: "full" }
 };
 
 // ../hooks/client-support-codex.ts
@@ -11838,6 +11839,10 @@ var CODEX_SUPPORT = {
   "timeline-completed-fold": {
     kind: "different",
     reason: "Codex keeps finished Timeline roots inline while the terminal look ships the fold first."
+  },
+  "stop-question-guard": {
+    kind: "unsupported",
+    reason: "This guard runs in the Claude Code mod Stop hook; Codex uses a separate hook host."
   }
 };
 
@@ -11972,6 +11977,10 @@ var OMP_SUPPORT = {
   "timeline-completed-fold": {
     kind: "different",
     reason: "omp keeps finished Timeline roots inline while the terminal look ships the fold first."
+  },
+  "stop-question-guard": {
+    kind: "unsupported",
+    reason: "This guard runs in the Claude Code mod Stop hook; omp uses a separate hook host."
   }
 };
 

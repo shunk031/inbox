@@ -63,7 +63,7 @@ This part holds rows 1-62. They mostly concern desktop behavior, the engine, hoo
 | 55 | Do `disableAllHooks` and `allowManagedHooksOnly` in user settings stop the mod's `classic.*` dispatch too? | Session with its own `CLAUDE_CONFIG_DIR`, `--settings '{"disableAllHooks": true}'`; see whether the band draws and `classic.Stop` runs. |
 | 56 | Can one `hooks/hooks.json` carry both `modules` and `hooks`? Does `/hooks` list mod hooks? | `claude plugin validate` on a copy with an added `hooks` key; open `/hooks`. |
 | 57 | Does the 10,000-character cap apply to mod-injected context? | Inject 12,000 characters from a scratch mod; inspect what Claude receives. |
-| 58 | How does a mod's `classic.Stop` `block` render versus `additionalContext`, in the terminal and Code mode? | Scratch mod returning each. |
+| 58 | The engine types map a mod's `classic.Stop` `block` to `decision: "block"` with the text as `reason` [T: `ClassicResult`]. How does that block render versus `additionalContext`, in the terminal and Code mode? | Scratch mod returning each. |
 | 59 | What do `classic.*` events carry in Code mode, and does `SessionStart` fire before or after `session.attach`? | Log `e` from `classic.SessionStart`, `classic.UserPromptSubmit`, `classic.Stop` in Code mode. |
 | 60 | Do project settings hooks run in Code mode without a trust prompt? Does the desktop app register SDK callback hooks? | Fresh untrusted folder with a `.claude/settings.json` SessionStart hook that writes a file. |
 | 61 | Does `PermissionRequest` reach mods for sandbox network prompts, and does it fire in Code mode before the app's dialog answers? | Sandboxed `curl` with the mod logging `classic.PermissionRequest` and `classic.Notification`. |
