@@ -3,6 +3,7 @@ import { expect, test } from 'claude-code/testing'
 import { fetchPrs, TASK_OWNER_FETCH_LIMIT } from '../hooks/host-prs'
 import type { Run } from '../hooks/gh'
 import { NO_PR_SHARED } from '../hooks/pr-fetch'
+import { taskPrCiState } from '../hooks/pr-query'
 import { emptySession } from '../hooks/session-files'
 import { taskOwnerKey } from '../hooks/task-facts'
 import type { SessionHost } from '../hooks/session-host'
@@ -99,7 +100,7 @@ test('untracked closed PRs warn, and a failed GitHub fetch changes no task fact 
   const start = { ...emptySession(), taskTree: [taskWithPr('t1', url)] }
   const successful = ghStandIn((number, repo) => {
     const view = viewJson(`${repo}#${number}`, 'CLOSED')
-    view.statusCheckRollup = [{ __typename: 'CheckRun', name: 'tests', status: 'COMPLETED', conclusion: 'SUCCESS' }]
+    view.statusCheckRollup = [{ state: 'SUCCESS' }]
     return { node: prNodeOf(view) }
   })
   const first = hostOf(successful.run, start)
@@ -116,6 +117,11 @@ test('untracked closed PRs warn, and a failed GitHub fetch changes no task fact 
   expect(failed.state().taskTree).toEqual(start.taskTree)
   expect(failed.state().taskFactWarnings).toEqual([])
 })
+
+test('maps task PR CI states, including no rollup', () =>
+  expect(['SUCCESS', 'FAILURE', 'ERROR', 'PENDING', 'EXPECTED', undefined].map(taskPrCiState).join()).toBe(
+    'passing,failing,failing,pending,pending,not-run',
+  ))
 
 test('a GitHub Enterprise task PR is queried on its own host and a merge completes its task', async () => {
   const url = 'https://git.example.org/acme/app/pull/17'

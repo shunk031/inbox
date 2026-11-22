@@ -875,11 +875,7 @@ function prStatesQuery(refs) {
   const fields = [...repos.values()].map((repoRefs, n) => {
     const { owner, name } = parseRef(repoRefs[0] ?? "");
     const prs = repoRefs.map((ref) => `${prAlias(refs.indexOf(ref))}: pullRequest(number: ${parseRef(ref).number}) {
-      url state commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
-        __typename
-        ... on CheckRun { name status conclusion detailsUrl startedAt completedAt checkSuite { workflowRun { workflow { name } } } }
-        ... on StatusContext { context state targetUrl createdAt }
-      } } } } }
+      url state commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
     }`);
     return `${repoAlias(n)}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) { ${prs.join(" ")} }`;
   });
@@ -921,7 +917,7 @@ function latestRuns(rollup) {
   }
   return [...latest.values()];
 }
-function prChecksOf(node) {
+function checksOf(node) {
   const rollup = node.commits?.nodes?.[0]?.commit?.statusCheckRollup?.contexts?.nodes ?? [];
   return latestRuns(rollup).map((e) => {
     const workflow = workflowOf(e);
@@ -944,6 +940,8 @@ function prCiState(checks) {
     return "pending";
   return checks.some((check) => check.bucket === "pass") ? "passing" : "not-run";
 }
+var taskCiStatus = { pass: "passing", fail: "failing", pending: "pending" };
+var taskPrCiState = (state) => state ? taskCiStatus[bucket({ state })] ?? "not-run" : "not-run";
 function threadsOf(node, viewer) {
   const headAt = Date.parse(node.commits?.nodes?.[0]?.commit?.committedDate ?? "") || null;
   return (node.reviewThreads?.nodes ?? []).filter((t) => !t.isResolved).map((t) => {
@@ -982,7 +980,7 @@ function readPrNode(ref, node, viewer, previous, threadsError) {
     base: String(node.baseRefName ?? ""),
     mergeable: String(node.mergeable ?? "UNKNOWN"),
     reviewDecision: String(node.reviewDecision ?? ""),
-    checks: prChecksOf(node),
+    checks: checksOf(node),
     threads: threadsError === null ? threadsOf(node, viewer) : previous?.threads ?? [],
     isYours: viewer === undefined || node.author === undefined ? null : node.author?.login === viewer,
     error: threadsError
@@ -8687,7 +8685,7 @@ async function fetchUntrackedTaskPrStates(host, s, bin, tracked) {
         states[url] = state;
       const node = answer.prs[group.refs[index]]?.node;
       if (node)
-        ciStates[url] = prCiState(prChecksOf(node));
+        ciStates[url] = taskPrCiState(node.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state);
     });
   }
   return { states, ciStates, cursor: selected.at(-1) ?? s.taskPrFactCursor };

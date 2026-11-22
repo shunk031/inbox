@@ -5,7 +5,7 @@ import type { Effect } from './press-reducer'
 import { fetchAccountPrs } from './pr-fetch'
 import { withFetchedPrs } from './session-presses'
 import { applyTaskPrFacts } from './task-facts'
-import { prCiState, prChecksOf, prStatesQuery, readPrsAnswer } from './pr-query'
+import { prCiState, prStatesQuery, readPrsAnswer, taskPrCiState } from './pr-query'
 import { taskOwnerInHerdr } from './herdr'
 import { observedTaskOwnerFact, taskOwnerKey } from './task-facts'
 import { taskPrLink } from './task-tree'
@@ -140,7 +140,7 @@ async function fetchUntrackedTaskPrStates<S extends Session>(
       const state = stateOf(answer.prs[group.refs[index] as string]?.node?.state)
       if (state) states[url] = state
       const node = answer.prs[group.refs[index] as string]?.node
-      if (node) ciStates[url] = prCiState(prChecksOf(node))
+      if (node) ciStates[url] = taskPrCiState(node.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state)
     })
   }
   return { states, ciStates, cursor: selected.at(-1) ?? s.taskPrFactCursor }

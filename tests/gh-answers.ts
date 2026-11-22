@@ -10,7 +10,7 @@ export type ViewJson = {
   baseRefName?: string
   mergeable?: string
   reviewDecision?: string
-  statusCheckRollup?: Record<string, unknown>[]
+  statusCheckRollup?: (Record<string, unknown> & { state?: string })[]
 }
 
 /** A PR's part of the old threads answer, which the tests describe its threads, author and latest commit with. */
@@ -56,7 +56,7 @@ export function prNodeOf(view: ViewJson, threads: ThreadsJson = {}): PrNode {
         {
           commit: {
             committedDate: threads.commits?.nodes?.[0]?.commit?.committedDate,
-            statusCheckRollup: { contexts: { nodes: contexts } },
+            statusCheckRollup: { state: view.statusCheckRollup?.[0]?.state, contexts: { nodes: contexts } },
           },
         },
       ],

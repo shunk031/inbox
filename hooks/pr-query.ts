@@ -61,11 +61,7 @@ export function prStatesQuery(refs: string[]): string {
     const { owner, name } = parseRef(repoRefs[0] ?? '')
     const prs = repoRefs.map(
       ref => `${prAlias(refs.indexOf(ref))}: pullRequest(number: ${parseRef(ref).number}) {
-      url state commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
-        __typename
-        ... on CheckRun { name status conclusion detailsUrl startedAt completedAt checkSuite { workflowRun { workflow { name } } } }
-        ... on StatusContext { context state targetUrl createdAt }
-      } } } } }
+      url state commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
     }`,
     )
 
@@ -89,6 +85,7 @@ type RollupEntry = {
   completedAt?: string
   checkSuite?: { workflowRun?: { workflow?: { name?: string } } | null } | null
 }
+type CommitRollup = { state?: string; contexts?: { nodes?: RollupEntry[] } } | null
 
 type CommentNode = { author: { login: string } | null; body: string; url: string; createdAt?: string }
 
@@ -116,7 +113,7 @@ export type PrNode = {
   author?: { login: string } | null
   commits?: {
     nodes?: {
-      commit?: { committedDate?: string; statusCheckRollup?: { contexts?: { nodes?: RollupEntry[] } } | null }
+      commit?: { committedDate?: string; statusCheckRollup?: CommitRollup }
     }[]
   }
   reviewThreads?: { nodes?: ThreadNode[] } | null
@@ -175,7 +172,7 @@ function latestRuns(rollup: RollupEntry[]): RollupEntry[] {
   return [...latest.values()]
 }
 
-export function prChecksOf(node: PrNode): PrCheck[] {
+function checksOf(node: PrNode): PrCheck[] {
   const rollup = node.commits?.nodes?.[0]?.commit?.statusCheckRollup?.contexts?.nodes ?? []
 
   return latestRuns(rollup).map(e => {
@@ -198,6 +195,10 @@ export function prCiState(checks: readonly PrCheck[]): TaskPrCiState {
   if (checks.some(check => check.bucket === 'pending')) return 'pending'
   return checks.some(check => check.bucket === 'pass') ? 'passing' : 'not-run'
 }
+
+const taskCiStatus = { pass: 'passing', fail: 'failing', pending: 'pending' } as const
+export const taskPrCiState = (state?: string) =>
+  state ? (taskCiStatus[bucket({ state }) as keyof typeof taskCiStatus] ?? 'not-run') : 'not-run'
 
 /**
  * The PR's open threads, oldest first. A thread waits on the person unless the viewer wrote its latest comment. Its
@@ -263,7 +264,7 @@ export function readPrNode(
     base: String(node.baseRefName ?? ''),
     mergeable: String(node.mergeable ?? 'UNKNOWN'),
     reviewDecision: String(node.reviewDecision ?? ''),
-    checks: prChecksOf(node),
+    checks: checksOf(node),
     threads: threadsError === null ? threadsOf(node, viewer) : (previous?.threads ?? []),
     isYours: viewer === undefined || node.author === undefined ? null : node.author?.login === viewer,
     error: threadsError,
