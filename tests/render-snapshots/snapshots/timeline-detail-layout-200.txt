@@ -3,7 +3,7 @@
    Asks     Timeline 1     PRs
 ─▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀─────────────────────────────────────────────────────────
 
- b: ‹ Back Snapshot timeline detail                                         In progress
+ b: ‹ Back Snapshot timeline detail                                       No report yet
 
  ┌─────────────────────────┐ ┌──────────────────────┐ ┌────────────────────────────────┐
  │ Progress                │ │ Weight               │ │ Completed units                │
@@ -11,9 +11,7 @@
  └─────────────────────────┘ └──────────────────────┘ └────────────────────────────────┘
 
  Detail
- 狭い画面でも左端と折り返し位置を確認する中立的な説明です。狭い画面でも左端と折り返し位
- 置を確認する中立的な説明です。狭い画面でも左端と折り返し位置を確認する中立的な説明です
- 。
+ No report yet
 
  Note
  配置確認用のメモです。
@@ -22,6 +20,8 @@
  1m · fixture · Task created
  1m · fixture · Note added
  now · fixture · Task detail updated
+
+
 
 
 

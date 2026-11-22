@@ -111,10 +111,10 @@ for (const bodyColumns of [110, 200] as const) {
       bodyColumns === 110 ? `${cutToCells(longTask.title, (titleArea?.props.width as number) - 1)}…` : longTask.title
     expect(snapshot).toEqual([
       ['heading', 'Progress'],
-      ['scene-root', 'Review task tree', 'In progress'],
-      ['scene-wrap', '折り返し用の日本語タイトル\n次の行も表示する', 'Completed'],
-      ['scene-long', longTitle, 'In progress'],
-      ['scene-deep', 'ログと結果を見て仕上がりを確かめる', 'Waiting'],
+      ['scene-root', 'Review task tree', 'No report yet'],
+      ['scene-wrap', '折り返し用の日本語タイトル\n次の行も表示する', 'No report yet'],
+      ['scene-long', longTitle, 'No report yet'],
+      ['scene-deep', 'ログと結果を見て仕上がりを確かめる', 'No report yet'],
     ])
   })
 }
@@ -167,11 +167,12 @@ for (const bodyColumns of [87, 110, 200] as const) {
     expect(headerChildren[2]?.props?.flexGrow).toBe(1)
     expect(await emptyPane.find({ key: 'timeline-detail-title-area' })).toBeTruthy()
     const detailText = (await emptyPane.findAll({ type: 'Text' })).map(line => line.text)
-    expect(detailText).toContain('日本語の詳細を確認する')
-    expect(detailText).toContain('Completed')
-    expect(detailText).toContain('登録した説明はCurrentとは別に残る。')
-    const headings = detailText.filter(text => /^(Note|Detail|History)$/u.test(text))
-    expect(headings).toEqual(['Detail', 'Note', 'History'])
+    expect(detailText).toContain('Detail')
+    expect(detailText).toContain('No report yet')
+    const headings = detailText.filter(text => /^(Note|History)$/u.test(text))
+    expect(headings).toEqual(['Note', 'History'])
+    expect(detailText).not.toContain('Latest report')
+    expect(detailText).not.toContain('登録した説明はCurrentとは別に残る。')
     expect(detailText).toContain('最新の作業メモはここに表示する。')
     for (let index = 0; index < 4; index++) {
       const lead = await emptyPane.find({ key: `timeline-detail-lead-${index}` })
@@ -217,6 +218,6 @@ test('desktop Timeline details start at the page edge', async ($, on) => {
   await clock.settle()
 
   const lines = (await pane.findAll({ type: 'Text' })).map(line => line.text)
-  expect(lines).toContain('Detail · A neutral desktop detail.')
-  expect(lines).not.toContain('  │  Detail · A neutral desktop detail.')
+  expect(lines).toContain('Detail · No report yet')
+  expect(lines).not.toContain('Detail · A neutral desktop detail.')
 })

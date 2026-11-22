@@ -4,7 +4,7 @@ import { currentTaskText } from './task-text'
 import { taskFactsAfterTreeUpdate } from './task-mismatches'
 import { pruneFinishedTaskRoots } from './task-prune'
 import { TASK_HISTORY_LIMIT, TASK_NODE_LIMIT } from './task-tree'
-import type { Session, TaskFactWarning, TaskNode, TaskOwner, TaskStatusMismatch, TaskTree } from '../types'
+import type { Session, TaskNode, TaskOwner, TaskStatusMismatch, TaskTree } from '../types'
 
 const TASK_PROJECTION_VERSION = 1
 
@@ -16,7 +16,7 @@ export type ProjectionFiles = {
   writeAtomic(path: string, text: string): Promise<void>
 }
 
-type TaskTreeExportWarning = 'owner-idle-15m' | 'owner-finished-task-open' | 'pr-merged-task-open' | 'status-conflict'
+type TaskTreeExportWarning = 'status-conflict'
 
 type TaskTreeExport = {
   schema: 1
@@ -55,35 +55,13 @@ export async function writeProjectionAtomically(path: string, text: string, file
   }
 }
 
-const exportWarning = (warning: TaskFactWarning): TaskTreeExportWarning | null => {
-  switch (warning.message) {
-    case 'Owner idle 15m+':
-      return 'owner-idle-15m'
-    case 'Owner finished, task open':
-      return 'owner-finished-task-open'
-    case 'PR merged, task still open':
-      return 'pr-merged-task-open'
-    case 'PR closed without merge':
-      return null
-  }
-}
-
 export function taskTreeExport(
   sessionId: string,
   tree: TaskTree,
-  warnings: readonly TaskFactWarning[],
   mismatches: readonly TaskStatusMismatch[],
   savedAt: number,
 ): TaskTreeExport {
   const warningKeys = new Map<string, Set<TaskTreeExportWarning>>()
-  for (const warning of warnings) {
-    const key = exportWarning(warning)
-    if (key) {
-      const keys = warningKeys.get(warning.taskId) ?? new Set<TaskTreeExportWarning>()
-      keys.add(key)
-      warningKeys.set(warning.taskId, keys)
-    }
-  }
   for (const mismatch of mismatches) {
     const keys = warningKeys.get(mismatch.taskId) ?? new Set<TaskTreeExportWarning>()
     keys.add('status-conflict')

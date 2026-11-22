@@ -134,14 +134,16 @@ export function checkFrame(entry, frame, width) {
   if (entry.view === 'timeline' && entry.scenario === 'busy') {
     const root = lines.find(line => line.includes('Snapshot root'))
     const titleCol = root ? col(root, root.indexOf('Snapshot root')) : 6
-    const status = root && lines.slice(lines.indexOf(root) + 1).find(line => /^\s+│\s+In progress\s*$/u.test(line))
+    const status =
+      root && lines.slice(lines.indexOf(root) + 1).find(line => /^\s+│\s+(In progress|No report yet)\s*$/u.test(line))
     if (!root) add('snapshot-root title', 6, 'missing', 'required title row absent')
     else if (titleCol !== 6) add('snapshot-root title', 6, titleCol, 'title starts outside fixture column')
     if (entry.width === 200 && root && (!/[━─]/u.test(root) || !root.includes('50.00%')))
       add('snapshot-root bar', 'title line', 'next line or missing', 'bar and percentage must share the title line')
     if (!status) add('snapshot-root chip', titleCol, 'missing', 'required chip absent')
     else {
-      const chip = col(status, status.indexOf('In progress') - 1)
+      const label = status.match(/In progress|No report yet/u)?.[0] ?? ''
+      const chip = col(status, status.indexOf(label) - 1)
       if (chip !== titleCol) add('snapshot-root chip', titleCol, chip, 'chip does not start on its title column')
     }
     if (entry.width === 200) {
@@ -327,7 +329,8 @@ export function runMutationProofs(frames) {
   const timeline = frames.get('timeline-busy-200.txt')
   const check = frame => checkFrame(timeline.entry, frame, timeline.paneWidth)
   const lines = timeline.frame.split('\n')
-  const chip = lines.findIndex(line => /^\s+│\s+In progress\s*$/u.test(line))
+  const chip = lines.findIndex(line => /^\s+│\s+(In progress|No report yet)\s*$/u.test(line))
+  const chipLabel = chip < 0 ? '' : (lines[chip].match(/In progress|No report yet/u)?.[0] ?? '')
   if (chip >= 0) lines[chip] = lines[chip].replace(/^ /u, '')
   const long = timeline.frame.split('\n').find(line => line.includes('Snapshot long'))
   const focusMutation = timeline.ansiFrame.replace('Snapshot long', '\x1b[7mSnapshot long\x1b[27m')
@@ -365,7 +368,7 @@ export function runMutationProofs(frames) {
     if (!line) throw Error(`mutation proof did not fail: ${name}`)
     process.stdout.write(`PROOF ${name}: ${line}\n`)
   }
-  for (const [name, file, label] of [['Timeline', 'timeline-busy-200.txt', 'In progress']]) {
+  for (const [name, file, label] of [['Timeline', 'timeline-busy-200.txt', chipLabel]]) {
     const item = frames.get(file)
     const mutated = stripChipRightPadding(item.ansiFrame, item.entry, item.paneWidth, label)
     const line = checkChipBoxes(item.entry, mutated, item.paneWidth).find(error => error.includes('chip box padding'))

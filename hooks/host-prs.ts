@@ -5,11 +5,11 @@ import type { Effect } from './press-reducer'
 import { fetchAccountPrs } from './pr-fetch'
 import { withFetchedPrs } from './session-presses'
 import { applyTaskPrFacts } from './task-facts'
-import { prStatesQuery, readPrsAnswer } from './pr-query'
+import { prCiState, prChecksOf, prStatesQuery, readPrsAnswer } from './pr-query'
 import { taskOwnerInHerdr } from './herdr'
 import { observedTaskOwnerFact, taskOwnerKey } from './task-facts'
 import { taskPrLink } from './task-tree'
-import type { Session, TaskOwner, TaskPrState } from '../types'
+import type { Session, TaskOwner, TaskPrCiState, TaskPrState } from '../types'
 import type { SessionHost } from './session-host'
 
 const PRS_REFRESH_MS = 120_000
@@ -25,13 +25,7 @@ function stateOf(value: unknown): TaskPrState | undefined {
 }
 
 function taskPrUrls(s: Session): string[] {
-  return [
-    ...new Set(
-      s.taskTree.flatMap(task =>
-        task.status === 'done' || task.status === 'dropped' || !task.links?.pr ? [] : [task.links.pr],
-      ),
-    ),
-  ]
+  return [...new Set(s.taskTree.flatMap(task => (task.links?.pr ? [task.links.pr] : [])))]
 }
 
 function afterCursor(urls: string[], cursor: string | null): string[] {
@@ -96,17 +90,21 @@ async function fetchUntrackedTaskPrStates<S extends Session>(
   s: S,
   bin: string,
   tracked: Set<string>,
-): Promise<{ states: Record<string, TaskPrState>; cursor: string | null } | null> {
+): Promise<{
+  states: Record<string, TaskPrState>
+  ciStates: Record<string, TaskPrCiState>
+  cursor: string | null
+} | null> {
   const urls = taskPrUrls(s).filter(url => {
     const link = taskPrLink(url)
     return (
       link?.queryable === true &&
       !(link.host === 'github.com' && tracked.has(link.ref)) &&
-      s.taskPrStates[url] !== 'MERGED'
+      (s.taskPrStates[url] !== 'MERGED' || s.taskPrCiStates[url] === undefined)
     )
   })
   const selected = afterCursor(urls, s.taskPrFactCursor).slice(0, TASK_PR_FETCH_LIMIT)
-  if (selected.length === 0) return { states: {}, cursor: s.taskPrFactCursor }
+  if (selected.length === 0) return { states: {}, ciStates: {}, cursor: s.taskPrFactCursor }
 
   const byHost = new Map<string, { urls: string[]; refs: string[] }>()
   for (const url of selected) {
@@ -119,6 +117,7 @@ async function fetchUntrackedTaskPrStates<S extends Session>(
   }
   const run = host.gh.run(s, bin, () => host.gh.forget())
   const states: Record<string, TaskPrState> = {}
+  const ciStates: Record<string, TaskPrCiState> = {}
   const answers = await Promise.all(
     [...byHost].map(async ([hostname, group]) => {
       const args = [
@@ -140,9 +139,11 @@ async function fetchUntrackedTaskPrStates<S extends Session>(
     group.urls.forEach((url, index) => {
       const state = stateOf(answer.prs[group.refs[index] as string]?.node?.state)
       if (state) states[url] = state
+      const node = answer.prs[group.refs[index] as string]?.node
+      if (node) ciStates[url] = prCiState(prChecksOf(node))
     })
   }
-  return { states, cursor: selected.at(-1) ?? s.taskPrFactCursor }
+  return { states, ciStates, cursor: selected.at(-1) ?? s.taskPrFactCursor }
 }
 
 /**
@@ -280,20 +281,25 @@ export async function fetchPrs<S extends Session>(
 
     const linked = new Set(next.taskTree.flatMap(task => (task.links?.pr ? [task.links.pr] : [])))
     const taskPrStates = Object.fromEntries(Object.entries(cur.taskPrStates).filter(([url]) => linked.has(url)))
+    const taskPrCiStates = Object.fromEntries(Object.entries(cur.taskPrCiStates).filter(([url]) => linked.has(url)))
     for (const task of next.taskTree) {
       const url = task.links?.pr
       const link = url ? taskPrLink(url) : undefined
       if (!url || !link?.queryable || link.host !== 'github.com' || !tracked.has(link.ref)) continue
       const state = stateOf(fetched[link.ref]?.state ?? s.prViews.views[link.ref]?.state)
       if (state) taskPrStates[url] = state
+      const checks = fetched[link.ref]?.checks ?? s.prViews.views[link.ref]?.checks
+      if (checks) taskPrCiStates[url] = prCiState(checks)
     }
     Object.assign(taskPrStates, taskFacts.states)
+    Object.assign(taskPrCiStates, taskFacts.ciStates)
     const facts = applyTaskPrFacts(next.taskTree, taskPrStates, at)
 
     return {
       ...next,
       taskTree: facts.tree,
       taskPrStates,
+      taskPrCiStates,
       taskFactWarnings: facts.warnings,
       taskPrFactCursor: taskFacts.cursor,
     }

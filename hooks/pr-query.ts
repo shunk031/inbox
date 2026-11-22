@@ -1,4 +1,4 @@
-import type { PrCheck, PrFetchFailure, PrThread, PrView } from '../types'
+import type { PrCheck, PrFetchFailure, PrThread, PrView, TaskPrCiState } from '../types'
 import { checkKey, parseRef } from './prs'
 
 /** How many PRs one GraphQL query reads. GitHub counts a query's nodes, and 50 PRs stay well under its limit. */
@@ -60,7 +60,13 @@ export function prStatesQuery(refs: string[]): string {
   const fields = [...repos.values()].map((repoRefs, n) => {
     const { owner, name } = parseRef(repoRefs[0] ?? '')
     const prs = repoRefs.map(
-      ref => `${prAlias(refs.indexOf(ref))}: pullRequest(number: ${parseRef(ref).number}) { url state }`,
+      ref => `${prAlias(refs.indexOf(ref))}: pullRequest(number: ${parseRef(ref).number}) {
+      url state commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
+        __typename
+        ... on CheckRun { name status conclusion detailsUrl startedAt completedAt checkSuite { workflowRun { workflow { name } } } }
+        ... on StatusContext { context state targetUrl createdAt }
+      } } } } }
+    }`,
     )
 
     return `${repoAlias(n)}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) { ${prs.join(' ')} }`
@@ -169,7 +175,7 @@ function latestRuns(rollup: RollupEntry[]): RollupEntry[] {
   return [...latest.values()]
 }
 
-function checksOf(node: PrNode): PrCheck[] {
+export function prChecksOf(node: PrNode): PrCheck[] {
   const rollup = node.commits?.nodes?.[0]?.commit?.statusCheckRollup?.contexts?.nodes ?? []
 
   return latestRuns(rollup).map(e => {
@@ -185,6 +191,12 @@ function checksOf(node: PrNode): PrCheck[] {
       ...(finishedAt ? { finishedAt } : {}),
     }
   })
+}
+
+export function prCiState(checks: readonly PrCheck[]): TaskPrCiState {
+  if (checks.some(check => check.bucket === 'fail' || check.bucket === 'cancelled')) return 'failing'
+  if (checks.some(check => check.bucket === 'pending')) return 'pending'
+  return checks.some(check => check.bucket === 'pass') ? 'passing' : 'not-run'
 }
 
 /**
@@ -251,7 +263,7 @@ export function readPrNode(
     base: String(node.baseRefName ?? ''),
     mergeable: String(node.mergeable ?? 'UNKNOWN'),
     reviewDecision: String(node.reviewDecision ?? ''),
-    checks: checksOf(node),
+    checks: prChecksOf(node),
     threads: threadsError === null ? threadsOf(node, viewer) : (previous?.threads ?? []),
     isYours: viewer === undefined || node.author === undefined ? null : node.author?.login === viewer,
     error: threadsError,

@@ -3,7 +3,7 @@
    Asks 1     Timeline 3     PRs
 ─▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀───────────────────────────────────────────────────────
 
- b: ‹ Back Snapshot root 日本語のレイアウト確認 日本語のレイアウト確認…     In progress
+ b: ‹ Back Snapshot root 日本語のレイアウト確認 日本語のレイアウト確認…   No report yet
 
  ┌─────────────────────────┐ ┌──────────────────────┐ ┌────────────────────────────────┐
  │ Progress                │ │ Weight               │ │ Completed units                │
@@ -11,7 +11,7 @@
  └─────────────────────────┘ └──────────────────────┘ └────────────────────────────────┘
 
  Detail
- An invented root task with a long CJK title.
+ No report yet
 
  Note
  The root task has a stable note.

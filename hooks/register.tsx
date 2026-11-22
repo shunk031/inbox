@@ -343,7 +343,6 @@ const DEMO_RECORDING = atom({ plugin: 'inbox', key: 'isDemoRecording' } as const
 const PERSON_LINES = atom({ plugin: 'inbox', key: 'personLines' } as const, {} as Record<string, string>)
 
 let taskProjection: ModTaskProjection | null = null
-
 const PANE = 'inbox'
 
 /** Adds the person's words to the turn, as a shell command does. */
@@ -1983,8 +1982,12 @@ function rowKeyActions(
   return { keys: keys.map(keyAction), more: more.map(keyAction) }
 }
 
-async function drawnState($: EngineInterface): Promise<ReturnType<typeof makeDrawnState>> {
-  const [session, notes, demo, isDemoRecording, unreadable, holds, now] = await Promise.all([
+async function drawnState(
+  $: EngineInterface,
+): Promise<
+  ReturnType<typeof makeDrawnState> & Pick<Session, 'taskPrStates' | 'taskPrCiStates'> & { taskReportQueue: string }
+> {
+  const [session, notes, demo, isDemoRecording, unreadable, holds, now, reportQueue] = await Promise.all([
     read($, SESSION),
     read($, NOTES),
     read($, DEMO),
@@ -1992,6 +1995,7 @@ async function drawnState($: EngineInterface): Promise<ReturnType<typeof makeDra
     read($, UNREADABLE),
     readHolds($),
     $.clock.now(),
+    readTaskReportQueue($),
     read($, REDRAW),
     // The minute tick while the person is away redraws the ages.
     read($, AWAY),
@@ -2009,7 +2013,18 @@ async function drawnState($: EngineInterface): Promise<ReturnType<typeof makeDra
   )
   redrawAtNextFold($, state.view, session.presence.lastTypedMessageAt, now)
 
-  return state
+  return {
+    ...state,
+    taskReportQueue: reportQueue,
+    taskPrStates: session.taskPrStates,
+    taskPrCiStates: session.taskPrCiStates,
+  }
+}
+
+async function readTaskReportQueue($: EngineInterface): Promise<string> {
+  const [home, stateDir] = await Promise.all([$.env.get('HOME'), $.env.get('HERDR_META_PATROL_STATE_DIR')])
+  const dir = stateDir?.trim() || (home ? `${home}/.local/state/herdr-meta-patrol` : '')
+  return dir ? $.fs.read(`${dir.replace(/\/+$/, '')}/queue.jsonl`).catch(() => '') : ''
 }
 
 async function setDemo($: EngineInterface, isShown: boolean, isRecording = false) {
@@ -2107,12 +2122,6 @@ async function initializeInbox($: EngineInterface) {
       write: (path, text) => $.fs.write(path, text),
       home: () => $.env.get('HOME'),
       now: () => $.clock.now(),
-      updateSession: async (sessionId, change) => {
-        const owner = currentOwner()
-        return owner.id === sessionId
-          ? commit($, owner, change, true)
-          : (await changeSaved(saveEngine($), sessionId, change)).after
-      },
       log: text => $.ui.log(text, { to: 'debug' }),
     },
     processRun($),
@@ -3047,7 +3056,22 @@ export const register: Register = on => {
         ? { rowPad: 2 * DESKTOP_ROW_PAD, settledPad: 2 * DESKTOP_ROW_PAD, buttonGap: 1, isFoldGapped: false }
         : { rowPad: blankLine, settledPad: 0, buttonGap: 2, isFoldGapped: true }
     const [
-      { prViews: prState, lastActions, notes, turns, stop, view, isDemo, showsDemoNotices, isUnread, now },
+      {
+        prViews: prState,
+        lastActions,
+        notes,
+        turns,
+        stop,
+        view,
+        isDemo,
+        showsDemoNotices,
+        isUnread,
+        now,
+        timelineTaskTree,
+        taskReportQueue,
+        taskPrStates,
+        taskPrCiStates,
+      },
       savedTab,
       savedPage,
       selection,
@@ -3388,6 +3412,11 @@ export const register: Register = on => {
         pal,
         look,
         view,
+        timelineTaskTree,
+        taskReportQueue,
+        taskPrStates,
+        taskPrCiStates,
+        now,
         timelineSelection,
         timelineFolded,
         timelineDetailOpen,

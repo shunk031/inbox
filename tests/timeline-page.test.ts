@@ -45,7 +45,7 @@ test('Timeline keeps tree order and derives progress, stall age and warnings', (
   const warning: TaskFactWarning = {
     taskId: child.id,
     pr: 'https://github.com/a/b/pull/1',
-    message: 'PR merged, task still open',
+    message: 'PR closed without merge',
   }
   const page = timelineData([root, child], segments, { [child.id]: now - 15 * 60_000 }, [warning], now)
 

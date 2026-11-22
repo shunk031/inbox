@@ -1,35 +1,21 @@
 import { expect, mock, test } from 'claude-code/testing'
-import type { Session } from '../types'
-import { taskOwnerKey } from '../hooks/task-facts'
 import { cellWidth } from '../hooks/text'
 import { w, world } from './hooks-world'
 import { PANE } from './hooks-helpers'
 
-test('terminal Timeline aligns every status chip with its title and keeps warning guides', async ($, on) => {
+test('terminal Timeline aligns status chips with title columns', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
-  world($, on, [])
+  world($, on, [], { HERDR_META_PATROL_STATE_DIR: '/tmp/meta-fixture' })
   w.files = ['/.next-build']
-  const owner = { machine: 'local', agent: 'worker-1' }
-  const ownerKey = taskOwnerKey(owner)
-  const mergedPr = 'https://github.com/example/project/pull/13'
-  on('state.set', { plugin: 'inbox', key: 'session' } as const, (_$, event, next) => {
-    const session = event.value as Session & { revision: number }
-    const taskTree = session.taskTree.map(task =>
-      task.id === 'stalled-task' ? { ...task, links: { ...task.links, owner } } : task,
-    )
-    return next({
-      ...event,
-      value: {
-        ...session,
-        taskTree,
-        taskOwnerFacts: { ...session.taskOwnerFacts, [ownerKey]: { state: 'idle', since: 0 } },
-        taskFactWarnings: [
-          ...session.taskFactWarnings.filter(warning => warning.taskId !== 'pr-task'),
-          { taskId: 'pr-task', pr: mergedPr, message: 'PR merged, task still open' as const },
-        ],
-      },
-    })
+  w.written['/tmp/meta-fixture/queue.jsonl'] = JSON.stringify({
+    seq: 1,
+    t: 995,
+    kind: 'message',
+    from: 'worker-1',
+    machine: 'local',
+    text: 'DONE worker-1: task completed',
   })
+  const prUrl = 'https://github.com/example/project/pull/13'
   await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
   for (const [task_id, parent_id, title] of [
     ['done-parent', undefined, 'Completed parent'],
@@ -69,6 +55,8 @@ test('terminal Timeline aligns every status chip with its title and keeps warnin
             ? '折り返しを含む日本語タスク\n二行目も確認する'
             : task_id,
       status,
+      ...(task_id === 'stalled-task' ? { owner_agent: 'worker-1', owner_machine: 'local' } : {}),
+      ...(task_id === 'pr-task' ? { pr: prUrl } : {}),
     })
   }
 
@@ -77,11 +65,7 @@ test('terminal Timeline aligns every status chip with its title and keeps warnin
   await clock.settle()
 
   const rows = (await pane.findAll({ type: 'Text' })).map(line => line.text)
-  expect(rows).toContain('Stalled')
-  expect(
-    rows.some(line => line.includes('✕')),
-    'the stalled mark stays on the title line',
-  ).toBe(true)
+  expect((await pane.find({ key: 'timeline-chip-stalled-task' }))?.text).toBe('Completed')
   const taskIds = [
     'done-parent',
     'done-child-a',
@@ -151,26 +135,13 @@ test('terminal Timeline aligns every status chip with its title and keeps warnin
   const continuationIndex = rows.indexOf('二行目も確認する')
   expect(continuationIndex).toBeGreaterThan(0)
   expect(rows[continuationIndex - 1]?.[2], 'wrapped title keeps its parent guide').toBe('│')
-  const warnings = rows.filter(line => line.includes('⚠'))
-  expect(warnings.some(line => line.includes('Owner idle 15m+'))).toBe(true)
-  expect(warnings.some(line => line.includes('Owner finished, task open'))).toBe(true)
-  expect(warnings.filter(line => line.includes('PR merged, task still open'))).toHaveLength(1)
-  const stalledTitleLead = await pane.find({ key: 'timeline-title-lead-stalled-task' })
-  const prTitleLead = await pane.find({ key: 'timeline-title-lead-pr-task' })
-  for (const warning of warnings) {
-    const warningColumn = cellWidth(warning.slice(0, warning.indexOf('⚠')))
-    const titleLead = warning.includes('PR merged') ? prTitleLead : stalledTitleLead
-    expect(warningColumn, 'warning text starts in its title column').toBe(titleLead?.props.width)
-    expect(
-      [...warning.matchAll(/│/g)].map(match => Number(match.index)),
-      'warning keeps the ancestor and child guides in their separate columns',
-    ).toEqual([2, 5])
-    expect(warning[2], 'the warning keeps the guide in its tree column').toBe('│')
-  }
-
   expect((await pane.find({ key: 'timeline-title-lead-done-parent' }))?.text.startsWith('> ')).toBe(true)
-  await pane.press({ key: 'timeline-title-root' })
+  await pane.press({ key: 'timeline-title-stalled-task' })
   await clock.settle()
+  const detail = (await pane.findAll({ type: 'Text' })).map(line => line.text)
+  expect(detail).toContain('Detail')
+  expect(detail).toContain('DONE worker-1: task completed · now')
+  expect(rows.some(line => line.includes('PR state unavailable · CI unavailable'))).toBe(true)
   await pane.press({ key: 'timeline-back' })
   await clock.settle()
   expect((await pane.find({ key: 'timeline-title-lead-done-parent' }))?.text.startsWith('  ')).toBe(true)

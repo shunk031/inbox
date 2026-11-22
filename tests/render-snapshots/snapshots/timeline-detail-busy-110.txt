@@ -3,7 +3,7 @@
    Asks 1     Timeline 3     PRs
 ─▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀─────
 
- b: ‹ Back Snapshot …     In progress
+ b: ‹ Back Snapshot …   No report yet
 
  ┌─────────────────┐ ┌───────────────┐
  │ Progress        │ │ Weight        │
@@ -16,14 +16,14 @@
  └───────────────────────────────────┘
 
  Detail
- An invented root task with a long CJK
- title.
+ No report yet
 
  Note
  The root task has a stable note.
 
  History
  1m · fixture · Task created
+
 
 
 

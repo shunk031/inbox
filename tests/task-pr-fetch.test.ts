@@ -97,7 +97,11 @@ test('tracked merged PRs complete and save a task history event', async () => {
 test('untracked closed PRs warn, and a failed GitHub fetch changes no task fact or warning', async () => {
   const url = 'https://github.com/acme/app/pull/8'
   const start = { ...emptySession(), taskTree: [taskWithPr('t1', url)] }
-  const successful = ghStandIn((number, repo) => ({ node: prNodeOf(viewJson(`${repo}#${number}`, 'CLOSED')) }))
+  const successful = ghStandIn((number, repo) => {
+    const view = viewJson(`${repo}#${number}`, 'CLOSED')
+    view.statusCheckRollup = [{ __typename: 'CheckRun', name: 'tests', status: 'COMPLETED', conclusion: 'SUCCESS' }]
+    return { node: prNodeOf(view) }
+  })
   const first = hostOf(successful.run, start)
 
   await fetchPrs(first.host, false)
@@ -105,6 +109,7 @@ test('untracked closed PRs warn, and a failed GitHub fetch changes no task fact 
   expect(successful.queried).toEqual([['acme/app#8']])
   expect(first.state().taskTree[0]?.status).toBe('working')
   expect(first.state().taskFactWarnings).toEqual([{ taskId: 't1', pr: url, message: 'PR closed without merge' }])
+  expect(first.state().taskPrCiStates[url]).toBe('passing')
 
   const failed = hostOf(async () => ({ exitCode: 1, stdout: '', stderr: 'HTTP 502' }), start)
   await fetchPrs(failed.host, false)

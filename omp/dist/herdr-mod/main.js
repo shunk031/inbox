@@ -1,5 +1,5 @@
 // Built by herdr/build.ts with Bun 1.4.4 from herdr/src and hooks/. Do not edit.
-// Built at 2026-11-21T03:03:09.847Z. 227461 characters follow.
+// Built at 2026-11-21T15:53:29.089Z. 226645 characters follow.
 
 // src/main.ts
 import { View, div as div5 } from "gpui-kit";
@@ -2737,6 +2737,7 @@ function emptySession() {
     taskTreeProjectionConflictReported: false,
     taskStatusMismatches: [],
     taskPrStates: {},
+    taskPrCiStates: {},
     taskFactWarnings: [],
     taskOwnerFacts: {},
     taskOwnerFactCheckedAt: null,
@@ -2814,7 +2815,8 @@ function sessionFields(saved, views) {
     taskTreeProjectionConflictReported: saved.taskTreeProjectionConflictReported === true,
     taskStatusMismatches: upgradeTaskStatusMismatches(saved.taskStatusMismatches, taskTree),
     taskPrStates: Object.fromEntries(Object.entries(saved.taskPrStates ?? {}).filter((entry) => entry[1] === "OPEN" || entry[1] === "CLOSED" || entry[1] === "MERGED")),
-    taskFactWarnings: saved.taskFactWarnings ?? [],
+    taskPrCiStates: Object.fromEntries(Object.entries(saved.taskPrCiStates ?? {}).filter((entry) => ["passing", "failing", "pending", "not-run"].includes(entry[1]))),
+    taskFactWarnings: (saved.taskFactWarnings ?? []).filter((warning) => warning.message === "PR closed without merge"),
     taskOwnerFacts,
     taskOwnerFactCheckedAt: Number.isFinite(saved.taskOwnerFactCheckedAt) && saved.taskOwnerFactCheckedAt >= 0 ? saved.taskOwnerFactCheckedAt : null,
     taskOwnerFactCursor: typeof saved.taskOwnerFactCursor === "string" && saved.taskOwnerFactCursor.length <= 256 ? saved.taskOwnerFactCursor : null,
@@ -3553,29 +3555,20 @@ function perTurnStatus(isUpdating, recovery) {
 }
 
 // ../hooks/task-facts.ts
-var OWNER_IDLE_WARNING = "Owner idle 15m+";
-var OWNER_FINISHED_WARNING = "Owner finished, task open";
-var OWNER_IDLE_AFTER_MS = 15 * 60000;
-var OWNER_FINISHED_AFTER_MS = 2 * 60000;
 function taskOwnerKey(owner) {
   return JSON.stringify([owner.machine, owner.agent]);
 }
-function applyTaskOwnerFacts(tree, facts, at) {
+function applyTaskOwnerFacts(tree, facts) {
   const stalledSince = {};
-  const warnings = [];
   for (const task of tree) {
     const owner = task.links?.owner;
     const fact = owner ? facts[taskOwnerKey(owner)] : undefined;
     if (task.status !== "working" || !owner || !fact || fact.state === "working")
       continue;
     stalledSince[task.id] = fact.since;
-    if (at - fact.since >= OWNER_IDLE_AFTER_MS)
-      warnings.push({ taskId: task.id, owner, message: OWNER_IDLE_WARNING });
-    if ((fact.state === "done" || fact.state === "idle") && at - fact.since >= OWNER_FINISHED_AFTER_MS)
-      warnings.push({ taskId: task.id, owner, message: OWNER_FINISHED_WARNING });
   }
   const segments = weightedTaskProgressSegments(tree, new Set(Object.keys(stalledSince)));
-  return { stalledSince, warnings, segments };
+  return { stalledSince, segments };
 }
 
 // ../hooks/timeline-state.ts
@@ -3759,18 +3752,6 @@ function withoutStaleResult(last, now) {
 function withoutStalePending(lastActions, now) {
   return Object.fromEntries(Object.entries(lastActions).map(([id, last]) => [id, withoutStaleResult(last, now)]));
 }
-function taskTimelineWarnings(s, tree, now) {
-  const ownerFacts = {};
-  for (const finding of s.ledger.findings) {
-    if (!finding.owner || !finding.ownerFact)
-      continue;
-    const key = taskOwnerKey(finding.owner);
-    if (!ownerFacts[key] || ownerFacts[key].since < finding.ownerFact.since)
-      ownerFacts[key] = finding.ownerFact;
-  }
-  Object.assign(ownerFacts, s.taskOwnerFacts);
-  return [...s.taskFactWarnings, ...applyTaskOwnerFacts(tree, ownerFacts, now).warnings];
-}
 function updateRecovery(s) {
   const { presence } = s;
   if (presence.ledgerState !== "failed")
@@ -3806,8 +3787,8 @@ function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timel
       ownerFacts[key] = finding.ownerFact;
   }
   Object.assign(ownerFacts, s.taskOwnerFacts);
-  const taskOwnerView = applyTaskOwnerFacts(s.taskTree, ownerFacts, now);
-  const timelineOwnerView = timelineTaskTree === s.taskTree ? taskOwnerView : applyTaskOwnerFacts(timelineTaskTree, ownerFacts, now);
+  const taskOwnerView = applyTaskOwnerFacts(s.taskTree, ownerFacts);
+  const timelineOwnerView = timelineTaskTree === s.taskTree ? taskOwnerView : applyTaskOwnerFacts(timelineTaskTree, ownerFacts);
   const feedStalledSince = Object.fromEntries(l.findings.flatMap((finding) => {
     const fact = finding.owner ? ownerFacts[taskOwnerKey(finding.owner)] : undefined;
     return finding.kind === "progress" && fact && fact.state !== "working" ? [[finding.id, fact.since]] : [];
@@ -3818,11 +3799,11 @@ function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timel
     turns: { turnsStarted: s.presence.turnsStarted, turnsApplied: s.presence.turnsApplied },
     prs: prTabOf(s, lastActions, now, holds, settleWindowMs),
     statusPage: statusPage(s, now, new Set(Object.keys(taskOwnerView.stalledSince))),
-    timeline: timelineData(timelineTaskTree, timelineOwnerView.segments, timelineOwnerView.stalledSince, taskTimelineWarnings(s, timelineTaskTree, now), now, s.taskStatusMismatches),
+    timeline: timelineData(timelineTaskTree, timelineOwnerView.segments, timelineOwnerView.stalledSince, s.taskFactWarnings, now, s.taskStatusMismatches),
     taskProgressSegments: taskOwnerView.segments,
     taskStalledSince: taskOwnerView.stalledSince,
     feedStalledSince,
-    taskFactWarnings: taskTimelineWarnings(s, s.taskTree, now)
+    taskFactWarnings: s.taskFactWarnings
   };
 }
 function prTabOf(s, lastActions, now, { shownSince, listInput, undoShown }, settleWindowMs) {

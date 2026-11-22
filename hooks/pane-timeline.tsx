@@ -1,7 +1,9 @@
 import type { PaneBase, PaneHandlers } from './pane-context'
+import type { TaskPrCiState, TaskPrState, TaskTree } from '../types'
 import { cellWidth, cutToCells } from './text'
 import { moveTimelineSelection, timelinePage, toggleTimelineBranch } from './timeline-page'
 import type { TimelinePage } from './timeline-page'
+import { taskReportPage } from './task-report'
 
 type TimelineStyle = Pick<PaneBase, 'Box' | 'Text' | 'pal'>
 
@@ -35,22 +37,51 @@ function terminalTreeLead(row: TimelinePage['rows'][number], cells: number) {
 type TimelinePaneBase = Pick<
   PaneBase,
   'Box' | 'Button' | 'Text' | 'pal' | 'look' | 'view' | 'timelineSelection' | 'timelineFolded' | 'timelineDetailOpen'
-> & { bodyColumns: number }
+> & {
+  bodyColumns: number
+  timelineTaskTree: TaskTree
+  taskReportQueue: string
+  taskPrStates: Record<string, TaskPrState>
+  taskPrCiStates: Record<string, TaskPrCiState>
+  now: number
+}
 type TimelinePaneHandlers = Pick<
   PaneHandlers,
   'runPress' | 'selectTimelineRow' | 'updateTimelineFolded' | 'openTimelineDetail' | 'closeTimelineDetail'
 >
 
 export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHandlers) {
-  const { Box, Button, Text, pal, look, view, timelineSelection, timelineFolded, timelineDetailOpen } = context
-  const { selectTimelineRow, updateTimelineFolded, openTimelineDetail, closeTimelineDetail, runPress } = handlers
-  const page = timelinePage(
-    view.timeline,
+  const {
+    Box,
+    Button,
+    Text,
+    pal,
+    look,
+    view,
     timelineSelection,
     timelineFolded,
-    view.lastActions,
-    look === 'terminal' && timelineDetailOpen,
-    true,
+    timelineDetailOpen,
+    timelineTaskTree,
+    taskReportQueue,
+    taskPrStates,
+    taskPrCiStates,
+    now,
+  } = context
+  const { selectTimelineRow, updateTimelineFolded, openTimelineDetail, closeTimelineDetail, runPress } = handlers
+  const page = taskReportPage(
+    timelinePage(
+      view.timeline,
+      timelineSelection,
+      timelineFolded,
+      view.lastActions,
+      look === 'terminal' && timelineDetailOpen,
+      true,
+    ),
+    timelineTaskTree,
+    taskReportQueue,
+    taskPrStates,
+    taskPrCiStates,
+    now,
   )
   const toggleCompletedFold = async (id: string) => {
     if (timelineDetailOpen) await closeTimelineDetail()

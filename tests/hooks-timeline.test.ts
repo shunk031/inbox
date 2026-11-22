@@ -209,7 +209,7 @@ test('the desktop summary footer closes stale detail, preserves hidden selection
   await clock.settle()
   expect(detailOpen).toBe(false)
   expect(selection.value).toBe('finished')
-  expect((await desktop.findAll({ type: 'Text' })).some(row => row.text.includes('> ● '))).toBe(true)
+  expect((await desktop.findAll({ type: 'Text' })).some(row => row.text.includes('> ○ '))).toBe(true)
   await pane.press({ key: `timeline-title-${COMPLETED_FOLD_ID}` })
   await clock.settle()
   expect((await pane.findAll({ type: 'Text' })).some(row => row.text.includes('> ▸ '))).toBe(true)
@@ -256,7 +256,7 @@ test('Timeline opens a selected task detail and returns to the selected tree row
   expect(text).toContain('A flow 21%')
   expect(text.some(line => line.includes('Build the review flow'))).toBe(false)
   expect(
-    text.some(line => line.includes('Not started')),
+    text.some(line => line.includes('No report yet')),
     'the status is visible in the tree',
   ).toBe(true)
 
@@ -264,7 +264,9 @@ test('Timeline opens a selected task detail and returns to the selected tree row
   await pane.press({ key: 'timeline-title-plan' })
   await clock.settle()
   let detail = (await pane.findAll({ type: 'Text' })).map(node => node.text)
-  expect(detail, 'the detail view includes the task detail').toContain('Build the review flow')
+  expect(detail, 'the existing Detail row uses the report placeholder').toContain('No report yet')
+  expect(detail).toContain('Detail')
+  expect(detail).not.toContain('Build the review flow')
   expect(detail).toContain('Keep the row short')
   expect(detail.some(line => line.includes('Task created'))).toBe(true)
   expect(detail).toContain('Weight')
@@ -336,7 +338,7 @@ test('terminal Timeline keeps Japanese titles, row metadata and detail guides at
     lines.some(line => line.startsWith('> ○ ')),
     'the mark and tree prefix stay on the title line',
   ).toBe(true)
-  expect(lines, 'the status chip keeps its label').toContain('Not started')
+  expect(lines, 'the status chip reports missing queue data').toContain('No report yet')
   expect(
     lines.some(line => line.trim() === '0.00%'),
     'the row percentage keeps every character',
@@ -354,8 +356,10 @@ test('terminal Timeline keeps Japanese titles, row metadata and detail guides at
   ).toBe(true)
   const detailText = (await pane.findAll({ type: 'Text' })).map(line => line.text)
   expect(detailText.some(text => text.includes('子タスク'))).toBe(true)
-  expect(detailText).toContain(longDetail)
   expect(detailText).toContain('Detail')
+  expect(detailText).toContain('No report yet')
+  expect(detailText).not.toContain('Latest report')
+  expect(detailText).not.toContain(longDetail)
   expect(detailText).toContain('History')
   expect(detailText).toContain('A newer Japanese note')
 })

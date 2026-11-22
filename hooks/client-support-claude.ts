@@ -99,6 +99,7 @@ export const CLAUDE_CODE_SUPPORT: ClientSupport['support'] = {
   'task-tree-currentness': { kind: 'full' },
   'task-tree-projection': { kind: 'full' },
   'task-tree-export': { kind: 'full' },
+  'task-owner-reports': { kind: 'full' },
   'task-status-mismatch': { kind: 'full' },
   timeline: { kind: 'full' },
   'timeline-completed-fold': { kind: 'full' },

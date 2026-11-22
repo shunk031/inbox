@@ -44,9 +44,6 @@ test('prunes after task changes and clears warnings', () => {
       ...emptySession(),
       taskTree: full,
       taskStatusMismatches: [{ taskId: 'r1', claim: 'working' as const, savedStatus: 'done' as const, at: 1 }],
-      taskFactWarnings: [
-        { taskId: 'r1', pr: 'https://github.com/a/b/pull/1', message: 'PR merged, task still open' as const },
-      ],
     },
     'tasks',
     { operation: 'add', task_id: 'child', title: 'Child', parent_id: 'r0' },
