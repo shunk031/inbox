@@ -72,7 +72,7 @@ export function taskReportPage(
     ...page.selected,
     row: updateRow(page.selected.row),
     details: [
-      { label: 'Detail' as const, text: reportText(page.selected.row.task.id) },
+      { label: 'Latest report' as const, text: reportText(page.selected.row.task.id) },
       ...page.selected.details.filter(line => line.label !== 'Detail'),
     ],
   }

@@ -139,7 +139,7 @@ test('terminal Timeline aligns status chips with title columns', async ($, on) =
   await pane.press({ key: 'timeline-title-stalled-task' })
   await clock.settle()
   const detail = (await pane.findAll({ type: 'Text' })).map(line => line.text)
-  expect(detail).toContain('Detail')
+  expect(detail).toContain('Latest report')
   expect(detail).toContain('DONE worker-1: task completed · now')
   expect(rows.some(line => line.includes('PR state unavailable · CI unavailable'))).toBe(true)
   await pane.press({ key: 'timeline-back' })

@@ -167,11 +167,10 @@ for (const bodyColumns of [87, 110, 200] as const) {
     expect(headerChildren[2]?.props?.flexGrow).toBe(1)
     expect(await emptyPane.find({ key: 'timeline-detail-title-area' })).toBeTruthy()
     const detailText = (await emptyPane.findAll({ type: 'Text' })).map(line => line.text)
-    expect(detailText).toContain('Detail')
+    expect(detailText).toContain('Latest report')
     expect(detailText).toContain('No report yet')
     const headings = detailText.filter(text => /^(Note|History)$/u.test(text))
     expect(headings).toEqual(['Note', 'History'])
-    expect(detailText).not.toContain('Latest report')
     expect(detailText).not.toContain('登録した説明はCurrentとは別に残る。')
     expect(detailText).toContain('最新の作業メモはここに表示する。')
     for (let index = 0; index < 4; index++) {
@@ -218,6 +217,6 @@ test('desktop Timeline details start at the page edge', async ($, on) => {
   await clock.settle()
 
   const lines = (await pane.findAll({ type: 'Text' })).map(line => line.text)
-  expect(lines).toContain('Detail · No report yet')
-  expect(lines).not.toContain('Detail · A neutral desktop detail.')
+  expect(lines).toContain('Latest report · No report yet')
+  expect(lines).not.toContain('Latest report · A neutral desktop detail.')
 })
