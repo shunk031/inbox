@@ -17,7 +17,7 @@ export function taskOwnerReports(tree: TaskTree, queue: string): Record<string, 
         : undefined
       const kind = prefix ?? tagged
       if (!kind) continue
-      const key = JSON.stringify([record.from, typeof record.machine === 'string' ? record.machine : ''])
+      const key = JSON.stringify([record.from, typeof record.machine === 'string' ? record.machine : 'local'])
       const seq = Number(record.seq) || 0
       if (seq <= (latest.get(key)?.seq ?? -1)) continue
       const at = typeof record.t === 'number' ? record.t * 1000 : Date.parse(record.at)
@@ -29,9 +29,7 @@ export function taskOwnerReports(tree: TaskTree, queue: string): Record<string, 
     tree.flatMap(task => {
       const owner = task.links?.owner
       if (!owner) return []
-      const exact = latest.get(JSON.stringify([owner.agent, owner.machine]))
-      const anyMachine = latest.get(JSON.stringify([owner.agent, '']))
-      const report = exact && (!anyMachine || exact.seq > anyMachine.seq) ? exact : (anyMachine ?? exact)
+      const report = latest.get(JSON.stringify([owner.agent, owner.machine]))
       return report ? [[task.id, report]] : []
     }),
   )
