@@ -31,8 +31,8 @@ export function taskOwnerReports(tree: TaskTree, queue: string): Record<string, 
 export function taskTreeWithReports(tree: TaskTree, queue: string): TaskTree {
   const reports = taskOwnerReports(tree, queue)
   return tree.map(task => {
-    const status =
-      reports[task.id]?.kind === 'DONE' ? 'done' : reports[task.id]?.kind === 'BLOCKED' ? 'waits-on-other' : task.status
+    const kind = reports[task.id]?.kind
+    const status = kind ? ({ STATUS: 'working', DONE: 'done', BLOCKED: 'waits-on-other' } as const)[kind] : task.status
     return status === task.status ? task : { ...task, status }
   })
 }

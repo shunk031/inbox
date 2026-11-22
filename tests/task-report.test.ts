@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { taskOwnerReports, taskReportPage } from '../hooks/task-report'
+import { taskOwnerReports, taskReportPage, taskTreeWithReports } from '../hooks/task-report'
 import type { TaskTree } from '../types'
 
 const owner = (id: string, agent: string, machine = 'local') => ({ id, links: { owner: { agent, machine } } })
@@ -11,18 +11,18 @@ test('selects the newest report for each exact owner and machine', () => {
     id: ['local', 'gpu', 'done', 'absent'][i],
     links: { owner: { agent, machine: i === 1 ? 'gpu-a' : 'local' } },
   })) as TaskTree
-  const reports = taskOwnerReports(
-    owners,
-    queue(
-      { seq: 1, t: 120, from: 'worker', text: 'STATUS first' },
-      { seq: 4, t: 150, from: 'worker', machine: 'gpu-a', text: 'DONE gpu' },
-      { seq: 1, t: 120, from: 'closer', text: 'STATUS started' },
-      { seq: 2, t: 130, from: 'closer', kind: 'DONE', text: 'finished' },
-      { seq: 5, t: 160, from: 'outsider', text: 'BLOCKED unrelated' },
-    ),
+  const events = queue(
+    { seq: 1, t: 120, from: 'worker', text: 'STATUS first' },
+    { seq: 4, t: 150, from: 'worker', machine: 'gpu-a', text: 'DONE gpu' },
+    { seq: 1, t: 120, from: 'closer', text: 'STATUS started' },
+    { seq: 2, t: 130, from: 'closer', kind: 'DONE', text: 'finished' },
+    { seq: 5, t: 160, from: 'outsider', text: 'BLOCKED unrelated' },
   )
+  const reports = taskOwnerReports(owners, events)
   expect([reports.local?.line, reports.gpu?.line]).toEqual(['STATUS first', 'DONE gpu'])
   expect([reports.done?.kind, reports.absent]).toEqual(['DONE', undefined])
+  owners[0]!.status = 'queued'
+  expect(taskTreeWithReports(owners, events)[0]?.status).toBe('working')
 })
 
 test('an open linked PR shows its CI in the Timeline row and detail', () => {
