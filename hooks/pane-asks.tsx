@@ -13,6 +13,7 @@ import { childPos, holdsUpLineOf, type PaneRowLines } from './pane-row-lines'
 import type { PaneRowParts } from './pane-row-parts'
 import type { PaneRows } from './pane-rows'
 import { ROW_COLUMNS } from './pane-sizes'
+import { TEXT_COLUMN } from './layout'
 import {
   closedShown,
   closedTotal,
@@ -277,7 +278,7 @@ export function paneAskTabs(
 ) {
   const documentView = () =>
     document ? (
-      <Box flexDirection="column" flexGrow={1} rowGap={blankLine}>
+      <Box flexDirection="column" flexGrow={1} rowGap={blankLine} paddingLeft={TEXT_COLUMN - 1}>
         <Box flexDirection="row" justifyContent="space-between" alignItems="center">
           <Text bold>{document.title}</Text>
           <Button key="document-back" label="Back to inbox" onPress={closeDocument} />

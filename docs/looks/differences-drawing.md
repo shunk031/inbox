@@ -4,6 +4,7 @@ Part of [the look map](../looks.md#differences-on-purpose).
 
 | Topic | Terminal | Desktop | Codex | Why | Where |
 | --- | --- | --- | --- | --- | --- |
+| Body text column | Text starts at column 3; a card border sits at column 1. | Uses the same cell-based text column in the pane. | Uses its own CSS pixel columns, including 44px for rows and 67px for PRs. | The terminal and desktop pane share cell-based layout; Codex uses its own CSS grid and gutters. | `hooks/layout.ts`, `codex/src/tab-css/base.css`, `codex/src/tab-css/prs.css` |
 | `timeline-completed-fold` | Finished roots fold under one selectable "N completed" row. | Same as terminal. | Finished roots stay inline. | The terminal look ships first; the other looks follow later. | `hooks/timeline-page.ts`, `hooks/pane-timeline.tsx` |
 | Timeline variant B | Keeps the whole tree with a progress card, status chips, segmented bars, and a separate selected-task detail view. | Not drawn in this look yet. | Keeps the whole tree with a progress card, status chips, segmented bars, and a separate selected-task detail view. | The terminal and Codex adapters draw the shared plan; the desktop pane keeps its existing inline tree. | `hooks/pane-timeline.tsx`, `codex/src/tab-timeline.tsx` |
 | Timeline row bands | No alternating row bands, matching Asks and PRs. | Variant B is not drawn in this look. | Alternate task rows retain their existing bands. | The terminal's other row tabs have no bands; Codex keeps its own Timeline styling. | `hooks/pane-timeline.tsx`, `codex/src/tab-timeline.tsx` |

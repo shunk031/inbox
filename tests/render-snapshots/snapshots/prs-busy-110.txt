@@ -10,17 +10,14 @@
  ╰───────────────────────────────────╯
 
 
-  Refresh PRs
+   Refresh PRs
 
 
-  #24 Snapshot pull request with an
-  invented CJK summary Waiting · needs
-  approval
+   #24 Snapshot pull request with an
+   invented CJK
+   summary Waiting · needs approval
 
-  [ Open PR ]  Dismiss
-
-
-
+   [ Open PR ]  Dismiss
 
 
 
@@ -42,4 +39,7 @@
 
 
 
-  Help                         v0.4.0
+
+
+
+   Help                        v0.4.0

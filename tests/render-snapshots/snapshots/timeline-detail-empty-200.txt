@@ -3,20 +3,18 @@
    Asks 1     Timeline 1     PRs
 ─▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀───────────────────────────────────────────────────────
 
- b: ‹ Back Snapshot detail empty                                            In progress
+   b: ‹ Back Snapshot detail empty                                          In progress
 
  ┌─────────────────────────┐ ┌──────────────────────┐ ┌────────────────────────────────┐
  │ Progress                │ │ Weight               │ │ Completed units                │
  │ 0.00%                   │ │ 1                    │ │ 0 / 1                          │
  └─────────────────────────┘ └──────────────────────┘ └────────────────────────────────┘
 
- Latest report
- No report yet
+   Latest report
+   No report yet
 
- History
- 1h · fixture · Task created
-
-
+   History
+   1h · fixture · Task created
 
 
 
@@ -42,4 +40,6 @@
 
 
 
-  Help                                                                           v0.4.0
+
+
+   Help                                                                          v0.4.0

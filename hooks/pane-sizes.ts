@@ -1,7 +1,7 @@
 import { DESKTOP_CHARS_PER_CELL } from './desktop-metrics'
 import { cellWidth } from './text'
 import { fitTabs, tabName, type TabNaming } from './tabs'
-import { ROW_PAD_PT, STATUS_ROW_PAD_PT } from './layout'
+import { ROW_PAD_PT, STATUS_ROW_PAD_PT, TEXT_COLUMN } from './layout'
 import { TAB_COUNT_GAP } from './tabs-client'
 
 export const REPLY_ROWS = 3
@@ -49,7 +49,7 @@ export const UNDO_HEIGHT_PT = 23
  * A Box in the hooks tree counts padding in half lines, so it pads twice this.
  */
 export const DESKTOP_ROW_PAD = ROW_PAD_PT / DESKTOP_LINE_PT
-export const TREE_LINE_AT = 2
+export const TREE_LINE_AT = TEXT_COLUMN - 1
 export const ROW_COLUMNS = {
   tree: { lead: TREE_LINE_AT + 3, handleAt: TREE_LINE_AT + 3, textAt: TREE_LINE_AT + 6 },
   desktop: { lead: 1, handleAt: 1, textAt: 3 },

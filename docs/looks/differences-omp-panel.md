@@ -4,6 +4,7 @@ Part of [the look map](../looks.md#omp).
 
 | Topic | omp | Why | Where |
 | --- | --- | --- | --- |
+| Body text column | Keeps its line-based row and tree indents; selected rows start with a cursor at column 1, and detail text uses the panel's own indent. | The key-driven panel lays out each terminal line with its selection mark and tree depth, so the pane's shared column does not fit its line plan. | `omp/src/panel-draw.ts`, `omp/src/panel-lines.ts` |
 | `timeline-completed-fold` | Finished roots stay inline. | The terminal look ships first; the other looks follow later. | `hooks/timeline-page.ts`, `omp/src/panel-entries.ts` |
 | `task-owner-reports` | Keeps its current Timeline status for now. | This change reads the queue only in Claude Code's mod. | `hooks/task-report.ts`, `hooks/pane-timeline.tsx` |
 | Timeline titles | A long title wraps under its tree mark while the bar, percent, and status chip keep their full cells. Wrapped task detail starts under its tree guide. | The panel draws ANSI text at a known cell width, so it can wrap titles before placing the fixed metadata. | `omp/src/panel-draw.ts` |

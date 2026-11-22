@@ -3,23 +3,21 @@
    Asks 1     Timeline 3     PRs
 ─▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀───────────────────────────────────────────────────────
 
- b: ‹ Back Snapshot root 日本語のレイアウト確認 日本語のレイアウト確認…     In progress
+   b: ‹ Back Snapshot root 日本語のレイアウト確認 日本語のレイアウト確認…   In progress
 
  ┌─────────────────────────┐ ┌──────────────────────┐ ┌────────────────────────────────┐
  │ Progress                │ │ Weight               │ │ Completed units                │
  │ 50.00%                  │ │ 1                    │ │ 1 / 2                          │
  └─────────────────────────┘ └──────────────────────┘ └────────────────────────────────┘
 
- Latest report
- No report yet
+   Latest report
+   No report yet
 
- Note
- The root task has a stable note.
+   Note
+   The root task has a stable note.
 
- History
- 1h · fixture · Task created
-
-
+   History
+   1h · fixture · Task created
 
 
 
@@ -42,4 +40,6 @@
 
 
 
-  Help                                                                           v0.4.0
+
+
+   Help                                                                          v0.4.0

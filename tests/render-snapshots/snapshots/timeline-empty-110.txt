@@ -11,9 +11,9 @@
  │ Elapsed: —                        │
  └───────────────────────────────────┘
 
- Timeline
- No tasks have been recorded for this
- session.
+   Timeline
+   No tasks have been recorded for
+   this session.
 
 
 
@@ -42,4 +42,4 @@
 
 
 
-  Help                         v0.4.0
+   Help                        v0.4.0
