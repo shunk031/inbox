@@ -135,6 +135,7 @@ test('terminal Timeline aligns status chips with title columns', async ($, on) =
   const continuationIndex = rows.indexOf('二行目も確認する')
   expect(continuationIndex).toBeGreaterThan(0)
   expect(rows[continuationIndex - 1]?.[2], 'wrapped title keeps its parent guide').toBe('│')
+  expect(rows.join('\n')).not.toMatch(/Owner idle 15m\+|Owner finished, task open|PR merged, task still open/)
   expect((await pane.find({ key: 'timeline-title-lead-done-parent' }))?.text.startsWith('> ')).toBe(true)
   await pane.press({ key: 'timeline-title-stalled-task' })
   await clock.settle()

@@ -65,7 +65,7 @@ import {
 import { CATCH_UP_CALL, runUpdates } from './session-host'
 import { heardCall } from './call-record'
 import { isRecordedItemsOnly } from './session-host'
-import { fetchPrs as fetchSessionPrs, fetchTaskOwnerFacts, isPrFetchDue } from './host-prs'
+import { fetchPrs as fetchSessionPrs, fetchTaskOwnerFacts, isPrFetchDue, taskPrUrls } from './host-prs'
 import { tabPrs } from './pr-fetch'
 import type { FetchAsk } from './pr-fetch'
 import { prSharedStore } from './mod-pr-shared'
@@ -343,6 +343,7 @@ const DEMO_RECORDING = atom({ plugin: 'inbox', key: 'isDemoRecording' } as const
 const PERSON_LINES = atom({ plugin: 'inbox', key: 'personLines' } as const, {} as Record<string, string>)
 
 let taskProjection: ModTaskProjection | null = null
+let lastTaskReportQueue = ''
 const PANE = 'inbox'
 
 /** Adds the person's words to the turn, as a shell command does. */
@@ -978,6 +979,11 @@ function hostOf($: EngineInterface, owner: Owner, surface?: UiPressArgument['sur
 
 async function tick($: EngineInterface) {
   const now = await $.clock.now()
+  const reportQueue = await readTaskReportQueue($)
+  if (reportQueue !== lastTaskReportQueue) {
+    lastTaskReportQueue = reportQueue
+    await redrawPane($)
+  }
   const [away, { presence }] = await Promise.all([read($, AWAY), read($, SESSION)])
   if (away.isAway) {
     await update($, AWAY, a => ({ ...a, minute: Math.floor(now / 60_000) }))
@@ -1661,7 +1667,12 @@ async function pollPrs($: EngineInterface) {
   ])
   await fetchTaskOwnerFacts(hostOf($, currentOwner()))
   const { ledger, prViews } = session
-  if (away.isAway || (!isTabShown && tabPrs(ledger).length === 0 && prViews.branchRef === null)) return
+  const pendingTaskCi = taskPrUrls(session).some(
+    url =>
+      session.taskPrStates[url] !== 'MERGED' || !['passing', 'failing'].includes(session.taskPrCiStates[url] ?? ''),
+  )
+  if (away.isAway) return
+  if (!isTabShown && tabPrs(ledger).length === 0 && prViews.branchRef === null && !pendingTaskCi) return
   if (!isPrFetchDue(session, mod.prFetchEndedAt, now, isTabShown)) return
   await fetchPrs($, isTabShown)
 }

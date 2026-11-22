@@ -8578,9 +8578,7 @@ var TASK_OWNER_FETCH_LIMIT = 5;
 function stateOf(value) {
   return value === "OPEN" || value === "CLOSED" || value === "MERGED" ? value : undefined;
 }
-function taskPrUrls(s) {
-  return [...new Set(s.taskTree.flatMap((task) => task.links?.pr ? [task.links.pr] : []))];
-}
+var taskPrUrls = (s) => [...new Set(s.taskTree.flatMap((t) => t.links?.pr ? [t.links.pr] : []))].filter((u) => !!taskPrLink(u)?.queryable);
 function afterCursor(urls, cursor) {
   if (urls.length === 0)
     return [];

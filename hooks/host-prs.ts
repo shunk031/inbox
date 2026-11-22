@@ -24,9 +24,8 @@ function stateOf(value: unknown): TaskPrState | undefined {
   return value === 'OPEN' || value === 'CLOSED' || value === 'MERGED' ? value : undefined
 }
 
-function taskPrUrls(s: Session): string[] {
-  return [...new Set(s.taskTree.flatMap(task => (task.links?.pr ? [task.links.pr] : [])))]
-}
+export const taskPrUrls = (s: Session) =>
+  [...new Set(s.taskTree.flatMap(t => (t.links?.pr ? [t.links.pr] : [])))].filter(u => !!taskPrLink(u)?.queryable)
 
 function afterCursor(urls: string[], cursor: string | null): string[] {
   if (urls.length === 0) return []

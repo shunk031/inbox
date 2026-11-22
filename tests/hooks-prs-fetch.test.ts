@@ -68,6 +68,23 @@ function linkedTask(pr: string): TaskNode {
   }
 }
 
+test('the periodic poll refreshes a merged task PR CI result with no PR tab or branch PR', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  world($, on, [])
+  const url = 'https://github.com/acme/app/pull/9'
+  w.stored.set('s:session-1', JSON.stringify({ ...emptySession(), taskTree: [linkedTask(url)] }))
+  w.ghAnswers.push({
+    match: argv => argv.includes('graphql'),
+    stdout:
+      '{"data":{"r0":{"p0":{"number":9,"url":"https://github.com/acme/app/pull/9","state":"MERGED","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}',
+  })
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  await $.prompt.submit({ text: 'active', wait: false, origin: { kind: 'composer' } })
+  await clock.advance(PR_POLL_MS)
+  await clock.settle()
+  expect(JSON.parse(w.stored.get('s:session-1') ?? '{}').taskPrCiStates[url]).toBe('passing')
+})
+
 test('the mod saves task completion from its tracked merged PR view', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   world($, on, [])

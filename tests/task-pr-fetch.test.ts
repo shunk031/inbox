@@ -101,31 +101,21 @@ test('tracked merged PRs complete and save a task history event', async () => {
   expect(state().taskPrCiStates[url]).toBe('failing')
 })
 
-test('untracked closed PRs warn, and merged PR CI refreshes until terminal', async () => {
+test('untracked closed PRs warn, and a failed GitHub fetch changes no task fact or warning', async () => {
   const url = 'https://github.com/acme/app/pull/8'
-  const mergedUrl = 'https://github.com/acme/app/pull/9'
-  const start = { ...emptySession(), taskTree: [taskWithPr('t1', url), taskWithPr('t2', mergedUrl)] }
-  let mergedCheck: string | undefined
-  const successful = ghStandIn((number, repo) => {
-    const merged = number === '9'
-    const view = viewJson(`${repo}#${number}`, merged ? 'MERGED' : 'CLOSED')
-    if (mergedCheck || !merged) view.statusCheckRollup = [{ state: merged ? mergedCheck : 'SUCCESS' }]
-    return { node: prNodeOf(view) }
-  })
+  const start = { ...emptySession(), taskTree: [taskWithPr('t1', url)] }
+  const successful = ghStandIn((number, repo) => ({ node: prNodeOf(viewJson(`${repo}#${number}`, 'CLOSED')) }))
   const first = hostOf(successful.run, start)
 
   await fetchPrs(first.host, false)
 
+  expect(first.state().taskTree[0]?.status).toBe('working')
   expect(first.state().taskFactWarnings).toEqual([{ taskId: 't1', pr: url, message: 'PR closed without merge' }])
-  expect([first.state().taskPrCiStates[url], first.state().taskPrCiStates[mergedUrl]]).toEqual(['passing', 'not-run'])
-
-  mergedCheck = 'SUCCESS'
-  await fetchPrs(first.host, false)
-  expect(first.state().taskPrCiStates[mergedUrl]).toBe('passing')
 
   const failed = hostOf(async () => ({ exitCode: 1, stdout: '', stderr: 'HTTP 502' }), start)
   await fetchPrs(failed.host, false)
-  expect([failed.state().taskTree, failed.state().taskFactWarnings]).toEqual([start.taskTree, []])
+  expect(failed.state().taskTree).toEqual(start.taskTree)
+  expect(failed.state().taskFactWarnings).toEqual([])
 })
 
 test('maps task PR CI states, including no rollup', () =>
