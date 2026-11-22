@@ -24,6 +24,7 @@ export const SHARED = [
   'herdr-start',
   'herdr-sweep',
   'inline',
+  'line-wrap',
   'record-links',
   'layout',
   'marks',

@@ -1,11 +1,14 @@
-import type { Session, TaskNode, TaskTree } from '../types'
-import type { TimelinePage } from './timeline-page'
+import type { Session, TaskHistoryEvent, TaskNode, TaskTree } from '../types'
+import type { TimelineHistoryEvent, TimelinePage } from './timeline-page'
 import { shortAgo } from './rows'
 
 type Kind = 'STATUS' | 'DONE' | 'BLOCKED'
 type Report = { kind: Kind; line: string; at: number; seq: number }
 type PrFacts = Pick<Session, 'taskPrStates' | 'taskPrCiStates'>
-type ReportTask = Pick<TaskNode, 'id' | 'links'>
+type ReportTask = Pick<TaskNode, 'id' | 'links'> & {
+  history?: readonly TaskHistoryEvent[] | readonly TimelineHistoryEvent[]
+  changedAt?: number
+}
 type TaskReportEnvironment = { HOME?: string; HERDR_META_PATROL_STATE_DIR?: string }
 
 /** Reads the owner's queue through the current host's filesystem adapter. */
@@ -33,9 +36,11 @@ export function taskOwnerReports(tree: readonly ReportTask[], queue: string): Re
       latest.set(key, { kind, line: prefix ? r.text : `${kind} ${r.text}`, at, seq })
     } catch {}
   return Object.fromEntries(
-    tree.flatMap(({ id, links }) => {
+    tree.flatMap(({ id, links, history, changedAt }) => {
       const report = links?.owner && latest.get(JSON.stringify([links.owner.agent, links.owner.machine]))
-      return report ? [[id, report]] : []
+      const lastChange =
+        changedAt ?? history?.reduce((at, event) => Math.max(at, 'at' in event ? event.at : at), -Infinity) ?? -Infinity
+      return report && report.at >= lastChange ? [[id, report]] : []
     }),
   )
 }

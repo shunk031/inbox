@@ -137,7 +137,7 @@ export function TimelineTab({ view }: { view: TabView }) {
             [
               ['Progress', detail.stats.progress],
               ['Weight', detail.stats.weight],
-              ['Completed units', detail.stats.completedUnits],
+              [detail.stats.label, detail.stats.completedUnits],
             ] as const
           ).map(([label, value]) => (
             <section class="timeline-stat" key={label}>

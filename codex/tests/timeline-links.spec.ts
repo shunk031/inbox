@@ -179,7 +179,7 @@ test('a Timeline Local open stays disabled while pending and draws its done or f
     )
     assert.deepEqual(
       [...root.querySelectorAll('.timeline-stat')].map(stat => stat.textContent?.replace(/\s+/g, ' ').trim()),
-      ['Progress0.00%', 'Weight1', 'Completed units0 / 1'],
+      ['Progress0.00%', 'Weight1', 'Leaf tasks completed0 / 1'],
     )
     assert.deepEqual(
       [...root.querySelectorAll('.timeline-detail-section strong')].map(label => label.textContent),

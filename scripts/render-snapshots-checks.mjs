@@ -75,8 +75,8 @@ export function checkTimelineFocus(entry, frame, ansiFrame) {
   return errors
 }
 const col = (line, index) => cellWidth(line.slice(0, index))
-const detailColumns = { 87: [26, 28, 51, 53], 110: [19, 21], 200: [27, 29, 52, 54] }
-const detailHeadings = new Set(['Detail', 'Updated', 'Note', 'History', 'Links'])
+const detailColumns = { 87: [24, 26, 48, 50], 110: [19, 21], 200: [25, 27, 49, 51] }
+const detailHeadings = new Set(['Detail', 'Updated', 'Latest report', 'Note', 'History', 'Links'])
 function checkJapaneseAskWrap(entry, frame, paneWidth) {
   if (entry.view !== 'asks' || entry.scenario !== 'japanese') return []
   const lines = frame.split('\n')
@@ -152,7 +152,7 @@ export function checkFrame(entry, frame, width) {
       const border = at === 1 || at === cellWidth(line) - 1
       const inTree = at >= TEXT_COLUMN + 2 && at <= TEXT_COLUMN + 12
       const listGuide = entry.view === 'asks' && at >= listBase && (at - listBase) % 3 === 0 && at <= listBase + 12
-      const statsRow = entry.view === 'timeline-detail' && /Progress|Weight|Completed units|%/u.test(line)
+      const statsRow = entry.view === 'timeline-detail' && /Progress|Weight|Leaf tasks completed|%/u.test(line)
       const statsDivider = statsRow && (detailColumns[entry.width]?.includes(at) ?? false)
       const narrowAsksDivider = entry.view === 'asks' && entry.width <= 87 && at === 20
       const allowed = tree ? border || inTree : border || listGuide || statsDivider || narrowAsksDivider

@@ -9,6 +9,7 @@ type TimelinePaneDetailProps = Pick<PaneBase, 'Box' | 'Button' | 'Text' | 'pal'>
     detailTitle: string
     paneWidth: number
     chip: (label: string, tone: string, key?: string) => ReturnType<typeof timelineChip>
+    wrapText: (text: string) => string
   }
 
 export function paneTimelineDetail({
@@ -22,6 +23,7 @@ export function paneTimelineDetail({
   closeTimelineDetail,
   runPress,
   chip,
+  wrapText,
 }: TimelinePaneDetailProps) {
   return selected ? (
     <Box key="timeline-detail" width={paneWidth} flexDirection="column" gap={1}>
@@ -44,7 +46,7 @@ export function paneTimelineDetail({
           [
             ['Progress', selected.stats.progress],
             ['Weight', selected.stats.weight],
-            ['Completed units', selected.stats.completedUnits],
+            [selected.stats.label, selected.stats.completedUnits],
           ] as const
         ).map(([label, value]) => (
           <Box key={label} flexDirection="column" flexGrow={1} borderStyle="single" paddingX={1}>
@@ -84,7 +86,7 @@ export function paneTimelineDetail({
           ) : (
             <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
               <Text color={pal.muted}>{line.label}</Text>
-              <Text>{line.text}</Text>
+              <Text>{wrapText(line.text)}</Text>
             </Box>
           )}
         </Box>

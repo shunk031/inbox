@@ -15,8 +15,12 @@ import { cutTitle, fit, indentedLinks, linkedText, spread, visibleLength, wrapTe
 import type { PanelScreen, PanelUi, Style, Tone } from './panel'
 import type { TimelineLinePlan } from './panel-lines'
 import type { TimelinePage } from '../../hooks/timeline-page'
+import { wrapText as wrapSharedText } from '../../hooks/line-wrap'
 
 export type Draw = { screen: PanelScreen; ui: PanelUi; width: number; now: number; style: Style }
+
+export const wrapTimelineDetailText = (text: string, width: number) =>
+  wrapSharedText(text, width, visibleLength, { keepCjkSpaces: true }).map(line => line.text)
 
 function takeTimelineCells(text: string, width: number): { shown: string; rest: string } {
   const chars = Array.from(text)
@@ -80,14 +84,14 @@ export function timelineProgressLines(progress: TimelinePage['progressCard'], wi
 }
 
 function timelineStatsLines(
-  stats: { progress: string; weight: string; completedUnits: string },
+  stats: { progress: string; weight: string; label: string; completedUnits: string },
   width: number,
   s: Style,
 ): string[] {
   const values: [string, string][] = [
     ['Progress', stats.progress],
     ['Weight', stats.weight],
-    ['Completed units', stats.completedUnits],
+    [stats.label, stats.completedUnits],
   ]
   const cardWidth = Math.floor((width - 6) / values.length)
   if (cardWidth < 14) return values.flatMap(([label, value]) => timelineBox([s.dim(label), s.bold(value)], width, s))
@@ -159,7 +163,7 @@ function timelineLine(line: Line, plan: TimelineLinePlan, isSelected: boolean, d
       out.push(`${row.detailLead}${s.dim(detail.label)}`)
       const indent = detailIndent + 2
       for (const text of detail.text.split('\n'))
-        out.push(...wrapTimelineText(text, Math.max(1, width - indent)).map(text => `${' '.repeat(indent)}${text}`))
+        out.push(...wrapTimelineDetailText(text, Math.max(1, width - indent)).map(line => ' '.repeat(indent) + line))
     }
   }
   return out

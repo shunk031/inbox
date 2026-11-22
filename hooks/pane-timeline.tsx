@@ -1,6 +1,8 @@
 import type { PaneBase, PaneHandlers, PaneSvg } from './pane-context'
 import type { TaskPrCiState, TaskPrState, TaskTree } from '../types'
 import { cellWidth, cutToCells } from './text'
+import { desktopTextPt } from './desktop-metrics'
+import { wrapText } from './line-wrap'
 import { moveTimelineSelection, timelineBar, timelinePage, toggleTimelineBranch } from './timeline-page'
 import { timelineRowBarWidth } from './layout'
 import type { TimelinePage } from './timeline-page'
@@ -21,8 +23,7 @@ function padToCells(text: string, cells: number) {
 
 function terminalTreeLead(row: TimelinePage['rows'][number], cells: number) {
   const siblingGuide = row.depth > 0 ? (row.hasLaterSibling ? '│  ' : '   ') : ''
-  const childGuide = row.hasVisibleChildren ? '│  ' : '   '
-  return padToCells(`  ${row.guides.join('')}${siblingGuide}${childGuide}`, cells)
+  return padToCells(`  ${row.guides.join('')}${siblingGuide}${row.hasVisibleChildren ? '│  ' : '   '}`, cells)
 }
 
 type TimelinePaneBase = Pick<
@@ -41,6 +42,10 @@ type TimelinePaneHandlers = Pick<
   PaneHandlers,
   'runPress' | 'selectTimelineRow' | 'updateTimelineFolded' | 'openTimelineDetail' | 'closeTimelineDetail'
 >
+const wrapTimelineText = (text: string, width: number, measure: (text: string) => number) =>
+  wrapText(text, width, measure, { keepCjkSpaces: true })
+    .map(line => line.text)
+    .join('\n')
 
 export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHandlers) {
   const {
@@ -188,7 +193,15 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
                     <Text color={pal.muted}>{line.text}</Text>
                   </Box>
                 ) : (
-                  <Text color={pal.muted}>{`${line.label} · ${line.text}`}</Text>
+                  <Text color={pal.muted}>
+                    {line.label === 'Latest report' || line.label === 'Note'
+                      ? wrapTimelineText(
+                          `${line.label} · ${line.text}`,
+                          context.bodyColumns * DESKTOP_CELL_PT,
+                          desktopTextPt,
+                        )
+                      : `${line.label} · ${line.text}`}
+                  </Text>
                 ),
               )}
             </Box>
@@ -252,6 +265,8 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
       ? `${cutToCells(selected.row.task.title, Math.max(0, bodyColumns - 28))}…`
       : selected.row.task.title
     : ''
+  const detailTextWidth = Math.max(1, bodyColumns - TREE_LINE_AT)
+  const wrapDetailText = (text: string) => wrapTimelineText(text, detailTextWidth, cellWidth)
   const detailView = paneTimelineDetail({
     Box,
     Button,
@@ -263,6 +278,7 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
     closeTimelineDetail,
     runPress,
     chip,
+    wrapText: wrapDetailText,
   })
 
   const timelineView =

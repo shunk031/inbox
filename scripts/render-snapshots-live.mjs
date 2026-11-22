@@ -14,7 +14,7 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 import { cellWidth, cutToCells } from '../hooks/text.ts'
-import { fixtureState, HEIGHT, PLUGIN_STORE } from './render-snapshots-fixtures.mjs'
+import { fixtureState, HEIGHT, JAPANESE_TIMELINE_REPORT, PLUGIN_STORE } from './render-snapshots-fixtures.mjs'
 import { marker, pageMarker } from './render-snapshots-checks.mjs'
 
 const ANSI = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))/g
@@ -175,6 +175,17 @@ function writeConfig(config, home, pluginDir, sessionId, fixture, view) {
   const store = path.join(config, 'plugins', 'store')
   mkdirSync(store, { recursive: true })
   writeFileSync(path.join(store, PLUGIN_STORE), JSON.stringify({ [`s:${sessionId}`]: fixtureState(fixture, view) }))
+  if (fixture === 'timeline-detail-japanese') {
+    const reports = path.join(home, '.local', 'state', 'herdr-meta-patrol'),
+      report = {
+        seq: 1,
+        t: Math.floor(Date.now() / 1000) - 600,
+        from: 'snapshot-worker',
+        text: JAPANESE_TIMELINE_REPORT,
+      }
+    mkdirSync(reports, { recursive: true })
+    writeFileSync(path.join(reports, 'queue.jsonl'), `${JSON.stringify(report)}\n`)
+  }
   const bin = path.join(config, 'bin')
   mkdirSync(bin, { recursive: true })
   const fakeGh = path.join(bin, 'gh')
@@ -273,7 +284,7 @@ export async function capture(entry, pluginDir, root, socket, claude, { onTimeou
         ? 'Asks'
         : entry.fixture === 'asks-japanese'
           ? 'Snapshot Japanese'
-          : entry.fixture.startsWith('timeline-detail-layout')
+          : entry.fixture.startsWith('timeline-detail-')
             ? 'Timeline'
             : entry.fixture === 'detail-empty'
               ? 'Snapshot empty report'

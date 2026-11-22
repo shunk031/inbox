@@ -184,6 +184,7 @@
   margin: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  line-break: strict;
 }
 .timeline-detail-copy {
   display: flex;

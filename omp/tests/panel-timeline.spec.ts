@@ -6,6 +6,7 @@ import { entriesOf } from '../src/panel-entries'
 import { INITIAL_UI } from '../src/panel'
 import type { PanelUi } from '../src/panel'
 import { handleKey } from '../src/panel-keys'
+import { wrapTimelineDetailText } from '../src/panel-draw'
 import { drawn, ESC, NOW, strip, taskNode, taskScreen, text } from './panel-harness'
 
 test('Timeline draws the shared card and two-line rows, then opens and returns from task detail', () => {
@@ -62,7 +63,7 @@ test('Timeline draws the shared card and two-line rows, then opens and returns f
   expect(opened.pageTop).toBe(0)
   const detail = strip(text(screen, opened, 100))
   expect([detail.match(/History/g)?.length, detail.split('\n').includes('Current')]).toEqual([1, false])
-  const labels = ['Progress', 'Weight', 'Completed units', 'Detail', 'Note', 'History', 'Links']
+  const labels = ['Progress', 'Weight', 'Leaf tasks completed', 'Detail', 'Note', 'History', 'Links']
   const positions = labels.map(label => detail.indexOf(label))
   expect(positions.every(position => position >= 0)).toBe(true)
   expect(positions).toEqual([...positions].sort((left, right) => left - right))
@@ -125,7 +126,7 @@ test('Timeline shows the fixture owner report, DONE status, PR facts, and a miss
   expect(strip(text(missing, ui))).toContain('No report yet · PR state unavailable · CI unavailable')
 })
 
-test('Timeline keeps Japanese titles, metadata, and detail wraps readable at a narrow width', () => {
+test('Timeline keeps Japanese titles and detail, and wraps mixed Japanese/ASCII latest reports', () => {
   const longTitle = '日本語の長いタイトルを狭い画面でも状態と進捗を保ちながら読みやすく折り返す確認用のタスク'
   const longDetail =
     'この詳細は幅が狭くてもツリーガイドの内側で読みやすく折り返され、二行目も同じ字下げ位置から続きます。'.repeat(3)
@@ -148,6 +149,7 @@ test('Timeline keeps Japanese titles, metadata, and detail wraps readable at a n
   const detailAt = detailLines.findIndex(line => line.includes(longDetail.slice(0, 8)))
   expect(detailAt).toBeGreaterThan(-1)
   expect(detailLines[detailAt + 1]?.startsWith('      ')).toBe(true)
+  expect(wrapTimelineDetailText('誤検出 0、worker korch がユーザーに返す。', 24)).toContain('worker korch がユーザー')
 })
 
 test('Timeline j and k select the tasks they land on, and Enter opens the selected task', () => {

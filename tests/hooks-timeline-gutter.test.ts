@@ -9,7 +9,7 @@ test('terminal Timeline aligns status chips with title columns', async ($, on) =
   w.files = ['/.next-build']
   w.written['/tmp/meta-fixture/queue.jsonl'] = JSON.stringify({
     seq: 1,
-    t: 995,
+    t: 1000,
     kind: 'message',
     from: 'worker-1',
     machine: 'local',

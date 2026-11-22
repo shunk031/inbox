@@ -102,5 +102,6 @@ Part of [the look map](../looks.md#files).
 | `hooks/marks.ts` | Shared module. Shapes and glyphs for marks a font draws poorly: desktop draws its toned Svg marks from `markShape`, desktop and Codex draw ✗, ◌ and ⊘ from `mutedMarkShape`, and the terminal and omp draw ✗ as ⊘ from `textMark`. |
 | `hooks/tones.ts` | Shared module. Status colors for native marks and terminal palettes. The Codex build writes them into CSS, and omp draws them as true color. Also the banner tints the terminal and omp draw. |
 | `hooks/inline.ts` | Shared module. Inline markdown parsing and safe HTTPS link normalization, plus visible labels and cuts that keep a link whole. |
+| `hooks/line-wrap.ts` | Shared module. Wraps text to a measured width with CJK punctuation rules and optional preservation of spaces around embedded Latin text. |
 | `hooks/document.ts` | Shared module. The size-capped local Markdown read and short plain-text excerpt. |
 | `hooks/person-instructions.ts` | Shared module. Builds the headed instructions block for inbox-owned model calls from host-read file text. |

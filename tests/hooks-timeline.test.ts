@@ -267,7 +267,7 @@ test('Timeline opens a selected task detail and returns to the selected tree row
   expect(detail).toContain('Keep the row short')
   expect(detail.some(line => line.includes('Task created'))).toBe(true)
   expect(detail).toContain('Weight')
-  expect(detail).toContain('Completed units')
+  expect(detail).toContain('Leaf tasks completed')
 
   await pane.press({ key: 'timeline-back' })
   await clock.settle()
