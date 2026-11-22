@@ -131,10 +131,7 @@ export const OMP_SUPPORT: ClientSupport['support'] = {
     kind: 'unsupported',
     reason: 'The external Stop gate reads the Claude Code meta session, so only Claude Code exports task trees.',
   },
-  'task-owner-reports': {
-    kind: 'different',
-    reason: 'omp keeps its current Timeline status until it reads owner reports.',
-  },
+  'task-owner-reports': { kind: 'full' },
   'task-status-mismatch': { kind: 'full' },
   timeline: { kind: 'full' },
   'timeline-completed-fold': {

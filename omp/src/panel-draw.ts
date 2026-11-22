@@ -125,7 +125,14 @@ function timelineLine(line: Line, plan: TimelineLinePlan, isSelected: boolean, d
         (text, index) => `${' '.repeat(index === 0 ? 5 : 8)}${index === 0 ? `${s.tone('error', '⚠')} ` : ''}${text}`,
       ),
     )
-    return [first, ...titleRest, second, ...warnings].map(text => s.timelineRow(fit(text, width), row.alternate))
+    const report = row.reportLine
+      ? wrapTimelineText(row.reportLine, Math.max(1, width - 8)).map(
+          (text, index) => `${' '.repeat(index === 0 ? 5 : 8)}${text}`,
+        )
+      : []
+    return [first, ...titleRest, second, ...warnings, ...report.map(text => s.dim(text))].map(text =>
+      s.timelineRow(fit(text, width), row.alternate),
+    )
   }
 
   const { selected } = plan

@@ -1,4 +1,5 @@
 import { timelinePage } from '../../hooks/timeline-page'
+import { taskReportPage } from '../../hooks/task-report'
 import { stepRow } from '../../hooks/row-motion'
 import type { TimelinePage } from '../../hooks/timeline-page'
 import type { TabView } from './core'
@@ -25,12 +26,20 @@ export function timelineRowForm(row: TimelineRow, visibleRow: TimelineRow = row)
 }
 
 export function timelinePageOf(view: TabView) {
-  return timelinePage(
+  const page = timelinePage(
     view.timeline,
     tabState.timelineSelection,
     [...timelineFolded],
     view.lastActions,
     tabState.timelineDetailOpen,
+  )
+  return taskReportPage(
+    page,
+    view.timeline.rows.map(row => row.task),
+    view.taskReportQueue ?? '',
+    { taskPrStates: view.taskPrStates ?? {}, taskPrCiStates: view.taskPrCiStates ?? {} },
+    view.at,
+    true,
   )
 }
 

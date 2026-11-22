@@ -1,12 +1,24 @@
-import type { Session, TaskTree } from '../types'
+import type { Session, TaskNode, TaskTree } from '../types'
 import type { TimelinePage } from './timeline-page'
 import { shortAgo } from './rows'
 
 type Kind = 'STATUS' | 'DONE' | 'BLOCKED'
 type Report = { kind: Kind; line: string; at: number; seq: number }
 type PrFacts = Pick<Session, 'taskPrStates' | 'taskPrCiStates'>
+type ReportTask = Pick<TaskNode, 'id' | 'links'>
+type TaskReportEnvironment = { HOME?: string; HERDR_META_PATROL_STATE_DIR?: string }
 
-export function taskOwnerReports(tree: TaskTree, queue: string): Record<string, Report> {
+/** Reads the owner's queue through the current host's filesystem adapter. */
+export async function readTaskReportQueue(
+  env: TaskReportEnvironment,
+  read: (path: string) => Promise<string>,
+): Promise<string> {
+  const stateDir = env.HERDR_META_PATROL_STATE_DIR?.trim()
+  const dir = stateDir || (env.HOME ? `${env.HOME.replace(/\/+$/, '')}/.local/state/herdr-meta-patrol` : '')
+  return dir ? read(`${dir.replace(/\/+$/, '')}/queue.jsonl`).catch(() => '') : ''
+}
+
+export function taskOwnerReports(tree: readonly ReportTask[], queue: string): Record<string, Report> {
   const latest = new Map<string, Report>()
   for (const line of queue.split('\n'))
     try {
@@ -37,7 +49,14 @@ export function taskTreeWithReports(tree: TaskTree, queue: string): TaskTree {
   })
 }
 
-export function taskReportPage(page: TimelinePage, tree: TaskTree, queue: string, facts: PrFacts, now: number) {
+export function taskReportPage(
+  page: TimelinePage,
+  tree: readonly ReportTask[],
+  queue: string,
+  facts: PrFacts,
+  now: number,
+  preserveTaskDetail = false,
+) {
   const reports = taskOwnerReports(tree, queue)
   const reportText = (id: string, url?: string) => {
     const report = reports[id]
@@ -55,7 +74,7 @@ export function taskReportPage(page: TimelinePage, tree: TaskTree, queue: string
         label: 'Latest report' as const,
         text: reportText(page.selected.row.task.id, page.selected.row.task.links?.pr),
       },
-      ...page.selected.details.filter(line => line.label !== 'Detail'),
+      ...page.selected.details.filter(line => preserveTaskDetail || line.label !== 'Detail'),
     ],
   }
   return { ...page, rows: page.rows.map(withReport), selected }

@@ -186,10 +186,7 @@ export const CODEX_SUPPORT: ClientSupport['support'] = {
     kind: 'unsupported',
     reason: 'The external Stop gate reads the Claude Code meta session, so Codex does not export task trees.',
   },
-  'task-owner-reports': {
-    kind: 'different',
-    reason: 'Codex keeps its current Timeline status until it reads owner reports.',
-  },
+  'task-owner-reports': { kind: 'full' },
   'task-status-mismatch': { kind: 'full' },
   timeline: { kind: 'full' },
   'timeline-completed-fold': {

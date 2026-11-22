@@ -38,6 +38,7 @@ import { isDrawnInPlace, runningMark } from '../../hooks/timing'
 import { isRowTab } from '../../hooks/tabs'
 import { statusKeyRows } from '../../hooks/status-keys'
 import { timelinePage } from '../../hooks/timeline-page'
+import { taskReportPage } from '../../hooks/task-report'
 import { goalSection, setGoal } from './panel-goal'
 import { unfoldedRows } from '../../hooks/status-page-parts'
 import type { StatusPage } from '../../hooks/status-page'
@@ -406,12 +407,20 @@ function helpEntries(screen: PanelScreen, tab: ShownTab): Entry[] {
 }
 
 function timelineEntries(screen: PanelScreen, ui: PanelUi): Entry[] {
-  const page = timelinePage(
+  const base = timelinePage(
     screen.view.timeline,
     ui.timelineSelection,
     ui.timelineFolded,
     screen.view.lastActions,
     ui.timelineDetailOpen,
+  )
+  const page = taskReportPage(
+    base,
+    screen.view.timeline.rows.map(row => row.task),
+    screen.taskReportQueue ?? '',
+    { taskPrStates: screen.taskPrStates ?? {}, taskPrCiStates: screen.taskPrCiStates ?? {} },
+    screen.taskReportAt ?? Date.now(),
+    true,
   )
   if (page.mode === 'detail' && page.selected) {
     const buttons: Button[] = page.selected.row.actions.map(action => ({

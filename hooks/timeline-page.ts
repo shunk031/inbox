@@ -34,7 +34,8 @@ type TimelineRowAction = Pick<ActionView, 'label' | 'hotkey' | 'kind' | 'emphasi
 }
 type TimelineLinkAction = PrAction & { result: LastAction['result'] | null }
 type TimelineDetailLine =
-  { label: 'Detail' | 'Updated' | 'Note' | 'History'; text: string } | { label: 'Links'; actions: TimelineLinkAction[] }
+  | { label: 'Detail' | 'Updated' | 'Note' | 'History' | 'Latest report'; text: string }
+  | { label: 'Links'; actions: TimelineLinkAction[] }
 type TimelineStats = { progress: string; weight: string; completedUnits: string }
 type TimelineNode = {
   task: TimelineTask
@@ -57,6 +58,7 @@ type TimelineNode = {
   mark: string
   alternate: boolean
   warnings: string[]
+  reportLine?: string
   isCompletedFold?: boolean
   actions: TimelineRowAction[]
 }

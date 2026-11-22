@@ -8,6 +8,7 @@ Part of [the look map](../looks.md#files).
 | `omp/src/host-clipboard.ts` | omp host. Copies text to the clipboard using the host's platform support. |
 | `omp/src/host-document.ts` | omp host. Reads safe local report files, renders Markdown with pi-tui when available, and builds safe panel links without importing omp packages. |
 | `omp/src/host-feed.ts` | omp host. Resolves the inbox feed directory from omp's environment or its default location. |
+| `omp/src/host-task-reports.ts` | omp host. Reads the task report queue through the shared task report reader. |
 | `omp/src/host-model.ts` | omp host. Selects the inbox model from the models omp exposes, preferring the newest Sonnet. |
 | `omp/src/host-context.ts` | omp host. `HostContext`, what `createInbox` holds for the handler files, and `OmpContext`, the part of omp's context they read. |
 | `omp/src/host-sessions.ts` | omp host. The session calls the handler files share: saving a change, omp's `SessionHost` and update host, catching up over the branch, and the bounded task-owner, PR and Herdr checks when due. |
