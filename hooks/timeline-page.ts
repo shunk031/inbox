@@ -23,9 +23,10 @@ type TimelineBarPart = {
   count: number
   tone: TimelineTone
 }
-type TimelineHistoryEvent = Omit<TaskHistoryEvent, 'at'> & { time: string }
+export type TimelineHistoryEvent = Omit<TaskHistoryEvent, 'at'> & { time: string }
 type TimelineTask = Omit<TaskNode, 'createdAt' | 'updatedAt' | 'history'> & {
-  updatedAgo: string
+  updated: string
+  changedAt: number
   history: TimelineHistoryEvent[]
 }
 type TimelineRowAction = Pick<ActionView, 'label' | 'hotkey' | 'kind' | 'emphasis'> & {
@@ -36,12 +37,8 @@ type TimelineLinkAction = PrAction & { result: LastAction['result'] | null }
 type TimelineDetailLine =
   | { label: 'Detail' | 'Updated' | 'Note' | 'History' | 'Latest report'; text: string }
   | { label: 'Links'; actions: TimelineLinkAction[] }
-type TimelineStats = {
-  progress: string
-  weight: string
-  completedUnitsLabel: 'Leaf tasks completed'
-  completedUnits: string
-}
+const LEAF = 'Leaf tasks completed'
+type TimelineStats = { progress: string; weight: string; label: string; completedUnits: string }
 type TimelineNode = {
   task: TimelineTask
   depth: number
@@ -63,6 +60,7 @@ type TimelineNode = {
   mark: string
   alternate: boolean
   warnings: string[]
+  reportLine?: string
   isCompletedFold?: boolean
   actions: TimelineRowAction[]
 }
@@ -131,13 +129,14 @@ const timelineHistoryText = (events: TimelineHistoryEvent[]) =>
 
 function timelineTask(task: TaskNode, now: number): TimelineTask {
   const { createdAt: _createdAt, updatedAt, history, ...details } = task
-  const detailChangedAt = new Set(history.filter(event => event.kind === 'detail').map(event => event.at))
+  const detailAt = new Set(history.filter(event => event.kind === 'detail').map(event => event.at))
   return {
     ...details,
-    updatedAgo: shortAgo(now - updatedAt),
+    updated: shortAgo(now - updatedAt),
+    changedAt: history.reduce((at, event) => Math.max(at, event.at), Number.NEGATIVE_INFINITY),
     history: history
       .toSorted((a, b) => a.at - b.at)
-      .filter(event => event.kind !== 'updated' || !detailChangedAt.has(event.at))
+      .filter(event => event.kind !== 'updated' || !detailAt.has(event.at))
       .map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) })),
   }
 }
@@ -373,7 +372,7 @@ export function timelinePage(
           title: `${completedRootIds.length} completed`,
           detail: '',
           notes: [],
-          updatedAgo: '',
+          updated: '',
           history: [],
           links: {},
         },
@@ -504,20 +503,20 @@ export function timelinePage(
         ...(selectedLinks.length ? [{ label: 'Links' as const, actions: selectedLinks }] : []),
       ]
     : []
-  const taskProgress = selectedRow ? percent(selectedRow.progress / 100) : null
+  const progress = selectedRow ? percent(selectedRow.progress / 100) : null
   const units = selectedRow?.completedUnits ?? null
   const stats = selectedRow?.isCompletedFold
     ? {
         progress: selectedRow.percent,
         weight: '—',
-        completedUnitsLabel: 'Leaf tasks completed' as const,
+        label: LEAF,
         completedUnits: `${units?.done ?? 0} / ${units?.total ?? 0}`,
       }
-    : selectedRow && taskProgress && units
+    : selectedRow && progress && units
       ? {
-          progress: taskProgress.label,
+          progress: progress.label,
           weight: String(Number(selectedRow.task.weight.toFixed(1))),
-          completedUnitsLabel: 'Leaf tasks completed' as const,
+          label: LEAF,
           completedUnits: `${units.done} / ${units.total}`,
         }
       : null

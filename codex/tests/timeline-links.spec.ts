@@ -183,7 +183,7 @@ test('a Timeline Local open stays disabled while pending and draws its done or f
     )
     assert.deepEqual(
       [...root.querySelectorAll('.timeline-detail-section strong')].map(label => label.textContent),
-      ['Detail', 'History', 'Links'],
+      ['Latest report', 'Detail', 'History', 'Links'],
     )
     const history = [...root.querySelectorAll('.timeline-detail-section')].find(
       section => section.querySelector('strong')?.textContent === 'History',

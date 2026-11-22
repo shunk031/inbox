@@ -9,8 +9,8 @@
  │ 0.00% complete · 0/0 leaf tasks completed                                Elapsed: — │
  └─────────────────────────────────────────────────────────────────────────────────────┘
 
- Timeline
- No tasks have been recorded for this session.
+   Timeline
+   No tasks have been recorded for this session.
 
 
 
@@ -42,4 +42,4 @@
 
 
 
-  Help                                                                           v0.4.0
+   Help                                                                          v0.4.0

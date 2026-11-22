@@ -6,6 +6,7 @@ import test from 'node:test'
 import { cellWidth } from '../hooks/text.ts'
 import { checkTreeText } from './check-tree.mjs'
 import { checkChipBoxes, checkFrame, checkLeftEdges, stripChipRightPadding } from './render-snapshots-checks.mjs'
+import { checkTextColumn } from './render-snapshots-text-column.mjs'
 import {
   cropInboxPane,
   isolate,
@@ -152,19 +153,37 @@ test('terminal tree checks classify every row and require the detected divider',
 })
 
 test('Timeline root and paired box borders are explicit', () => {
-  const frame = 'Progress\n ┌──┐\n │  │\n └──┘\n    ◐ root\n    │  In progress\n    └─ child'
+  const frame = 'Progress\n ┌──┐\n │  │\n └──┘\n     ◐ root\n     │  In progress\n     └─ child'
   const rejects = (text, expected) =>
     assert.ok(paneOnly(text, { view: 'timeline' }).some(error => error.includes(expected)))
   assert.deepEqual(paneOnly(frame, { view: 'timeline' }), [])
-  rejects(frame.replace('    │  In progress', '   │  In progress'), 'orphan-trunk-column=3')
+  rejects(frame.replace('     │  In progress', '    │  In progress'), 'orphan-trunk-column=4')
   rejects(frame.replace(' └──┘', ' └─┘'), 'orphan-trunk')
-  rejects(frame.replace('    ◐ root\n', ''), 'connector-without-timeline-root')
+  rejects(frame.replace('     ◐ root\n', ''), 'connector-without-timeline-root')
 })
 
-test('left-edge check catches an indented Detail heading and its text', () => {
+test('Timeline detail headings and their text share the card text column', () => {
   const entry = registry.find(candidate => candidate.file === 'timeline-detail-layout-87.txt')
-  const frame = `    Asks        b: ‹ Back Snapshot In progress\n${' '.repeat(16)}┌─────────────┐\n${' '.repeat(16)}│ Progress    │\n${' '.repeat(23)}Detail\n${' '.repeat(23)}Newest text`
-  assert.match(checkLeftEdges(entry, frame).join('\n'), /left edge mismatch[\s\S]*left edge mismatch/)
+  const frame = [
+    '   b: ‹ Back Snapshot In progress',
+    ' ┌─────────────┐',
+    ' │ Progress    │',
+    '   Note',
+    '   Newest text',
+  ].join('\n')
+  assert.deepEqual(checkLeftEdges(entry, frame), [])
+  assert.match(checkLeftEdges(entry, frame.replace('   b:', ' b:')).join('\n'), /text column mismatch/)
+})
+
+test('shared text-column check allows box borders and rejects every other early glyph', () => {
+  const entry = registry.find(candidate => candidate.file === 'timeline-detail-layout-87.txt')
+  const frame = ['tabs', '─▀▀▀', ' ┌──┐', ' │x', '  y', '   aligned'].join('\n')
+  const errors = checkTextColumn(entry, frame)
+
+  assert.equal(errors.length, 2)
+  assert.match(errors[0], /line-4/u)
+  assert.match(errors[1], /line-5/u)
+  assert.deepEqual(checkTextColumn(entry, ['tabs', '─▀▀▀', ' ┌──┐', '   aligned'].join('\n')), [])
 })
 
 test('Help snapshots open through the existing footer control', () => {

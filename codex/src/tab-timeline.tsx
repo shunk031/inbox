@@ -84,6 +84,7 @@ export function TimelineTab({ view }: { view: TabView }) {
                 {warning}
               </div>
             ))}
+            {row.reportLine ? <div class="timeline-report-line muted">{row.reportLine}</div> : null}
           </div>
         </div>
         {row.hasChildren && !hidden.has(row.task.id) ? (
@@ -136,7 +137,7 @@ export function TimelineTab({ view }: { view: TabView }) {
             [
               ['Progress', detail.stats.progress],
               ['Weight', detail.stats.weight],
-              [detail.stats.completedUnitsLabel, detail.stats.completedUnits],
+              [detail.stats.label, detail.stats.completedUnits],
             ] as const
           ).map(([label, value]) => (
             <section class="timeline-stat" key={label}>

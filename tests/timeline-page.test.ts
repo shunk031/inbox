@@ -424,5 +424,5 @@ test('Timeline plans detail and branch actions in tree order and a back action i
   const detail = timelinePage(timelineData(tree, segments, {}, [], now), 'root', [], {}, true)
   expect(detail.mode).toBe('detail')
   expect(detail.selected?.row.actions.map(action => action.action)).toEqual(['back'])
-  expect(detail.selected?.stats.completedUnitsLabel).toBe('Leaf tasks completed')
+  expect(detail.selected?.stats.label).toBe('Leaf tasks completed')
 })

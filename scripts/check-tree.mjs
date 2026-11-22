@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { TEXT_COLUMN } from '../hooks/layout.ts'
 import { cellWidth, cutToCells } from '../hooks/text.ts'
 import { isTerminalChrome } from './render-snapshots-checks.mjs'
 
@@ -8,8 +9,8 @@ const HEADINGS = {
   asks: /^(Questions|Tasks|Issues|Findings|Legacy findings|Opportunities|Progress)(?:\s*·\s*\d+)?\s*$/u,
 }
 const CONNECTORS = /├─|└─/gu
-const TIMELINE_ROOT_COLUMN = 4
-const TIMELINE_ROOT = new RegExp(`^(?: {${TIMELINE_ROOT_COLUMN}}| {2}> )([●◐✕○▸▾]) \\S`, 'u')
+const TIMELINE_ROOT_COLUMN = TEXT_COLUMN + 2
+const TIMELINE_ROOT = new RegExp(`^(?: {${TIMELINE_ROOT_COLUMN}}| {${TEXT_COLUMN}}> )([●◐✕○▸▾]) \\S`, 'u')
 const EMPTY_STATES = {
   asks: ['Nothing needed', "Claude's questions and the tasks only you can do show up here."],
   timeline: ['Timeline', 'No tasks have been recorded for this session.'],

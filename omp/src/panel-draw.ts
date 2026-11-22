@@ -84,14 +84,14 @@ export function timelineProgressLines(progress: TimelinePage['progressCard'], wi
 }
 
 function timelineStatsLines(
-  stats: { progress: string; weight: string; completedUnitsLabel: string; completedUnits: string },
+  stats: { progress: string; weight: string; label: string; completedUnits: string },
   width: number,
   s: Style,
 ): string[] {
   const values: [string, string][] = [
     ['Progress', stats.progress],
     ['Weight', stats.weight],
-    [stats.completedUnitsLabel, stats.completedUnits],
+    [stats.label, stats.completedUnits],
   ]
   const cardWidth = Math.floor((width - 6) / values.length)
   if (cardWidth < 14) return values.flatMap(([label, value]) => timelineBox([s.dim(label), s.bold(value)], width, s))
@@ -129,7 +129,14 @@ function timelineLine(line: Line, plan: TimelineLinePlan, isSelected: boolean, d
         (text, index) => `${' '.repeat(index === 0 ? 5 : 8)}${index === 0 ? `${s.tone('error', '⚠')} ` : ''}${text}`,
       ),
     )
-    return [first, ...titleRest, second, ...warnings].map(text => s.timelineRow(fit(text, width), row.alternate))
+    const report = row.reportLine
+      ? wrapTimelineText(row.reportLine, Math.max(1, width - 8)).map(
+          (text, index) => `${' '.repeat(index === 0 ? 5 : 8)}${text}`,
+        )
+      : []
+    return [first, ...titleRest, second, ...warnings, ...report.map(text => s.dim(text))].map(text =>
+      s.timelineRow(fit(text, width), row.alternate),
+    )
   }
 
   const { selected } = plan

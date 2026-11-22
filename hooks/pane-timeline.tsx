@@ -1,14 +1,20 @@
+import type { PaneBase, PaneHandlers, PaneSvg } from './pane-context'
+import type { TaskPrCiState, TaskPrState, TaskTree } from '../types'
 import { cellWidth, cutToCells } from './text'
 import { desktopTextPt } from './desktop-metrics'
+import { wrapText } from './line-wrap'
 import { moveTimelineSelection, timelineBar, timelinePage, toggleTimelineBranch } from './timeline-page'
 import { timelineRowBarWidth } from './layout'
 import type { TimelinePage } from './timeline-page'
 import { taskReportPage } from './task-report'
 import { timelineChip, timelineToneColor } from './pane-timeline-style'
-import { timelineRowLead, wrapTimelineText } from './pane-timeline-layout'
-import type { TimelinePaneBase, TimelinePaneHandlers } from './pane-timeline-layout'
-import { DESKTOP_CELL_PT, DESKTOP_LINE_PT } from './pane-sizes'
+import { DESKTOP_CELL_PT, DESKTOP_LINE_PT, TREE_LINE_AT } from './pane-sizes'
 import { timelineBarSvg } from './desktop-svg'
+import { paneTimelineDetail } from './pane-timeline-detail'
+
+function timelineRowLead(row: { prefix: string; mark: string }, selected: boolean) {
+  return `${selected ? '> ' : '  '}${row.prefix}${row.mark} `
+}
 
 function padToCells(text: string, cells: number) {
   const fitted = cutToCells(text, cells)
@@ -19,6 +25,27 @@ function terminalTreeLead(row: TimelinePage['rows'][number], cells: number) {
   const siblingGuide = row.depth > 0 ? (row.hasLaterSibling ? '│  ' : '   ') : ''
   return padToCells(`  ${row.guides.join('')}${siblingGuide}${row.hasVisibleChildren ? '│  ' : '   '}`, cells)
 }
+
+type TimelinePaneBase = Pick<
+  PaneBase,
+  'Box' | 'Button' | 'Text' | 'pal' | 'look' | 'view' | 'timelineSelection' | 'timelineFolded' | 'timelineDetailOpen'
+> & {
+  bodyColumns: number
+  timelineTaskTree: TaskTree
+  taskReportQueue: string
+  taskPrStates: Record<string, TaskPrState>
+  taskPrCiStates: Record<string, TaskPrCiState>
+  now: number
+  Svg?: PaneSvg
+}
+type TimelinePaneHandlers = Pick<
+  PaneHandlers,
+  'runPress' | 'selectTimelineRow' | 'updateTimelineFolded' | 'openTimelineDetail' | 'closeTimelineDetail'
+>
+const wrapTimelineText = (text: string, width: number, measure: (text: string) => number) =>
+  wrapText(text, width, measure, { keepCjkSpaces: true })
+    .map(line => line.text)
+    .join('\n')
 
 export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHandlers) {
   const {
@@ -238,73 +265,21 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
       ? `${cutToCells(selected.row.task.title, Math.max(0, bodyColumns - 28))}…`
       : selected.row.task.title
     : ''
-  const detailView = selected ? (
-    <Box key="timeline-detail" width={paneWidth} flexDirection="column" gap={1}>
-      <Box key="timeline-detail-header" flexDirection="row" alignItems="flex-start">
-        <Box key="timeline-back-control" flexShrink={0}>
-          <Button plain key="timeline-back" hotkey="b" label="‹ Back" onPress={() => void closeTimelineDetail()} />
-        </Box>
-        <Box key="timeline-back-gap" width={1} flexShrink={0}>
-          <Text> </Text>
-        </Box>
-        <Box key="timeline-detail-title-area" flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
-          <Text key="timeline-detail-title" bold wrap="truncate-end">
-            {detailTitle}
-          </Text>
-        </Box>
-        <Box flexShrink={0}>{chip(selected.row.statusLabel, selected.row.tone)}</Box>
-      </Box>
-      <Box flexDirection="row" flexWrap="wrap" gap={1}>
-        {(
-          [
-            ['Progress', selected.stats.progress],
-            ['Weight', selected.stats.weight],
-            [selected.stats.completedUnitsLabel, selected.stats.completedUnits],
-          ] as const
-        ).map(([label, value]) => (
-          <Box key={label} flexDirection="column" flexGrow={1} borderStyle="single" paddingX={1}>
-            <Text color={pal.muted}>{label}</Text>
-            <Text bold>{value}</Text>
-          </Box>
-        ))}
-      </Box>
-      {selected.details.map((line, index) => (
-        <Box key={`timeline-detail-row-${index}`} flexDirection="row" alignItems="flex-start">
-          {line.label === 'Links' ? (
-            <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
-              <Text color={pal.muted}>Links</Text>
-              <Box flexDirection="row" flexWrap="wrap" gap={1}>
-                {line.actions.map(link => (
-                  <Box key={`${link.label}-${selected.row.task.id}`} flexDirection="row">
-                    <Button
-                      label={link.result?.state === 'pending' ? 'Opening…' : link.label}
-                      dimColor={link.isOut}
-                      onPress={press => void runPress(link.press, press.surface)}
-                    />
-                    {link.result?.state === 'done' ? <Text color={pal.tone.done}>✓ Opened</Text> : null}
-                    {link.result?.state === 'failed' ? (
-                      <Text color={pal.tone.error ?? pal.muted}>
-                        {link.result.parts.find(part => part.error)?.error}
-                      </Text>
-                    ) : null}
-                  </Box>
-                ))}
-              </Box>
-            </Box>
-          ) : (
-            <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
-              <Text color={pal.muted}>{line.label}</Text>
-              <Text>
-                {line.label === 'Latest report' || line.label === 'Note'
-                  ? wrapTimelineText(line.text, bodyColumns, cellWidth)
-                  : line.text}
-              </Text>
-            </Box>
-          )}
-        </Box>
-      ))}
-    </Box>
-  ) : null
+  const detailTextWidth = Math.max(1, bodyColumns - TREE_LINE_AT)
+  const wrapDetailText = (text: string) => wrapTimelineText(text, detailTextWidth, cellWidth)
+  const detailView = paneTimelineDetail({
+    Box,
+    Button,
+    Text,
+    pal,
+    selected,
+    detailTitle,
+    paneWidth,
+    closeTimelineDetail,
+    runPress,
+    chip,
+    wrapText: wrapDetailText,
+  })
 
   const timelineView =
     page.mode === 'detail' ? (
@@ -313,7 +288,7 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
       <Box width={paneWidth} flexDirection="column" gap={1}>
         {progressCard}
         {page.isEmpty ? (
-          <Box flexDirection="column">
+          <Box flexDirection="column" paddingLeft={TREE_LINE_AT}>
             <Text bold>{page.empty.title}</Text>
             <Text color={pal.muted}>{page.empty.hint}</Text>
           </Box>
@@ -340,7 +315,8 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
                 key={`timeline-${row.task.id}`}
                 width={paneWidth}
                 flexDirection="column"
-                paddingX={1}
+                paddingLeft={TREE_LINE_AT}
+                paddingRight={0}
                 paddingTop={row.depth === 0 && rowIndex > 0 ? 1 : 0}
               >
                 <Box flexDirection="row" alignItems="flex-start">

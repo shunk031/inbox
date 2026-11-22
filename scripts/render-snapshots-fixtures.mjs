@@ -16,8 +16,8 @@ const task = (id, parentId, title, status, detail = '', notes = []) => ({
   updatedAt: NOW - 10_000,
   history: [{ at: NOW - 60_000, source: 'fixture', kind: 'created' }],
 })
-export const JAPANESE_TIMELINE_NOTE = '誤検出（0）を避け、sample 2 の配置が利用者に伝わる順序を確認します。 '.repeat(2)
-export const JAPANESE_TIMELINE_REPORT = 'STATUS 配置確認のレポートです。sample 2 の改行位置を確かめます。 '.repeat(2)
+const JAPANESE_TIMELINE_NOTE = '誤検出（0）を避け、sample 2 の配置が利用者に伝わる順序を確認します。'
+export const JAPANESE_TIMELINE_REPORT = 'STATUS 配置確認のレポートです。sample 2 の改行位置を確かめます。'
 const wrappedTitle = '折り返し用の日本語タイトルと子の説明'
 const timelineDetailWidths = [87, ...widths]
 const tasks = [
@@ -173,6 +173,7 @@ export function fixtureState(fixture, view) {
     const item = task('snapshot-detail-japanese', null, 'Snapshot Japanese detail', 'working', '', [
       JAPANESE_TIMELINE_NOTE,
     ])
+    item.history = []
     item.links = { owner: { agent: 'snapshot-worker', machine: 'local' } }
     state.taskTree = [item]
   } else if (fixture === 'detail-empty' || fixture === 'detail-busy') {
@@ -221,7 +222,7 @@ registry.push(
     scenario: 'japanese',
     fixture: 'timeline-detail-japanese',
     width,
-    height: width === 87 ? 28 : 34,
+    height: width === 87 ? 28 : 36,
     ...(width === 87 ? { terminalWidth: 196 } : {}),
     file: `timeline-detail-japanese-${width}.txt`,
   })),

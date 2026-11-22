@@ -36,6 +36,7 @@ import { checkActions, prBlockActions, threadActions } from './pr-tab'
 import { type DrawnPr, isDismissed } from './pr-views'
 import { checkKey, commentLine, commentParts, readableComment, readiness, threadWhere } from './prs'
 import { DOT, settledLabel, settledMark, type SettledState } from './rows'
+import { TEXT_COLUMN } from './layout'
 import { lineCount, terminalTextLines } from './terminal-text'
 import { clipLabel } from './text'
 import { runningMark } from './timing'
@@ -244,7 +245,7 @@ export function panePrBlocks({
       )
 
     return section(
-      <Box key={key} paddingLeft={1}>
+      <Box key={key} paddingLeft={TEXT_COLUMN - 1}>
         {settledContent(what, state, undo, mark)}
       </Box>,
     )
@@ -328,7 +329,10 @@ export function panePrBlocks({
             desktopFrame({ key: `pr-title-${pr.ref}`, padY: 0, hasSide: false, children: titleLine }),
             desktopFrame({ key: `pr-status-${pr.ref}`, padY: 0, hasSide: false, children: statusBlock }),
           ]
-        : [<Box paddingLeft={1}>{titleLine}</Box>, <Box paddingLeft={1}>{statusBlock}</Box>]),
+        : [
+            <Box paddingLeft={TEXT_COLUMN - 1}>{titleLine}</Box>,
+            <Box paddingLeft={TEXT_COLUMN - 1}>{statusBlock}</Box>,
+          ]),
       ...prRowGroup(PR_GROUP_TITLES.threads, threads, `${pr.ref}-threads`),
       ...prRowGroup(PR_GROUP_TITLES.checks, checks, `${pr.ref}-checks`),
       ...prRowGroup(PR_GROUP_TITLES.cancelled, cancelled, `${pr.ref}-cancelled`),
@@ -342,7 +346,11 @@ export function panePrBlocks({
   const ghNotice = ghNoticeOf(ghState)
   const prTabLine = (key: string, content: JSX.Element) => [
     section(
-      look === 'desktop' ? desktopFrame({ key, padY: 0, children: content }) : <Box paddingLeft={1}>{content}</Box>,
+      look === 'desktop' ? (
+        desktopFrame({ key, padY: 0, children: content })
+      ) : (
+        <Box paddingLeft={TEXT_COLUMN - 1}>{content}</Box>
+      ),
     ),
   ]
   const mutedLine = (text: string) => (

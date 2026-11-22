@@ -59,6 +59,7 @@ export const SHARED = [
   'pr-fetch',
   'pr-query',
   'task-facts',
+  'task-report',
   'task-prune',
   'task-text',
   'pr-refresh',

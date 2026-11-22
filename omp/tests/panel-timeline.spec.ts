@@ -104,6 +104,28 @@ test('a selected child detail page draws its own title and stats without the tre
   expect(detail).not.toContain('> ● Root')
 })
 
+test('Timeline shows the fixture owner report, DONE status, PR facts, and a missing report', () => {
+  const pr = 'https://github.com/example/repo/pull/12'
+  const task = taskNode('release', 'Ship the release', 'working', NOW, { detail: 'Publish the build.' })
+  task.links = { owner: { agent: 'worker', machine: 'local' }, pr }
+  const queue = JSON.stringify({ seq: 3, t: NOW / 1000, from: 'worker', text: 'DONE Release is ready' })
+  const screen = taskScreen([task], {}, queue)
+  screen.taskPrStates = { [pr]: 'OPEN' }
+  screen.taskPrCiStates = { [pr]: 'passing' }
+  const ui: PanelUi = { ...INITIAL_UI, tab: 'timeline', timelineSelection: 'release', selectedId: 'release' }
+  const tree = strip(text(screen, ui))
+  expect(tree).toContain('Completed')
+  expect(tree).toContain('DONE Release is ready')
+  expect(tree).toContain('PR open · CI passing')
+
+  const detail = strip(text(screen, { ...ui, timelineDetailOpen: true }))
+  expect(detail).toContain('Latest report')
+  expect(detail).toContain('DONE Release is ready')
+
+  const missing = taskScreen([task])
+  expect(strip(text(missing, ui))).toContain('No report yet · PR state unavailable · CI unavailable')
+})
+
 test('Timeline keeps Japanese titles and detail, and wraps mixed Japanese/ASCII latest reports', () => {
   const longTitle = '日本語の長いタイトルを狭い画面でも状態と進捗を保ちながら読みやすく折り返す確認用のタスク'
   const longDetail =

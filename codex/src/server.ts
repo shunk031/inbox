@@ -84,6 +84,8 @@ export type ServerDeps = {
   isNextBuild?: boolean
   /** The optional external progress snapshot. */
   feedPath?: FeedPathSetting
+  /** Reads the local owner report queue through the host filesystem. Tests leave it unset. */
+  taskReportQueue?: () => Promise<string>
   /** A feed path owned by the meta task-tree session; never import it as inbox rows. */
   taskProjectionPath?: string
   /** The page template for a comparison, beside the handler's bundle. */

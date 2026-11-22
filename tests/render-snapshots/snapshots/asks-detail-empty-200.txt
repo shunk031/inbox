@@ -3,7 +3,7 @@
    Asks 1     Timeline 1     PRs
 ─▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀───────────────────────────────────────────────────────
 
- Snapshot empty report                                                 [ Back to inbox ]
+   Snapshot empty report                                               [ Back to inbox ]
 
 
 
@@ -42,4 +42,4 @@
 
 
 
-  Help                                                                           v0.4.0
+   Help                                                                          v0.4.0

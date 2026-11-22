@@ -26,10 +26,9 @@ Part of [the look map](../looks.md#files).
 | `hooks/pane-status-shown.ts` | Mod only. Which Status subject rows a look had on screen: in the terminal, the rows whose first line is in the pane's window. On desktop, every subject. |
 | `hooks/pane-status-tops.ts` | Mod only. `Drawn`: a part of the Status with the terminal lines it takes, which each Status drawing function returns with its element, and how parts stack into each subject row's first line. |
 | `hooks/pane-status.tsx` | Mod only. The Status tab: each row and its buttons, Other work's rule, and the tab's page. |
-| `hooks/pane-timeline.tsx` | Mod only. The Timeline tab's tree, progress bars, task details and local PR or issue links in the terminal and desktop pane. |
-| `hooks/pane-timeline-layout.ts` | Mod only. Timeline pane context and handlers, tree lead spacing, and text wrapping for detail reports and notes. |
+| `hooks/pane-timeline.tsx` | Mod only. The Timeline tab's tree, progress bars, local PR or issue links, and detail report wrapping in the terminal and desktop pane. |
+| `hooks/pane-timeline-detail.tsx` | Mod only. The selected Timeline task's detail header, statistics, report, history and local links in the terminal and desktop pane. |
 | `hooks/pane-timeline-style.tsx` | Mod only. Timeline status colors and status chips shared by the terminal and desktop pane. |
-| `hooks/task-report.ts` | Mod only. Selects the newest meta-patrol report for each task owner. |
 | `hooks/timeline-state.ts` | Mod only. Upgrades the saved Timeline selection and folded task ids, defaulting absent or malformed values for older saves. |
 | `hooks/inbox-model.ts` | Mod only. The model the mod's ledger and Status calls ask, and the report each call gives its record. |
 | `hooks/pane-status-goal.tsx` | Mod only. The Status tab's goal section: its heading, the goal or the line that says none is set, its buttons, its text field, the Now line and the milestones. |

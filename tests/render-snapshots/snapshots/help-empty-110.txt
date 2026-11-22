@@ -42,4 +42,4 @@
    ◷           Timeline
    🔀          PRs
 
-  ✕ Close help                 v0.4.0
+   ✕ Close help                v0.4.0

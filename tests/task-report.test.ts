@@ -1,17 +1,26 @@
 import { expect, test } from 'claude-code/testing'
-import { taskOwnerReports, taskReportPage, taskTreeWithReports } from '../hooks/task-report'
+import { readTaskReportQueue, taskOwnerReports, taskReportPage, taskTreeWithReports } from '../hooks/task-report'
 import type { TaskTree } from '../types'
 
 const owner = (id: string, agent: string, machine = 'local') => ({ id, links: { owner: { agent, machine } } })
-const tree = (agent: string, machine = 'local'): TaskTree =>
-  [{ ...owner('task', agent, machine), history: [] }] as never
+const tree = (agent: string, machine = 'local'): TaskTree => [owner('task', agent, machine)] as never
 const queue = (...records: object[]) => records.map(record => JSON.stringify(record)).join('\n')
 
-test('newer reports remain visible and update saved status for each exact owner and machine', () => {
+test('reads the configured queue through the host adapter and treats a missing file as empty', async () => {
+  const paths: string[] = []
+  const result = await readTaskReportQueue({ HERDR_META_PATROL_STATE_DIR: '/fixture/state/' }, async path => {
+    paths.push(path)
+    throw new Error('missing fixture')
+  })
+  expect(result).toBe('')
+  expect(paths).toEqual(['/fixture/state/queue.jsonl'])
+  expect(await readTaskReportQueue({}, async () => 'unexpected')).toBe('')
+})
+
+test('selects the newest report for each exact owner and machine', () => {
   const owners = ['worker', 'worker', 'closer', 'nobody'].map((agent, i) => ({
     id: ['local', 'gpu', 'done', 'absent'][i],
     links: { owner: { agent, machine: i === 1 ? 'gpu-a' : 'local' } },
-    history: [{ at: 100_000, source: 'agent', kind: 'updated' }],
   })) as TaskTree
   const events = queue(
     { seq: 1, t: 120, from: 'worker', text: 'STATUS first' },

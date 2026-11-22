@@ -1,7 +1,7 @@
 import { bannerOf, type BannerView, tabBarBanners, versionLabel } from './banners'
 import { feedbackText } from './feedback'
 import { HELP_COPY } from './help'
-import { BANNER_GAP_PT, BANNER_PAD_Y_PT } from './layout'
+import { BANNER_GAP_PT, BANNER_PAD_Y_PT, TEXT_COLUMN } from './layout'
 import { HERDR_ASK_BUTTONS, herdrAskBanner } from './herdr-ask'
 import { pressHerdrAsk } from './mod-herdr'
 import { TOOLS_REFUSED_TEXT } from './mod-records'
@@ -409,8 +409,14 @@ export function paneFrame(
   ) : null
   const footer = (
     <Box flexDirection="column" paddingX={1} paddingTop={blankLine}>
-      {shownTab === 'timeline' ? timelineFooter : null}
-      <Box flexDirection="row" paddingX={1} justifyContent="space-between" columnGap={3}>
+      {shownTab === 'timeline' ? <Box paddingLeft={TEXT_COLUMN - 1}>{timelineFooter}</Box> : null}
+      <Box
+        flexDirection="row"
+        paddingLeft={TEXT_COLUMN - 1}
+        paddingRight={1}
+        justifyContent="space-between"
+        columnGap={3}
+      >
         {/* The same key in both states, so a desktop pane keeps its focus on the Button. */}
         <Button
           plain
