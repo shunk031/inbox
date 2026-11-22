@@ -13,12 +13,18 @@ function kinsokuCluster(left: string, right: string): string {
   while (end < after.length && NO_START.test(after[end]!)) end++
   return [...before.slice(start), ...after.slice(0, end)].join('')
 }
-export function wrapText(text: string, width: number, measure: (text: string) => number): WrapLine[] {
+export function wrapText(
+  text: string,
+  width: number,
+  measure: (text: string) => number,
+  { keepCjkSpaces = false }: { keepCjkSpaces?: boolean } = {},
+): WrapLine[] {
   const parts = text.split('\n'),
     max = Math.max(1, width)
   const output: WrapLine[] = []
   let offset = 0
   for (const [paragraphIndex, paragraph] of parts.entries()) {
+    const keepParagraphSpaces = keepCjkSpaces && Array.from(paragraph).some(character => CJK.test(character))
     const marker = /^( *)(- )/u.exec(paragraph)?.[0] ?? ''
     const hanging = marker ? ' '.repeat(marker.length) : ''
     let prefix = '',
@@ -52,7 +58,8 @@ export function wrapText(text: string, width: number, measure: (text: string) =>
         part &&
         current !== ' ' &&
         !blocked(previous, current) &&
-        (previous === ' ' || CJK.test(previous) || CJK.test(current))
+        ((previous === ' ' && !keepParagraphSpaces) || CJK.test(previous) || CJK.test(current)) &&
+        !(keepParagraphSpaces && previous === ' ' && CJK.test(current))
       ) {
         units.push({ text: part, start: partStart })
         part = ''

@@ -3211,10 +3211,11 @@ var BAR_TONES = {
 var BAR_STATES = ["working", "waiting", "stalled", "queued"];
 function timelineTask(task, now) {
   const { createdAt: _createdAt, updatedAt, history, ...details } = task;
+  const detailChangedAt = new Set(history.filter((event) => event.kind === "detail").map((event) => event.at));
   return {
     ...details,
     updatedAgo: shortAgo(now - updatedAt),
-    history: history.toSorted((a, b) => a.at - b.at).map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) }))
+    history: history.toSorted((a, b) => a.at - b.at).filter((event) => event.kind !== "updated" || !detailChangedAt.has(event.at)).map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) }))
   };
 }
 function percent(value) {

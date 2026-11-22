@@ -1,17 +1,14 @@
-import type { PaneBase, PaneHandlers, PaneSvg } from './pane-context'
-import type { TaskPrCiState, TaskPrState, TaskTree } from '../types'
 import { cellWidth, cutToCells } from './text'
+import { desktopTextPt } from './desktop-metrics'
 import { moveTimelineSelection, timelineBar, timelinePage, toggleTimelineBranch } from './timeline-page'
 import { timelineRowBarWidth } from './layout'
 import type { TimelinePage } from './timeline-page'
 import { taskReportPage } from './task-report'
 import { timelineChip, timelineToneColor } from './pane-timeline-style'
+import { timelineRowLead, wrapTimelineText } from './pane-timeline-layout'
+import type { TimelinePaneBase, TimelinePaneHandlers } from './pane-timeline-layout'
 import { DESKTOP_CELL_PT, DESKTOP_LINE_PT } from './pane-sizes'
 import { timelineBarSvg } from './desktop-svg'
-
-function timelineRowLead(row: { prefix: string; mark: string }, selected: boolean) {
-  return `${selected ? '> ' : '  '}${row.prefix}${row.mark} `
-}
 
 function padToCells(text: string, cells: number) {
   const fitted = cutToCells(text, cells)
@@ -20,26 +17,8 @@ function padToCells(text: string, cells: number) {
 
 function terminalTreeLead(row: TimelinePage['rows'][number], cells: number) {
   const siblingGuide = row.depth > 0 ? (row.hasLaterSibling ? '│  ' : '   ') : ''
-  const childGuide = row.hasVisibleChildren ? '│  ' : '   '
-  return padToCells(`  ${row.guides.join('')}${siblingGuide}${childGuide}`, cells)
+  return padToCells(`  ${row.guides.join('')}${siblingGuide}${row.hasVisibleChildren ? '│  ' : '   '}`, cells)
 }
-
-type TimelinePaneBase = Pick<
-  PaneBase,
-  'Box' | 'Button' | 'Text' | 'pal' | 'look' | 'view' | 'timelineSelection' | 'timelineFolded' | 'timelineDetailOpen'
-> & {
-  bodyColumns: number
-  timelineTaskTree: TaskTree
-  taskReportQueue: string
-  taskPrStates: Record<string, TaskPrState>
-  taskPrCiStates: Record<string, TaskPrCiState>
-  now: number
-  Svg?: PaneSvg
-}
-type TimelinePaneHandlers = Pick<
-  PaneHandlers,
-  'runPress' | 'selectTimelineRow' | 'updateTimelineFolded' | 'openTimelineDetail' | 'closeTimelineDetail'
->
 
 export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHandlers) {
   const {
@@ -187,7 +166,15 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
                     <Text color={pal.muted}>{line.text}</Text>
                   </Box>
                 ) : (
-                  <Text color={pal.muted}>{`${line.label} · ${line.text}`}</Text>
+                  <Text color={pal.muted}>
+                    {line.label === 'Latest report' || line.label === 'Note'
+                      ? wrapTimelineText(
+                          `${line.label} · ${line.text}`,
+                          context.bodyColumns * DESKTOP_CELL_PT,
+                          desktopTextPt,
+                        )
+                      : `${line.label} · ${line.text}`}
+                  </Text>
                 ),
               )}
             </Box>
@@ -272,7 +259,7 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
           [
             ['Progress', selected.stats.progress],
             ['Weight', selected.stats.weight],
-            ['Completed units', selected.stats.completedUnits],
+            [selected.stats.completedUnitsLabel, selected.stats.completedUnits],
           ] as const
         ).map(([label, value]) => (
           <Box key={label} flexDirection="column" flexGrow={1} borderStyle="single" paddingX={1}>
@@ -307,7 +294,11 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
           ) : (
             <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
               <Text color={pal.muted}>{line.label}</Text>
-              <Text>{line.text}</Text>
+              <Text>
+                {line.label === 'Latest report' || line.label === 'Note'
+                  ? wrapTimelineText(line.text, bodyColumns, cellWidth)
+                  : line.text}
+              </Text>
             </Box>
           )}
         </Box>

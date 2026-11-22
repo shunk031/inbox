@@ -21,5 +21,15 @@ test('seeded mixed wrapping', () => {
     expect(wrapErrors(wrapText(input, w, cellWidth), w, cellWidth, lines), ctx).toEqual([])
   }
 })
+test('mixed CJK text can keep ASCII spaces out of preferred wrap points', () => {
+  const text = '配置確認用の文 sample 2 と結果を見ます。'
+  const defaultLines = wrapText(text, 21, cellWidth).map(line => line.text)
+  const plans = wrapText(text, 21, cellWidth, { keepCjkSpaces: true })
+  const lines = plans.map(line => line.text)
+
+  expect(defaultLines.some(line => line.endsWith('sample'))).toBe(true)
+  expect(lines.some(line => line.endsWith('sample') || line.endsWith('sample 2'))).toBe(false)
+  expect(wrapErrors(plans, 21, cellWidth)).toEqual([])
+})
 const noStartChars = `’”）〕］｝〉》」』】〗⦆｠〙»〟)]}‐〜゠–!！?？‼⁇⁈⁉・:：;；。．.,、，ヽヾゝゞ々〻ーぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶㇰㇱㇲㇳㇴㇵㇶㇷㇸㇹㇺㇻㇼㇽㇾㇿｧｨｩｪｫｬｭｮｯ｡｣､･ｰﾞﾟ`
 test('JLReq no-start', () => [...noStartChars].forEach(c => expect(errors(`日本語${c}`, 4)).toEqual([])))

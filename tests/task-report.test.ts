@@ -3,13 +3,15 @@ import { taskOwnerReports, taskReportPage, taskTreeWithReports } from '../hooks/
 import type { TaskTree } from '../types'
 
 const owner = (id: string, agent: string, machine = 'local') => ({ id, links: { owner: { agent, machine } } })
-const tree = (agent: string, machine = 'local'): TaskTree => [owner('task', agent, machine)] as TaskTree
+const tree = (agent: string, machine = 'local'): TaskTree =>
+  [{ ...owner('task', agent, machine), history: [] }] as never
 const queue = (...records: object[]) => records.map(record => JSON.stringify(record)).join('\n')
 
-test('selects the newest report for each exact owner and machine', () => {
+test('newer reports remain visible and update saved status for each exact owner and machine', () => {
   const owners = ['worker', 'worker', 'closer', 'nobody'].map((agent, i) => ({
     id: ['local', 'gpu', 'done', 'absent'][i],
     links: { owner: { agent, machine: i === 1 ? 'gpu-a' : 'local' } },
+    history: [{ at: 100_000, source: 'agent', kind: 'updated' }],
   })) as TaskTree
   const events = queue(
     { seq: 1, t: 120, from: 'worker', text: 'STATUS first' },
@@ -39,4 +41,24 @@ test('an open linked PR shows its CI in the Timeline row and detail', () => {
   expect(result.rows[0]?.reportLine).toBe('No report yet · PR open · CI passing')
   expect(result.rows[1]?.reportLine).toBe('No report yet')
   expect(result.selected?.details[0]).toEqual({ label: 'Latest report', text: 'No report yet · PR open · CI passing' })
+})
+
+test('an older report is hidden without changing saved status', () => {
+  const task = {
+    ...owner('task', 'worker'),
+    status: 'queued',
+    history: [{ at: 20_000, source: 'agent', kind: 'updated' }],
+  }
+  const events = queue({ seq: 1, t: 19, from: 'worker', text: 'STATUS stale report' })
+  const row = { task, isCompletedFold: false }
+  const result = taskReportPage(
+    { rows: [row], selected: { row, details: [] } } as never,
+    [task] as never,
+    events,
+    { taskPrStates: {}, taskPrCiStates: {} } as never,
+    30_000,
+  )
+  expect(result.rows[0]?.reportLine).toBe('No report yet')
+  expect(result.selected?.details[0]).toEqual({ label: 'Latest report', text: 'No report yet' })
+  expect(taskTreeWithReports([task] as never, events)[0]?.status).toBe('queued')
 })

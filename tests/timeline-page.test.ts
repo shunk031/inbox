@@ -29,6 +29,7 @@ const task = (id: string, change: Partial<TaskNode> = {}): TaskNode => ({
 const segments: TaskProgressSegments = { total: 4, done: 1, working: 1, stalled: 1, waiting: 0, queued: 1 }
 const barText = (parts: ReturnType<typeof timelineBar>) => parts.map(part => part.mark.repeat(part.count)).join('')
 const queuedBar = (count: number) => [{ state: 'queued', mark: '─', count, tone: 'muted' }]
+const detailPage = (item: TaskNode) => timelinePage(timelineData([item], segments, {}, [], now), item.id, [], {}, true)
 
 test('Timeline has an empty state and a not-started progress card without tasks', () => {
   const page = timelineData([], { total: 0, done: 0, working: 0, stalled: 0, waiting: 0, queued: 0 }, {}, [], now)
@@ -174,6 +175,17 @@ test('Timeline formats history times in the shared plan', () => {
   expect('updatedAt' in displayedTask).toBe(false)
   expect('createdAt' in displayedTask).toBe(false)
   expect('at' in displayedTask.history[0]!).toBe(false)
+})
+
+test('Timeline keeps one specific history line when a detail update shares its moment with a task update', () => {
+  const at = now - 15 * 60_000
+  const history: TaskNode['history'] = [
+    { at, source: 'claude', kind: 'updated', detail: 'Task detail changed' },
+    { at, source: 'claude', kind: 'detail' },
+  ]
+  const page = detailPage(task('history', { updatedAt: at, history }))
+
+  expect(page.selected?.details).toContainEqual({ label: 'History', text: '15m · claude · Task detail updated' })
 })
 
 test('the selected task plan orders labeled details and link actions', () => {
@@ -412,5 +424,5 @@ test('Timeline plans detail and branch actions in tree order and a back action i
   const detail = timelinePage(timelineData(tree, segments, {}, [], now), 'root', [], {}, true)
   expect(detail.mode).toBe('detail')
   expect(detail.selected?.row.actions.map(action => action.action)).toEqual(['back'])
-  expect(detail.selected?.stats).toEqual({ progress: '0.00%', weight: '1', completedUnits: '0 / 1' })
+  expect(detail.selected?.stats.completedUnitsLabel).toBe('Leaf tasks completed')
 })

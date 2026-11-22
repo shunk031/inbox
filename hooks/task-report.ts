@@ -21,9 +21,10 @@ export function taskOwnerReports(tree: TaskTree, queue: string): Record<string, 
       latest.set(key, { kind, line: prefix ? r.text : `${kind} ${r.text}`, at, seq })
     } catch {}
   return Object.fromEntries(
-    tree.flatMap(({ id, links }) => {
+    tree.flatMap(({ id, links, history }) => {
       const report = links?.owner && latest.get(JSON.stringify([links.owner.agent, links.owner.machine]))
-      return report ? [[id, report]] : []
+      const lastChange = history.reduce((at, event) => Math.max(at, event.at), Number.NEGATIVE_INFINITY)
+      return report && report.at >= lastChange ? [[id, report]] : []
     }),
   )
 }

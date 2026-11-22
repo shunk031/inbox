@@ -62,7 +62,7 @@ test('Timeline draws the shared card and two-line rows, then opens and returns f
   expect(opened.pageTop).toBe(0)
   const detail = strip(text(screen, opened, 100))
   expect([detail.match(/History/g)?.length, detail.split('\n').includes('Current')]).toEqual([1, false])
-  const labels = ['Progress', 'Weight', 'Completed units', 'Detail', 'Note', 'History', 'Links']
+  const labels = ['Progress', 'Weight', 'Leaf tasks completed', 'Detail', 'Note', 'History', 'Links']
   const positions = labels.map(label => detail.indexOf(label))
   expect(positions.every(position => position >= 0)).toBe(true)
   expect(positions).toEqual([...positions].sort((left, right) => left - right))

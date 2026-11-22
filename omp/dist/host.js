@@ -7937,10 +7937,11 @@ var timelineHistoryText = (events) => events.map(({ time, source, kind, detail }
 `);
 function timelineTask(task, now) {
   const { createdAt: _createdAt, updatedAt, history, ...details } = task;
+  const detailChangedAt = new Set(history.filter((event) => event.kind === "detail").map((event) => event.at));
   return {
     ...details,
     updatedAgo: shortAgo(now - updatedAt),
-    history: history.toSorted((a, b) => a.at - b.at).map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) }))
+    history: history.toSorted((a, b) => a.at - b.at).filter((event) => event.kind !== "updated" || !detailChangedAt.has(event.at)).map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) }))
   };
 }
 function percent(value) {
@@ -8276,9 +8277,15 @@ function timelinePage(data, selectedId, folded, lastActions = {}, isDetailOpen =
   ] : [];
   const taskProgress = selectedRow ? percent(selectedRow.progress / 100) : null;
   const units = selectedRow?.completedUnits ?? null;
-  const stats = selectedRow?.isCompletedFold ? { progress: selectedRow.percent, weight: "\u2014", completedUnits: `${units?.done ?? 0} / ${units?.total ?? 0}` } : selectedRow && taskProgress && units ? {
+  const stats = selectedRow?.isCompletedFold ? {
+    progress: selectedRow.percent,
+    weight: "\u2014",
+    completedUnitsLabel: "Leaf tasks completed",
+    completedUnits: `${units?.done ?? 0} / ${units?.total ?? 0}`
+  } : selectedRow && taskProgress && units ? {
     progress: taskProgress.label,
     weight: String(Number(selectedRow.task.weight.toFixed(1))),
+    completedUnitsLabel: "Leaf tasks completed",
     completedUnits: `${units.done} / ${units.total}`
   } : null;
   return {
@@ -10204,6 +10211,108 @@ function pageKey(screen, ui, key, now) {
 }
 var pageFocus = (target, ui) => ui.focus?.rowId === target.id ? Math.min(ui.focus.index, target.keys.length - 1) : 0;
 
+// ../hooks/line-wrap.ts
+var CJK = /^[\u3000-\u30ff\u3400-\u9fff\uf900-\ufaff\uff00-\uffef\u{20000}-\u{3fffd}]$/u;
+var NO_START = /^[\u2019\u201D\uFF09\u3015\uFF3D\uFF5D\u3009\u300B\u300D\u300F\u3011\u3017\u2986\uFF60\u3019\u00BB\u301F)\]\}\u2010\u301C\u30A0\u2013!\uFF01?\uFF1F\u203C\u2047\u2048\u2049\u30FB:\uFF1A;\uFF1B\u3002\uFF0E.,\u3001\uFF0C\u30FD\u30FE\u309D\u309E\u3005\u303B\u30FC\u3041\u3043\u3045\u3047\u3049\u3063\u3083\u3085\u3087\u308E\u3095\u3096\u30A1\u30A3\u30A5\u30A7\u30A9\u30C3\u30E3\u30E5\u30E7\u30EE\u30F5\u30F6\u31F0-\u31FF\uFF67\uFF68\uFF69\uFF6A\uFF6B\uFF6C\uFF6D\uFF6E\uFF6F\uFF61\uFF63\uFF64\uFF65\uFF70\uFF9E\uFF9F]$/u;
+var NO_END = /^[\u2018\u201C\uFF08\u3014\uFF3B\uFF5B\u3008\u300A\u300C\u300E\u3010\u2985\uFF5F\u3018\u3016\u00AB\u301D\uFF62({\[]$/u;
+var blocked = (left, right) => NO_START.test(right) || NO_END.test(left);
+function kinsokuCluster(left, right) {
+  const [before, after] = [Array.from(left), Array.from(right)];
+  let start = before.length - Number(!NO_END.test(before.at(-1) ?? "")), end = NO_START.test(after[0] ?? "") ? 0 : Math.min(1, after.length);
+  while (start && NO_END.test(before[start - 1]))
+    start--;
+  while (end < after.length && NO_START.test(after[end]))
+    end++;
+  return [...before.slice(start), ...after.slice(0, end)].join("");
+}
+function wrapText2(text, width, measure, { keepCjkSpaces = false } = {}) {
+  const parts = text.split(`
+`), max = Math.max(1, width);
+  const output = [];
+  let offset = 0;
+  for (const [paragraphIndex, paragraph] of parts.entries()) {
+    const keepParagraphSpaces = keepCjkSpaces && Array.from(paragraph).some((character) => CJK.test(character));
+    const marker = /^( *)(- )/u.exec(paragraph)?.[0] ?? "";
+    const hanging = marker ? " ".repeat(marker.length) : "";
+    let prefix = "", line = marker, firstLine = true, start = offset, end = offset + marker.length;
+    const emit = (next) => {
+      const kept = line.trimEnd();
+      output.push({
+        text: prefix + kept,
+        sourceStart: start,
+        sourceEnd: end - (line.length - kept.length),
+        prefix,
+        wrapped: next !== null,
+        nextUnit: next === null ? null : `${line.slice(kept.length)}${next}`
+      });
+      line = "";
+      prefix = hanging;
+      firstLine = false;
+      start = end;
+    };
+    const measureLine = (next) => measure(prefix + (line + next).trimEnd());
+    const units = [];
+    let part = "", partStart = offset + marker.length, at = partStart, previous = "";
+    for (const current of Array.from(paragraph.slice(marker.length))) {
+      if (part && current !== " " && !blocked(previous, current) && (previous === " " && !keepParagraphSpaces || CJK.test(previous) || CJK.test(current)) && !(keepParagraphSpaces && previous === " " && CJK.test(current))) {
+        units.push({ text: part, start: partStart });
+        part = "";
+        partStart = at;
+      }
+      part += current;
+      previous = current;
+      at += current.length;
+    }
+    if (part)
+      units.push({ text: part, start: partStart });
+    for (const unit of units) {
+      let { text: rest, start: restStart } = unit;
+      if (line.length > (firstLine ? marker.length : 0) && measureLine(rest) > max) {
+        const skipped = rest.length - rest.trimStart().length;
+        emit(rest);
+        rest = rest.trimStart();
+        start = restStart = unit.start + skipped;
+      }
+      while (rest && measureLine(rest) > max) {
+        const chars = Array.from(rest);
+        let count = chars.length;
+        while (count && measureLine(chars.slice(0, count).join("")) > max)
+          count--;
+        if (!count) {
+          if (!line.trim())
+            throw new RangeError("wrap width cannot fit the next character");
+          const skipped = rest.length - rest.trimStart().length;
+          emit(rest);
+          rest = rest.trimStart();
+          start = restStart += skipped;
+          continue;
+        }
+        const fitsKinsoku = (at) => blocked(chars[at - 1], chars[at]) && measure(kinsokuCluster(chars.slice(0, at).join(""), chars.slice(at).join(""))) <= max;
+        while (count > 1 && count < chars.length && fitsKinsoku(count))
+          count--;
+        const take = chars.slice(0, count).join(""), next = chars.slice(count).join("");
+        line += take;
+        end = restStart + take.length;
+        const skipped = next.length - next.trimStart().length;
+        rest = next.trimStart();
+        if (rest)
+          emit(next);
+        restStart = end + skipped;
+      }
+      if (rest) {
+        if (!line)
+          start = restStart;
+        line += rest;
+        end = restStart + rest.length;
+      }
+    }
+    if (line || !paragraph)
+      emit(null);
+    offset += paragraph.length + (paragraphIndex < parts.length - 1 ? 1 : 0);
+  }
+  return output;
+}
+
 // src/panel-draw.ts
 function takeTimelineCells(text, width) {
   const chars = Array.from(text);
@@ -10266,7 +10375,7 @@ function timelineStatsLines(stats, width, s) {
   const values = [
     ["Progress", stats.progress],
     ["Weight", stats.weight],
-    ["Completed units", stats.completedUnits]
+    [stats.completedUnitsLabel, stats.completedUnits]
   ];
   const cardWidth = Math.floor((width - 6) / values.length);
   if (cardWidth < 14)
@@ -10323,7 +10432,7 @@ function timelineLine(line, plan, isSelected, d) {
       const indent = detailIndent + 2;
       for (const text of detail.text.split(`
 `))
-        out.push(...wrapTimelineText(text, Math.max(1, width - indent)).map((text) => `${" ".repeat(indent)}${text}`));
+        out.push(...(detail.label === "Note" ? wrapText2(text, Math.max(1, width - indent), visibleLength, { keepCjkSpaces: true }).map((line) => line.text) : wrapTimelineText(text, Math.max(1, width - indent))).map((text) => `${" ".repeat(indent)}${text}`));
     }
   }
   return out;

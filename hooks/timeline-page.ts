@@ -34,8 +34,14 @@ type TimelineRowAction = Pick<ActionView, 'label' | 'hotkey' | 'kind' | 'emphasi
 }
 type TimelineLinkAction = PrAction & { result: LastAction['result'] | null }
 type TimelineDetailLine =
-  { label: 'Detail' | 'Updated' | 'Note' | 'History'; text: string } | { label: 'Links'; actions: TimelineLinkAction[] }
-type TimelineStats = { progress: string; weight: string; completedUnits: string }
+  | { label: 'Detail' | 'Updated' | 'Note' | 'History' | 'Latest report'; text: string }
+  | { label: 'Links'; actions: TimelineLinkAction[] }
+type TimelineStats = {
+  progress: string
+  weight: string
+  completedUnitsLabel: 'Leaf tasks completed'
+  completedUnits: string
+}
 type TimelineNode = {
   task: TimelineTask
   depth: number
@@ -125,11 +131,13 @@ const timelineHistoryText = (events: TimelineHistoryEvent[]) =>
 
 function timelineTask(task: TaskNode, now: number): TimelineTask {
   const { createdAt: _createdAt, updatedAt, history, ...details } = task
+  const detailChangedAt = new Set(history.filter(event => event.kind === 'detail').map(event => event.at))
   return {
     ...details,
     updatedAgo: shortAgo(now - updatedAt),
     history: history
       .toSorted((a, b) => a.at - b.at)
+      .filter(event => event.kind !== 'updated' || !detailChangedAt.has(event.at))
       .map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) })),
   }
 }
@@ -499,11 +507,17 @@ export function timelinePage(
   const taskProgress = selectedRow ? percent(selectedRow.progress / 100) : null
   const units = selectedRow?.completedUnits ?? null
   const stats = selectedRow?.isCompletedFold
-    ? { progress: selectedRow.percent, weight: '—', completedUnits: `${units?.done ?? 0} / ${units?.total ?? 0}` }
+    ? {
+        progress: selectedRow.percent,
+        weight: '—',
+        completedUnitsLabel: 'Leaf tasks completed' as const,
+        completedUnits: `${units?.done ?? 0} / ${units?.total ?? 0}`,
+      }
     : selectedRow && taskProgress && units
       ? {
           progress: taskProgress.label,
           weight: String(Number(selectedRow.task.weight.toFixed(1))),
+          completedUnitsLabel: 'Leaf tasks completed' as const,
           completedUnits: `${units.done} / ${units.total}`,
         }
       : null
