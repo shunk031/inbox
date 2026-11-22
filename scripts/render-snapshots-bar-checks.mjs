@@ -4,6 +4,27 @@ export const taskMarkers = ['Snapshot root', '折り返し用', 'Snapshot long',
 export const failure = (e, r, x, a, m) => `FAIL ${e.view}/${e.scenario}/${e.width} ${r} ${x}→${a} ${m}`
 export const barTracks = line => [...line.matchAll(/[━─]+/gu)].map(([track]) => track)
 const percent = line => line?.match(/(\d+(?:\.\d+)?)%/u)?.[1]
+export function checkTimelineStatusChip(entry, frame) {
+  if (entry.view !== 'timeline' || entry.scenario !== 'busy') return []
+  const lines = frame.split('\n'),
+    errors = [],
+    root = lines.find(line => line.includes('Snapshot root')),
+    title = root ? col(root, root.indexOf('Snapshot root')) : 6,
+    status =
+      root && lines.slice(lines.indexOf(root) + 1).find(line => /^\s+│\s+(In progress|No report yet)\s*$/u.test(line))
+  if (!root) errors.push(failure(entry, 'snapshot-root title', 6, 'missing', 'required title row absent'))
+  else if (title !== 6)
+    errors.push(failure(entry, 'snapshot-root title', 6, title, 'title starts outside fixture column'))
+  if (!status) errors.push(failure(entry, 'snapshot-root chip', title, 'missing', 'required chip absent'))
+  else {
+    const label = status.match(/In progress|No report yet/u)?.[0] ?? '',
+      chip = col(status, status.indexOf(label) - 1)
+    if (chip !== title)
+      errors.push(failure(entry, 'snapshot-root chip', title, chip, 'chip does not start on its title column'))
+  }
+  return errors
+}
+const col = (line, index) => cellWidth(line.slice(0, index))
 export function checkTimelineBars(entry, frame, bodyColumns = entry.width) {
   if (entry.view !== 'timeline') return []
   const lines = frame.split('\n'),

@@ -1,24 +1,13 @@
 import type { PaneBase, PaneHandlers, PaneSvg } from './pane-context'
+import type { TaskPrCiState, TaskPrState, TaskTree } from '../types'
 import { cellWidth, cutToCells } from './text'
 import { moveTimelineSelection, timelineBar, timelinePage, toggleTimelineBranch } from './timeline-page'
 import { timelineRowBarWidth } from './layout'
 import type { TimelinePage } from './timeline-page'
+import { taskReportPage } from './task-report'
+import { timelineChip, timelineToneColor } from './pane-timeline-style'
 import { DESKTOP_CELL_PT, DESKTOP_LINE_PT } from './pane-sizes'
 import { timelineBarSvg } from './desktop-svg'
-
-type TimelineStyle = Pick<PaneBase, 'Box' | 'Text' | 'pal'>
-
-function timelineToneColor(pal: PaneBase['pal'], tone: string) {
-  return tone === 'key' ? pal.key : tone === 'muted' ? pal.muted : (pal.tone[tone as 'done' | 'error'] ?? pal.muted)
-}
-
-function timelineChip({ Box, Text, pal }: TimelineStyle, label: string, tone: string, key?: string) {
-  return (
-    <Box key={key} backgroundColor={timelineToneColor(pal, tone)} paddingX={1}>
-      <Text color="inverseText">{label}</Text>
-    </Box>
-  )
-}
 
 function timelineRowLead(row: { prefix: string; mark: string }, selected: boolean) {
   return `${selected ? '> ' : '  '}${row.prefix}${row.mark} `
@@ -38,22 +27,52 @@ function terminalTreeLead(row: TimelinePage['rows'][number], cells: number) {
 type TimelinePaneBase = Pick<
   PaneBase,
   'Box' | 'Button' | 'Text' | 'pal' | 'look' | 'view' | 'timelineSelection' | 'timelineFolded' | 'timelineDetailOpen'
-> & { bodyColumns: number; Svg?: PaneSvg }
+> & {
+  bodyColumns: number
+  timelineTaskTree: TaskTree
+  taskReportQueue: string
+  taskPrStates: Record<string, TaskPrState>
+  taskPrCiStates: Record<string, TaskPrCiState>
+  now: number
+  Svg?: PaneSvg
+}
 type TimelinePaneHandlers = Pick<
   PaneHandlers,
   'runPress' | 'selectTimelineRow' | 'updateTimelineFolded' | 'openTimelineDetail' | 'closeTimelineDetail'
 >
 
 export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHandlers) {
-  const { Box, Button, Text, Svg, pal, look, view, timelineSelection, timelineFolded, timelineDetailOpen } = context
-  const { selectTimelineRow, updateTimelineFolded, openTimelineDetail, closeTimelineDetail, runPress } = handlers
-  const page = timelinePage(
-    view.timeline,
+  const {
+    Box,
+    Button,
+    Text,
+    Svg,
+    pal,
+    look,
+    view,
     timelineSelection,
     timelineFolded,
-    view.lastActions,
-    look === 'terminal' && timelineDetailOpen,
-    true,
+    timelineDetailOpen,
+    timelineTaskTree,
+    taskReportQueue,
+    taskPrStates,
+    taskPrCiStates,
+    now,
+  } = context
+  const { selectTimelineRow, updateTimelineFolded, openTimelineDetail, closeTimelineDetail, runPress } = handlers
+  const page = taskReportPage(
+    timelinePage(
+      view.timeline,
+      timelineSelection,
+      timelineFolded,
+      view.lastActions,
+      look === 'terminal' && timelineDetailOpen,
+      true,
+    ),
+    timelineTaskTree,
+    taskReportQueue,
+    { taskPrStates, taskPrCiStates },
+    now,
   )
   const toggleCompletedFold = async (id: string) => {
     if (timelineDetailOpen) await closeTimelineDetail()
@@ -141,6 +160,7 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
               {row.warnings.map(warning => (
                 <Text color={pal.tone.issue ?? pal.muted}>{`${row.treeLead}⚠ ${warning}`}</Text>
               ))}
+              {row.reportLine && <Text color={pal.muted}>{row.reportLine}</Text>}
               {selection?.details.map(line =>
                 line.label === 'Links' ? (
                   <Box flexDirection="row">
@@ -399,6 +419,7 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
                 {row.warnings.map(warning => (
                   <Text color={pal.tone.error ?? pal.muted}>{`${warningLead}⚠ ${warning}`}</Text>
                 ))}
+                {row.reportLine && <Text color={pal.muted}>{`${warningLead}${row.reportLine}`}</Text>}
               </Box>
             )
           })}

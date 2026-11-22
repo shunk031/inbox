@@ -35,12 +35,12 @@ test('a merged linked PR completes the task and records its source and URL', () 
   expect(result.warnings).toEqual([])
 })
 
-test('a merged PR with an open child warns without changing either task', () => {
+test('a merged PR with an open child does not complete the parent or warn', () => {
   const tree = [task('parent', { links: { pr: PR } }), task('child', { parentId: 'parent' })]
   const result = facts(tree, 'MERGED')
 
   expect(result.tree).toBe(tree)
-  expect(result.warnings).toEqual([{ taskId: 'parent', pr: PR, message: 'PR merged, task still open' }])
+  expect(result.warnings).toEqual([])
 })
 
 test('a PR closed without merging warns without changing task status or history', () => {

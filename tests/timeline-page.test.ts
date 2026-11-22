@@ -10,6 +10,7 @@ import {
 import type { TaskFactWarning, TaskNode, TaskProgressSegments, TaskTree } from '../types'
 import { upgradedTimelineFolded } from '../hooks/timeline-state'
 import { weightedTaskProgressSegments } from '../hooks/task-tree'
+import { taskTreeWithReports } from '../hooks/task-report'
 
 const now = 1_000_000
 const task = (id: string, change: Partial<TaskNode> = {}): TaskNode => ({
@@ -51,7 +52,7 @@ test('Timeline keeps tree order and derives progress, stall age and warnings', (
   const warning: TaskFactWarning = {
     taskId: child.id,
     pr: 'https://github.com/a/b/pull/1',
-    message: 'PR merged, task still open',
+    message: 'PR closed without merge',
   }
   const page = timelineData([root, child], segments, { [child.id]: now - 15 * 60_000 }, [warning], now)
 
@@ -86,19 +87,26 @@ test('Timeline bars fill the rounded displayed percent before status-colored rem
 test('Timeline child rows use their subtree and omit dropped work from percent and bar', () => {
   const tree: TaskTree = [
     task('parent', { status: 'working' }),
-    task('child-done', { parentId: 'parent', status: 'done', weight: 1 }),
+    task('child-done', {
+      parentId: 'parent',
+      status: 'working',
+      weight: 1,
+      links: { owner: { agent: 'worker', machine: 'local' } },
+    }),
     task('child-waiting', { parentId: 'parent', status: 'waits-on-other', weight: 1 }),
     task('child-dropped', { parentId: 'parent', status: 'dropped', weight: 99 }),
     task('dropped-root', { status: 'dropped', weight: 99 }),
   ]
-  const active = weightedTaskProgressSegments(tree)
-  const page = timelineData(tree, active, {}, [], now)
+  const reported = taskTreeWithReports(tree, JSON.stringify({ seq: 1, t: 140, from: 'worker', text: 'DONE shipped' }))
+  const active = weightedTaskProgressSegments(reported)
+  const page = timelineData(reported, active, {}, [], now)
   const parent = page.rows.find(row => row.task.id === 'parent')!
   const done = page.rows.find(row => row.task.id === 'child-done')!
 
   expect([parent.percent, page.progressCard.percentLabel, done.percent].join('|')).toBe('50.00%|50.00%|100.00%')
   const bars = [parent.progressBar, timelineBar(page.progressCard.segments, 10), done.progressBar].map(barText)
   expect(bars.join('|')).toBe('━━━━━─────|━━━━━─────|━━━━━━━━━━')
+  expect(done).toMatchObject({ statusLabel: 'Completed', percent: '100.00%', completedUnits: { done: 1, total: 1 } })
 })
 
 test('Timeline summarizes weighted completion and counts completed leaf tasks', () => {

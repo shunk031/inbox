@@ -65,7 +65,7 @@ import {
 import { CATCH_UP_CALL, runUpdates } from './session-host'
 import { heardCall } from './call-record'
 import { isRecordedItemsOnly } from './session-host'
-import { fetchPrs as fetchSessionPrs, fetchTaskOwnerFacts, isPrFetchDue } from './host-prs'
+import { fetchPrs as fetchSessionPrs, fetchTaskOwnerFacts, isPrFetchDue, taskPrUrls } from './host-prs'
 import { tabPrs } from './pr-fetch'
 import type { FetchAsk } from './pr-fetch'
 import { prSharedStore } from './mod-pr-shared'
@@ -343,7 +343,7 @@ const DEMO_RECORDING = atom({ plugin: 'inbox', key: 'isDemoRecording' } as const
 const PERSON_LINES = atom({ plugin: 'inbox', key: 'personLines' } as const, {} as Record<string, string>)
 
 let taskProjection: ModTaskProjection | null = null
-
+let lastTaskReportQueue = ''
 const PANE = 'inbox'
 
 /** Adds the person's words to the turn, as a shell command does. */
@@ -979,6 +979,11 @@ function hostOf($: EngineInterface, owner: Owner, surface?: UiPressArgument['sur
 
 async function tick($: EngineInterface) {
   const now = await $.clock.now()
+  const reportQueue = await readTaskReportQueue($)
+  if (reportQueue !== lastTaskReportQueue) {
+    lastTaskReportQueue = reportQueue
+    await redrawPane($)
+  }
   const [away, { presence }] = await Promise.all([read($, AWAY), read($, SESSION)])
   if (away.isAway) {
     await update($, AWAY, a => ({ ...a, minute: Math.floor(now / 60_000) }))
@@ -1662,7 +1667,12 @@ async function pollPrs($: EngineInterface) {
   ])
   await fetchTaskOwnerFacts(hostOf($, currentOwner()))
   const { ledger, prViews } = session
-  if (away.isAway || (!isTabShown && tabPrs(ledger).length === 0 && prViews.branchRef === null)) return
+  const pendingTaskCi = taskPrUrls(session).some(
+    url =>
+      session.taskPrStates[url] !== 'MERGED' || !['passing', 'failing'].includes(session.taskPrCiStates[url] ?? ''),
+  )
+  if (away.isAway) return
+  if (!isTabShown && tabPrs(ledger).length === 0 && prViews.branchRef === null && !pendingTaskCi) return
   if (!isPrFetchDue(session, mod.prFetchEndedAt, now, isTabShown)) return
   await fetchPrs($, isTabShown)
 }
@@ -1983,8 +1993,12 @@ function rowKeyActions(
   return { keys: keys.map(keyAction), more: more.map(keyAction) }
 }
 
-async function drawnState($: EngineInterface): Promise<ReturnType<typeof makeDrawnState>> {
-  const [session, notes, demo, isDemoRecording, unreadable, holds, now] = await Promise.all([
+async function drawnState(
+  $: EngineInterface,
+): Promise<
+  ReturnType<typeof makeDrawnState> & Pick<Session, 'taskPrStates' | 'taskPrCiStates'> & { taskReportQueue: string }
+> {
+  const [session, notes, demo, isDemoRecording, unreadable, holds, now, reportQueue] = await Promise.all([
     read($, SESSION),
     read($, NOTES),
     read($, DEMO),
@@ -1992,6 +2006,7 @@ async function drawnState($: EngineInterface): Promise<ReturnType<typeof makeDra
     read($, UNREADABLE),
     readHolds($),
     $.clock.now(),
+    readTaskReportQueue($),
     read($, REDRAW),
     // The minute tick while the person is away redraws the ages.
     read($, AWAY),
@@ -2006,10 +2021,22 @@ async function drawnState($: EngineInterface): Promise<ReturnType<typeof makeDra
     now,
     holds,
     SETTLED_MS,
+    reportQueue,
   )
   redrawAtNextFold($, state.view, session.presence.lastTypedMessageAt, now)
 
-  return state
+  return {
+    ...state,
+    taskReportQueue: reportQueue,
+    taskPrStates: session.taskPrStates,
+    taskPrCiStates: session.taskPrCiStates,
+  }
+}
+
+async function readTaskReportQueue($: EngineInterface): Promise<string> {
+  const [home, stateDir] = await Promise.all([$.env.get('HOME'), $.env.get('HERDR_META_PATROL_STATE_DIR')])
+  const dir = stateDir?.trim() || (home ? `${home}/.local/state/herdr-meta-patrol` : '')
+  return dir ? $.fs.read(`${dir.replace(/\/+$/, '')}/queue.jsonl`).catch(() => '') : ''
 }
 
 async function setDemo($: EngineInterface, isShown: boolean, isRecording = false) {
@@ -2107,12 +2134,6 @@ async function initializeInbox($: EngineInterface) {
       write: (path, text) => $.fs.write(path, text),
       home: () => $.env.get('HOME'),
       now: () => $.clock.now(),
-      updateSession: async (sessionId, change) => {
-        const owner = currentOwner()
-        return owner.id === sessionId
-          ? commit($, owner, change, true)
-          : (await changeSaved(saveEngine($), sessionId, change)).after
-      },
       log: text => $.ui.log(text, { to: 'debug' }),
     },
     processRun($),
@@ -3047,7 +3068,22 @@ export const register: Register = on => {
         ? { rowPad: 2 * DESKTOP_ROW_PAD, settledPad: 2 * DESKTOP_ROW_PAD, buttonGap: 1, isFoldGapped: false }
         : { rowPad: blankLine, settledPad: 0, buttonGap: 2, isFoldGapped: true }
     const [
-      { prViews: prState, lastActions, notes, turns, stop, view, isDemo, showsDemoNotices, isUnread, now },
+      {
+        prViews: prState,
+        lastActions,
+        notes,
+        turns,
+        stop,
+        view,
+        isDemo,
+        showsDemoNotices,
+        isUnread,
+        now,
+        timelineTaskTree,
+        taskReportQueue,
+        taskPrStates,
+        taskPrCiStates,
+      },
       savedTab,
       savedPage,
       selection,
@@ -3390,6 +3426,11 @@ export const register: Register = on => {
         pal,
         look,
         view,
+        timelineTaskTree,
+        taskReportQueue,
+        taskPrStates,
+        taskPrCiStates,
+        now,
         timelineSelection,
         timelineFolded,
         timelineDetailOpen,

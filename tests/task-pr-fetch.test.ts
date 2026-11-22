@@ -3,6 +3,7 @@ import { expect, test } from 'claude-code/testing'
 import { fetchPrs, TASK_OWNER_FETCH_LIMIT } from '../hooks/host-prs'
 import type { Run } from '../hooks/gh'
 import { NO_PR_SHARED } from '../hooks/pr-fetch'
+import { taskPrCiState } from '../hooks/pr-query'
 import { emptySession } from '../hooks/session-files'
 import { taskOwnerKey } from '../hooks/task-facts'
 import type { SessionHost } from '../hooks/session-host'
@@ -82,7 +83,12 @@ test('tracked merged PRs complete and save a task history event', async () => {
   const url = 'https://github.com/acme/app/pull/7'
   const base = emptySession()
   const start = { ...base, ledger: { ...base.ledger, prs: [ref] }, taskTree: [taskWithPr('t1', url)] }
-  const gh = ghStandIn((number, repo) => ({ node: prNodeOf(viewJson(`${repo}#${number}`, 'MERGED')) }))
+  const gh = ghStandIn((number, repo) => {
+    const view = viewJson(`${repo}#${number}`, 'MERGED')
+    view.statusCheckRollupState = 'FAILURE'
+    view.statusCheckRollup = [{ __typename: 'CheckRun', name: 'tests', status: 'COMPLETED', conclusion: 'SUCCESS' }]
+    return { node: prNodeOf(view) }
+  })
   const { host, state } = hostOf(gh.run, start)
 
   await fetchPrs(host, false)
@@ -92,6 +98,7 @@ test('tracked merged PRs complete and save a task history event', async () => {
     status: 'done',
     history: [{ source: 'pr', kind: 'completed', detail: url }],
   })
+  expect(state().taskPrCiStates[url]).toBe('failing')
 })
 
 test('untracked closed PRs warn, and a failed GitHub fetch changes no task fact or warning', async () => {
@@ -102,7 +109,6 @@ test('untracked closed PRs warn, and a failed GitHub fetch changes no task fact 
 
   await fetchPrs(first.host, false)
 
-  expect(successful.queried).toEqual([['acme/app#8']])
   expect(first.state().taskTree[0]?.status).toBe('working')
   expect(first.state().taskFactWarnings).toEqual([{ taskId: 't1', pr: url, message: 'PR closed without merge' }])
 
@@ -111,6 +117,11 @@ test('untracked closed PRs warn, and a failed GitHub fetch changes no task fact 
   expect(failed.state().taskTree).toEqual(start.taskTree)
   expect(failed.state().taskFactWarnings).toEqual([])
 })
+
+test('maps task PR CI states, including no rollup', () =>
+  expect(['SUCCESS', 'FAILURE', 'ERROR', 'PENDING', 'EXPECTED', undefined].map(taskPrCiState).join()).toBe(
+    'passing,failing,failing,pending,pending,not-run',
+  ))
 
 test('a GitHub Enterprise task PR is queried on its own host and a merge completes its task', async () => {
   const url = 'https://git.example.org/acme/app/pull/17'

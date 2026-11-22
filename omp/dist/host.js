@@ -839,7 +839,7 @@ var PRS_PER_QUERY = 50;
 var PR_FIELDS = `fragment PrFields on PullRequest {
   number title url isDraft state baseRefName mergeable reviewDecision
   author { login }
-  commits(last: 1) { nodes { commit { committedDate statusCheckRollup { contexts(first: 100) { nodes {
+  commits(last: 1) { nodes { commit { committedDate statusCheckRollup { state contexts(first: 100) { nodes {
     __typename
     ... on CheckRun { name status conclusion startedAt completedAt detailsUrl checkSuite { workflowRun { workflow { name } } } }
     ... on StatusContext { context state targetUrl createdAt }
@@ -874,7 +874,9 @@ function prStatesQuery(refs) {
   }
   const fields = [...repos.values()].map((repoRefs, n) => {
     const { owner, name } = parseRef(repoRefs[0] ?? "");
-    const prs = repoRefs.map((ref) => `${prAlias(refs.indexOf(ref))}: pullRequest(number: ${parseRef(ref).number}) { url state }`);
+    const prs = repoRefs.map((ref) => `${prAlias(refs.indexOf(ref))}: pullRequest(number: ${parseRef(ref).number}) {
+      url state commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
+    }`);
     return `${repoAlias(n)}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) { ${prs.join(" ")} }`;
   });
   return `query { ${fields.join(" ")} }`;
@@ -931,6 +933,8 @@ function checksOf(node) {
     };
   });
 }
+var taskCiStatus = { pass: "passing", fail: "failing", pending: "pending" };
+var taskPrCiState = (state) => state ? taskCiStatus[bucket({ state })] ?? "not-run" : "not-run";
 function threadsOf(node, viewer) {
   const headAt = Date.parse(node.commits?.nodes?.[0]?.commit?.committedDate ?? "") || null;
   return (node.reviewThreads?.nodes ?? []).filter((t) => !t.isResolved).map((t) => {
@@ -969,6 +973,7 @@ function readPrNode(ref, node, viewer, previous, threadsError) {
     base: String(node.baseRefName ?? ""),
     mergeable: String(node.mergeable ?? "UNKNOWN"),
     reviewDecision: String(node.reviewDecision ?? ""),
+    ciState: taskPrCiState(node.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state),
     checks: checksOf(node),
     threads: threadsError === null ? threadsOf(node, viewer) : previous?.threads ?? [],
     isYours: viewer === undefined || node.author === undefined ? null : node.author?.login === viewer,
@@ -5440,6 +5445,7 @@ function emptySession() {
     taskTreeProjectionConflictReported: false,
     taskStatusMismatches: [],
     taskPrStates: {},
+    taskPrCiStates: {},
     taskFactWarnings: [],
     taskOwnerFacts: {},
     taskOwnerFactCheckedAt: null,
@@ -5526,7 +5532,8 @@ function sessionFields(saved, views) {
     taskTreeProjectionConflictReported: saved.taskTreeProjectionConflictReported === true,
     taskStatusMismatches: upgradeTaskStatusMismatches(saved.taskStatusMismatches, taskTree),
     taskPrStates: Object.fromEntries(Object.entries(saved.taskPrStates ?? {}).filter((entry) => entry[1] === "OPEN" || entry[1] === "CLOSED" || entry[1] === "MERGED")),
-    taskFactWarnings: saved.taskFactWarnings ?? [],
+    taskPrCiStates: Object.fromEntries(Object.entries(saved.taskPrCiStates ?? {}).filter((entry) => ["passing", "failing", "pending", "not-run"].includes(entry[1]))),
+    taskFactWarnings: (saved.taskFactWarnings ?? []).filter((warning) => warning.message === "PR closed without merge"),
     taskOwnerFacts,
     taskOwnerFactCheckedAt: Number.isFinite(saved.taskOwnerFactCheckedAt) && saved.taskOwnerFactCheckedAt >= 0 ? saved.taskOwnerFactCheckedAt : null,
     taskOwnerFactCursor: typeof saved.taskOwnerFactCursor === "string" && saved.taskOwnerFactCursor.length <= 256 ? saved.taskOwnerFactCursor : null,
@@ -7849,12 +7856,7 @@ function perTurnStatus(isUpdating, recovery) {
 }
 
 // ../hooks/task-facts.ts
-var MERGED_WARNING = "PR merged, task still open";
 var CLOSED_WARNING = "PR closed without merge";
-var OWNER_IDLE_WARNING = "Owner idle 15m+";
-var OWNER_FINISHED_WARNING = "Owner finished, task open";
-var OWNER_IDLE_AFTER_MS = 15 * 60000;
-var OWNER_FINISHED_AFTER_MS = 2 * 60000;
 function taskOwnerKey(owner) {
   return JSON.stringify([owner.machine, owner.agent]);
 }
@@ -7862,22 +7864,17 @@ function observedTaskOwnerFact(previous, state, at) {
   const since = state !== "working" && previous?.state === state ? previous.since : at;
   return { state, since };
 }
-function applyTaskOwnerFacts(tree, facts, at) {
+function applyTaskOwnerFacts(tree, facts) {
   const stalledSince = {};
-  const warnings = [];
   for (const task of tree) {
     const owner = task.links?.owner;
     const fact = owner ? facts[taskOwnerKey(owner)] : undefined;
     if (task.status !== "working" || !owner || !fact || fact.state === "working")
       continue;
     stalledSince[task.id] = fact.since;
-    if (at - fact.since >= OWNER_IDLE_AFTER_MS)
-      warnings.push({ taskId: task.id, owner, message: OWNER_IDLE_WARNING });
-    if ((fact.state === "done" || fact.state === "idle") && at - fact.since >= OWNER_FINISHED_AFTER_MS)
-      warnings.push({ taskId: task.id, owner, message: OWNER_FINISHED_WARNING });
   }
   const segments = weightedTaskProgressSegments(tree, new Set(Object.keys(stalledSince)));
-  return { stalledSince, warnings, segments };
+  return { stalledSince, segments };
 }
 function applyTaskPrFacts(tree, states, at) {
   let next = tree;
@@ -7898,7 +7895,6 @@ function applyTaskPrFacts(tree, states, at) {
     if (task.history.some((event) => event.source === "pr" && event.kind === "completed" && event.detail === pr))
       continue;
     if (tree.some((child) => child.parentId === task.id && child.status !== "done" && child.status !== "dropped")) {
-      warnings.push({ taskId: task.id, pr, message: MERGED_WARNING });
       continue;
     }
     const completed = completeTask(next, task.id, at, "pr", pr);
@@ -8316,18 +8312,6 @@ function withoutStaleResult(last, now) {
 function withoutStalePending(lastActions, now) {
   return Object.fromEntries(Object.entries(lastActions).map(([id, last]) => [id, withoutStaleResult(last, now)]));
 }
-function taskTimelineWarnings(s, tree, now) {
-  const ownerFacts = {};
-  for (const finding of s.ledger.findings) {
-    if (!finding.owner || !finding.ownerFact)
-      continue;
-    const key = taskOwnerKey(finding.owner);
-    if (!ownerFacts[key] || ownerFacts[key].since < finding.ownerFact.since)
-      ownerFacts[key] = finding.ownerFact;
-  }
-  Object.assign(ownerFacts, s.taskOwnerFacts);
-  return [...s.taskFactWarnings, ...applyTaskOwnerFacts(tree, ownerFacts, now).warnings];
-}
 function updateRecovery(s) {
   const { presence } = s;
   if (presence.ledgerState !== "failed")
@@ -8363,8 +8347,8 @@ function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timel
       ownerFacts[key] = finding.ownerFact;
   }
   Object.assign(ownerFacts, s.taskOwnerFacts);
-  const taskOwnerView = applyTaskOwnerFacts(s.taskTree, ownerFacts, now);
-  const timelineOwnerView = timelineTaskTree === s.taskTree ? taskOwnerView : applyTaskOwnerFacts(timelineTaskTree, ownerFacts, now);
+  const taskOwnerView = applyTaskOwnerFacts(s.taskTree, ownerFacts);
+  const timelineOwnerView = timelineTaskTree === s.taskTree ? taskOwnerView : applyTaskOwnerFacts(timelineTaskTree, ownerFacts);
   const feedStalledSince = Object.fromEntries(l.findings.flatMap((finding) => {
     const fact = finding.owner ? ownerFacts[taskOwnerKey(finding.owner)] : undefined;
     return finding.kind === "progress" && fact && fact.state !== "working" ? [[finding.id, fact.since]] : [];
@@ -8375,11 +8359,11 @@ function sessionView(s, now, settleWindowMs, holds = NO_HOLDS, notes = {}, timel
     turns: { turnsStarted: s.presence.turnsStarted, turnsApplied: s.presence.turnsApplied },
     prs: prTabOf(s, lastActions, now, holds, settleWindowMs),
     statusPage: statusPage(s, now, new Set(Object.keys(taskOwnerView.stalledSince))),
-    timeline: timelineData(timelineTaskTree, timelineOwnerView.segments, timelineOwnerView.stalledSince, taskTimelineWarnings(s, timelineTaskTree, now), now, s.taskStatusMismatches),
+    timeline: timelineData(timelineTaskTree, timelineOwnerView.segments, timelineOwnerView.stalledSince, s.taskFactWarnings, now, s.taskStatusMismatches),
     taskProgressSegments: taskOwnerView.segments,
     taskStalledSince: taskOwnerView.stalledSince,
     feedStalledSince,
-    taskFactWarnings: taskTimelineWarnings(s, s.taskTree, now)
+    taskFactWarnings: s.taskFactWarnings
   };
 }
 function showsRunningMark(v, shown, isHelpShown, isUnfolded) {
@@ -8594,11 +8578,7 @@ var TASK_OWNER_FETCH_LIMIT = 5;
 function stateOf(value) {
   return value === "OPEN" || value === "CLOSED" || value === "MERGED" ? value : undefined;
 }
-function taskPrUrls(s) {
-  return [
-    ...new Set(s.taskTree.flatMap((task) => task.status === "done" || task.status === "dropped" || !task.links?.pr ? [] : [task.links.pr]))
-  ];
-}
+var taskPrUrls = (s) => [...new Set(s.taskTree.flatMap((t) => t.links?.pr ? [t.links.pr] : []))].filter((u) => !!taskPrLink(u)?.queryable);
 function afterCursor(urls, cursor) {
   if (urls.length === 0)
     return [];
@@ -8655,11 +8635,11 @@ async function fetchTaskOwnerFacts(host) {
 async function fetchUntrackedTaskPrStates(host, s, bin, tracked) {
   const urls = taskPrUrls(s).filter((url) => {
     const link = taskPrLink(url);
-    return link?.queryable === true && !(link.host === "github.com" && tracked.has(link.ref)) && s.taskPrStates[url] !== "MERGED";
+    return link?.queryable === true && !(link.host === "github.com" && tracked.has(link.ref)) && (s.taskPrStates[url] !== "MERGED" || !["passing", "failing"].includes(s.taskPrCiStates[url] ?? ""));
   });
   const selected = afterCursor(urls, s.taskPrFactCursor).slice(0, TASK_PR_FETCH_LIMIT);
   if (selected.length === 0)
-    return { states: {}, cursor: s.taskPrFactCursor };
+    return { states: {}, ciStates: {}, cursor: s.taskPrFactCursor };
   const byHost = new Map;
   for (const url of selected) {
     const link = taskPrLink(url);
@@ -8672,6 +8652,7 @@ async function fetchUntrackedTaskPrStates(host, s, bin, tracked) {
   }
   const run = host.gh.run(s, bin, () => host.gh.forget());
   const states = {};
+  const ciStates = {};
   const answers = await Promise.all([...byHost].map(async ([hostname, group]) => {
     const args = [
       "api",
@@ -8694,9 +8675,12 @@ async function fetchUntrackedTaskPrStates(host, s, bin, tracked) {
       const state = stateOf(answer.prs[group.refs[index]]?.node?.state);
       if (state)
         states[url] = state;
+      const node = answer.prs[group.refs[index]]?.node;
+      if (node)
+        ciStates[url] = taskPrCiState(node.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state);
     });
   }
-  return { states, cursor: selected.at(-1) ?? s.taskPrFactCursor };
+  return { states, ciStates, cursor: selected.at(-1) ?? s.taskPrFactCursor };
 }
 function isPrFetchDue(s, lastFetchedAt, now, isTabShown) {
   if (lastFetchedAt === undefined)
@@ -8784,6 +8768,7 @@ async function fetchPrs(host, findsBranchPr, isPress = false) {
       return next;
     const linked = new Set(next.taskTree.flatMap((task) => task.links?.pr ? [task.links.pr] : []));
     const taskPrStates = Object.fromEntries(Object.entries(cur.taskPrStates).filter(([url]) => linked.has(url)));
+    const taskPrCiStates = Object.fromEntries(Object.entries(cur.taskPrCiStates).filter(([url]) => linked.has(url)));
     for (const task of next.taskTree) {
       const url = task.links?.pr;
       const link = url ? taskPrLink(url) : undefined;
@@ -8792,13 +8777,18 @@ async function fetchPrs(host, findsBranchPr, isPress = false) {
       const state = stateOf(fetched[link.ref]?.state ?? s.prViews.views[link.ref]?.state);
       if (state)
         taskPrStates[url] = state;
+      const ciState = fetched[link.ref]?.ciState ?? s.prViews.views[link.ref]?.ciState;
+      if (ciState)
+        taskPrCiStates[url] = ciState;
     }
     Object.assign(taskPrStates, taskFacts.states);
+    Object.assign(taskPrCiStates, taskFacts.ciStates);
     const facts = applyTaskPrFacts(next.taskTree, taskPrStates, at);
     return {
       ...next,
       taskTree: facts.tree,
       taskPrStates,
+      taskPrCiStates,
       taskFactWarnings: facts.warnings,
       taskPrFactCursor: taskFacts.cursor
     };
@@ -11686,6 +11676,7 @@ var CLAUDE_CODE_SUPPORT = {
   "task-tree-currentness": { kind: "full" },
   "task-tree-projection": { kind: "full" },
   "task-tree-export": { kind: "full" },
+  "task-owner-reports": { kind: "full" },
   "task-status-mismatch": { kind: "full" },
   timeline: { kind: "full" },
   "timeline-completed-fold": { kind: "full" },
@@ -11857,6 +11848,10 @@ var CODEX_SUPPORT = {
     kind: "unsupported",
     reason: "The external Stop gate reads the Claude Code meta session, so Codex does not export task trees."
   },
+  "task-owner-reports": {
+    kind: "different",
+    reason: "Codex keeps its current Timeline status until it reads owner reports."
+  },
   "task-status-mismatch": { kind: "full" },
   timeline: { kind: "full" },
   "timeline-completed-fold": {
@@ -11994,6 +11989,10 @@ var OMP_SUPPORT = {
   "task-tree-export": {
     kind: "unsupported",
     reason: "The external Stop gate reads the Claude Code meta session, so only Claude Code exports task trees."
+  },
+  "task-owner-reports": {
+    kind: "different",
+    reason: "omp keeps its current Timeline status until it reads owner reports."
   },
   "task-status-mismatch": { kind: "full" },
   timeline: { kind: "full" },

@@ -25,6 +25,7 @@ export function emptySession(): Session {
     taskTreeProjectionConflictReported: false,
     taskStatusMismatches: [],
     taskPrStates: {},
+    taskPrCiStates: {},
     taskFactWarnings: [],
     taskOwnerFacts: {},
     taskOwnerFactCheckedAt: null,
@@ -174,7 +175,12 @@ function sessionFields(saved: SavedSession, views: Record<string, PrView>): Sess
           entry[1] === 'OPEN' || entry[1] === 'CLOSED' || entry[1] === 'MERGED',
       ),
     ),
-    taskFactWarnings: saved.taskFactWarnings ?? [],
+    taskPrCiStates: Object.fromEntries(
+      Object.entries(saved.taskPrCiStates ?? {}).filter((entry): entry is [string, Session['taskPrCiStates'][string]] =>
+        ['passing', 'failing', 'pending', 'not-run'].includes(entry[1] as string),
+      ),
+    ),
+    taskFactWarnings: (saved.taskFactWarnings ?? []).filter(warning => warning.message === 'PR closed without merge'),
     taskOwnerFacts,
     taskOwnerFactCheckedAt:
       Number.isFinite(saved.taskOwnerFactCheckedAt) && saved.taskOwnerFactCheckedAt! >= 0

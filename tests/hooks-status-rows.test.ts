@@ -136,7 +136,8 @@ test('a task note replaces older detail on Status and stays visible in Timeline 
   await clock.settle()
   await terminal.press({ key: 'timeline-title-t1' })
   await clock.settle()
-  expect(await terminal.find({ text: 'Design the first draft' })).toBeDefined()
+  expect((await terminal.findAll({ type: 'Text' })).map(line => line.text)).toContain('No report yet')
+  expect(await terminal.find({ text: 'Design the first draft' })).toBeUndefined()
   expect(await terminal.find({ text: 'The command now passes its tests' })).toBeDefined()
   await terminal.unmount()
 

@@ -419,6 +419,7 @@ export type PrView = {
   base: string
   mergeable: string
   reviewDecision: string
+  ciState?: TaskPrCiState
   checks: PrCheck[]
   threads: PrThread[]
   /** Whether the person running gh wrote the PR; null when GitHub's answer did not say. */
@@ -525,10 +526,9 @@ export type TaskLinks = {
 }
 
 export type TaskPrState = 'OPEN' | 'CLOSED' | 'MERGED'
+export type TaskPrCiState = 'passing' | 'failing' | 'pending' | 'not-run'
 
-export type TaskFactWarning =
-  | { taskId: string; pr: string; message: 'PR merged, task still open' | 'PR closed without merge' }
-  | { taskId: string; owner: TaskOwner; message: 'Owner idle 15m+' | 'Owner finished, task open' }
+export type TaskFactWarning = { taskId: string; pr: string; message: 'PR closed without merge' }
 
 export type TaskNode = {
   id: string
@@ -765,6 +765,8 @@ export type Session = {
   taskStatusMismatches: TaskStatusMismatch[]
   /** Last known GitHub state for each linked task PR; warnings are derived from these states and the task tree. */
   taskPrStates: Record<string, TaskPrState>
+  /** Last known check result for each linked task PR. */
+  taskPrCiStates: Record<string, TaskPrCiState>
   /** Warnings from the latest task-fact pass. These are not task history. */
   taskFactWarnings: TaskFactWarning[]
   /** Last observed state for owners of open tasks, keyed by machine and agent. */

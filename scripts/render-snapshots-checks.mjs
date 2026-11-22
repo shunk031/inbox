@@ -1,7 +1,13 @@
 import { cellWidth } from '../hooks/text.ts'
 import { wrapErrors, wrapText } from '../hooks/line-wrap.ts'
 import { JAPANESE_DETAIL, registry } from './render-snapshots-fixtures.mjs'
-import { barTracks, checkTimelineBars, failure, taskMarkers } from './render-snapshots-bar-checks.mjs'
+import {
+  barTracks,
+  checkTimelineBars,
+  checkTimelineStatusChip,
+  failure,
+  taskMarkers,
+} from './render-snapshots-bar-checks.mjs'
 export { failure }
 
 const stripAnsi = text => text.replace(/\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))/g, '')
@@ -154,33 +160,18 @@ export function checkFrame(entry, frame, width) {
     }
   })
 
-  if (entry.view === 'timeline' && entry.scenario === 'busy') {
-    const root = lines.find(line => line.includes('Snapshot root'))
-    const titleCol = root ? col(root, root.indexOf('Snapshot root')) : 6
-    const status = root && lines.slice(lines.indexOf(root) + 1).find(line => /^\s+│\s+In progress\s*$/u.test(line))
-    if (!root) add('snapshot-root title', 6, 'missing', 'required title row absent')
-    else if (titleCol !== 6) add('snapshot-root title', 6, titleCol, 'title starts outside fixture column')
-    if (!status) add('snapshot-root chip', titleCol, 'missing', 'required chip absent')
+  errors.push(...checkTimelineStatusChip(entry, frame))
+
+  if (entry.view === 'timeline' && entry.scenario === 'busy' && entry.width === 200) {
+    const long = lines.find(line => line.includes('Snapshot long'))
+    const ellipsis = long?.indexOf('…') ?? -1
+    const bar = ellipsis < 0 ? -1 : long.slice(ellipsis + 1).search(/[━─]/u)
+    if (bar < 0)
+      add('snapshot-long bar', 'title line after ellipsis', 'next line or missing', 'bar is not on the title line')
     else {
-      const chip = col(status, status.indexOf('In progress') - 1)
-      if (chip !== titleCol) add('snapshot-root chip', titleCol, chip, 'chip does not start on its title column')
-    }
-    if (entry.width === 200) {
-      const long = lines.find(line => line.includes('Snapshot long'))
-      const ellipsis = long?.indexOf('…') ?? -1
-      const bar = ellipsis < 0 ? -1 : long.slice(ellipsis + 1).search(/[━─]/u)
-      if (bar < 0)
-        add('snapshot-long bar', 'title line after ellipsis', 'next line or missing', 'bar is not on the title line')
-      else {
-        const gap = col(long, ellipsis + 1 + bar) - col(long, ellipsis) - cellWidth('…')
-        if (gap < 2)
-          add(
-            'snapshot-long ellipsis gap',
-            'ellipsis end + 2',
-            col(long, ellipsis + 1 + bar),
-            `bar gap is ${gap} cells`,
-          )
-      }
+      const gap = col(long, ellipsis + 1 + bar) - col(long, ellipsis) - cellWidth('…')
+      if (gap < 2)
+        add('snapshot-long ellipsis gap', 'ellipsis end + 2', col(long, ellipsis + 1 + bar), `bar gap is ${gap} cells`)
     }
   }
 
@@ -350,7 +341,8 @@ export function runMutationProofs(frames) {
   const noPercent = folded.frame.replace(/(Snapshot root[^\n]*?)\s+\d+(?:\.\d+)?%/u, '$1')
   const check = frame => checkFrame(timeline.entry, frame, timeline.paneWidth)
   const lines = timeline.frame.split('\n')
-  const chip = lines.findIndex(line => /^\s+│\s+In progress\s*$/u.test(line))
+  const chip = lines.findIndex(line => /^\s+│\s+(In progress|No report yet)\s*$/u.test(line))
+  const chipLabel = chip < 0 ? '' : (lines[chip].match(/In progress|No report yet/u)?.[0] ?? '')
   if (chip >= 0) lines[chip] = lines[chip].replace(/^ /u, '')
   const long = timeline.frame.split('\n').find(line => line.includes('Snapshot long'))
   const barLines = timeline.frame.split('\n'),
@@ -363,7 +355,8 @@ export function runMutationProofs(frames) {
       track = barTracks(line.slice(line.indexOf(taskMarkers.find(marker => line.includes(marker)) ?? '')))[0]
     return track && barLines.map((line, i) => (i === row ? line.replace(track, transform(track)) : line)).join('\n')
   }
-  const barCheck = (f, t, e = timeline.entry) => f && checkTimelineBars(e, f, timeline.paneWidth).find(x => x.includes(t))
+  const barCheck = (f, t, e = timeline.entry) =>
+    f && checkTimelineBars(e, f, timeline.paneWidth).find(x => x.includes(t))
   const barProofs = [
     ['one extra filled cell', mutateBar(headerRow, track => `━${track}`), 'filled cells do not match'],
     ['filled cell after unfilled', mutateBar(headerRow, track => track.replace('━─', '─━')), 'bar fill must precede'],
@@ -410,7 +403,7 @@ export function runMutationProofs(frames) {
     if (!line) throw Error(`mutation proof did not fail: ${name}`)
     process.stdout.write(`PROOF ${name}: ${line}\n`)
   }
-  for (const [name, file, label] of [['Timeline', 'timeline-busy-200.txt', 'In progress']]) {
+  for (const [name, file, label] of [['Timeline', 'timeline-busy-200.txt', chipLabel]]) {
     const item = frames.get(file)
     const mutated = stripChipRightPadding(item.ansiFrame, item.entry, item.paneWidth, label)
     const line = checkChipBoxes(item.entry, mutated, item.paneWidth).find(error => error.includes('chip box padding'))

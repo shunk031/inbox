@@ -249,22 +249,21 @@ test('Timeline opens a selected task detail and returns to the selected tree row
   const buttons = (await pane.findAll({ type: 'Button' })).map(button => button.props)
   expect(
     buttons.some(button => button.label === 'Close branch' && button.hotkey === 'h'),
-    'branch action is available',
+    `branch action is available: ${JSON.stringify(buttons)}`,
   ).toBe(true)
   expect(buttons.some(button => button.label === 'Select')).toBe(false)
   const text = (await pane.findAll({ type: 'Text' })).map(node => node.text)
   expect(text).toContain('A flow 21%')
   expect(text.some(line => line.includes('Build the review flow'))).toBe(false)
-  expect(
-    text.some(line => line.includes('Not started')),
-    'the status is visible in the tree',
-  ).toBe(true)
+  expect(text).toContain('Not started')
 
   expect((await pane.find({ key: 'timeline-title-plan' }))?.props.autoFocus).toBe(true)
   await pane.press({ key: 'timeline-title-plan' })
   await clock.settle()
   let detail = (await pane.findAll({ type: 'Text' })).map(node => node.text)
-  expect(detail, 'the detail view includes the task detail').toContain('Build the review flow')
+  expect(detail).toContain('No report yet')
+  expect(detail).toContain('Latest report')
+  expect(detail).not.toContain('Build the review flow')
   expect(detail).toContain('Keep the row short')
   expect(detail.some(line => line.includes('Task created'))).toBe(true)
   expect(detail).toContain('Weight')
@@ -330,11 +329,8 @@ test('terminal Timeline keeps Japanese titles, row metadata and detail guides at
   const rootProgress = await pane.find({ key: 'timeline-row-progress-long-root' })
   expect(rootProgress?.text.match(/[━─]+/u), 'narrow rows omit the bar').toBeNull()
   const lines = (await pane.findAll({ type: 'Text' })).map(line => line.text)
-  expect(
-    lines.some(line => line.startsWith('> ○ ')),
-    'the mark and tree prefix stay on the title line',
-  ).toBe(true)
-  expect(lines, 'the status chip keeps its label').toContain('Not started')
+  expect(lines.some(line => line.startsWith('> ○ '))).toBe(true)
+  expect(lines).toContain('In progress')
   expect(
     lines.some(line => line.trim() === '0.00%'),
     'the row percentage keeps every character',
@@ -352,8 +348,9 @@ test('terminal Timeline keeps Japanese titles, row metadata and detail guides at
   ).toBe(true)
   const detailText = (await pane.findAll({ type: 'Text' })).map(line => line.text)
   expect(detailText.some(text => text.includes('子タスク'))).toBe(true)
-  expect(detailText).toContain(longDetail)
-  expect(detailText).toContain('Detail')
+  expect(detailText).toContain('Latest report')
+  expect(detailText).toContain('No report yet')
+  expect(detailText).not.toContain(longDetail)
   expect(detailText).toContain('History')
   expect(detailText).toContain('A newer Japanese note')
 })

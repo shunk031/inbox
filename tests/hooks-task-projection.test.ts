@@ -195,7 +195,7 @@ describe('task-tree projection', () => {
       ...emptySession(),
       taskTree: Array.from({ length: 21 }, (_, i) => node(`old${i}`, 'done', { updatedAt: i })),
       taskStatusMismatches: [{ taskId: 'old0', claim: 'working' as const, savedStatus: 'done' as const, at: 1 }],
-      taskFactWarnings: [{ taskId: 'old0', pr: 'p', message: 'PR merged, task still open' as const }],
+      taskFactWarnings: [{ taskId: 'old0', pr: 'p', message: 'PR closed without merge' as const }],
     }
     const result = await afterTaskTreeUpdate(projection, 'meta', session, 20, async change => change(session))
     expect(result.session.taskTree.filter(task => task.status === 'done' && task.parentId === null)).toHaveLength(20)

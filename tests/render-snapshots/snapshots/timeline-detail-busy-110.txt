@@ -15,15 +15,15 @@
  │ 1 / 2                             │
  └───────────────────────────────────┘
 
- Detail
- An invented root task with a long CJK
- title.
+ Latest report
+ No report yet
 
  Note
  The root task has a stable note.
 
  History
  1h · fixture · Task created
+
 
 
 

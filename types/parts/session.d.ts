@@ -2,7 +2,14 @@ import type { Place } from './status'
 import type { TurnDialogQuestion } from './items'
 import type { LastAction, RowNote } from './press'
 import type { Ledger, PrView } from './ledger'
-import type { TaskFactWarning, TaskOwnerFacts, TaskPrState, TaskStatusMismatch, TaskTree } from './task-tree'
+import type {
+  TaskFactWarning,
+  TaskOwnerFacts,
+  TaskPrCiState,
+  TaskPrState,
+  TaskStatusMismatch,
+  TaskTree,
+} from './task-tree'
 
 /** Why the session halted outside the conversation, from the error Claude Code classified it with. */
 export type Stop = {
@@ -218,6 +225,8 @@ export type Session = {
   taskStatusMismatches: TaskStatusMismatch[]
   /** Last known GitHub state for each linked task PR; warnings are derived from these states and the task tree. */
   taskPrStates: Record<string, TaskPrState>
+  /** Last known check result for each linked task PR. */
+  taskPrCiStates: Record<string, TaskPrCiState>
   /** Warnings from the latest task-fact pass. These are not task history. */
   taskFactWarnings: TaskFactWarning[]
   /** Last observed state for owners of open tasks, keyed by machine and agent. */

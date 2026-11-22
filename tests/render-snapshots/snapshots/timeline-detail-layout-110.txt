@@ -15,12 +15,8 @@
  │ 0 / 1                             │
  └───────────────────────────────────┘
 
- Detail
- 狭い画面でも左端と折り返し位置を確認
- する中立的な説明です。狭い画面でも左
- 端と折り返し位置を確認する中立的な説
- 明です。狭い画面でも左端と折り返し位
- 置を確認する中立的な説明です。
+ Latest report
+ No report yet
 
  Note
  配置確認用のメモです。
@@ -29,6 +25,10 @@
  1h · fixture · Task created
  1h · fixture · Note added
  1h · fixture · Task detail updated
+
+
+
+
 
 
 

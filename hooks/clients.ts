@@ -91,6 +91,7 @@ export type FeatureId =
   | 'task-tree-currentness'
   | 'task-tree-projection'
   | 'task-tree-export'
+  | 'task-owner-reports'
   | 'task-status-mismatch'
   | 'timeline'
   | 'timeline-completed-fold'

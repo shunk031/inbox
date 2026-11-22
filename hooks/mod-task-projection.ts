@@ -2,7 +2,6 @@ import { createTaskProjection, writeProjectionAtomically } from './task-projecti
 import { modTaskTreeExport } from './mod-task-tree-export'
 import type { ProjectionFiles } from './task-projection'
 import type { Run } from './gh'
-import type { Session } from '../types'
 
 const COMMAND_TIMEOUT_MS = 10_000
 
@@ -12,7 +11,6 @@ type ModProjectionFs = {
   write(path: string, text: string): Promise<void>
   home(): Promise<string | undefined>
   now(): Promise<number>
-  updateSession(sessionId: string, change: (session: Session) => Session): Promise<Session>
   log(text: string): void
 }
 
@@ -48,7 +46,6 @@ export function modTaskProjection(fs: ModProjectionFs, run: Run, nonce: () => st
   const exportTree = modTaskTreeExport({
     home: fs.home,
     now: fs.now,
-    updateSession: fs.updateSession,
     write: fs.write,
     run,
     nonce,

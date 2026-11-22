@@ -123,7 +123,7 @@ function answerOf(hit: GhAnswer | undefined) {
 const isPrsQuery = (argv: readonly string[]) =>
   argv[1] === 'api' && argv[2] === 'graphql' && /^query=query \{ viewer/.test(argv[4] ?? '')
 
-/** Whether a graphql answer is in the old one-PR threads form, which the PRs query's answer is then built from. */
+/** Whether a graphql answer uses the legacy thread shape. */
 function isThreadsAnswer(hit: GhAnswer): boolean {
   try {
     return (

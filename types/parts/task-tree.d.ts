@@ -38,10 +38,9 @@ export type TaskLinks = {
 }
 
 export type TaskPrState = 'OPEN' | 'CLOSED' | 'MERGED'
+export type TaskPrCiState = 'passing' | 'failing' | 'pending' | 'not-run'
 
-export type TaskFactWarning =
-  | { taskId: string; pr: string; message: 'PR merged, task still open' | 'PR closed without merge' }
-  | { taskId: string; owner: TaskOwner; message: 'Owner idle 15m+' | 'Owner finished, task open' }
+export type TaskFactWarning = { taskId: string; pr: string; message: 'PR closed without merge' }
 
 export type TaskNode = {
   id: string
