@@ -1,4 +1,4 @@
-import type { PrCheck, PrFetchFailure, PrThread, PrView, TaskPrCiState } from '../types'
+import type { PrCheck, PrFetchFailure, PrThread, PrView } from '../types'
 import { checkKey, parseRef } from './prs'
 
 /** How many PRs one GraphQL query reads. GitHub counts a query's nodes, and 50 PRs stay well under its limit. */
@@ -11,7 +11,7 @@ export const PRS_PER_QUERY = 50
 const PR_FIELDS = `fragment PrFields on PullRequest {
   number title url isDraft state baseRefName mergeable reviewDecision
   author { login }
-  commits(last: 1) { nodes { commit { committedDate statusCheckRollup { contexts(first: 100) { nodes {
+  commits(last: 1) { nodes { commit { committedDate statusCheckRollup { state contexts(first: 100) { nodes {
     __typename
     ... on CheckRun { name status conclusion startedAt completedAt detailsUrl checkSuite { workflowRun { workflow { name } } } }
     ... on StatusContext { context state targetUrl createdAt }
@@ -190,12 +190,6 @@ function checksOf(node: PrNode): PrCheck[] {
   })
 }
 
-export function prCiState(checks: readonly PrCheck[]): TaskPrCiState {
-  if (checks.some(check => check.bucket === 'fail' || check.bucket === 'cancelled')) return 'failing'
-  if (checks.some(check => check.bucket === 'pending')) return 'pending'
-  return checks.some(check => check.bucket === 'pass') ? 'passing' : 'not-run'
-}
-
 const taskCiStatus = { pass: 'passing', fail: 'failing', pending: 'pending' } as const
 export const taskPrCiState = (state?: string) =>
   state ? (taskCiStatus[bucket({ state }) as keyof typeof taskCiStatus] ?? 'not-run') : 'not-run'
@@ -264,6 +258,7 @@ export function readPrNode(
     base: String(node.baseRefName ?? ''),
     mergeable: String(node.mergeable ?? 'UNKNOWN'),
     reviewDecision: String(node.reviewDecision ?? ''),
+    ciState: taskPrCiState(node.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state),
     checks: checksOf(node),
     threads: threadsError === null ? threadsOf(node, viewer) : (previous?.threads ?? []),
     isYours: viewer === undefined || node.author === undefined ? null : node.author?.login === viewer,

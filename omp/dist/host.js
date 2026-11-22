@@ -839,7 +839,7 @@ var PRS_PER_QUERY = 50;
 var PR_FIELDS = `fragment PrFields on PullRequest {
   number title url isDraft state baseRefName mergeable reviewDecision
   author { login }
-  commits(last: 1) { nodes { commit { committedDate statusCheckRollup { contexts(first: 100) { nodes {
+  commits(last: 1) { nodes { commit { committedDate statusCheckRollup { state contexts(first: 100) { nodes {
     __typename
     ... on CheckRun { name status conclusion startedAt completedAt detailsUrl checkSuite { workflowRun { workflow { name } } } }
     ... on StatusContext { context state targetUrl createdAt }
@@ -933,13 +933,6 @@ function checksOf(node) {
     };
   });
 }
-function prCiState(checks) {
-  if (checks.some((check) => check.bucket === "fail" || check.bucket === "cancelled"))
-    return "failing";
-  if (checks.some((check) => check.bucket === "pending"))
-    return "pending";
-  return checks.some((check) => check.bucket === "pass") ? "passing" : "not-run";
-}
 var taskCiStatus = { pass: "passing", fail: "failing", pending: "pending" };
 var taskPrCiState = (state) => state ? taskCiStatus[bucket({ state })] ?? "not-run" : "not-run";
 function threadsOf(node, viewer) {
@@ -980,6 +973,7 @@ function readPrNode(ref, node, viewer, previous, threadsError) {
     base: String(node.baseRefName ?? ""),
     mergeable: String(node.mergeable ?? "UNKNOWN"),
     reviewDecision: String(node.reviewDecision ?? ""),
+    ciState: taskPrCiState(node.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state),
     checks: checksOf(node),
     threads: threadsError === null ? threadsOf(node, viewer) : previous?.threads ?? [],
     isYours: viewer === undefined || node.author === undefined ? null : node.author?.login === viewer,
@@ -8785,9 +8779,9 @@ async function fetchPrs(host, findsBranchPr, isPress = false) {
       const state = stateOf(fetched[link.ref]?.state ?? s.prViews.views[link.ref]?.state);
       if (state)
         taskPrStates[url] = state;
-      const checks = fetched[link.ref]?.checks ?? s.prViews.views[link.ref]?.checks;
-      if (checks)
-        taskPrCiStates[url] = prCiState(checks);
+      const ciState = fetched[link.ref]?.ciState ?? s.prViews.views[link.ref]?.ciState;
+      if (ciState)
+        taskPrCiStates[url] = ciState;
     }
     Object.assign(taskPrStates, taskFacts.states);
     Object.assign(taskPrCiStates, taskFacts.ciStates);

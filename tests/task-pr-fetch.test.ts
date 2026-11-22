@@ -83,7 +83,12 @@ test('tracked merged PRs complete and save a task history event', async () => {
   const url = 'https://github.com/acme/app/pull/7'
   const base = emptySession()
   const start = { ...base, ledger: { ...base.ledger, prs: [ref] }, taskTree: [taskWithPr('t1', url)] }
-  const gh = ghStandIn((number, repo) => ({ node: prNodeOf(viewJson(`${repo}#${number}`, 'MERGED')) }))
+  const gh = ghStandIn((number, repo) => {
+    const view = viewJson(`${repo}#${number}`, 'MERGED')
+    view.statusCheckRollupState = 'FAILURE'
+    view.statusCheckRollup = [{ __typename: 'CheckRun', name: 'tests', status: 'COMPLETED', conclusion: 'SUCCESS' }]
+    return { node: prNodeOf(view) }
+  })
   const { host, state } = hostOf(gh.run, start)
 
   await fetchPrs(host, false)
@@ -93,6 +98,7 @@ test('tracked merged PRs complete and save a task history event', async () => {
     status: 'done',
     history: [{ source: 'pr', kind: 'completed', detail: url }],
   })
+  expect(state().taskPrCiStates[url]).toBe('failing')
 })
 
 test('untracked closed PRs warn, and a failed GitHub fetch changes no task fact or warning', async () => {

@@ -1,6 +1,6 @@
 import type { SessionStatus } from './status'
 import type { Closed, Item } from './items'
-import type { TaskOwner, TaskOwnerFact } from './task-tree'
+import type { TaskOwner, TaskOwnerFact, TaskPrCiState } from './task-tree'
 
 export type Finding = {
   id: string
@@ -77,6 +77,7 @@ export type PrView = {
   base: string
   mergeable: string
   reviewDecision: string
+  ciState?: TaskPrCiState
   checks: PrCheck[]
   threads: PrThread[]
   /** Whether the person running gh wrote the PR; null when GitHub's answer did not say. */

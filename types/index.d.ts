@@ -419,6 +419,7 @@ export type PrView = {
   base: string
   mergeable: string
   reviewDecision: string
+  ciState?: TaskPrCiState
   checks: PrCheck[]
   threads: PrThread[]
   /** Whether the person running gh wrote the PR; null when GitHub's answer did not say. */

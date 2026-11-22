@@ -5,7 +5,7 @@ import type { Effect } from './press-reducer'
 import { fetchAccountPrs } from './pr-fetch'
 import { withFetchedPrs } from './session-presses'
 import { applyTaskPrFacts } from './task-facts'
-import { prCiState, prStatesQuery, readPrsAnswer, taskPrCiState } from './pr-query'
+import { prStatesQuery, readPrsAnswer, taskPrCiState } from './pr-query'
 import { taskOwnerInHerdr } from './herdr'
 import { observedTaskOwnerFact, taskOwnerKey } from './task-facts'
 import { taskPrLink } from './task-tree'
@@ -288,8 +288,8 @@ export async function fetchPrs<S extends Session>(
       if (!url || !link?.queryable || link.host !== 'github.com' || !tracked.has(link.ref)) continue
       const state = stateOf(fetched[link.ref]?.state ?? s.prViews.views[link.ref]?.state)
       if (state) taskPrStates[url] = state
-      const checks = fetched[link.ref]?.checks ?? s.prViews.views[link.ref]?.checks
-      if (checks) taskPrCiStates[url] = prCiState(checks)
+      const ciState = fetched[link.ref]?.ciState ?? s.prViews.views[link.ref]?.ciState
+      if (ciState) taskPrCiStates[url] = ciState
     }
     Object.assign(taskPrStates, taskFacts.states)
     Object.assign(taskPrCiStates, taskFacts.ciStates)
