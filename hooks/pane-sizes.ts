@@ -52,7 +52,7 @@ export const DESKTOP_ROW_PAD = ROW_PAD_PT / DESKTOP_LINE_PT
 export const TREE_LINE_AT = TEXT_COLUMN - 1
 export const ROW_COLUMNS = {
   tree: { lead: TREE_LINE_AT + 3, handleAt: TREE_LINE_AT + 3, textAt: TREE_LINE_AT + 6 },
-  desktop: { lead: 1, handleAt: 1, textAt: 3 },
+  desktop: { lead: TEXT_COLUMN - 2, handleAt: TEXT_COLUMN - 2, textAt: TEXT_COLUMN },
 } as const
 export const DESKTOP_MARK_CELLS = 1
 /** One point, across in cells and down in lines: desktop draws a tree line as a filled Box, since it has no per-side borders. */
