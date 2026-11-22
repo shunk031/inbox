@@ -10314,6 +10314,7 @@ function wrapText2(text, width, measure, { keepCjkSpaces = false } = {}) {
 }
 
 // src/panel-draw.ts
+var wrapTimelineDetailText = (text, width) => wrapText2(text, width, visibleLength, { keepCjkSpaces: true }).map((line) => line.text);
 function takeTimelineCells(text, width) {
   const chars = Array.from(text);
   let used = 0;
@@ -10432,7 +10433,7 @@ function timelineLine(line, plan, isSelected, d) {
       const indent = detailIndent + 2;
       for (const text of detail.text.split(`
 `))
-        out.push(...(detail.label === "Note" ? wrapText2(text, Math.max(1, width - indent), visibleLength, { keepCjkSpaces: true }).map((line) => line.text) : wrapTimelineText(text, Math.max(1, width - indent))).map((text) => `${" ".repeat(indent)}${text}`));
+        out.push(...wrapTimelineDetailText(text, Math.max(1, width - indent)).map((line) => " ".repeat(indent) + line));
     }
   }
   return out;

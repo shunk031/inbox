@@ -19,6 +19,9 @@ import { wrapText as wrapSharedText } from '../../hooks/line-wrap'
 
 export type Draw = { screen: PanelScreen; ui: PanelUi; width: number; now: number; style: Style }
 
+export const wrapTimelineDetailText = (text: string, width: number) =>
+  wrapSharedText(text, width, visibleLength, { keepCjkSpaces: true }).map(line => line.text)
+
 function takeTimelineCells(text: string, width: number): { shown: string; rest: string } {
   const chars = Array.from(text)
   let used = 0
@@ -153,14 +156,7 @@ function timelineLine(line: Line, plan: TimelineLinePlan, isSelected: boolean, d
       out.push(`${row.detailLead}${s.dim(detail.label)}`)
       const indent = detailIndent + 2
       for (const text of detail.text.split('\n'))
-        out.push(
-          ...(detail.label === 'Note'
-            ? wrapSharedText(text, Math.max(1, width - indent), visibleLength, { keepCjkSpaces: true }).map(
-                line => line.text,
-              )
-            : wrapTimelineText(text, Math.max(1, width - indent))
-          ).map(text => `${' '.repeat(indent)}${text}`),
-        )
+        out.push(...wrapTimelineDetailText(text, Math.max(1, width - indent)).map(line => ' '.repeat(indent) + line))
     }
   }
   return out
