@@ -209,7 +209,7 @@ test('the desktop summary footer closes stale detail, preserves hidden selection
   await clock.settle()
   expect(detailOpen).toBe(false)
   expect(selection.value).toBe('finished')
-  expect((await desktop.findAll({ type: 'Text' })).some(row => row.text.includes('> ○ '))).toBe(true)
+  expect((await desktop.findAll({ type: 'Text' })).some(row => row.text.includes('> ● '))).toBe(true)
   await pane.press({ key: `timeline-title-${COMPLETED_FOLD_ID}` })
   await clock.settle()
   expect((await pane.findAll({ type: 'Text' })).some(row => row.text.includes('> ▸ '))).toBe(true)
@@ -249,13 +249,13 @@ test('Timeline opens a selected task detail and returns to the selected tree row
   const buttons = (await pane.findAll({ type: 'Button' })).map(button => button.props)
   expect(
     buttons.some(button => button.label === 'Close branch' && button.hotkey === 'h'),
-    'branch action is available',
+    `branch action is available: ${JSON.stringify(buttons)}`,
   ).toBe(true)
   expect(buttons.some(button => button.label === 'Select')).toBe(false)
   const text = (await pane.findAll({ type: 'Text' })).map(node => node.text)
   expect(text).toContain('A flow 21%')
   expect(text.some(line => line.includes('Build the review flow'))).toBe(false)
-  expect(text.some(line => line.includes('No report yet'))).toBe(true)
+  expect(text).toContain('Not started')
 
   expect((await pane.find({ key: 'timeline-title-plan' }))?.props.autoFocus).toBe(true)
   await pane.press({ key: 'timeline-title-plan' })
@@ -330,7 +330,7 @@ test('terminal Timeline keeps Japanese titles, row metadata and detail guides at
   expect(rootProgress?.text.match(/[━─]+/u), 'narrow rows omit the bar').toBeNull()
   const lines = (await pane.findAll({ type: 'Text' })).map(line => line.text)
   expect(lines.some(line => line.startsWith('> ○ '))).toBe(true)
-  expect(lines).toContain('No report yet')
+  expect(lines).toContain('In progress')
   expect(
     lines.some(line => line.trim() === '0.00%'),
     'the row percentage keeps every character',

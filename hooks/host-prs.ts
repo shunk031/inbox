@@ -100,7 +100,7 @@ async function fetchUntrackedTaskPrStates<S extends Session>(
     return (
       link?.queryable === true &&
       !(link.host === 'github.com' && tracked.has(link.ref)) &&
-      (s.taskPrStates[url] !== 'MERGED' || s.taskPrCiStates[url] === undefined)
+      (s.taskPrStates[url] !== 'MERGED' || !['passing', 'failing'].includes(s.taskPrCiStates[url] ?? ''))
     )
   })
   const selected = afterCursor(urls, s.taskPrFactCursor).slice(0, TASK_PR_FETCH_LIMIT)

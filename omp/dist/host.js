@@ -8637,7 +8637,7 @@ async function fetchTaskOwnerFacts(host) {
 async function fetchUntrackedTaskPrStates(host, s, bin, tracked) {
   const urls = taskPrUrls(s).filter((url) => {
     const link = taskPrLink(url);
-    return link?.queryable === true && !(link.host === "github.com" && tracked.has(link.ref)) && (s.taskPrStates[url] !== "MERGED" || s.taskPrCiStates[url] === undefined);
+    return link?.queryable === true && !(link.host === "github.com" && tracked.has(link.ref)) && (s.taskPrStates[url] !== "MERGED" || !["passing", "failing"].includes(s.taskPrCiStates[url] ?? ""));
   });
   const selected = afterCursor(urls, s.taskPrFactCursor).slice(0, TASK_PR_FETCH_LIMIT);
   if (selected.length === 0)

@@ -111,10 +111,10 @@ for (const bodyColumns of [110, 200] as const) {
       bodyColumns === 110 ? `${cutToCells(longTask.title, (titleArea?.props.width as number) - 1)}…` : longTask.title
     expect(snapshot).toEqual([
       ['heading', 'Progress'],
-      ['scene-root', 'Review task tree', 'No report yet'],
-      ['scene-wrap', '折り返し用の日本語タイトル\n次の行も表示する', 'No report yet'],
-      ['scene-long', longTitle, 'No report yet'],
-      ['scene-deep', 'ログと結果を見て仕上がりを確かめる', 'No report yet'],
+      ['scene-root', 'Review task tree', 'In progress'],
+      ['scene-wrap', '折り返し用の日本語タイトル\n次の行も表示する', 'Completed'],
+      ['scene-long', longTitle, 'In progress'],
+      ['scene-deep', 'ログと結果を見て仕上がりを確かめる', 'Waiting'],
     ])
   })
 }

@@ -3,7 +3,7 @@
    Asks 1     Timeline 3     PRs
 ─▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀─────
 
- b: ‹ Back Snapshot …   No report yet
+ b: ‹ Back Snapshot …     In progress
 
  ┌─────────────────┐ ┌───────────────┐
  │ Progress        │ │ Weight        │

@@ -2010,6 +2010,7 @@ async function drawnState(
     now,
     holds,
     SETTLED_MS,
+    reportQueue,
   )
   redrawAtNextFold($, state.view, session.presence.lastTypedMessageAt, now)
 

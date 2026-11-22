@@ -3,7 +3,7 @@
    Asks 1     Timeline 1     PRs
 ─▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀▀▀▀▀▀▀▀─▀▀▀▀▀▀▀───────────────────────────────────────────────────────
 
- b: ‹ Back Snapshot detail empty                                          No report yet
+ b: ‹ Back Snapshot detail empty                                            In progress
 
  ┌─────────────────────────┐ ┌──────────────────────┐ ┌────────────────────────────────┐
  │ Progress                │ │ Weight               │ │ Completed units                │

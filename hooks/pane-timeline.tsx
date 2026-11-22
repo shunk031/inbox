@@ -71,8 +71,7 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
     ),
     timelineTaskTree,
     taskReportQueue,
-    taskPrStates,
-    taskPrCiStates,
+    { taskPrStates, taskPrCiStates },
     now,
   )
   const toggleCompletedFold = async (id: string) => {
@@ -161,6 +160,7 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
               {row.warnings.map(warning => (
                 <Text color={pal.tone.issue ?? pal.muted}>{`${row.treeLead}⚠ ${warning}`}</Text>
               ))}
+              {row.reportLine && <Text color={pal.muted}>{row.reportLine}</Text>}
               {selection?.details.map(line =>
                 line.label === 'Links' ? (
                   <Box flexDirection="row">
@@ -419,6 +419,7 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
                 {row.warnings.map(warning => (
                   <Text color={pal.tone.error ?? pal.muted}>{`${warningLead}⚠ ${warning}`}</Text>
                 ))}
+                {row.reportLine && <Text color={pal.muted}>{`${warningLead}${row.reportLine}`}</Text>}
               </Box>
             )
           })}
