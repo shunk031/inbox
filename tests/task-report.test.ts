@@ -28,13 +28,15 @@ test('selects the newest report for each exact owner and machine', () => {
 test('an open linked PR shows its CI in the Timeline row and detail', () => {
   const pr = 'https://github.com/example/project/pull/13'
   const row = { task: { id: 'task', links: { pr } }, statusLabel: 'Not started', isCompletedFold: false }
+  const ownerRow = { task: owner('unreported', 'worker'), isCompletedFold: false }
   const result = taskReportPage(
-    { rows: [row], selected: { row, details: [] } } as never,
+    { rows: [row, ownerRow], selected: { row, details: [] } } as never,
     tree('worker'),
     '',
     { taskPrStates: { [pr]: 'OPEN' }, taskPrCiStates: { [pr]: 'passing' } } as never,
     1_000,
   )
   expect(result.rows[0]?.reportLine).toBe('No report yet · PR open · CI passing')
+  expect(result.rows[1]?.reportLine).toBe('No report yet')
   expect(result.selected?.details[0]).toEqual({ label: 'Latest report', text: 'No report yet · PR open · CI passing' })
 })

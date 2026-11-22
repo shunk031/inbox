@@ -44,7 +44,7 @@ export function taskReportPage(page: TimelinePage, tree: TaskTree, queue: string
     return `${report ? `${report.line} · ${shortAgo(Math.max(0, now - report.at))}` : 'No report yet'}${url ? ` · PR ${facts.taskPrStates[url]?.toLowerCase() ?? 'state unavailable'} · CI ${facts.taskPrCiStates[url]?.replace('-', ' ') ?? 'unavailable'}` : ''}`
   }
   const withReport = (row: TimelinePage['rows'][number]) =>
-    !row.isCompletedFold && (reports[row.task.id] || row.task.links?.pr)
+    !row.isCompletedFold && (row.task.links?.owner || row.task.links?.pr)
       ? { ...row, reportLine: reportText(row.task.id, row.task.links?.pr) }
       : { ...row, reportLine: undefined }
   const selected = page.selected && {
