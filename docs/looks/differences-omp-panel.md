@@ -5,7 +5,6 @@ Part of [the look map](../looks.md#omp).
 | Topic | omp | Why | Where |
 | --- | --- | --- | --- |
 | `timeline-completed-fold` | Finished roots stay inline. | The terminal look ships first; the other looks follow later. | `hooks/timeline-page.ts`, `omp/src/panel-entries.ts` |
-| `task-owner-reports` | Keeps its current Timeline status for now. | This change reads the queue only in Claude Code's mod. | `hooks/task-report.ts`, `hooks/pane-timeline.tsx` |
 | Timeline titles | A long title wraps under its tree mark while the bar, percent, and status chip keep their full cells. Wrapped task detail starts under its tree guide. | The panel draws ANSI text at a known cell width, so it can wrap titles before placing the fixed metadata. | `omp/src/panel-draw.ts` |
 | Timeline row bands | Alternate task rows keep the panel's existing fill. | The terminal follows Asks, Finds and PRs, which have no bands; omp retains its own Timeline row treatment. | `omp/src/panel-draw.ts:timelineLine` |
 | Document reader keys (`item-document`) | `v` opens the selected report; `b` or Escape returns; `j`, `k` and arrows scroll. | The panel keeps its keys while the report is open; unlike the mod's pane, Escape returns to the inbox. | `omp/src/panel-keys.ts`, `omp/src/controller.ts` |

@@ -15,6 +15,7 @@ import { codexHerdrAsk, followCodexPresses, startCodexInHerdrApp } from './serve
 import { COMPARE_PAGE_FILE } from '../../hooks/press-messages'
 import { NEXT_BUILD_MARK } from '../../hooks/banners'
 import { memoizedFeedPath, resolveInboxFeedPath } from '../../hooks/feed-path'
+import { readTaskReportQueue } from '../../hooks/task-report'
 
 function devPageIn(dir: string): () => Promise<string | null> {
   let cached: { path: string; mtimeMs: number; html: string } | null = null
@@ -87,6 +88,7 @@ export function createHandler(
     isNextBuild: existsSync(join(dirname(dirname(fileURLToPath(import.meta.url))), NEXT_BUILD_MARK)),
     feedPath,
     taskProjectionPath: process.env.INBOX_TASK_PROJECTION_PATH,
+    taskReportQueue: () => readTaskReportQueue(process.env, path => readFile(path, 'utf8')),
     comparePage: join(dirname(fileURLToPath(import.meta.url)), COMPARE_PAGE_FILE),
     onWrite: herdrOnWrite(process.env, run, dir, Date.now, log),
     followHerdrPresses: followHerdrPresses(log),

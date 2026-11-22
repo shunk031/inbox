@@ -84,6 +84,7 @@ export function TimelineTab({ view }: { view: TabView }) {
                 {warning}
               </div>
             ))}
+            {row.reportLine ? <div class="timeline-report-line muted">{row.reportLine}</div> : null}
           </div>
         </div>
         {row.hasChildren && !hidden.has(row.task.id) ? (

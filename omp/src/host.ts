@@ -58,6 +58,7 @@ import {
 import { runtimeFeedPath } from './host-feed'
 import { copyToClipboard } from './host-clipboard'
 import { inboxModel } from './host-model'
+import { readOmpTaskReportQueue } from './host-task-reports'
 
 const INBOX_MODEL_TIMEOUT_MS = 120_000
 
@@ -111,6 +112,7 @@ export type HostDeps = {
   /** The value of `INBOX_RECORDED_ITEMS_ONLY`, which `isRecordedItemsOnly` reads. */
   recordedItemsOnly: string | undefined
   feedPath?: FeedPathSetting
+  taskReportQueue?: () => Promise<string>
 }
 
 async function defaultComplete(
@@ -147,6 +149,7 @@ const defaultDeps: HostDeps = {
   herdrPane: process.env.HERDR_PANE_ID || null,
   recordedItemsOnly: process.env.INBOX_RECORDED_ITEMS_ONLY,
   feedPath: process.env.INBOX_FEED,
+  taskReportQueue: readOmpTaskReportQueue,
 }
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err))

@@ -42,6 +42,7 @@ import {
 } from './session-turns'
 import { emptySession, upgradeSession, type SavedSession } from './session-files'
 import { modTaskProjection, type ModTaskProjection } from './mod-task-projection'
+import { readTaskReportQueue as readTaskReportQueueFromFile } from './task-report'
 import { runModTool } from './mod-task-run'
 import { postToolReminder, toolCallReminder, withToolCallReminder } from './mod-task-reminder'
 import { pressOn, pruned, type SendOutcome } from './session-presses'
@@ -2035,8 +2036,7 @@ async function drawnState(
 
 async function readTaskReportQueue($: EngineInterface): Promise<string> {
   const [home, stateDir] = await Promise.all([$.env.get('HOME'), $.env.get('HERDR_META_PATROL_STATE_DIR')])
-  const dir = stateDir?.trim() || (home ? `${home}/.local/state/herdr-meta-patrol` : '')
-  return dir ? $.fs.read(`${dir.replace(/\/+$/, '')}/queue.jsonl`).catch(() => '') : ''
+  return readTaskReportQueueFromFile({ HOME: home, HERDR_META_PATROL_STATE_DIR: stateDir }, path => $.fs.read(path))
 }
 
 async function setDemo($: EngineInterface, isShown: boolean, isRecording = false) {

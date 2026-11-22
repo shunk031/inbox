@@ -13,6 +13,7 @@ export async function setup(
   isNextBuild = false,
   feedPath?: string,
   execAnswer?: (args: string[]) => { code: number; stdout: string; stderr: string },
+  taskReportQueue?: () => Promise<string>,
 ) {
   const dir = tempDir()
   await updateState(dir, 's1', s => ({
@@ -54,6 +55,7 @@ export async function setup(
     fallbackCli,
     isNextBuild,
     feedPath,
+    taskReportQueue,
   })
   const call = (name: string, args: Record<string, unknown>, meta: Record<string, unknown>) =>
     handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args, _meta: meta } }) as Promise<{

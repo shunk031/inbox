@@ -135,6 +135,10 @@ export type View = SessionView & {
  * cause. `isNextBuild` says the installed copy holds `NEXT_BUILD_MARK`.
  */
 export type TabView = View & {
+  /** The newest owner report queue, read by the server for the Timeline. */
+  taskReportQueue?: string
+  taskPrStates?: SessionState['taskPrStates']
+  taskPrCiStates?: SessionState['taskPrCiStates']
   hooksTrust?: HooksTrust
   /** The question before the tab installs the inbox's Herdr mod, while no host has answered it. */
   herdrAsk?: OpenHerdrAsk
