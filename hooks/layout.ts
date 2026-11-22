@@ -16,4 +16,8 @@ export const BANNER_PAD_Y_PT = 8
 
 /** The space between two banners, in points. */
 export const BANNER_GAP_PT = 8
+
+/** The first column where text below the pane's tab bar may start. */
+export const TEXT_COLUMN = 3
+
 export const timelineRowBarWidth = (bodyColumns: number) => (bodyColumns >= 68 ? 10 : 0)

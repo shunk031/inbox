@@ -1,4 +1,6 @@
 import { cellWidth } from '../hooks/text.ts'
+import { TEXT_COLUMN } from '../hooks/layout.ts'
+import { checkTextColumn } from './render-snapshots-text-column.mjs'
 import { wrapErrors, wrapText } from '../hooks/line-wrap.ts'
 import { JAPANESE_DETAIL, registry } from './render-snapshots-fixtures.mjs'
 import {
@@ -98,13 +100,15 @@ export function checkLeftEdges(entry, frame) {
   if (entry.view !== 'timeline-detail') return []
   const lines = frame.split('\n')
   const header = lines.find(line => line.includes('Back Snapshot')),
-    box = lines.find(line => line.includes('┌'))
-  if (!header || !box) return ['left-edge reference row absent']
+    box = lines.find(line => line.includes('┌')),
+    cardText = lines.find(line => line.includes('│ Progress'))
+  if (!header || !box || !cardText) return ['text-column reference row absent']
 
-  const edge = col(box, box.indexOf('┌')),
+  const edge = TEXT_COLUMN,
     errors = []
   const check = (row, line, index) =>
-    col(line, index) === edge || errors.push(failure(entry, row, edge, col(line, index), 'left edge mismatch'))
+    col(line, index) === edge || errors.push(failure(entry, row, edge, col(line, index), 'text column mismatch'))
+  check('card text', cardText, cardText.indexOf('Progress'))
   check('detail header', header, header.indexOf('b: ‹ Back'))
 
   let section = false
@@ -122,6 +126,8 @@ export function checkFrame(entry, frame, width) {
   const errors = []
   const lines = frame.split('\n')
   const add = (...args) => errors.push(failure(entry, ...args))
+
+  errors.push(...checkTextColumn(entry, frame))
 
   lines.forEach((line, i) => {
     const cells = cellWidth(line)
@@ -144,7 +150,7 @@ export function checkFrame(entry, frame, width) {
     for (const match of line.matchAll(/│/g)) {
       const at = col(line, match.index)
       const border = at === 1 || at === cellWidth(line) - 1
-      const inTree = at >= 4 && at <= 14
+      const inTree = at >= TEXT_COLUMN + 2 && at <= TEXT_COLUMN + 12
       const listGuide = entry.view === 'asks' && at >= listBase && (at - listBase) % 3 === 0 && at <= listBase + 12
       const statsRow = entry.view === 'timeline-detail' && /Progress|Weight|Completed units|%/u.test(line)
       const statsDivider = statsRow && (detailColumns[entry.width]?.includes(at) ?? false)
