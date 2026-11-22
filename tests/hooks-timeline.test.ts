@@ -255,16 +255,13 @@ test('Timeline opens a selected task detail and returns to the selected tree row
   const text = (await pane.findAll({ type: 'Text' })).map(node => node.text)
   expect(text).toContain('A flow 21%')
   expect(text.some(line => line.includes('Build the review flow'))).toBe(false)
-  expect(
-    text.some(line => line.includes('No report yet')),
-    'the status is visible in the tree',
-  ).toBe(true)
+  expect(text.some(line => line.includes('No report yet'))).toBe(true)
 
   expect((await pane.find({ key: 'timeline-title-plan' }))?.props.autoFocus).toBe(true)
   await pane.press({ key: 'timeline-title-plan' })
   await clock.settle()
   let detail = (await pane.findAll({ type: 'Text' })).map(node => node.text)
-  expect(detail, 'the existing Detail row uses the report placeholder').toContain('No report yet')
+  expect(detail).toContain('No report yet')
   expect(detail).toContain('Detail')
   expect(detail).not.toContain('Build the review flow')
   expect(detail).toContain('Keep the row short')
@@ -327,23 +324,18 @@ test('terminal Timeline keeps Japanese titles, row metadata and detail guides at
   const title = await pane.find({ key: 'timeline-title-long-root' })
   expect(title?.text.endsWith('…'), 'the long title is truncated with an ellipsis').toBe(true)
   expect(title?.text).not.toContain(longTitle)
-  expect(cellWidth(title?.text ?? '')).toBeGreaterThanOrEqual(20)
-  expect(cellWidth(title?.text ?? '')).toBeLessThanOrEqual(30)
-  expect(
-    await pane.find({ key: 'timeline-row-bar-long-root' }),
-    'the bar is dropped to preserve title width',
-  ).not.toBeTruthy()
+  expect(cellWidth(title?.text ?? '')).toBeGreaterThanOrEqual(19)
+  expect(cellWidth(title?.text ?? '')).toBeLessThanOrEqual(36)
+  const rootProgress = await pane.find({ key: 'timeline-row-progress-long-root' })
+  expect(rootProgress?.text.match(/[━─]+/u), 'narrow rows omit the bar').toBeNull()
   const lines = (await pane.findAll({ type: 'Text' })).map(line => line.text)
-  expect(
-    lines.some(line => line.startsWith('> ○ ')),
-    'the mark and tree prefix stay on the title line',
-  ).toBe(true)
-  expect(lines, 'the status chip reports missing queue data').toContain('No report yet')
+  expect(lines.some(line => line.startsWith('> ○ '))).toBe(true)
+  expect(lines).toContain('No report yet')
   expect(
     lines.some(line => line.trim() === '0.00%'),
     'the row percentage keeps every character',
   ).toBe(true)
-  expect((await pane.find({ key: 'timeline-progress-bar' }))?.props.flexDirection).toBe('column')
+  expect((await pane.find({ key: 'timeline-progress-bar' }))?.props.flexDirection).toBe('row')
 
   await pane.press({ key: 'timeline-title-child-a' })
   await clock.settle()
@@ -405,7 +397,7 @@ test('terminal Timeline aligns percentages, strips rows, and separates only top-
     status: 'dropped',
   } as never)
 
-  const pane = await $.ui.mount(PANE)
+  const pane = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 110 } })
   await pane.press({ key: 'tab-key-timeline' })
   await clock.settle()
 
@@ -428,9 +420,11 @@ test('terminal Timeline aligns percentages, strips rows, and separates only top-
   expect(percentages).toEqual(['   0.00%', '  40.00%', ' 100.00%'])
   expect(percentages.map(text => cellWidth(text ?? ''))).toEqual([8, 8, 8])
   const bars = await Promise.all(
-    ['zero', 'forty', 'forty-done'].map(async id => (await pane.find({ key: `timeline-row-bar-${id}` }))?.text ?? ''),
+    ['zero', 'forty', 'forty-done'].map(
+      async id => (await pane.find({ key: `timeline-row-progress-${id}` }))?.text.match(/[━─]+/u)?.[0] ?? '',
+    ),
   )
-  expect(bars.map(text => cellWidth(text))).toEqual([12, 12, 12])
+  expect(bars.map(text => cellWidth(text))).toEqual([10, 10, 10])
   const text = (await pane.findAll({ type: 'Text' })).map(node => node.text)
   expect(
     text.some(line => line.trim() === '3'),
@@ -438,7 +432,7 @@ test('terminal Timeline aligns percentages, strips rows, and separates only top-
   ).toBe(true)
 })
 
-test('the desktop Timeline keeps the existing inline tree while this look is pending', async ($, on) => {
+test('the desktop Timeline keeps its inline tree and draws sized SVG progress bars', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   world($, on, [])
   w.files = ['/.next-build']
@@ -482,6 +476,10 @@ test('the desktop Timeline keeps the existing inline tree while this look is pen
   expect(
     (await pane.findAll({ type: 'Button' })).filter(button => button.key?.startsWith('timeline-title-')),
   ).toHaveLength(3)
+  const bars = await pane.findAll({ type: 'Svg' })
+  expect(bars).toHaveLength(4)
+  expect(bars[0]?.props.width).toBe(118 * 8.8)
+  expect(bars[0]?.props.source).toContain('textLength="1038.4"')
   const text = (await pane.findAll({ type: 'Text' })).map(node => node.text)
   expect(text.some(line => line.includes('Task plan'))).toBe(true)
   expect(text).not.toContain('Progress')

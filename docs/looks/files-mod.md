@@ -27,6 +27,7 @@ Part of [the look map](../looks.md#files).
 | `hooks/pane-status-tops.ts` | Mod only. `Drawn`: a part of the Status with the terminal lines it takes, which each Status drawing function returns with its element, and how parts stack into each subject row's first line. |
 | `hooks/pane-status.tsx` | Mod only. The Status tab: each row and its buttons, Other work's rule, and the tab's page. |
 | `hooks/pane-timeline.tsx` | Mod only. The Timeline tab's tree, progress bars, task details and local PR or issue links in the terminal and desktop pane. |
+| `hooks/pane-timeline-style.tsx` | Mod only. Timeline status colors and status chips shared by the terminal and desktop pane. |
 | `hooks/task-report.ts` | Mod only. Selects the newest meta-patrol report for each task owner. |
 | `hooks/timeline-state.ts` | Mod only. Upgrades the saved Timeline selection and folded task ids, defaulting absent or malformed values for older saves. |
 | `hooks/inbox-model.ts` | Mod only. The model the mod's ledger and Status calls ask, and the report each call gives its record. |
@@ -37,6 +38,7 @@ Part of [the look map](../looks.md#files).
 | `hooks/palettes.ts` | Mod only. The pane's colors for each Claude Code theme and for desktop. `lookOf` picks a surface's look, and `paletteFor` picks the palette for a theme and look. |
 | `hooks/desktop-svg.ts` | Mod only. The Svg images the desktop pane draws: Undo's draining fill, marks that follow the system's light or dark setting, the running dot and the fold chevron. |
 | `hooks/terminal-text.ts` | Mod only. Text drawn as styled spans: terminal word wrapping, the cut to a line limit with an ellipsis in both looks, and a line budget that includes the Link's plain-text URL fallback. |
+| `hooks/line-wrap.ts` | Mod only. Japanese line breaks and hanging indents shared by the terminal and desktop looks. |
 | `hooks/pane-selection.ts` | Mod only. The shown tab, each tab's cursor and selected row, closed folds, the rows each tab gained since the last draw, Undo's scroll and redraw timing, and the keys that hold a settled layout and its scroll. It moves a saved Finds selection into Asks and shows legacy findings in the terminal's unfolded Asks list only. |
 | `hooks/pane-keys.ts` | Mod only. Row buttons and their keys: the `Action` type, each PR press's key, button glyphs, which element takes focus, a reply field's key, and the text a failed copy shows. |
 | `hooks/mod-delivery.ts` | Mod only. Matches each prompt row Claude Code stores to the message a press sent, so the press reads as delivered. It also settles a message another plugin rewrote, and adds back, as uncertain, a queued message's sent record that an older build lost. |

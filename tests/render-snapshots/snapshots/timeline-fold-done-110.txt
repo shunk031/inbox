@@ -5,19 +5,19 @@
 
  ┌───────────────────────────────────┐
  │ Progress             In progress  │
- │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━      │
- │ 75.00%                            │
- │ 2/3 leaf tasks completed          │
+ │ ━━━━━━━━━━━━━━━━━━━━━━━━━──────── │
+ │ 75.00% complete · 2/3 leaf tasks  │
+ │ completed                         │
  │ Elapsed: 1m                       │
  └───────────────────────────────────┘
 
-  > ○ Snapshot root 日本語の…  50.00%
+  > ○ Snapshot root 日本語…    50.00%
     │  No report yet
     ├─ ○ 折り返し用の日本語…  100.00%
     │     No report yet
     └─ ○ Snapshot long 表示…    0.00%
        │  No report yet
-       └─ ○ 深い階層の待機中…   0.00%
+       └─ ○ 深い階層の待機…     0.00%
              No report yet
 
     ▸ 1 completed

@@ -1,23 +1,13 @@
-import type { PaneBase, PaneHandlers } from './pane-context'
+import type { PaneBase, PaneHandlers, PaneSvg } from './pane-context'
 import type { TaskPrCiState, TaskPrState, TaskTree } from '../types'
 import { cellWidth, cutToCells } from './text'
-import { moveTimelineSelection, timelinePage, toggleTimelineBranch } from './timeline-page'
+import { moveTimelineSelection, timelineBar, timelinePage, toggleTimelineBranch } from './timeline-page'
+import { timelineRowBarWidth } from './layout'
 import type { TimelinePage } from './timeline-page'
 import { taskReportPage } from './task-report'
-
-type TimelineStyle = Pick<PaneBase, 'Box' | 'Text' | 'pal'>
-
-function timelineToneColor(pal: PaneBase['pal'], tone: string) {
-  return tone === 'key' ? pal.key : tone === 'muted' ? pal.muted : (pal.tone[tone as 'done' | 'error'] ?? pal.muted)
-}
-
-function timelineChip({ Box, Text, pal }: TimelineStyle, label: string, tone: string, key?: string) {
-  return (
-    <Box key={key} backgroundColor={timelineToneColor(pal, tone)} paddingX={1}>
-      <Text color="inverseText">{label}</Text>
-    </Box>
-  )
-}
+import { timelineChip, timelineToneColor } from './pane-timeline-style'
+import { DESKTOP_CELL_PT, DESKTOP_LINE_PT } from './pane-sizes'
+import { timelineBarSvg } from './desktop-svg'
 
 function timelineRowLead(row: { prefix: string; mark: string }, selected: boolean) {
   return `${selected ? '> ' : '  '}${row.prefix}${row.mark} `
@@ -44,6 +34,7 @@ type TimelinePaneBase = Pick<
   taskPrStates: Record<string, TaskPrState>
   taskPrCiStates: Record<string, TaskPrCiState>
   now: number
+  Svg?: PaneSvg
 }
 type TimelinePaneHandlers = Pick<
   PaneHandlers,
@@ -55,6 +46,7 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
     Box,
     Button,
     Text,
+    Svg,
     pal,
     look,
     view,
@@ -100,16 +92,33 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
           : tone === 'key'
             ? (pal.tone.needsYou ?? pal.muted)
             : pal.muted
-    const bar = (parts: typeof page.progressCard.bar) =>
-      parts.map(part => <Text color={color(part.tone)}>{part.mark.repeat(part.count)}</Text>)
+    const bar = (parts: ReturnType<typeof timelineBar>, width: number, key: string, alt: string) => {
+      const pixels = width * DESKTOP_CELL_PT
+      return Svg ? (
+        <Box key={key} width={width} height={1} flexShrink={0}>
+          <Svg source={timelineBarSvg(parts, width)} alt={alt} width={pixels} height={DESKTOP_LINE_PT} />
+        </Box>
+      ) : (
+        <Text key={key} color={pal.muted}>
+          {parts.map(part => part.mark.repeat(part.count)).join('')}
+        </Text>
+      )
+    }
+    const rowBar = (row: TimelinePage['rows'][number], width: number) =>
+      bar(timelineBar(row.progressSegments, width), width, `timeline-row-bar-${row.task.id}`, `${row.percent} complete`)
     const timelineView = (
       <Box flexDirection="column">
-        <Box flexDirection="row">
-          <Text color={pal.muted}>
-            {`Task plan · ${page.progressCard.percentLabel} complete · ${page.progressCard.leavesDone}/${page.progressCard.leavesTotal} leaf tasks`}
-          </Text>
-          {page.progressCard.bar.length ? <Text color={pal.muted}> · </Text> : null}
-          {bar(page.progressCard.bar)}
+        <Box flexDirection="column">
+          <Text color={pal.muted}>{`Task plan · ${page.progressCard.percentLabel} complete`}</Text>
+          <Text
+            color={pal.muted}
+          >{`${page.progressCard.leavesDone}/${page.progressCard.leavesTotal} leaf tasks completed`}</Text>
+          {bar(
+            timelineBar(page.progressCard.segments, context.bodyColumns),
+            context.bodyColumns,
+            'timeline-progress-bar',
+            `${page.progressCard.percentLabel} complete, ${page.progressCard.leavesDone}/${page.progressCard.leavesTotal} leaf tasks completed`,
+          )}
         </Box>
         {page.isEmpty ? (
           <Box flexDirection="column">
@@ -120,22 +129,33 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
         {page.rows.map(row => {
           const selected = row.task.id === page.selected?.row.task.id
           const selection = selected ? page.selected : null
+          const rowLead = `${selected ? '> ' : '  '}${row.prefix}${row.mark} `
+          const suffix = row.isCompletedFold ? '' : ` · ${row.statusLabel} · ${row.percent}`
+          const barWidth = row.isCompletedFold ? 0 : timelineRowBarWidth(context.bodyColumns)
+          const titleCells = Math.max(
+            1,
+            context.bodyColumns - cellWidth(rowLead) - cellWidth(suffix) - (barWidth ? 12 : 0),
+          )
+          const title =
+            cellWidth(row.task.title) > titleCells
+              ? `${cutToCells(row.task.title, Math.max(0, titleCells - 1))}…`
+              : row.task.title
           return (
             <Box key={`timeline-${row.task.id}`} flexDirection="column">
               <Box flexDirection="row">
-                <Text color={color(row.tone)}>
-                  {selected ? '> ' : '  '}
-                  {row.prefix}
-                  {row.mark}{' '}
-                </Text>
+                <Text color={color(row.tone)}>{rowLead}</Text>
                 <Button
                   plain
                   key={`timeline-title-${row.task.id}`}
-                  label={row.task.title}
+                  label={title}
                   onPress={() => selectOrToggleDone(row.task.id, row.isCompletedFold === true)}
                 />
                 {!row.isCompletedFold ? (
-                  <Text color={pal.muted}>{` · ${row.statusLabel} · ${row.percent}`}</Text>
+                  <Box flexDirection="row" flexShrink={0}>
+                    {barWidth ? <Text color={pal.muted}>{'  '}</Text> : null}
+                    {barWidth ? rowBar(row, barWidth) : null}
+                    <Text color={pal.muted}>{` · ${row.statusLabel} · ${row.percent}`}</Text>
+                  </Box>
                 ) : null}
               </Box>
               {row.warnings.map(warning => (
@@ -201,12 +221,9 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
   const paneWidth = widthForCells(' '.repeat(bodyColumns))
   const color = (tone: string) => timelineToneColor(pal, tone)
   const chip = (label: string, tone: string, key?: string) => timelineChip({ Box, Text, pal }, label, tone, key)
-  const bar = (parts: typeof page.progressCard.bar, emptyWidth = 10) =>
-    parts.length ? (
-      parts.map(part => <Text color={color(part.tone)}>{part.mark.repeat(part.count)}</Text>)
-    ) : (
-      <Text color={pal.muted}>{'─'.repeat(emptyWidth)}</Text>
-    )
+  const bar = (parts: ReturnType<typeof timelineBar>) =>
+    parts.map(part => <Text color={color(part.tone)}>{part.mark.repeat(part.count)}</Text>)
+  const rowBar = (row: TimelinePage['rows'][number], width: number) => bar(timelineBar(row.progressSegments, width))
 
   const progressCard = (
     <Box width={paneWidth} flexDirection="column" borderStyle="single" paddingX={1}>
@@ -216,22 +233,13 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
         </Box>
         <Box flexShrink={0}>{chip(page.progressCard.statusLabel, page.progressCard.tone)}</Box>
       </Box>
-      <Box
-        key="timeline-progress-bar"
-        flexDirection={bodyColumns < 44 ? 'column' : 'row'}
-        justifyContent="space-between"
-      >
-        <Box flexDirection="row" flexShrink={0}>
-          {bar(page.progressCard.bar, 28)}
-        </Box>
-        <Box flexShrink={0}>
-          <Text bold>{page.progressCard.percentLabel}</Text>
-        </Box>
+      <Box key="timeline-progress-bar" flexDirection="row">
+        {bar(timelineBar(page.progressCard.segments, Math.max(1, paneWidth - 4)))}
       </Box>
       <Box flexDirection={bodyColumns < 44 ? 'column' : 'row'} justifyContent="space-between">
         <Text
           color={pal.muted}
-        >{`${page.progressCard.leavesDone}/${page.progressCard.leavesTotal} leaf tasks completed`}</Text>
+        >{`${page.progressCard.percentLabel} complete · ${page.progressCard.leavesDone}/${page.progressCard.leavesTotal} leaf tasks completed`}</Text>
         <Text color={pal.muted}>{`Elapsed: ${page.progressCard.elapsed}`}</Text>
       </Box>
     </Box>
@@ -328,10 +336,9 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
             const chipLead = terminalTreeLead(row, chipLeadWidth)
             const warningLead = terminalTreeLead(row, titleLeadWidth)
             const percent = row.isCompletedFold ? '' : row.percent.padStart(7)
-            const percentCells = row.isCompletedFold ? 0 : cellWidth(` ${percent}`)
-            const availableWithBar = bodyColumns - 2 - cellWidth(rowLead) - 12 - percentCells
-            const showTaskBar = availableWithBar >= 20
-            const titleCells = Math.max(1, bodyColumns - 2 - cellWidth(rowLead) - percentCells - (showTaskBar ? 12 : 0))
+            const barWidth = row.isCompletedFold ? 0 : timelineRowBarWidth(bodyColumns)
+            const progressCells = row.isCompletedFold ? 0 : cellWidth(percent) + (barWidth ? 13 : 2)
+            const titleCells = Math.max(1, bodyColumns - 2 - cellWidth(rowLead) - progressCells)
             const title =
               cellWidth(row.task.title) > titleCells
                 ? `${cutToCells(row.task.title, Math.max(0, titleCells - 1))}…`
@@ -353,46 +360,35 @@ export function paneTimeline(context: TimelinePaneBase, handlers: TimelinePaneHa
                       {row.mark}{' '}
                     </Text>
                   </Box>
-                  <Box flexDirection="row" flexGrow={1} flexShrink={1} minWidth={0}>
-                    <Box key={`timeline-title-area-${row.task.id}`} width={titleCells} flexShrink={1} minWidth={0}>
-                      <Button
-                        plain
-                        key={`timeline-title-${row.task.id}`}
-                        autoFocus={look === 'terminal' && selected ? true : undefined}
-                        onPress={() =>
-                          row.isCompletedFold
-                            ? selectOrToggleDone(row.task.id, true)
-                            : void openTimelineDetail(row.task.id)
-                        }
-                      >
-                        {look === 'terminal' ? (
-                          <Text color={color(row.tone)} wrap="truncate-end">
-                            {firstTitleLine}
-                          </Text>
-                        ) : (
-                          firstTitleLine
-                        )}
-                      </Button>
-                    </Box>
-                    <Box flexDirection="row" flexShrink={0}>
-                      {showTaskBar && !row.isCompletedFold ? (
-                        <Box key={`timeline-row-bar-${row.task.id}`} flexDirection="row" flexShrink={0}>
-                          <Box key={`timeline-row-bar-gap-${row.task.id}`} width={2} flexShrink={0}>
-                            <Text>{'  '}</Text>
-                          </Box>
-                          {bar(row.progressBar)}
-                        </Box>
-                      ) : null}
-                      {!row.isCompletedFold ? (
-                        <Box flexShrink={0}>
-                          <Text
-                            key={`timeline-row-percent-${row.task.id}`}
-                            color={color(row.tone)}
-                          >{` ${percent}`}</Text>
-                        </Box>
-                      ) : null}
-                    </Box>
+                  <Box key={`timeline-title-area-${row.task.id}`} width={titleCells} flexShrink={1} minWidth={0}>
+                    <Button
+                      plain
+                      key={`timeline-title-${row.task.id}`}
+                      autoFocus={look === 'terminal' && selected ? true : undefined}
+                      onPress={() =>
+                        row.isCompletedFold
+                          ? selectOrToggleDone(row.task.id, true)
+                          : void openTimelineDetail(row.task.id)
+                      }
+                    >
+                      {look === 'terminal' ? (
+                        <Text color={color(row.tone)} wrap="truncate-end">
+                          {firstTitleLine}
+                        </Text>
+                      ) : (
+                        firstTitleLine
+                      )}
+                    </Button>
                   </Box>
+                  {!row.isCompletedFold ? (
+                    <Box key={`timeline-row-progress-${row.task.id}`} flexDirection="row" flexShrink={0}>
+                      <Box key={`timeline-row-bar-gap-${row.task.id}`} width={2} flexShrink={0}>
+                        <Text>{'  '}</Text>
+                      </Box>
+                      {barWidth ? rowBar(row, barWidth) : null}
+                      <Text color={color(row.tone)}>{`${barWidth ? ' ' : ''}${percent}`}</Text>
+                    </Box>
+                  ) : null}
                 </Box>
                 {continuationTitleLines.map((line, index) => (
                   <Box key={`timeline-title-continuation-row-${row.task.id}-${index}`} flexDirection="row">

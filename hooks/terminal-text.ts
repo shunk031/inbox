@@ -1,7 +1,8 @@
 import { desktopLines, desktopTextPt } from './desktop-metrics'
-import { cutForEllipsis } from './text'
+import { cellWidth, cutForEllipsis } from './text'
 import { DOT } from './rows'
 import { parseInline, type Span } from './inline'
+import { wrapText } from './line-wrap'
 
 /**
  * `spans` cut to what desktop draws in `limit` lines `widthPt` wide, with an ellipsis when cut. With `isCutAtWord`, the
@@ -66,7 +67,7 @@ export function treeText(pos: TreePos, lead: number): string {
 }
 
 export function lineCount(text: string, width: number): number {
-  return wrapped(text, width).length
+  return wrapText(text, width, cellWidth).length
 }
 
 export type TerminalSpan = Span & {
@@ -103,56 +104,29 @@ export function terminalSpanLines(spans: TerminalSpan[], width: number, limit = 
   if (spans.every(s => !s.text) || limit < 1) return []
   const size = Math.max(1, width)
   type Character = { text: string; span: TerminalSpan }
-  const lines: Character[][] = []
-  let line: Character[] = []
-  let used = 0
-  let word: Character[] = []
-  let spaces: Character[] = []
-  let endsWithNewline = false
-  const columns = (characters: Character[]) => characters.reduce((n, c) => n + c.text.length, 0)
-  const nextLine = () => {
-    lines.push(line)
-    line = []
-    used = 0
-  }
-  const append = (characters: Character[]) => {
-    for (const character of characters) {
-      if (line.length > 0 && used + character.text.length > size) nextLine()
-      line.push(character)
-      used += character.text.length
-    }
-  }
-  const appendWord = () => {
-    if (word.length === 0) return
-    if (line.length > 0 && used + columns(spaces) + columns(word) > size) {
-      nextLine()
-      spaces = []
-    }
-    append(spaces)
-    append(word)
-    spaces = []
-    word = []
-  }
+  const text = spans.map(span => (span.isUnbroken ? span.text.replaceAll(' ', '\u00a0') : span.text)).join('')
+  const starts: number[] = []
+  let at = 0
   for (const span of spans) {
-    for (const character of span.text) {
-      endsWithNewline = character === '\n'
-      if (endsWithNewline) {
-        appendWord()
-        nextLine()
-        spaces = []
-      } else if (/\s/.test(character) && !span.isUnbroken) {
-        appendWord()
-        spaces.push({ text: character, span })
-      } else word.push({ text: character, span })
-    }
+    starts.push(at)
+    at += span.text.length
   }
-  appendWord()
-  if (line.length > 0 || endsWithNewline) nextLine()
+  const lines: Character[][] = wrapText(text, size, cellWidth).map(line => {
+    const characters: Character[] = [...line.prefix].map(text => ({ text, span: { text } }))
+    spans.forEach((span, index) => {
+      const start = Math.max(line.sourceStart, starts[index]!)
+      const end = Math.min(line.sourceEnd, starts[index]! + span.text.length)
+      if (end > start)
+        for (const character of span.text.slice(start - starts[index]!, end - starts[index]!))
+          characters.push({ text: character, span })
+    })
+    return characters
+  })
   const kept = lines.slice(0, limit)
   if (kept.length < lines.length) {
     const last = kept.at(-1)!
-    const shown = cutForEllipsis(last.map(c => c.text).join(''), t => t.length <= size)
-    while (columns(last) > shown.length) last.pop()
+    const shown = cutForEllipsis(last.map(c => c.text).join(''), t => cellWidth(t) <= size)
+    while (cellWidth(last.map(c => c.text).join('')) > cellWidth(shown)) last.pop()
     const isMuted = last.at(-1)?.span.isMuted
     last.push({ text: '…', span: { text: '…', ...(isMuted ? { isMuted } : {}) } })
   }
@@ -170,27 +144,28 @@ export function terminalSpanLines(spans: TerminalSpan[], width: number, limit = 
   })
 }
 
-function wrapped(text: string, width: number): string[] {
-  const size = Math.max(1, width)
-  const lines: string[] = []
-  let line = ''
-  for (const word of text.split(/\s+/).filter(Boolean)) {
-    const longer = line ? `${line} ${word}` : word
-    if (longer.length <= size) {
-      line = longer
-      continue
-    }
-    if (line) lines.push(line)
-    let rest = word
-    while (rest.length > size) {
-      lines.push(rest.slice(0, size))
-      rest = rest.slice(size)
-    }
-    line = rest
+/** The same line breaks as the terminal, measured in desktop points when supplied with `desktopTextPt`. */
+export function wrappedSpanLines(
+  spans: TerminalSpan[],
+  width: number,
+  measure: (text: string) => number,
+): TerminalSpan[][] {
+  const text = spans.map(span => span.text).join('')
+  const starts: number[] = []
+  let at = 0
+  for (const span of spans) {
+    starts.push(at)
+    at += span.text.length
   }
-  if (line) lines.push(line)
-
-  return lines
+  return wrapText(text, width, measure).map(line => {
+    const output: TerminalSpan[] = line.prefix ? [{ text: line.prefix }] : []
+    spans.forEach((span, index) => {
+      const start = Math.max(line.sourceStart, starts[index]!)
+      const end = Math.min(line.sourceEnd, starts[index]! + span.text.length)
+      if (end > start) output.push({ ...span, text: span.text.slice(start - starts[index]!, end - starts[index]!) })
+    })
+    return output
+  })
 }
 
 export const glued = (after: string) => after.replace(/(?<=.)[ \u2002]/gs, c => (c === ' ' ? '\u00a0' : '\u2007'))

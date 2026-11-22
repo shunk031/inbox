@@ -25,6 +25,7 @@ import type { footerStatus } from './view'
 import type { paletteFor, Tone } from './palettes'
 
 type PaneElements = Elements[RenderSurface]
+export type PaneSvg = Extract<PaneElements, { Svg: unknown }>['Svg']
 
 export type PaneClient =
   | { hasClient: true; elements: Extract<PaneElements, { Client: unknown }> }
@@ -49,9 +50,11 @@ export type Row = {
   titleAfter?: string
   at?: number
   subtitle?: JSX.Element
+  wrapSubtitle?: (width: number) => JSX.Element
   line?: { before?: string; text: string; after?: string; afterTone?: Tone; age?: string }
   hasSecondLine?: boolean
   body?: JSX.Element | null
+  wrapBody?: (width: number) => JSX.Element | null
   clippedBody?: (lines: number, width: number) => JSX.Element | null
   keys: () => KeyAction[]
   moreKeys?: () => KeyAction[]

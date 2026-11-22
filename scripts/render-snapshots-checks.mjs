@@ -1,10 +1,24 @@
 import { cellWidth } from '../hooks/text.ts'
-import { registry } from './render-snapshots-fixtures.mjs'
+import { wrapErrors, wrapText } from '../hooks/line-wrap.ts'
+import { JAPANESE_DETAIL, registry } from './render-snapshots-fixtures.mjs'
+import {
+  barTracks,
+  checkTimelineBars,
+  checkTimelineStatusChip,
+  failure,
+  taskMarkers,
+} from './render-snapshots-bar-checks.mjs'
+export { failure }
 
 const stripAnsi = text => text.replace(/\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))/g, '')
 export const marker = entry =>
   ({
-    asks: entry.scenario === 'empty' ? 'Nothing needed' : 'Snapshot question',
+    asks:
+      entry.scenario === 'empty'
+        ? 'Nothing needed'
+        : entry.scenario === 'japanese'
+          ? 'Snapshot Japanese'
+          : 'Snapshot question',
     timeline: entry.scenario === 'empty' ? 'No tasks have been recorded' : 'Snapshot root',
     prs: entry.scenario === 'empty' ? 'No PRs' : 'Snapshot pull request',
     'timeline-detail': 'Snapshot',
@@ -15,7 +29,7 @@ export const marker = entry =>
 export const pageMarker = (frame, text) => frame.replace(/\s+/gu, ' ').includes(text)
 const TERMINAL_ROWS = [
   /^(?:⚠ Remote managed settings failed|policy applied|for details|runs first|event on past it|Claude Code v\d+(?:\.\d+)+)$/u,
-  /^(?:(?:Opus|Sonnet|Haiku) [\d.]+(?: \([^)]*\))? · API Usage Billing|▝▝|❯|⏺ inbox:|⎿ +inbox:|◐ medium · \/effort|⏸ manual mode on · gh auth login for PR status · ← for agents|Nothing needed +\[ Open inbox \])$/u,
+  /^(?:(?:Opus|Sonnet|Haiku) [\d.]+(?: \([^)]*\))? · API Usage Billing|▝▝|❯|⏺ inbox:|⎿ +inbox:|◐ medium · \/effort|⏸ manual mode on · (?:gh auth login for PR status|\? for shortcuts) · ← for agents|Nothing needed +\[ Open inbox \])$/u,
   /^🤖 [^|]+ \| 💰\$[\d,.]+ session \/ \$[\d,.]+ today \/ \$[\d,.]+ block \([^)]*\) \| 🔥\$[\d,.]+\/hr \| 🧠[\d,]+ \(\d+%\) \| Account: [^|]+ \| Weekly: [\d.]+% \| Weekly Fable: [\d.]+%$/u,
   /^⬇️? +In: [\d,.]+[kM]? \| ⬆️? Out: [\d,.]+[kM]? \| 💾 Cached: [\d,.]+[kM]? \| 📊 Total: [\d,.]+[kM]? \| 🧠 Ctx: [\d,.]+[kM]? \| 📈 Ctx Used: [\d.]+% \| 👤 Ctx\(u\) Used: [\d.]+%$/u,
   /^🟢 GenAI GW \$[\d.]+\/10m · 📅 \d+% \([^)]*\) · ⏳ [^·]+ · 👤 \$[\d.]+\/10m · \d+% \([^)]*\)$/u,
@@ -26,7 +40,6 @@ export const isTerminalChrome = (line, width) =>
   ((cellWidth(line) === width && /^─+$/u.test(line)) ||
     /^(?:╭─+╮|╰─+╯)$/u.test(line.trim()) ||
     TERMINAL_ROWS.some(pattern => pattern.test(line.trim())))
-const taskMarkers = ['Snapshot root', '折り返し用', 'Snapshot long', '深い階層']
 const inverseVideo = line => {
   let inverse = false
   for (const match of line.matchAll(/\x1b\[([\d;]*)m|([^\x1b])/gu)) {
@@ -61,11 +74,26 @@ export function checkTimelineFocus(entry, frame, ansiFrame) {
 }
 const col = (line, index) => cellWidth(line.slice(0, index))
 const detailColumns = { 87: [26, 28, 51, 53], 110: [19, 21], 200: [27, 29, 52, 54] }
-export const failure = (entry, row, expected, actual, reason) =>
-  `FAIL view=${entry.view} scenario=${entry.scenario} width=${entry.width} row=${row} ` +
-  `expected-column=${expected} actual-column=${actual} ${reason}`
-
 const detailHeadings = new Set(['Detail', 'Updated', 'Note', 'History', 'Links'])
+function checkJapaneseAskWrap(entry, frame, paneWidth) {
+  if (entry.view !== 'asks' || entry.scenario !== 'japanese') return []
+  const lines = frame.split('\n')
+  const first = lines.findIndex(line => line.includes('候補の比較を')),
+    tail = lines.findIndex(line => line.includes('終え'))
+  const last = tail < 0 ? -1 : lines[tail].includes('終える。') ? tail : tail + 1
+  if (first < 0 || last < first)
+    return [failure(entry, 'Japanese detail', 'complete detail visible', 'missing', 'fixture detail is clipped')]
+  const base = cellWidth(lines[first].slice(0, lines[first].indexOf('候補の比較を')))
+  const actual = lines.slice(first, last + 1).map(line => line.slice(base).trimEnd())
+  const width = paneWidth - 8,
+    expected = wrapText(JAPANESE_DETAIL, width, cellWidth)
+  return [
+    ...(actual.length !== expected.length || actual.some((line, index) => line !== expected[index]?.text)
+      ? ['rendered detail lines differ from the shared wrapper']
+      : []),
+    ...wrapErrors(expected, width, cellWidth, actual),
+  ].map(reason => failure(entry, 'Japanese detail', `Japanese wrap property at ${width} columns`, 'failed', reason))
+}
 export function checkLeftEdges(entry, frame) {
   if (entry.view !== 'timeline-detail') return []
   const lines = frame.split('\n')
@@ -104,6 +132,7 @@ export function checkFrame(entry, frame, width) {
     entry.view === 'timeline' ? ['Progress', marker(entry)] : entry.view === 'help' ? ['Keys', 'Tabs'] : [marker(entry)]
   for (const text of required)
     if (!pageMarker(frame, text)) add(`required:${text}`, 0, 'missing', 'required label absent')
+  errors.push(...checkTimelineBars(entry, frame, width))
 
   if (entry.view === 'asks' && entry.scenario === 'busy')
     for (const text of [entry.width <= 87 ? marker(entry) : 'Questions', 'No background given', 'No effect given'])
@@ -131,37 +160,18 @@ export function checkFrame(entry, frame, width) {
     }
   })
 
-  if (entry.view === 'timeline' && entry.scenario === 'busy') {
-    const root = lines.find(line => line.includes('Snapshot root'))
-    const titleCol = root ? col(root, root.indexOf('Snapshot root')) : 6
-    const status =
-      root && lines.slice(lines.indexOf(root) + 1).find(line => /^\s+│\s+(In progress|No report yet)\s*$/u.test(line))
-    if (!root) add('snapshot-root title', 6, 'missing', 'required title row absent')
-    else if (titleCol !== 6) add('snapshot-root title', 6, titleCol, 'title starts outside fixture column')
-    if (entry.width === 200 && root && (!/[━─]/u.test(root) || !root.includes('50.00%')))
-      add('snapshot-root bar', 'title line', 'next line or missing', 'bar and percentage must share the title line')
-    if (!status) add('snapshot-root chip', titleCol, 'missing', 'required chip absent')
+  errors.push(...checkTimelineStatusChip(entry, frame))
+
+  if (entry.view === 'timeline' && entry.scenario === 'busy' && entry.width === 200) {
+    const long = lines.find(line => line.includes('Snapshot long'))
+    const ellipsis = long?.indexOf('…') ?? -1
+    const bar = ellipsis < 0 ? -1 : long.slice(ellipsis + 1).search(/[━─]/u)
+    if (bar < 0)
+      add('snapshot-long bar', 'title line after ellipsis', 'next line or missing', 'bar is not on the title line')
     else {
-      const label = status.match(/In progress|No report yet/u)?.[0] ?? ''
-      const chip = col(status, status.indexOf(label) - 1)
-      if (chip !== titleCol) add('snapshot-root chip', titleCol, chip, 'chip does not start on its title column')
-    }
-    if (entry.width === 200) {
-      const long = lines.find(line => line.includes('Snapshot long'))
-      const ellipsis = long?.indexOf('…') ?? -1
-      const bar = ellipsis < 0 ? -1 : long.slice(ellipsis + 1).search(/[━─]/u)
-      if (bar < 0)
-        add('snapshot-long bar', 'title line after ellipsis', 'next line or missing', 'bar is not on the title line')
-      else {
-        const gap = col(long, ellipsis + 1 + bar) - col(long, ellipsis) - cellWidth('…')
-        if (gap < 2)
-          add(
-            'snapshot-long ellipsis gap',
-            'ellipsis end + 2',
-            col(long, ellipsis + 1 + bar),
-            `bar gap is ${gap} cells`,
-          )
-      }
+      const gap = col(long, ellipsis + 1 + bar) - col(long, ellipsis) - cellWidth('…')
+      if (gap < 2)
+        add('snapshot-long ellipsis gap', 'ellipsis end + 2', col(long, ellipsis + 1 + bar), `bar gap is ${gap} cells`)
     }
   }
 
@@ -175,6 +185,7 @@ export function checkFrame(entry, frame, width) {
       if (gap !== 1) add('Back control gap', 'Back end + 1', col(header, title), `observed gap is ${gap} cells`)
     }
   }
+  errors.push(...checkJapaneseAskWrap(entry, frame, width))
   return errors
 }
 
@@ -326,13 +337,36 @@ export function inventoryErrors(expected, actual) {
 }
 
 export function runMutationProofs(frames) {
-  const timeline = frames.get('timeline-busy-200.txt')
+  const [timeline, folded] = ['timeline-busy-200.txt', 'timeline-fold-done-200.txt'].map(file => frames.get(file))
+  const noPercent = folded.frame.replace(/(Snapshot root[^\n]*?)\s+\d+(?:\.\d+)?%/u, '$1')
   const check = frame => checkFrame(timeline.entry, frame, timeline.paneWidth)
   const lines = timeline.frame.split('\n')
   const chip = lines.findIndex(line => /^\s+│\s+(In progress|No report yet)\s*$/u.test(line))
   const chipLabel = chip < 0 ? '' : (lines[chip].match(/In progress|No report yet/u)?.[0] ?? '')
   if (chip >= 0) lines[chip] = lines[chip].replace(/^ /u, '')
   const long = timeline.frame.split('\n').find(line => line.includes('Snapshot long'))
+  const barLines = timeline.frame.split('\n'),
+    heading = barLines.findIndex(line => line.includes('Progress'))
+  const headerRow = barLines.findIndex((line, i) => i > heading && barTracks(line).length)
+  const childRow = barLines.findIndex(line => line.includes('折り返し用')),
+    longRow = barLines.findIndex(line => line.includes('Snapshot long'))
+  const mutateBar = (row, transform) => {
+    const line = barLines[row] ?? '',
+      track = barTracks(line.slice(line.indexOf(taskMarkers.find(marker => line.includes(marker)) ?? '')))[0]
+    return track && barLines.map((line, i) => (i === row ? line.replace(track, transform(track)) : line)).join('\n')
+  }
+  const barCheck = (f, t, e = timeline.entry) =>
+    f && checkTimelineBars(e, f, timeline.paneWidth).find(x => x.includes(t))
+  const barProofs = [
+    ['one extra filled cell', mutateBar(headerRow, track => `━${track}`), 'filled cells do not match'],
+    ['filled cell after unfilled', mutateBar(headerRow, track => track.replace('━─', '─━')), 'bar fill must precede'],
+    ['header track shortened', mutateBar(headerRow, track => track.slice(0, -1)), 'track width'],
+    ['completed child emptied', mutateBar(childRow, track => '─'.repeat(track.length)), 'filled cells do not match'],
+    ['one-cell row bar', mutateBar(childRow, () => '━'), 'track width'],
+    ['non-first row bar removed', mutateBar(longRow, () => ''), 'row bar presence'],
+    ['track merged with a connector', mutateBar(longRow, () => '└──'), 'track width'],
+    ['fold-done row percent removed', noPercent, 'row cannot be classified', folded.entry],
+  ].map(([name, frame, text, entry]) => [name, barCheck(frame, text, entry)])
   const focusMutation = timeline.ansiFrame.replace('Snapshot long', '\x1b[7mSnapshot long\x1b[27m')
   const asks = frames.get('asks-empty-110.txt')
   const names = new Set(registry.map(entry => entry.file))
@@ -363,6 +397,7 @@ export function runMutationProofs(frames) {
     ['baseline deleted', inventoryErrors(names, missing).find(line => line.includes('timeline-busy-200.txt'))],
     ['extra baseline added', inventoryErrors(names, extra).find(line => line.includes('unreferenced baseline'))],
     ['focus left on another task', checkTimelineFocus(timeline.entry, timeline.frame, focusMutation)[0]],
+    ...barProofs,
   ]
   for (const [name, line] of proofs) {
     if (!line) throw Error(`mutation proof did not fail: ${name}`)

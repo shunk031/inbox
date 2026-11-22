@@ -75,6 +75,7 @@ export function paneRows(
       | 'Box'
       | 'space'
       | 'Text'
+      | 'terminalText'
       | 'pal'
       | 'Input'
       | 'typing'
@@ -146,6 +147,7 @@ export function paneRows(
     const { keys, more } = isSelected ? rowActions(row) : { keys: [], more: [] }
     const isTyping = Input !== null && !!row.typeHint && typing === row.id
     const textWidth = listColumns - 1 - columns.textAt
+    const wrapWidth = look === 'desktop' ? desktopRowTextPt : textWidth
     const submitLabel = look === 'desktop' ? ROW_COPY.send : 'send'
     /** The terminal draws `⏎` and the submit label beside the field. */
     const terminalFieldColumns = textWidth - cellWidth(`⏎ ${submitLabel}`) - 1
@@ -199,7 +201,10 @@ export function paneRows(
           (isStatusUnder ? lineCount(f.text, textWidth) : 0)
         : null
     const body =
-      bodyLines !== null && row.clippedBody && row.body ? row.clippedBody(bodyLines, textWidth) : (row.body ?? null)
+      bodyLines !== null && row.clippedBody && row.body
+        ? row.clippedBody(bodyLines, textWidth)
+        : (row.wrapBody?.(wrapWidth) ?? row.body ?? null)
+    const subtitle = row.wrapSubtitle?.(wrapWidth) ?? row.subtitle
     const described = row.view ? shownOptionEffects(row.view, optionsShown.includes(row.id)) : []
     const descriptionsBlock =
       described.length > 0 ? (
@@ -219,7 +224,7 @@ export function paneRows(
             }
             const line = clipLabel(`${o.label}: ${o.description}`, width)
             return (
-              <Text wrap="truncate-end">
+              <Text key={`option-${o.label}`} wrap="truncate-end">
                 <Text>{line.slice(0, o.label.length)}</Text>
                 <Text color={pal.muted}>{line.slice(o.label.length)}</Text>
               </Text>
@@ -282,8 +287,8 @@ export function paneRows(
               <Text color={pal.muted}>{unbroken(`${DOT}${f.text}`, row.title, fitsTitleLine)}</Text>
             ) : null}
           </Text>,
-          row.subtitle ?? null,
-          row.body ? <Box marginTop={blankLine}>{row.body}</Box> : null,
+          subtitle ?? null,
+          body ? <Box marginTop={blankLine}>{body}</Box> : null,
           descriptionsBlock,
           status.length > 0 ? (
             <Box flexDirection="column" marginTop={blankLine}>
@@ -336,7 +341,7 @@ export function paneRows(
                 ) : null}
               </Text>,
             )}
-            {row.subtitle}
+            {subtitle}
             {body ? <Box marginTop={blankLine}>{body}</Box> : null}
             {descriptionsBlock}
             {status.length > 0 ? (

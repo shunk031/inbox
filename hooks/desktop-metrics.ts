@@ -1,4 +1,5 @@
 import { cellWidth } from './text'
+import { wrapText } from './line-wrap'
 // About how many characters of desktop's proportional text fit in one column of `bodyColumns`: sentences and
 // the tab labels run 1.23 to 1.30, bold or not.
 export const DESKTOP_CHARS_PER_CELL = 1.25
@@ -48,31 +49,5 @@ export function desktopButtonPt(label: string, isPrimary: boolean): number {
  * more lines.
  */
 export function desktopLines(text: string, widthPt: number): string[] {
-  const lines: string[] = []
-  let line = ''
-  for (const word of text.split(' ').filter(Boolean)) {
-    const longer = line ? `${line} ${word}` : word
-    if (desktopTextPt(longer) <= widthPt) {
-      line = longer
-      continue
-    }
-    if (line) lines.push(line)
-    line = word
-    while (desktopTextPt(line) > widthPt) {
-      const head = longestStart(line, widthPt)
-      lines.push(head)
-      line = line.slice(head.length)
-    }
-  }
-  if (line) lines.push(line)
-  return lines
-}
-/** The longest start of `text` that fits `widthPt`, and at least its first character. */
-function longestStart(text: string, widthPt: number): string {
-  let head = ''
-  for (const { segment } of graphemes.segment(text)) {
-    if (head && desktopTextPt(head + segment) > widthPt) break
-    head += segment
-  }
-  return head
+  return wrapText(text, widthPt, desktopTextPt).map(line => line.text)
 }
