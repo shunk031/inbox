@@ -1,4 +1,4 @@
-import type { Draft, FoldKind, Stop } from '../../types'
+import type { Draft, FoldKind, Stop, TaskPrCiState, TaskPrState } from '../../types'
 import type { PrPress } from '../../hooks/pr-press'
 import { noteText } from '../../hooks/press-reducer'
 import type { RowPress } from '../../hooks/presses'
@@ -59,6 +59,10 @@ export type PanelScreen = {
   herdrAsk?: HerdrAsk | null
   timelineSelection?: string | null
   timelineFolded?: string[]
+  taskReportQueue?: string
+  taskReportAt?: number
+  taskPrStates?: Record<string, TaskPrState>
+  taskPrCiStates?: Record<string, TaskPrCiState>
 }
 
 export type Tone = ToneName | 'key' | 'muted' | 'accent' | 'sep'

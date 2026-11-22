@@ -8,6 +8,7 @@ import { lookEndedOn, withLook } from '../../hooks/session-status'
 import type { ShownRows } from '../../hooks/status-children'
 import { withHolds } from '../../hooks/session-presses'
 import { sessionView } from '../../hooks/session-view'
+import { taskTreeWithReports } from '../../hooks/task-report'
 import { press, wakeAfterSettle } from '../../hooks/host-press'
 import type { PressOutcome } from '../../hooks/host-press'
 import { NO_HOLDS } from '../../hooks/timing'
@@ -72,9 +73,15 @@ export function panelCalls(context: HostContext, sessions: SessionCalls, herdrAs
     screen: async (ctx, holds = NO_HOLDS) => {
       const id = sessionIdOf(ctx)
       const s = await readState(dir, id)
+      const taskReportQueue = (await deps.taskReportQueue?.()) ?? ''
+      const now = deps.now()
 
       return {
-        view: sessionView(s, deps.now(), deps.settleWindowMs, holds),
+        view: sessionView(s, now, deps.settleWindowMs, holds, {}, taskTreeWithReports(s.taskTree, taskReportQueue)),
+        taskReportQueue,
+        taskReportAt: now,
+        taskPrStates: s.taskPrStates,
+        taskPrCiStates: s.taskPrCiStates,
         modelName: modelNameOf(ctx),
         isGhMissing: memory.isGhMissing,
         herdrModFailure: memory.herdrModFailure,

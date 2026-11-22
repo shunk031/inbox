@@ -34,6 +34,7 @@ import { readState, updateState } from './state'
 import type { SessionState } from './state'
 import { newestTurnEvent, turnIn, withCurrentRollout } from './transcript'
 import { readInboxInstructions, reconcileUpdateStatus } from './update'
+import { taskTreeWithReports } from '../../hooks/task-report'
 
 const ROLLOUT_LOOKUP_MS = 60_000
 
@@ -141,12 +142,17 @@ export function makeSessionHost(
     const loadError = deps.loadError?.()
     const current = !isDemo && s.presence.isUpdating ? await reconcileUpdateStatus(dir, id) : s
     const at = now()
-    const view = viewOf(current, at, holds, isDemo ? demoTaskTree(at) : undefined)
+    const taskReportQueue = isDemo ? '' : ((await deps.taskReportQueue?.()) ?? '')
+    const timelineTaskTree = taskTreeWithReports(isDemo ? demoTaskTree(at) : current.taskTree, taskReportQueue)
+    const view = viewOf(current, at, holds, timelineTaskTree)
     const trust = isDemo ? null : hooksTrustNow(current, id)
     const herdrAsk = isDemo ? null : await deps.herdrAsk?.view().catch(() => null)
 
     return {
       ...view,
+      taskReportQueue,
+      taskPrStates: current.taskPrStates,
+      taskPrCiStates: current.taskPrCiStates,
       ...(trust ? { hooksTrust: trust } : {}),
       ...(herdrAsk ? { herdrAsk } : {}),
       thread: id,

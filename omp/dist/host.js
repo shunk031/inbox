@@ -8806,6 +8806,62 @@ async function rerunRun(host, e) {
 `)[0] || `gh exited with ${r.exitCode}`;
 }
 
+// ../hooks/task-report.ts
+async function readTaskReportQueue(env, read) {
+  const stateDir = env.HERDR_META_PATROL_STATE_DIR?.trim();
+  const dir = stateDir || (env.HOME ? `${env.HOME.replace(/\/+$/, "")}/.local/state/herdr-meta-patrol` : "");
+  return dir ? read(`${dir.replace(/\/+$/, "")}/queue.jsonl`).catch(() => "") : "";
+}
+function taskOwnerReports(tree, queue) {
+  const latest = new Map;
+  for (const line of queue.split(`
+`))
+    try {
+      const r = JSON.parse(line);
+      if (typeof r?.from !== "string" || typeof r.text !== "string")
+        continue;
+      const prefix = /^(STATUS|DONE|BLOCKED)\b/i.exec(r.text);
+      const kind = (prefix?.[1] ?? /^(STATUS|DONE|BLOCKED)$/i.exec(String(r.kind))?.[1])?.toUpperCase();
+      const key = JSON.stringify([r.from, typeof r.machine === "string" ? r.machine : "local"]);
+      const seq = Number(r.seq) || 0, at = typeof r.t === "number" ? r.t * 1000 : Date.parse(r.at);
+      if (!kind || seq <= (latest.get(key)?.seq ?? -1) || !Number.isFinite(at))
+        continue;
+      latest.set(key, { kind, line: prefix ? r.text : `${kind} ${r.text}`, at, seq });
+    } catch {}
+  return Object.fromEntries(tree.flatMap(({ id, links }) => {
+    const report = links?.owner && latest.get(JSON.stringify([links.owner.agent, links.owner.machine]));
+    return report ? [[id, report]] : [];
+  }));
+}
+function taskTreeWithReports(tree, queue) {
+  const reports = taskOwnerReports(tree, queue);
+  return tree.map((task) => {
+    const kind = reports[task.id]?.kind;
+    const status = kind ? { STATUS: "working", DONE: "done", BLOCKED: "waits-on-other" }[kind] : task.status;
+    return status === task.status ? task : { ...task, status };
+  });
+}
+function taskReportPage(page, tree, queue, facts, now, preserveTaskDetail = false) {
+  const reports = taskOwnerReports(tree, queue);
+  const reportText = (id, url) => {
+    const report = reports[id];
+    return `${report ? `${report.line} \xB7 ${shortAgo(Math.max(0, now - report.at))}` : "No report yet"}${url ? ` \xB7 PR ${facts.taskPrStates[url]?.toLowerCase() ?? "state unavailable"} \xB7 CI ${facts.taskPrCiStates[url]?.replace("-", " ") ?? "unavailable"}` : ""}`;
+  };
+  const withReport = (row) => !row.isCompletedFold && (row.task.links?.owner || row.task.links?.pr) ? { ...row, reportLine: reportText(row.task.id, row.task.links?.pr) } : { ...row, reportLine: undefined };
+  const selected = page.selected && {
+    ...page.selected,
+    row: withReport(page.selected.row),
+    details: [
+      {
+        label: "Latest report",
+        text: reportText(page.selected.row.task.id, page.selected.row.task.links?.pr)
+      },
+      ...page.selected.details.filter((line) => preserveTaskDetail || line.label !== "Detail")
+    ]
+  };
+  return { ...page, rows: page.rows.map(withReport), selected };
+}
+
 // src/panel-text.ts
 var ANSI2 = new RegExp(`\\x1b\\[[0-9;]*m|${OSC8.source}`, "g");
 var ANSI_SPLIT = new RegExp(`(\\x1b\\[[0-9;]*m|${OSC8.source})`, "g");
@@ -9836,7 +9892,8 @@ function helpEntries(screen, tab) {
   ];
 }
 function timelineEntries(screen, ui) {
-  const page = timelinePage(screen.view.timeline, ui.timelineSelection, ui.timelineFolded, screen.view.lastActions, ui.timelineDetailOpen);
+  const base = timelinePage(screen.view.timeline, ui.timelineSelection, ui.timelineFolded, screen.view.lastActions, ui.timelineDetailOpen);
+  const page = taskReportPage(base, screen.view.timeline.rows.map((row) => row.task), screen.taskReportQueue ?? "", { taskPrStates: screen.taskPrStates ?? {}, taskPrCiStates: screen.taskPrCiStates ?? {} }, screen.taskReportAt ?? Date.now(), true);
   if (page.mode === "detail" && page.selected) {
     const buttons = page.selected.row.actions.map((action) => ({
       label: action.label,
@@ -10296,7 +10353,8 @@ function timelineLine(line, plan, isSelected, d) {
     const second = `     ${s.timelineChip(row.tone, row.statusLabel)}${toggle ? `  ${s.dim(`${toggle.key ?? ""} ${toggle.label}`)}` : ""}`;
     const titleRest = titleLines.slice(1).map((text) => `${" ".repeat(visibleLength(lead))}${s.tone(row.tone, s.bold(text))}`);
     const warnings = row.warnings.flatMap((warning) => wrapTimelineText(warning, Math.max(1, width - 8)).map((text, index) => `${" ".repeat(index === 0 ? 5 : 8)}${index === 0 ? `${s.tone("error", "\u26A0")} ` : ""}${text}`));
-    return [first, ...titleRest, second, ...warnings].map((text) => s.timelineRow(fit(text, width), row.alternate));
+    const report = row.reportLine ? wrapTimelineText(row.reportLine, Math.max(1, width - 8)).map((text, index) => `${" ".repeat(index === 0 ? 5 : 8)}${text}`) : [];
+    return [first, ...titleRest, second, ...warnings, ...report.map((text) => s.dim(text))].map((text) => s.timelineRow(fit(text, width), row.alternate));
   }
   const { selected } = plan;
   const row = selected.row;
@@ -11848,10 +11906,7 @@ var CODEX_SUPPORT = {
     kind: "unsupported",
     reason: "The external Stop gate reads the Claude Code meta session, so Codex does not export task trees."
   },
-  "task-owner-reports": {
-    kind: "different",
-    reason: "Codex keeps its current Timeline status until it reads owner reports."
-  },
+  "task-owner-reports": { kind: "full" },
   "task-status-mismatch": { kind: "full" },
   timeline: { kind: "full" },
   "timeline-completed-fold": {
@@ -11990,10 +12045,7 @@ var OMP_SUPPORT = {
     kind: "unsupported",
     reason: "The external Stop gate reads the Claude Code meta session, so only Claude Code exports task trees."
   },
-  "task-owner-reports": {
-    kind: "different",
-    reason: "omp keeps its current Timeline status until it reads owner reports."
-  },
+  "task-owner-reports": { kind: "full" },
   "task-status-mismatch": { kind: "full" },
   timeline: { kind: "full" },
   "timeline-completed-fold": {
@@ -14573,8 +14625,14 @@ function panelCalls(context, sessions, herdrAsk) {
     screen: async (ctx, holds = NO_HOLDS) => {
       const id = sessionIdOf(ctx);
       const s = await readState(dir, id);
+      const taskReportQueue = await deps.taskReportQueue?.() ?? "";
+      const now = deps.now();
       return {
-        view: sessionView(s, deps.now(), deps.settleWindowMs, holds),
+        view: sessionView(s, now, deps.settleWindowMs, holds, {}, taskTreeWithReports(s.taskTree, taskReportQueue)),
+        taskReportQueue,
+        taskReportAt: now,
+        taskPrStates: s.taskPrStates,
+        taskPrCiStates: s.taskPrCiStates,
         modelName: modelNameOf(ctx),
         isGhMissing: memory.isGhMissing,
         herdrModFailure: memory.herdrModFailure,
@@ -15248,6 +15306,12 @@ function inboxModel(models, resolve) {
   return resolve("@inbox") ?? sonnet ?? resolve("@smol") ?? null;
 }
 
+// src/host-task-reports.ts
+import { readFile as readFile5 } from "fs/promises";
+function readOmpTaskReportQueue() {
+  return readTaskReportQueue({ HOME: process.env.HOME, HERDR_META_PATROL_STATE_DIR: process.env.HERDR_META_PATROL_STATE_DIR }, (path) => readFile5(path, "utf8"));
+}
+
 // src/host.ts
 var INBOX_MODEL_TIMEOUT_MS = 120000;
 var BAND_KEY = "inbox-band";
@@ -15285,7 +15349,8 @@ var defaultDeps = {
   herdrTarget: herdrTarget(process.env),
   herdrPane: process.env.HERDR_PANE_ID || null,
   recordedItemsOnly: process.env.INBOX_RECORDED_ITEMS_ONLY,
-  feedPath: process.env.INBOX_FEED
+  feedPath: process.env.INBOX_FEED,
+  taskReportQueue: readOmpTaskReportQueue
 };
 var messageOf = (err) => err instanceof Error ? err.message : String(err);
 function createInbox(pi, deps = defaultDeps) {

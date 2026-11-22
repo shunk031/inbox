@@ -5,6 +5,7 @@ import { rowKeyPlan } from '../../hooks/action-plan'
 import type { StatusRow } from '../../hooks/status-page'
 import type { RowView } from '../../hooks/rows'
 import { sessionView } from '../../hooks/session-view'
+import { taskTreeWithReports } from '../../hooks/task-report'
 import type { SessionStatus, TaskNode, TaskTree } from '../../types'
 import { demoState } from '../src/demo'
 import { INITIAL_UI, render } from '../src/panel'
@@ -32,6 +33,7 @@ export const screenOf = (overrides: Partial<PanelScreen> = {}, holds = NO_HOLDS)
   isFetchingPrs: false,
   stop: null,
   version: '1.2.3',
+  taskReportAt: NOW,
   ...overrides,
 })
 
@@ -57,11 +59,20 @@ export function taskNode(
   }
 }
 
-export function taskScreen(tree: TaskTree, patch: Partial<SessionStatus> = {}): PanelScreen {
+export function taskScreen(tree: TaskTree, patch: Partial<SessionStatus> = {}, taskReportQueue = ''): PanelScreen {
   const state = demoState(NOW)
   const overview = { ...state.ledger.overview!, ...patch }
   return screenOf({
-    view: sessionView({ ...state, taskTree: tree, ledger: { ...state.ledger, overview } }, NOW, SETTLED_MS, NO_HOLDS),
+    view: sessionView(
+      { ...state, taskTree: tree, ledger: { ...state.ledger, overview } },
+      NOW,
+      SETTLED_MS,
+      NO_HOLDS,
+      {},
+      taskTreeWithReports(tree, taskReportQueue),
+    ),
+    taskReportQueue,
+    taskReportAt: NOW,
   })
 }
 
