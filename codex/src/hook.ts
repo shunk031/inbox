@@ -1,5 +1,6 @@
 import { resolve } from 'node:path'
 import { homedir } from 'node:os'
+import { readFile } from 'node:fs/promises'
 
 import {
   childrenCutOff,
@@ -42,6 +43,7 @@ import { applyFeedFiles } from '../../hooks/feed'
 import { readFeedFiles } from '../../feed-reader'
 import { resolveInboxFeedPath } from '../../hooks/feed-path'
 import { taskReminderAfterToolCall } from '../../hooks/task-reminder'
+import { readTaskReportQueue, taskTextFacts } from '../../hooks/task-report'
 
 export type HookInput = {
   hook_event_name: string
@@ -173,15 +175,28 @@ export async function handleHook(input: HookInput, deps: HookDeps): Promise<Reco
       )
       if (isMarkedBehind) deps.startUpdate(id)
 
-      const context = startContext(CODEX, s, input.source)
+      const taskFacts = {
+        reportQueue: await readTaskReportQueue(env, path => readFile(path, 'utf8')),
+        now: now(),
+      }
+      const context = startContext(CODEX, s, input.source, {
+        ...taskTextFacts(s, taskFacts.reportQueue, taskFacts.now),
+      })
 
       return context ? { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context } } : null
     }
     case 'UserPromptSubmit': {
       let notes: string[] = []
       const withHistory = await readHistoryAhead(read)
+      const taskFacts = {
+        reportQueue: await readTaskReportQueue(env, path => readFile(path, 'utf8')),
+        now: now(),
+      }
       await write(async s => {
-        const r = notePrompt(withHost(await withHistory(s)), input.prompt ?? '', now())
+        const current = withHost(await withHistory(s))
+        const r = notePrompt(current, input.prompt ?? '', now(), {
+          ...taskTextFacts(current, taskFacts.reportQueue, taskFacts.now),
+        })
         notes = r.notes
         if (input.agent_id) return r.state
         const started = noteHook(turnStarted({ ...r.state, delegateCalls: [] }, now()), 'prompt', now(), input.turn_id)

@@ -1452,21 +1452,6 @@ function taskTreeFromStatus(status) {
   return [...milestones, ...subjects];
 }
 
-// ../hooks/task-text.ts
-function currentTaskText(task) {
-  const detailIndex = task.history.findLastIndex((event) => event.kind === "detail");
-  const noteEvent = task.history.map((event, index) => ({ event, index })).filter(({ event }) => event.kind === "note" && event.detail !== void 0 && task.notes.includes(event.detail)).toSorted((a, b) => b.event.at - a.event.at || b.index - a.index)[0];
-  const latestNote = noteEvent ? { text: noteEvent.event.detail, at: noteEvent.event.at, index: noteEvent.index } : task.notes.length > 0 ? { text: task.notes.at(-1), at: task.createdAt, index: -1 } : null;
-  if (detailIndex < 0) {
-    if (latestNote) return { text: latestNote.text, at: latestNote.at };
-    return task.detail ? { text: task.detail, at: task.createdAt } : null;
-  }
-  const detailAt = task.history[detailIndex].at;
-  if (latestNote && (latestNote.at > detailAt || latestNote.at === detailAt && latestNote.index > detailIndex))
-    return { text: latestNote.text, at: latestNote.at };
-  return task.detail ? { text: task.detail, at: detailAt } : latestNote;
-}
-
 // ../hooks/inbox-text.ts
 function surfaceAtStart(host) {
   return host.surface.charAt(0).toUpperCase() + host.surface.slice(1);
@@ -2122,6 +2107,21 @@ function partRows(shown, c, depth, afterOpen = [], afterClosed = []) {
   if (firstClosed === -1) rows.push(...afterOpen);
   rows.push(...afterClosed);
   return rows;
+}
+
+// ../hooks/task-text.ts
+function currentTaskText(task) {
+  const detailIndex = task.history.findLastIndex((event) => event.kind === "detail");
+  const noteEvent = task.history.map((event, index) => ({ event, index })).filter(({ event }) => event.kind === "note" && event.detail !== void 0 && task.notes.includes(event.detail)).toSorted((a, b) => b.event.at - a.event.at || b.index - a.index)[0];
+  const latestNote = noteEvent ? { text: noteEvent.event.detail, at: noteEvent.event.at, index: noteEvent.index } : task.notes.length > 0 ? { text: task.notes.at(-1), at: task.createdAt, index: -1 } : null;
+  if (detailIndex < 0) {
+    if (latestNote) return { text: latestNote.text, at: latestNote.at };
+    return task.detail ? { text: task.detail, at: task.createdAt } : null;
+  }
+  const detailAt = task.history[detailIndex].at;
+  if (latestNote && (latestNote.at > detailAt || latestNote.at === detailAt && latestNote.index > detailIndex))
+    return { text: latestNote.text, at: latestNote.at };
+  return task.detail ? { text: task.detail, at: detailAt } : latestNote;
 }
 
 // ../hooks/status-page.ts

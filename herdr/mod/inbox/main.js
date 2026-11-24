@@ -1,5 +1,5 @@
 // Built by herdr/build.ts with Bun 1.4.4 from herdr/src and hooks/. Do not edit.
-// Built at 2026-11-22T06:24:34.166Z. 227759 characters follow.
+// Built at 2026-11-24T09:08:36.893Z. 228028 characters follow.
 
 // src/main.ts
 import { View, div as div5 } from "gpui-kit";
@@ -932,22 +932,6 @@ function taskTreeFromStatus(status) {
   return [...milestones, ...subjects];
 }
 
-// ../hooks/task-text.ts
-function currentTaskText(task) {
-  const detailIndex = task.history.findLastIndex((event) => event.kind === "detail");
-  const noteEvent = task.history.map((event, index) => ({ event, index })).filter(({ event }) => event.kind === "note" && event.detail !== undefined && task.notes.includes(event.detail)).toSorted((a, b) => b.event.at - a.event.at || b.index - a.index)[0];
-  const latestNote = noteEvent ? { text: noteEvent.event.detail, at: noteEvent.event.at, index: noteEvent.index } : task.notes.length > 0 ? { text: task.notes.at(-1), at: task.createdAt, index: -1 } : null;
-  if (detailIndex < 0) {
-    if (latestNote)
-      return { text: latestNote.text, at: latestNote.at };
-    return task.detail ? { text: task.detail, at: task.createdAt } : null;
-  }
-  const detailAt = task.history[detailIndex].at;
-  if (latestNote && (latestNote.at > detailAt || latestNote.at === detailAt && latestNote.index > detailIndex))
-    return { text: latestNote.text, at: latestNote.at };
-  return task.detail ? { text: task.detail, at: detailAt } : latestNote;
-}
-
 // ../hooks/inbox-text.ts
 function latestBatch(ledger) {
   return ledger.batchTurn === 0 ? [] : ledger.items.filter((i) => !i.sourceManaged && i.turn === ledger.batchTurn);
@@ -1787,6 +1771,22 @@ function partRows(shown, c, depth, afterOpen = [], afterClosed = []) {
 }
 function unfoldedRows(rows, isUnfolded) {
   return rows.flatMap((r) => r.kind === "done-fold" && isUnfolded(r.id) ? [r, ...r.rows] : [r]);
+}
+
+// ../hooks/task-text.ts
+function currentTaskText(task) {
+  const detailIndex = task.history.findLastIndex((event) => event.kind === "detail");
+  const noteEvent = task.history.map((event, index) => ({ event, index })).filter(({ event }) => event.kind === "note" && event.detail !== undefined && task.notes.includes(event.detail)).toSorted((a, b) => b.event.at - a.event.at || b.index - a.index)[0];
+  const latestNote = noteEvent ? { text: noteEvent.event.detail, at: noteEvent.event.at, index: noteEvent.index } : task.notes.length > 0 ? { text: task.notes.at(-1), at: task.createdAt, index: -1 } : null;
+  if (detailIndex < 0) {
+    if (latestNote)
+      return { text: latestNote.text, at: latestNote.at };
+    return task.detail ? { text: task.detail, at: task.createdAt } : null;
+  }
+  const detailAt = task.history[detailIndex].at;
+  if (latestNote && (latestNote.at > detailAt || latestNote.at === detailAt && latestNote.index > detailIndex))
+    return { text: latestNote.text, at: latestNote.at };
+  return task.detail ? { text: task.detail, at: detailAt } : latestNote;
 }
 
 // ../hooks/status-page.ts
@@ -3592,10 +3592,12 @@ var BAR_TONES = {
 var BAR_STATES = ["working", "waiting", "stalled", "queued"];
 function timelineTask(task, now) {
   const { createdAt: _createdAt, updatedAt, history, ...details } = task;
+  const detailAt = new Set(history.filter((event) => event.kind === "detail").map((event) => event.at));
   return {
     ...details,
-    updatedAgo: shortAgo(now - updatedAt),
-    history: history.toSorted((a, b) => a.at - b.at).map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) }))
+    updated: shortAgo(now - updatedAt),
+    changedAt: history.reduce((at, event) => Math.max(at, event.at), Number.NEGATIVE_INFINITY),
+    history: history.toSorted((a, b) => a.at - b.at).filter((event) => event.kind !== "updated" || !detailAt.has(event.at)).map(({ at, ...event }) => ({ ...event, time: shortAgo(now - at) }))
   };
 }
 function percent(value) {

@@ -1,11 +1,17 @@
-import type { Closed, Finding, Item, Ledger, TaskStatusMismatch, TaskTree, Told } from '../types'
+import type { Closed, Finding, Item, Ledger, Session, TaskStatusMismatch, TaskTree, Told } from '../types'
 import { CLOSED_CONTEXT_LIMIT } from './ask-match'
 import { NL, outcomeText } from './ledger-prompt'
 import type { Host } from './model-text'
 import { isOpen } from './status-limits'
 import { taskRootGroups } from './task-tree'
-import { currentTaskText } from './task-text'
 import { clipLabel } from './text'
+import type { TaskTextFacts } from './task-report'
+export type { TaskTextFacts } from './task-report'
+
+function taskFactLine(task: TaskTree[number], facts: TaskTextFacts): string {
+  const row = facts.taskRows?.[task.id]
+  return `- ${task.id} | ${row?.status ?? task.status} | ${task.title}${row?.report ? ` | ${row.report}` : ''}`
+}
 
 export const START_TITLE =
   'inbox: where this session stands, as of the last reply. An "inbox:" text beside a later prompt replaces this.'
@@ -117,18 +123,13 @@ function findingLine(finding: Finding): string {
   return `- ${finding.kind}: ${finding.title} (close id: ${finding.id})`
 }
 
-function taskSnapshotLines(ledger: Ledger, taskTree: TaskTree): string[] {
+function taskSnapshotLines(taskTree: TaskTree, facts: TaskTextFacts): string[] {
   const open = taskTree.filter(task => task.status !== 'done' && task.status !== 'dropped')
   if (open.length === 0) return []
-
-  const rows = open.slice(0, 12).map(task => {
-    const text = currentTaskText(task)?.text.replace(/\s+/g, ' ').trim()
-    const row = [`- ${task.id}`, task.status, task.title, text].filter(Boolean).join(' | ')
-    return clipLabel(row, 96)
-  })
+  const rows = open.slice(0, 12).map(task => taskFactLine(task, facts))
 
   return [
-    `Task tree check for turn ${ledger.turn} (current work). Keep it current with \`tasks\` when work starts, changes, becomes blocked, or finishes. Task status changes only through \`tasks\` or when a linked pull request merges.`,
+    `Open tasks with each owner's latest report and linked PR.`,
     ...rows,
     ...(open.length > rows.length
       ? [`- ${open.length - rows.length} more open ${open.length - rows.length === 1 ? 'task' : 'tasks'} omitted.`]
@@ -144,24 +145,18 @@ function statusFocusLines(ledger: Ledger): string[] {
 }
 
 /** What the Status says the session is doing and how it is going. */
-function statusSummaryLines(ledger: Ledger, taskTree: TaskTree = []): string[] {
+function statusSummaryLines(ledger: Ledger, taskTree: TaskTree = [], facts: TaskTextFacts = {}): string[] {
   const open = (ledger.overview?.subjects ?? []).filter(isOpen)
   const groups = taskRootGroups(taskTree).filter(({ roots }) =>
     roots.some(task => task.status !== 'done' && task.status !== 'dropped'),
   )
-  const taskLines = groups.map(({ roots }) => {
-    const name = roots.map(task => task.title).join(', ')
-    const current = roots
-      .map(task => currentTaskText(task)?.text)
-      .filter(Boolean)
+  const taskLines = groups.map(({ roots }) =>
+    roots
+      .filter(task => task.status !== 'done' && task.status !== 'dropped')
+      .map(task => taskFactLine(task, facts).slice(2))
       .join('; ')
-    const status = roots.some(task => task.status === 'working')
-      ? 'working'
-      : roots.some(task => task.status === 'waits-on-other')
-        ? 'waiting on others'
-        : 'queued'
-    return `- ${name}: ${current || '-'} (${status})`
-  })
+      .replace(/^/, '- '),
+  )
 
   return [
     ...statusFocusLines(ledger),
@@ -177,15 +172,27 @@ const CARRY_TITLE =
   'inbox: where the work stood at the last reply. The "inbox:" text beside this prompt lists what waits on the user and what was closed.'
 
 /** The mod's carry at a conversation's first prompt. The `inbox:` text beside that prompt already lists the open items and the closed ones. */
-export function statusCarryText(ledger: Ledger, taskTree: TaskTree = []): string | null {
-  const lines = statusSummaryLines(ledger, taskTree)
+export function statusCarryText(ledger: Ledger, taskTree: TaskTree = [], facts: TaskTextFacts = {}): string | null {
+  const lines = statusSummaryLines(ledger, taskTree, facts)
 
   return lines.length === 0 ? null : [CARRY_TITLE, ...lines].join(NL)
 }
 
-export function carryText(ledger: Ledger, title: string, taskTree: TaskTree = []): string | null {
+export function statusCarryTextForSession(
+  session: Pick<Session, 'ledger' | 'taskTree'>,
+  facts: TaskTextFacts = {},
+): string | null {
+  return statusCarryText(session.ledger, session.taskTree, facts)
+}
+
+export function carryText(
+  ledger: Ledger,
+  title: string,
+  taskTree: TaskTree = [],
+  facts: TaskTextFacts = {},
+): string | null {
   const findings = ledger.findings.filter(f => !f.feedOwned && !f.sourceManaged && f.kind !== 'progress')
-  const lines = statusSummaryLines(ledger, taskTree)
+  const lines = statusSummaryLines(ledger, taskTree, facts)
   if (lines.length === 0 && promptItems(ledger).length === 0 && findings.length === 0) return null
   const out = [title, ...lines]
   if (promptItems(ledger).length > 0) {
@@ -212,6 +219,7 @@ export function inboxText(
   isOpen: boolean,
   taskTree: TaskTree = [],
   taskStatusMismatches: readonly TaskStatusMismatch[] = [],
+  taskFacts: TaskTextFacts = {},
 ): string {
   const findings = ledger.findings.filter(f => !f.feedOwned && !f.sourceManaged && f.kind !== 'progress')
   const taskById = new Map(taskTree.map(task => [task.id, task]))
@@ -232,7 +240,7 @@ export function inboxText(
     `inbox: what waits on the user, as of your last reply. Anything not listed here is closed. ${CLOSE_ID_RULE}`,
   ]
   out.push(...statusFocusLines(ledger))
-  out.push(...taskSnapshotLines(ledger, taskTree))
+  out.push(...taskSnapshotLines(taskTree, taskFacts))
   if (mismatches.length > 0) out.push('Task status mismatches:', ...mismatches)
   if (promptItems(ledger).length > 0) {
     out.push('Waiting on the user:')
@@ -283,11 +291,12 @@ export function promptNotes(
   told: Told,
   taskTree: TaskTree = [],
   taskStatusMismatches: readonly TaskStatusMismatch[] = [],
+  taskFacts: TaskTextFacts = {},
 ): { notes: string[]; told: Told; shownUnrecorded: boolean } {
   const notes: string[] = []
   const answer = prompt.isPress ? null : answerNote(ledger, prompt.text)
   if (answer) notes.push(answer)
-  const inbox = inboxText(host, ledger, prompt.isOpen, taskTree, taskStatusMismatches)
+  const inbox = inboxText(host, ledger, prompt.isOpen, taskTree, taskStatusMismatches, taskFacts)
   const toldClosed = new Set(told.closed)
   const closed = closedText(ledger.closed.filter(d => !toldClosed.has(d.id)))
   const hasUnrecorded = ledger.unrecordedDecisions.length > 0

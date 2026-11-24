@@ -4,6 +4,7 @@ import { join } from 'node:path'
 
 import { STATUS_SYSTEM } from '../../hooks/status-prompt'
 import type { HostDeps } from '../src/host'
+import { ompTaskTextFacts } from '../src/host-task-reports'
 
 type Handler = (event: any, ctx: any) => unknown
 
@@ -186,6 +187,7 @@ export const deps = (): HostDeps => ({
   herdrTarget: null,
   herdrPane: null,
   recordedItemsOnly: undefined,
+  taskTextFacts: ompTaskTextFacts,
 })
 
 export const settle = async () => {

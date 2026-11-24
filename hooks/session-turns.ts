@@ -5,6 +5,7 @@ import { parseReply } from './reply-parse'
 import type { Update } from './reply-parse'
 import { addActivity } from './catch-up-text'
 import { carryText, promptNotes, screenText, START_TITLE } from './inbox-text'
+import type { TaskTextFacts } from './inbox-text'
 import { guidanceText } from './model-text'
 import type { ScreenTab } from './inbox-text'
 import type { Host } from './model-text'
@@ -19,8 +20,13 @@ import { NO_TURN } from './session-files'
  * A resumed conversation still holds the guidance from
  * its start, so it gets only where the session stands. Null when that is empty.
  */
-export function startContext(host: Host, s: Session, source: string | undefined): string | null {
-  const carried = carryText(s.ledger, START_TITLE, s.taskTree)
+export function startContext(
+  host: Host,
+  s: Session,
+  source: string | undefined,
+  taskFacts: TaskTextFacts = {},
+): string | null {
+  const carried = carryText(s.ledger, START_TITLE, s.taskTree, taskFacts)
   const parts = [source === 'resume' ? null : guidanceText(host), carried].filter((x): x is string => x !== null)
 
   return parts.length > 0 ? parts.join('\n\n') : null
@@ -63,10 +69,14 @@ export function notePrompt<S extends Session>(
   s: S,
   text: string,
   isOpen: boolean,
+  taskFacts: TaskTextFacts = {},
 ): { state: S; notes: string[]; sentBy: SentBy | null } {
   const matched = matchSent(s, text)
 
-  return { ...recordPrompt(host, startTurn(matched.state), text, isOpen, matched.sentBy), sentBy: matched.sentBy }
+  return {
+    ...recordPrompt(host, startTurn(matched.state), text, isOpen, matched.sentBy, taskFacts),
+    sentBy: matched.sentBy,
+  }
 }
 
 /**
@@ -180,6 +190,7 @@ export function recordPrompt<S extends Session>(
   text: string,
   isOpen: boolean,
   sentBy: SentBy | null,
+  taskFacts: TaskTextFacts = {},
 ): { state: S; notes: string[] } {
   const ledger = { ...s.ledger, turn: s.ledger.turn + 1 }
   const r = promptNotes(
@@ -189,6 +200,7 @@ export function recordPrompt<S extends Session>(
     s.told,
     s.taskTree,
     s.taskStatusMismatches,
+    taskFacts,
   )
   const person = s.turn.person === null ? text : `${s.turn.person}\n\n${text}`
 

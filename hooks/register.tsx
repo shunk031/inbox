@@ -42,7 +42,7 @@ import {
 } from './session-turns'
 import { emptySession, upgradeSession, type SavedSession } from './session-files'
 import { modTaskProjection, type ModTaskProjection } from './mod-task-projection'
-import { readTaskReportQueue as readTaskReportQueueFromFile } from './task-report'
+import { readTaskReportQueueFromHost, taskTextFacts } from './task-report'
 import { runModTool } from './mod-task-run'
 import { postToolReminder, toolCallReminder, withToolCallReminder } from './mod-task-reminder'
 import { pressOn, pruned, type SendOutcome } from './session-presses'
@@ -89,7 +89,7 @@ import { FEED_POLL_MS, startModFeed } from './mod-feed'
 import { tasksRunBy } from './reply-parse'
 import { CLAUDE_CODE, guidedCloseDescription } from './model-text'
 import { tasksDescription } from './tool-descriptions'
-import { statusCarryText, screenText, type ScreenTab } from './inbox-text'
+import { statusCarryTextForSession, screenText, type ScreenTab } from './inbox-text'
 import { catchUpPrompt, dialogActivity, dialogQuestions, toolActivity, transcriptCatchUpPrompt } from './catch-up-text'
 import { systemText } from './ledger-prompt'
 import { readInboxInstructions } from './mod-instructions'
@@ -308,7 +308,7 @@ function documentFile($: EngineInterface) {
 }
 
 const TAB = atom({ plugin: 'inbox', key: 'tab' } as const, 'needsYou' as Tab)
-/** Keep page state separate; row tabs are hidden while a page is open. */
+/** Page state hides row tabs. */
 const PAGE = atom({ plugin: 'inbox', key: 'page' } as const, null as PageTab | null)
 const SELECTION = atom({ plugin: 'inbox', key: 'selection' } as const, NO_SELECTION)
 /** Status row id whose keys work. */
@@ -1007,12 +1007,19 @@ async function notePrompt(
     isTyped = false,
   }: { match?: (s: Session) => { state: Session; sentBy: SentBy | null }; isTyped?: boolean } = {},
 ): Promise<string[]> {
-  const [now, isShown] = await Promise.all([$.clock.now(), isPaneShown($)])
+  const [now, isShown, reportQueue] = await Promise.all([$.clock.now(), isPaneShown($), readTaskReportQueue($)])
   await update($, AWAY, a => ({ ...a, lastActiveAt: now, isAway: false }))
   let notes: string[] = []
   await commit($, currentOwner(), s => {
     const matched = match(s)
-    const r = recordPrompt(CLAUDE_CODE, matched.state, text, isShown, matched.sentBy)
+    const r = recordPrompt(
+      CLAUDE_CODE,
+      matched.state,
+      text,
+      isShown,
+      matched.sentBy,
+      taskTextFacts(matched.state, reportQueue, now),
+    )
     notes = r.notes
     return isTyped ? messageTyped(r.state, now) : r.state
   })
@@ -2035,8 +2042,9 @@ async function drawnState(
 }
 
 async function readTaskReportQueue($: EngineInterface): Promise<string> {
-  const [home, stateDir] = await Promise.all([$.env.get('HOME'), $.env.get('HERDR_META_PATROL_STATE_DIR')])
-  return readTaskReportQueueFromFile({ HOME: home, HERDR_META_PATROL_STATE_DIR: stateDir }, path => $.fs.read(path))
+  return readTaskReportQueueFromHost($.env.get('HOME'), $.env.get('HERDR_META_PATROL_STATE_DIR'), path =>
+    $.fs.read(path),
+  )
 }
 
 async function setDemo($: EngineInterface, isShown: boolean, isRecording = false) {
@@ -2491,7 +2499,8 @@ export const register: Register = on => {
     if (sessionState.carriedFor !== conversation.id) {
       sessionState.carriedFor = conversation.id
       const carrySession = await read($, SESSION)
-      const carry = statusCarryText(carrySession.ledger, carrySession.taskTree)
+      const [reportQueue, now] = await Promise.all([readTaskReportQueue($), $.clock.now()])
+      const carry = statusCarryTextForSession(carrySession, taskTextFacts(carrySession, reportQueue, now))
       if (carry) notes.unshift(carry)
     }
 

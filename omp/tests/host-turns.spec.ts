@@ -4,6 +4,7 @@ import { join } from 'node:path'
 
 import { NO_HOLDS } from '../../hooks/timing'
 import { createInbox } from '../src/host'
+import { updateState } from '../src/state'
 import { stopOf } from '../src/omp-messages'
 import { reportedLabels, reportedTokens } from '../../tests/session-script'
 import {
@@ -43,6 +44,40 @@ test('Done schedules the wake and the wake tells the agent after the settle wind
   expect(w.sent).toHaveLength(1)
   expect(w.sent[0]!.text).toContain('Try the CLI by hand')
   expect(state().sent.map((x: { phase: string }) => x.phase)).toEqual(['accepted'])
+})
+
+test('omp prompt text includes the derived owner report and status', async () => {
+  const reportQueue = JSON.stringify({
+    from: 'worker',
+    machine: 'local',
+    seq: 1,
+    t: 999,
+    text: 'STATUS Cache is implemented',
+  })
+  createInbox(pi(), { ...deps(), taskReportQueue: async () => reportQueue })
+  await updateState(w.dir, 's1', s => ({
+    ...s,
+    taskTree: [
+      {
+        id: 't1',
+        parentId: null,
+        status: 'queued',
+        weight: 1,
+        title: 'Implement the cache',
+        detail: 'Private task text stays out of the inbox block.',
+        notes: [],
+        createdAt: 1_000,
+        updatedAt: 1_000,
+        history: [{ at: 1_000, source: 'agent', kind: 'created' }],
+        links: { owner: { agent: 'worker', machine: 'local' } },
+      },
+    ],
+  }))
+
+  const result = await prompt('Continue')
+
+  expect(result.message.content).toContain('- t1 | working | Implement the cache | STATUS Cache is implemented')
+  expect(result.message.content).not.toContain('Private task text')
 })
 
 test('a turn runs from agent_start to the run’s end, and a Done message waits for Esc to end the run', async () => {
