@@ -1,4 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
+import type { Session } from '../types'
 import { w, world } from './hooks-world'
 import { BAND, PANE, sidebarLines, sidebarTokens, NO_COUNTS } from './hooks-helpers'
 
@@ -86,22 +87,26 @@ test('Stop treats CR, LF and CRLF as line endings for the question line', async 
 
 test('Stop allows a question after the inbox record tool runs', async ($, on) => {
   mock.clock(on, { now: 1_000_000 })
-  world($, on, [])
+  const prompts: string[] = []
+  world($, on, prompts, { INBOX_RECORDED_ITEMS_ONLY: '1' })
   await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
   await $.turn.start({ text: 'go', turnId: 'recorded-question' })
   await $.tool.call({ tool: 'mcp__inbox__record', kind: 'question', ask: 'Should we ship this release?' })
   const recorded = await $.classic.Stop({ last_assistant_message: '❓ Should we ship this release?' } as never)
   expect(recorded).not.toHaveProperty('block')
+  expect(prompts).toHaveLength(0)
 })
 
 test('Stop allows a question after the inbox close tool runs', async ($, on) => {
   mock.clock(on, { now: 1_000_000 })
-  world($, on, [])
+  const prompts: string[] = []
+  world($, on, prompts, { INBOX_RECORDED_ITEMS_ONLY: '1' })
   await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
   await $.turn.start({ text: 'go', turnId: 'closed-question' })
   await $.tool.call({ tool: 'mcp__inbox__close', id: 'i1', answer: 'Done' } as never)
   const closed = await $.classic.Stop({ last_assistant_message: '❓ Should we ship this release?' } as never)
   expect(closed).not.toHaveProperty('block')
+  expect(prompts).toHaveLength(0)
 })
 
 test('Stop ignores question markers inside fenced code, including a shorter fence line', async ($, on) => {
@@ -121,12 +126,14 @@ test('Stop ignores question markers inside fenced code, including a shorter fenc
 
 test('Stop always allows a retry', async ($, on) => {
   mock.clock(on, { now: 1_000_000 })
-  world($, on, [])
+  const prompts: string[] = []
+  world($, on, prompts, { INBOX_RECORDED_ITEMS_ONLY: '1' })
   await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
   await $.turn.start({ text: 'go', turnId: 'retry-question' })
 
   const retry = await $.classic.Stop({ last_assistant_message: '❓ Should we ship?', stop_hook_active: true } as never)
   expect(retry).not.toHaveProperty('block')
+  expect(prompts).toHaveLength(0)
 })
 
 test('Stop allows a reply with no question marker', async ($, on) => {
@@ -136,6 +143,127 @@ test('Stop allows a reply with no question marker', async ($, on) => {
   await $.turn.start({ text: 'go', turnId: 'no-question' })
   const ordinary = await $.classic.Stop({ last_assistant_message: 'The release is ready.' } as never)
   expect(ordinary).not.toHaveProperty('block')
+})
+
+test('Stop shows the existing unrecorded-decision note once and updates the reply after its block', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  const prompts: string[] = []
+  world($, on, prompts, { INBOX_RECORDED_ITEMS_ONLY: '1' })
+  w.ledgerReply =
+    'NEW: decide | - | Which release target should we use? | Canary / All users | Canary | - | Should we target canary or everyone?'
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'Prepare the release', turnId: 'unrecorded-stop' })
+
+  const blocked = await $.classic.Stop({ last_assistant_message: 'Should we target canary or everyone?' } as never)
+  expect(blocked).toMatchObject({
+    block:
+      'Possibly unrecorded decisions in your last reply:\n' +
+      '- question: "Which release target should we use?" — reply quote: "Should we target canary or everyone?"\n' +
+      'Record each candidate that waits on the user with `record`, and ignore the rest.',
+  })
+  expect(prompts).toHaveLength(1)
+
+  w.ledgerReply = 'NONE'
+  const retry = await $.classic.Stop({
+    last_assistant_message: 'Recorded the release question.',
+    stop_hook_active: true,
+  } as never)
+  expect(retry).not.toHaveProperty('block')
+  await $.turn.complete({
+    answer: 'Recorded the release question.',
+    durationMs: 5,
+    isAborted: false,
+    turnId: 'unrecorded-stop',
+    reason: 'answer',
+  })
+  await clock.settle()
+  expect(prompts).toHaveLength(2)
+
+  const next = await $.prompt.submit({ text: 'continue', wait: false, origin: { kind: 'composer' } })
+  expect(next.context?.join('\n') ?? '').not.toContain('Possibly unrecorded decisions in your last reply:')
+})
+
+test('a failed Stop update leaves its exchange for the normal turn-complete update', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  const prompts: string[] = []
+  const saved: { value: Session | null } = { value: null }
+  world($, on, prompts, { INBOX_RECORDED_ITEMS_ONLY: '1' })
+  on('model.fork', () => ({ value: { isAnswered: false as const, reason: 'nothing-to-fork' as const } }))
+  on('state.set', { plugin: 'inbox', key: 'session' } as const, (_$, e, next) => {
+    saved.value = e.value as never
+    return next(e)
+  })
+  w.ledgerReply = 'not a ledger'
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'Prepare the release', turnId: 'failed-unrecorded-stop' })
+
+  const allowed = await $.classic.Stop({ last_assistant_message: 'Should we target canary or everyone?' } as never)
+  expect(allowed).not.toHaveProperty('block')
+  w.ledgerReply =
+    'NEW: decide | - | Which release target should we use? | Canary / All users | Canary | - | Should we target canary or everyone?'
+  await $.turn.complete({
+    answer: 'Should we target canary or everyone?',
+    durationMs: 5,
+    isAborted: false,
+    turnId: 'failed-unrecorded-stop',
+    reason: 'answer',
+  })
+  await clock.settle()
+
+  expect(prompts).toHaveLength(2)
+  expect(saved.value?.ledger.unrecordedDecisions).toHaveLength(1)
+  const next = await $.prompt.submit({ text: 'continue', wait: false, origin: { kind: 'composer' } })
+  expect(next.context?.join('\n') ?? '').toContain('Possibly unrecorded decisions in your last reply:')
+})
+
+test('a timed-out Stop update allows the reply and keeps next-prompt delivery', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  const prompts: string[] = []
+  world($, on, prompts, { INBOX_RECORDED_ITEMS_ONLY: '1' })
+  let release!: () => void
+  let started!: () => void
+  const held = new Promise<void>(resolve => (release = resolve))
+  const entered = new Promise<void>(resolve => (started = resolve))
+  w.ledgerHold = () => {
+    started()
+    return held
+  }
+  w.ledgerReply =
+    'NEW: decide | - | Which release target should we use? | Canary / All users | Canary | - | Should we target canary or everyone?'
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'Prepare the release', turnId: 'timed-out-unrecorded-stop' })
+
+  const stopping = $.classic.Stop({ last_assistant_message: 'Should we target canary or everyone?' } as never)
+  await entered
+  await clock.advance(9_000)
+  expect(await stopping).not.toHaveProperty('block')
+  release()
+  await clock.settle()
+
+  expect(prompts).toHaveLength(1)
+  const next = await $.prompt.submit({ text: 'continue', wait: false, origin: { kind: 'composer' } })
+  expect(next.context?.join('\n') ?? '').toContain('Possibly unrecorded decisions in your last reply:')
+})
+
+test('Stop without candidates allows the reply and runs only one ledger update', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  const prompts: string[] = []
+  world($, on, prompts, { INBOX_RECORDED_ITEMS_ONLY: '1' })
+  w.ledgerReply = 'NONE'
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'Prepare the release', turnId: 'empty-unrecorded-stop' })
+
+  const allowed = await $.classic.Stop({ last_assistant_message: 'The release is ready.' } as never)
+  expect(allowed).not.toHaveProperty('block')
+  await $.turn.complete({
+    answer: 'The release is ready.',
+    durationMs: 5,
+    isAborted: false,
+    turnId: 'empty-unrecorded-stop',
+    reason: 'answer',
+  })
+  await clock.settle()
+  expect(prompts).toHaveLength(1)
 })
 
 test('a delayed Resume refusal belongs only to the stop and conversation that sent it', async ($, on) => {
