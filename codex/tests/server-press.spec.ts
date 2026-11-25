@@ -5,11 +5,10 @@ import { test } from 'node:test'
 
 import { parseStatus } from '../../hooks/status'
 import { applyStatus } from '../../hooks/status-ops'
-import { QUEUED_AFTER_MS } from '../../hooks/timing'
+import { ANSWER_HOLD_MS, QUEUED_AFTER_MS } from '../../hooks/timing'
 import { notePrompt, viewOf } from '../src/core'
 import { makeServer } from '../src/server'
 import { readState, updateState } from '../src/state'
-import { SETTLE_WINDOW_MS } from '../src/settle'
 import { handleHook } from '../src/hook'
 import { findCli, queueResumeCheck } from '../src/cli'
 import { fakeRunner, hookDeps, input, tempDir } from './helpers'
@@ -17,7 +16,18 @@ import { ANSWER, pollTab, queueCalls, setup } from './server-fixtures'
 
 test('an answer waits out its Undo window, then goes into the tab’s thread with the codex binary the hooks saw, and the next prompt reads it as a press', async () => {
   let at = 100
-  const { dir, calls, call } = await setup(0, () => at)
+  const { dir, calls, call, handle } = await setup(0, () => at)
+  const readView = async () => {
+    const response = await handle({
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'tools/call',
+      params: { name: 'inbox_view', arguments: { shownSince: 0 }, _meta: { thread_id: 's1' } },
+    })
+    return (
+      response as { result: { structuredContent: { needsYou: { questions: { state: { canUndo: boolean } }[] } } } }
+    ).result.structuredContent
+  }
   const r = await call('inbox_press', { ...ANSWER, shownSince: 0 }, { thread_id: 's1' })
   assert.equal(r.result.structuredContent.error, null)
   assert.equal(r.result.structuredContent.note, null)
@@ -26,9 +36,14 @@ test('an answer waits out its Undo window, then goes into the tab’s thread wit
     r.result.structuredContent.view.needsYou.questions.map(q => [q.id, q.state.is]),
     [['i1', 'settled']],
   )
-  at += SETTLE_WINDOW_MS
-  await pollTab(call)
+  at += ANSWER_HOLD_MS - 1
+  const waiting = await readView()
+  assert.deepEqual(queueCalls(calls), [])
+  assert.equal(waiting.needsYou.questions[0]?.state.canUndo, true)
+  at += 1
+  const sent = await readView()
   assert.deepEqual(queueCalls(calls), [['/apps/codex', 'queue', '--thread', 's1', '--message', 'Re "Ship it?": Yes']])
+  assert.equal(sent.needsYou.questions[0]?.state.canUndo, false)
   const s = await readState(dir, 's1')
   assert.equal(s.sent[0]?.text, 'Re "Ship it?": Yes')
 
@@ -85,7 +100,7 @@ test('a press passes --resume only to a codex whose queue help lists it, and ask
           _meta: { thread_id: 's1' },
         },
       })
-    at += SETTLE_WINDOW_MS
+    at += ANSWER_HOLD_MS
     await handle({
       jsonrpc: '2.0',
       id: 2,
@@ -166,7 +181,7 @@ test('an answer pressed while the turn that opened a dialog still runs goes in t
     heard: { ...s.heard, promptAt: 1 },
   }))
   await call('inbox_press', ANSWER, { thread_id: 's1' })
-  at += SETTLE_WINDOW_MS
+  at += ANSWER_HOLD_MS
   await pollTab(call)
   const message = queueCalls(calls)[0]?.[5] ?? ''
   const open = '<send_user_message_question_reply>'
@@ -222,7 +237,7 @@ test('an answer refused before queue starts reopens its question and offers Try 
   )
   await updateState(dir, 's1', s => ({ ...s, cliPath: null }))
   await call('inbox_press', ANSWER, { thread_id: 's1' })
-  at += SETTLE_WINDOW_MS
+  at += ANSWER_HOLD_MS
   await pollTab(call)
   const question = viewOf(await readState(dir, 's1'), at).needsYou.questions[0]
   assert.equal(question?.state.is, 'open')
@@ -242,7 +257,7 @@ test('a queue command failure leaves the released answer unconfirmed without ret
   const { dir, call, calls } = await setup(1, () => at)
   const r = await call('inbox_press', ANSWER, { thread_id: 's1' })
   assert.equal(r.result.structuredContent.error, null)
-  at += SETTLE_WINDOW_MS
+  at += ANSWER_HOLD_MS
   await pollTab(call)
   const s = await readState(dir, 's1')
   assert.equal(s.ledger.closed[0]?.id, 'i1')

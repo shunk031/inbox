@@ -48,7 +48,7 @@ export type PendingUndoScroll = {
 /** When the last Undo the view offers ends, or null when it offers none. */
 export function lastUndoEnd(view: SessionView): number | null {
   const ends = [...allRows(view).map(r => r.state), ...view.prs.drawn.map(d => d.state)].flatMap(state =>
-    state.is === 'settled' && state.canUndo ? [state.at + SETTLED_MS] : [],
+    state.is === 'settled' && state.canUndo ? [state.undoUntil ?? state.at + SETTLED_MS] : [],
   )
 
   return ends.length > 0 ? Math.max(...ends) : null

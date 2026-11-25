@@ -1,5 +1,5 @@
 // Built by herdr/build.ts with Bun 1.4.4 from herdr/src and hooks/. Do not edit.
-// Built at 2026-11-24T09:08:36.893Z. 228028 characters follow.
+// Built at 2026-11-25T09:56:52.946Z. 228224 characters follow.
 
 // src/main.ts
 import { View, div as div5 } from "gpui-kit";
@@ -1644,9 +1644,6 @@ function retryOf(id, last) {
 function isRepeatOf(last, action) {
   return last?.action === action && last.kind !== "local" && last.delivery?.state !== "failed";
 }
-function isHeldSend(last) {
-  return last?.delivery?.state === "held";
-}
 
 // ../hooks/press-reducer.ts
 var STALE_TEXT = "This changed before your press. Nothing was sent.";
@@ -1988,13 +1985,14 @@ var NEEDS_YOU_GROUPS = [
   { kind: "task", title: "Tasks", list: "tasks" }
 ];
 var CLOSED_SHOWN = 3;
-function closedRowState(closed, at, now, settleWindowMs, delivery, isPressedAnswer = false) {
-  const canUndoAnswer = isPressedAnswer && delivery === "held" && isUndoLeft(at, now, settleWindowMs);
+function closedRowState(closed, at, now, settleWindowMs, delivery, isPressedAnswer = false, answerUndoUntil) {
+  const canUndoAnswer = isPressedAnswer && delivery === "held" && answerUndoUntil !== undefined && now < answerUndoUntil;
   return {
     is: "settled",
     label: outcomeLabel(closed),
     at,
     canUndo: canUndoAnswer || canUndoClose(closed, at, now, settleWindowMs),
+    ...canUndoAnswer ? { undoUntil: answerUndoUntil } : {},
     offersUndo: isPressedAnswer || offersUndo(closed),
     closedAs: closedState(closed),
     delivery
@@ -3378,8 +3376,12 @@ function inboxView({
     return last?.action === "type" && last.at >= closedAt(c) && last.delivery?.state !== "failed" && isInPlace(c.id, last.at, false, last) ? last : null;
   };
   const isPressedAnswer = (c) => c.how === "answered" && lastActions[c.id]?.kind === "mark" && lastActions[c.id]?.at === closedAt(c);
+  const answerUndoUntil = (id) => {
+    const delivery = lastActions[id]?.delivery;
+    return delivery?.state === "held" ? delivery.until : undefined;
+  };
   const isOwnClose = (c) => c.how === "done" || c.how === "dismissed" || isPressedAnswer(c);
-  const isAnswerHeld = (c) => isPressedAnswer(c) && isHeldSend(lastActions[c.id]) && isUndoLeft(closedAt(c), now, settleWindowMs);
+  const isAnswerHeld = (c) => isPressedAnswer(c) && now < (answerUndoUntil(c.id) ?? -Infinity);
   const isHeld = (c) => {
     const since = replies[c.id];
     return since !== undefined && since <= closedAt(c) && !isOwnClose(c);
@@ -3416,7 +3418,7 @@ function inboxView({
         };
       if (isHeld(closed))
         return { is: "held", label: heldLabel(closed), at };
-      return closedRowState(closed, at, now, settleWindowMs, "doneNotification" in closed && closed.doneNotification?.error !== undefined ? { error: closed.doneNotification.error, canUndo: isUndoable(closed) } : pendingDeliveryAt(pressedSend(closed), now), isPressedAnswer(closed));
+      return closedRowState(closed, at, now, settleWindowMs, "doneNotification" in closed && closed.doneNotification?.error !== undefined ? { error: closed.doneNotification.error, canUndo: isUndoable(closed) } : pendingDeliveryAt(pressedSend(closed), now), isPressedAnswer(closed), answerUndoUntil(closed.id));
     }
     const last = lastActions[id];
     const sent = ledger.findings.find((f) => f.id === id);
@@ -4303,7 +4305,7 @@ function undoButtons(row, agent) {
   if (row.state.is !== "settled")
     return [];
   const id = `${row.id} undo`;
-  const runsOutAt = row.state.at + SETTLED_MS;
+  const runsOutAt = row.state.undoUntil ?? row.state.at + SETTLED_MS;
   const undo = row.actions.find((a) => a.press.action === "undo");
   if (undo)
     return [

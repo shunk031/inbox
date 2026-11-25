@@ -2,6 +2,7 @@ import { version } from '../package.json'
 
 import type { PrPress } from '../../hooks/pr-press'
 import { applyHerdrFile } from '../../hooks/herdr-app'
+import { isLookFile } from '../../hooks/herdr-press-file'
 import type { HerdrFile } from '../../hooks/herdr-press-file'
 import type { RowPress } from '../../hooks/presses'
 import { lookEndedOn, withLook } from '../../hooks/session-status'
@@ -168,12 +169,13 @@ export function panelCalls(context: HostContext, sessions: SessionCalls, herdrAs
     },
     press: async (ctx, p, holds) => {
       const outcome = await press(hostFor(ctx), p, false, holds)
-      if (outcome.wakesAfterSettle) wakeLater(ctx)
+      if (outcome.wakesAfterSettle) wakeLater(ctx, p.action)
 
       return outcome
     },
     herdrFile: async (ctx, file) => {
-      if ((await applyHerdrFile(hostFor(ctx), file)).wakesAfterSettle) wakeLater(ctx)
+      const outcome = await applyHerdrFile(hostFor(ctx), file)
+      if (outcome.wakesAfterSettle && !isLookFile(file)) wakeLater(ctx, file.press.action)
     },
     resume: ctx => sendToAgent(ctx, RESUME_TEXT),
   }

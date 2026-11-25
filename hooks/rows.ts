@@ -8,7 +8,7 @@ import type { HelpStep } from './help-steps'
 import type { RowPress } from './presses'
 import { offersUndo } from './pressed'
 import { RUNNING_MARK, SUBJECT_MARKS, CLOSED_MARKS } from './help'
-import { canUndoClose, isUndoLeft } from './timing'
+import { canUndoClose } from './timing'
 import { baseName } from './open-targets'
 import type { Feedback } from './feedback'
 import type { InboxView } from './view'
@@ -38,6 +38,8 @@ export type RowState =
       label: string
       at: number
       canUndo: boolean
+      /** The held answer's deadline, so each look ends Undo when it is sent. */
+      undoUntil?: number
       /** Whether this kind of close offers Undo while Undo lasts. `canUndo` is whether Undo is on offer now. */
       offersUndo: boolean
       delivery: ClosedDelivery
@@ -59,14 +61,16 @@ export function closedRowState(
   settleWindowMs: number,
   delivery: ClosedDelivery,
   isPressedAnswer = false,
+  answerUndoUntil?: number,
 ): SettledState {
-  const canUndoAnswer = isPressedAnswer && delivery === 'held' && isUndoLeft(at, now, settleWindowMs)
+  const canUndoAnswer = isPressedAnswer && delivery === 'held' && answerUndoUntil !== undefined && now < answerUndoUntil
 
   return {
     is: 'settled',
     label: outcomeLabel(closed),
     at,
     canUndo: canUndoAnswer || canUndoClose(closed, at, now, settleWindowMs),
+    ...(canUndoAnswer ? { undoUntil: answerUndoUntil } : {}),
     offersUndo: isPressedAnswer || offersUndo(closed),
     closedAs: closedState(closed),
     delivery,

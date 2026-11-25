@@ -4,9 +4,95 @@ import { CLAUDE_CODE } from '../hooks/model-text'
 import { recorded } from '../hooks/session-presses'
 import { sessionView } from '../hooks/session-view'
 import { press, wakeAfterSettle } from '../hooks/host-press'
-import { NO_HOLDS } from '../hooks/timing'
+import { ANSWER_HOLD_MS, NO_HOLDS, SETTLED_MS } from '../hooks/timing'
 import { fakeHost } from './session-fake-host'
 import { TOOL_FIELDS } from '../hooks/tool-schemas'
+import { applyHerdrFileAndWake } from '../hooks/herdr-app'
+import { HERDR_FORMAT } from '../hooks/herdr'
+import type { PressFile } from '../hooks/herdr-press-file'
+
+test('Done still waits for the full settle window before it reaches the agent', async () => {
+  let clock = 1_000_000
+  const sent: string[] = []
+  const scripted = fakeHost(async () => null).host
+  const host = {
+    ...scripted,
+    now: () => clock,
+    settleWindowMs: SETTLED_MS,
+    deliver: async (_s: unknown, text: string) => {
+      sent.push(text)
+      return { state: 'accepted' as const, queuedId: null }
+    },
+  }
+  const holds = { ...NO_HOLDS, shownSince: clock }
+  await host.update(
+    s => recorded(CLAUDE_CODE, s, 'record', { kind: 'task', ask: 'Sign in to npm' }, clock, TOOL_FIELDS).state,
+  )
+  const id = (await host.read()).ledger.items[0]!.id
+  await press(host, { action: 'done', id }, false, holds)
+  const doneAt = (await host.read()).ledger.closed.findLast(c => c.id === id)!.at
+  const doneUntil = doneAt + SETTLED_MS
+
+  clock = doneAt + ANSWER_HOLD_MS
+  await wakeAfterSettle(host)
+  expect(sent).toEqual([])
+
+  clock = doneUntil
+  await wakeAfterSettle(host)
+  expect(sent).toHaveLength(1)
+})
+
+test('an Answer from a Herdr press file is sent at its two-second deadline', async () => {
+  let clock = 1_000_000
+  const sent: string[] = []
+  const scripted = fakeHost(async () => null).host
+  const host = {
+    ...scripted,
+    now: () => clock,
+    settleWindowMs: SETTLED_MS,
+    deliver: async (_s: unknown, text: string) => {
+      sent.push(text)
+      return { state: 'accepted' as const, queuedId: null }
+    },
+  }
+  await host.update(
+    s =>
+      recorded(
+        CLAUDE_CODE,
+        s,
+        'record',
+        { kind: 'question', ask: 'Which cache should the API use?', options: ['Redis'] },
+        clock,
+        TOOL_FIELDS,
+      ).state,
+  )
+  const id = (await host.read()).ledger.items[0]!.id
+  const scheduled: { ms: number; run: () => unknown }[] = []
+  const file: PressFile = {
+    format: HERDR_FORMAT,
+    id: 'herdr-answer-1',
+    pressedAt: clock,
+    press: { action: 'answer' as const, id, option: 'Redis' },
+    holds: NO_HOLDS,
+  }
+
+  await applyHerdrFileAndWake(
+    host,
+    file,
+    SETTLED_MS,
+    (ms, run) => scheduled.push({ ms, run }),
+    () => wakeAfterSettle(host),
+  )
+
+  expect(scheduled[0]?.ms).toBe(ANSWER_HOLD_MS)
+  clock += ANSWER_HOLD_MS - 1
+  await wakeAfterSettle(host)
+  expect(sent).toEqual([])
+
+  clock++
+  await scheduled[0]!.run()
+  expect(sent).toEqual(['Re "Which cache should the API use?": Redis'])
+})
 
 for (const isDeliveryHeldUntilRun of [false, true])
   test(`a refused Done message folds its row and leaves its Closed line reading Not sent, with Undo, when delivery is held until run: ${isDeliveryHeldUntilRun}`, async () => {

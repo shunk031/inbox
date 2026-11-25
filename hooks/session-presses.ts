@@ -15,7 +15,7 @@ import type { RowPress } from './presses'
 import { toolAnswer } from './tools'
 import type { AgentTool, ToolAnswer } from './tools'
 import { allRows } from './rows'
-import { isShownSince } from './timing'
+import { isShownSince, pressHoldMs } from './timing'
 import { outAction, pressFeedbackIn } from './feedback'
 import type { Holds } from './timing'
 import type { RowState } from './rows'
@@ -56,7 +56,7 @@ export function pressOn(
   const item = s.ledger.items.find(i => i.id === p.id)
   const r = applyPress(s.ledger, s.lastActions[p.id], p, {
     ...ctx,
-    holdMs: drawn.settleWindowMs,
+    holdMs: pressHoldMs(p.action, drawn.settleWindowMs),
     extraSteps: item ? itemPrSteps(item, s.prViews, tabPrs(s.ledger)) : [],
     answerMessage: texts.answerMessage,
     comparePage: texts.comparePage,

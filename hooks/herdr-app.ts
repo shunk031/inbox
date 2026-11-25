@@ -9,6 +9,7 @@ import type { PressHost, PressOutcome } from './host-press'
 import { lookReportedOn } from './session-status'
 import { rowsInPlace } from './session-presses'
 import { clipLabel } from './text'
+import { pressHoldMs } from './timing'
 
 /**
  * The file calls a host publishes with. `move` replaces `to` in one step, so the Herdr look never reads half a file.
@@ -310,6 +311,21 @@ export async function applyHerdrFile<S extends Session>(host: PressHost<S>, file
   )
   const lastHerdrPress = { id: file.id, outcome: outcome.note === 'stale' ? 'stale' : 'applied' } as const
   await host.update(s => ({ ...s, lastHerdrPress }))
+
+  return outcome
+}
+
+/** Applies a Herdr file and schedules its follow-up wake for the action's hold deadline. */
+export async function applyHerdrFileAndWake<S extends Session>(
+  host: PressHost<S>,
+  file: HerdrFile,
+  settleWindowMs: number,
+  later: (ms: number, run: () => unknown) => unknown,
+  wake: () => unknown,
+): Promise<PressOutcome> {
+  const outcome = await applyHerdrFile(host, file)
+  if (!outcome.wakesAfterSettle) return outcome
+  later(isLookFile(file) ? settleWindowMs : pressHoldMs(file.press.action, settleWindowMs), wake)
 
   return outcome
 }

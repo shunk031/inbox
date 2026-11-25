@@ -1986,9 +1986,6 @@ function retryOf(id, last) {
 function isRepeatOf(last, action) {
   return last?.action === action && last.kind !== "local" && last.delivery?.state !== "failed";
 }
-function isHeldSend(last) {
-  return last?.delivery?.state === "held";
-}
 
 // ../hooks/status-children.ts
 function isChildRunning(c, now) {
@@ -2280,13 +2277,14 @@ var RUNNING_PULSE_MS = RUNNING_FRAMES.length * RUNNING_FRAME_MS;
 var OPTIONS_FOLD_AT = 5;
 var OPTION_LABEL_CHARS = 32;
 var DOT = "\u2007\xB7\u2002";
-function closedRowState(closed, at, now, settleWindowMs, delivery, isPressedAnswer = false) {
-  const canUndoAnswer = isPressedAnswer && delivery === "held" && isUndoLeft(at, now, settleWindowMs);
+function closedRowState(closed, at, now, settleWindowMs, delivery, isPressedAnswer = false, answerUndoUntil) {
+  const canUndoAnswer = isPressedAnswer && delivery === "held" && answerUndoUntil !== void 0 && now < answerUndoUntil;
   return {
     is: "settled",
     label: outcomeLabel(closed),
     at,
     canUndo: canUndoAnswer || canUndoClose(closed, at, now, settleWindowMs),
+    ...canUndoAnswer ? { undoUntil: answerUndoUntil } : {},
     offersUndo: isPressedAnswer || offersUndo(closed),
     closedAs: closedState(closed),
     delivery
@@ -3411,8 +3409,12 @@ function inboxView({
     return last?.action === "type" && last.at >= closedAt(c) && last.delivery?.state !== "failed" && isInPlace(c.id, last.at, false, last) ? last : null;
   };
   const isPressedAnswer = (c) => c.how === "answered" && lastActions[c.id]?.kind === "mark" && lastActions[c.id]?.at === closedAt(c);
+  const answerUndoUntil = (id) => {
+    const delivery = lastActions[id]?.delivery;
+    return delivery?.state === "held" ? delivery.until : void 0;
+  };
   const isOwnClose = (c) => c.how === "done" || c.how === "dismissed" || isPressedAnswer(c);
-  const isAnswerHeld = (c) => isPressedAnswer(c) && isHeldSend(lastActions[c.id]) && isUndoLeft(closedAt(c), now, settleWindowMs);
+  const isAnswerHeld = (c) => isPressedAnswer(c) && now < (answerUndoUntil(c.id) ?? -Infinity);
   const isHeld = (c) => {
     const since = replies[c.id];
     return since !== void 0 && since <= closedAt(c) && !isOwnClose(c);
@@ -3458,7 +3460,8 @@ function inboxView({
         now,
         settleWindowMs,
         "doneNotification" in closed2 && closed2.doneNotification?.error !== void 0 ? { error: closed2.doneNotification.error, canUndo: isUndoable(closed2) } : pendingDeliveryAt(pressedSend(closed2), now),
-        isPressedAnswer(closed2)
+        isPressedAnswer(closed2),
+        answerUndoUntil(closed2.id)
       );
     }
     const last = lastActions[id];

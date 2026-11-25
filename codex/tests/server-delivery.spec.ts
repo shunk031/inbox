@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { mkdirSync } from 'node:fs'
 import { test } from 'node:test'
 
-import { NO_HOLDS } from '../../hooks/timing'
+import { ANSWER_HOLD_MS, NO_HOLDS } from '../../hooks/timing'
 import { notePrompt, viewOf } from '../src/core'
 import { makeServer } from '../src/server'
 import { SETTLE_WINDOW_MS } from '../src/settle'
@@ -34,7 +34,7 @@ test('an accepted queue survives a failed final state write as an unconfirmed pr
     method: 'tools/call',
     params: { name: 'inbox_press', arguments: ANSWER, _meta: { thread_id: 's1' } },
   })) as { result: { content: { text: string }[]; structuredContent: { error: string | null } } }
-  at += SETTLE_WINDOW_MS
+  at += ANSWER_HOLD_MS
   await handle({
     jsonrpc: '2.0',
     id: 2,
@@ -148,7 +148,7 @@ test('an answered question keeps unconfirmed delivery in Closed after its settle
   }))
   for (const id of ['i1', 'i2'])
     await call('inbox_press', { press: { action: 'answer', id, option: 'Yes' }, thread: 's1' }, { thread_id: 's1' })
-  at += SETTLE_WINDOW_MS
+  at += ANSWER_HOLD_MS
   await pollTab(call)
   const queued = await readState(dir, 's1')
   const first = notePrompt(queued, queued.sent[0]!.text, 110).state

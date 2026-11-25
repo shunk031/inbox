@@ -120,7 +120,7 @@ function rowButtons(row: RowView, isAllShown: boolean, agent: string): Button[] 
 function undoButtons(row: RowView, agent: string): Button[] {
   if (row.state.is !== 'settled') return []
   const id = `${row.id} undo`
-  const runsOutAt = row.state.at + SETTLED_MS
+  const runsOutAt = row.state.undoUntil ?? row.state.at + SETTLED_MS
   const undo = row.actions.find(a => a.press.action === 'undo')
   if (undo)
     return [

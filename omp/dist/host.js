@@ -4611,6 +4611,10 @@ function statusListRows(page) {
 
 // ../hooks/timing.ts
 var SETTLED_MS = 5120;
+var ANSWER_HOLD_MS = 2000;
+function pressHoldMs(action, settleWindowMs) {
+  return action === "answer" ? ANSWER_HOLD_MS : settleWindowMs;
+}
 var PRESS_GUARD_MS = 400;
 var QUEUED_AFTER_MS = 1000;
 var COMPARE_LIMIT_MS = 30 * 60000;
@@ -4718,13 +4722,14 @@ var NEEDS_YOU_GROUPS = [
   { kind: "task", title: "Tasks", list: "tasks" }
 ];
 var CLOSED_SHOWN = 3;
-function closedRowState(closed, at, now, settleWindowMs, delivery, isPressedAnswer = false) {
-  const canUndoAnswer = isPressedAnswer && delivery === "held" && isUndoLeft(at, now, settleWindowMs);
+function closedRowState(closed, at, now, settleWindowMs, delivery, isPressedAnswer = false, answerUndoUntil) {
+  const canUndoAnswer = isPressedAnswer && delivery === "held" && answerUndoUntil !== undefined && now < answerUndoUntil;
   return {
     is: "settled",
     label: outcomeLabel(closed),
     at,
     canUndo: canUndoAnswer || canUndoClose(closed, at, now, settleWindowMs),
+    ...canUndoAnswer ? { undoUntil: answerUndoUntil } : {},
     offersUndo: isPressedAnswer || offersUndo(closed),
     closedAs: closedState(closed),
     delivery
@@ -7686,8 +7691,12 @@ function inboxView({
     return last?.action === "type" && last.at >= closedAt(c) && last.delivery?.state !== "failed" && isInPlace(c.id, last.at, false, last) ? last : null;
   };
   const isPressedAnswer = (c) => c.how === "answered" && lastActions[c.id]?.kind === "mark" && lastActions[c.id]?.at === closedAt(c);
+  const answerUndoUntil = (id) => {
+    const delivery = lastActions[id]?.delivery;
+    return delivery?.state === "held" ? delivery.until : undefined;
+  };
   const isOwnClose = (c) => c.how === "done" || c.how === "dismissed" || isPressedAnswer(c);
-  const isAnswerHeld = (c) => isPressedAnswer(c) && isHeldSend(lastActions[c.id]) && isUndoLeft(closedAt(c), now, settleWindowMs);
+  const isAnswerHeld = (c) => isPressedAnswer(c) && now < (answerUndoUntil(c.id) ?? -Infinity);
   const isHeld = (c) => {
     const since = replies[c.id];
     return since !== undefined && since <= closedAt(c) && !isOwnClose(c);
@@ -7724,7 +7733,7 @@ function inboxView({
         };
       if (isHeld(closed))
         return { is: "held", label: heldLabel(closed), at };
-      return closedRowState(closed, at, now, settleWindowMs, "doneNotification" in closed && closed.doneNotification?.error !== undefined ? { error: closed.doneNotification.error, canUndo: isUndoable(closed) } : pendingDeliveryAt(pressedSend(closed), now), isPressedAnswer(closed));
+      return closedRowState(closed, at, now, settleWindowMs, "doneNotification" in closed && closed.doneNotification?.error !== undefined ? { error: closed.doneNotification.error, canUndo: isUndoable(closed) } : pendingDeliveryAt(pressedSend(closed), now), isPressedAnswer(closed), answerUndoUntil(closed.id));
     }
     const last = lastActions[id];
     const sent = ledger.findings.find((f) => f.id === id);
@@ -8438,7 +8447,7 @@ function pressOn(s, p, at, drawn, texts, localPressId) {
   const item = s.ledger.items.find((i) => i.id === p.id);
   const r = applyPress(s.ledger, s.lastActions[p.id], p, {
     ...ctx,
-    holdMs: drawn.settleWindowMs,
+    holdMs: pressHoldMs(p.action, drawn.settleWindowMs),
     extraSteps: item ? itemPrSteps(item, s.prViews, tabPrs(s.ledger)) : [],
     answerMessage: texts.answerMessage,
     comparePage: texts.comparePage,
@@ -14862,12 +14871,13 @@ function panelCalls(context, sessions, herdrAsk) {
     press: async (ctx, p, holds) => {
       const outcome = await press(hostFor(ctx), p, false, holds);
       if (outcome.wakesAfterSettle)
-        wakeLater(ctx);
+        wakeLater(ctx, p.action);
       return outcome;
     },
     herdrFile: async (ctx, file) => {
-      if ((await applyHerdrFile(hostFor(ctx), file)).wakesAfterSettle)
-        wakeLater(ctx);
+      const outcome = await applyHerdrFile(hostFor(ctx), file);
+      if (outcome.wakesAfterSettle && !isLookFile(file))
+        wakeLater(ctx, file.press.action);
     },
     resume: (ctx) => sendToAgent(ctx, RESUME_TEXT)
   };
@@ -15143,8 +15153,9 @@ function sessionCalls(context) {
       notifyChanged(id);
     })());
   }
-  function wakeLater(ctx) {
-    ctx.setTimeout(() => deps.background(wakeAfterSettle(hostFor(ctx))), deps.settleWindowMs + WAKE_MARGIN_MS);
+  function wakeLater(ctx, action) {
+    const delay = pressHoldMs(action, deps.settleWindowMs) + (action === "answer" ? 0 : WAKE_MARGIN_MS);
+    ctx.setTimeout(() => deps.background(wakeAfterSettle(hostFor(ctx))), delay);
   }
   return {
     change,

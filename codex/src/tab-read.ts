@@ -25,6 +25,7 @@ export function applyView(next: View, seq: number) {
   tabState.seen = settledSeen(tabState.seen, settledIds(next), Date.now())
   if ([...tabState.seen.keys()].some(id => !before.has(id))) drawIn(SETTLED_MS)
   tabState.view = next
+  for (const { state } of next.needsYou.questions) if ('undoUntil' in state) drawIn(state.undoUntil! - Date.now())
   const isOpening = LISTED_TABS.every(t => tabState.rowsSeen[t.id] === undefined)
   const rows = newRows(tabState.rowsSeen, next, next.isFetchingPrs)
   tabState.rowsSeen = rows.seen

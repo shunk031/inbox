@@ -63,7 +63,15 @@ export async function setup(
         structuredContent: {
           error: string | null
           note: string | null
-          view: { needsYou: { questions: { id: string; state: { is: string }; feedback: Feedback | null }[] } }
+          view: {
+            needsYou: {
+              questions: {
+                id: string
+                state: { is: string; canUndo: boolean; undoUntil?: number }
+                feedback: Feedback | null
+              }[]
+            }
+          }
         }
         content: { text: string }[]
       }

@@ -155,18 +155,23 @@ function InlineLink({ href, children }: { href: string; children: ComponentChild
  */
 export function UndoPlace({
   start,
+  durationMs = SETTLED_MS,
+  undoUntil,
   isUndoing,
   canUndo,
   offersUndo,
   onUndo,
 }: {
   start: number
+  durationMs?: number
+  undoUntil?: number
   isUndoing: boolean
   canUndo: boolean
   offersUndo: boolean
   onUndo: () => void
 }) {
-  const isShown = canUndo && (isUndoing || isUndoLeft(start, Date.now()))
+  const now = Date.now()
+  const isShown = canUndo && (isUndoing || (undoUntil === undefined ? isUndoLeft(start, now) : now < undoUntil))
   if (!isShown)
     return offersUndo ? (
       <button type="button" class="key undo spent" disabled tabIndex={-1} aria-hidden="true">
@@ -181,7 +186,7 @@ export function UndoPlace({
       <span
         key={start}
         class={isUndoing ? 'time-left paused' : 'time-left'}
-        style={{ animationDuration: `${SETTLED_MS}ms` }}
+        style={{ animationDuration: `${durationMs}ms` }}
         ref={el => {
           if (el && !el.style.animationDelay) el.style.animationDelay = `-${Math.max(0, Date.now() - start)}ms`
         }}
