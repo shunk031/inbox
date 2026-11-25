@@ -50,6 +50,7 @@ class SessionState {
   endReason: string | null = null
   stepTexts: string[] = []
   inboxRecordOrCloseCalled = false
+  stopUpdateReply: string | null = null
   /** True once an API error has set this turn's stop. */
   hasStopFromError = false
   turnBox: string | null = null
@@ -70,6 +71,7 @@ export const sessionState = new SessionState()
 export function resetTurn() {
   sessionState.stepTexts = []
   sessionState.inboxRecordOrCloseCalled = false
+  sessionState.stopUpdateReply = null
   sessionState.turnBox = null
   sessionState.isDialogDismissed = false
 }

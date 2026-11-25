@@ -89,7 +89,7 @@ import { FEED_POLL_MS, startModFeed } from './mod-feed'
 import { tasksRunBy } from './reply-parse'
 import { CLAUDE_CODE, guidedCloseDescription } from './model-text'
 import { tasksDescription } from './tool-descriptions'
-import { statusCarryTextForSession, screenText, type ScreenTab } from './inbox-text'
+import { statusCarryTextForSession, screenText, unrecordedDecisionsText, type ScreenTab } from './inbox-text'
 import { catchUpPrompt, dialogActivity, dialogQuestions, toolActivity, transcriptCatchUpPrompt } from './catch-up-text'
 import { systemText } from './ledger-prompt'
 import { readInboxInstructions } from './mod-instructions'
@@ -311,7 +311,6 @@ const TAB = atom({ plugin: 'inbox', key: 'tab' } as const, 'needsYou' as Tab)
 /** Page state hides row tabs. */
 const PAGE = atom({ plugin: 'inbox', key: 'page' } as const, null as PageTab | null)
 const SELECTION = atom({ plugin: 'inbox', key: 'selection' } as const, NO_SELECTION)
-/** Status row id whose keys work. */
 const STATUS_SELECTION = atom({ plugin: 'inbox', key: 'statusSelection' } as const, null as string | null)
 const TIMELINE_SELECTION = atom({ plugin: 'inbox', key: 'timelineSelection' } as const, null as string | null)
 const TIMELINE_DETAIL_OPEN = atom({ plugin: 'inbox', key: 'timelineDetailOpen' } as const, false)
@@ -320,7 +319,6 @@ const DIALOGS = atom({ plugin: 'inbox', key: 'dialogs' } as const, [] as Dialog[
 const TYPING = atom({ plugin: 'inbox', key: 'typing' } as const, null as string | null)
 const DRAFTS = atom({ plugin: 'inbox', key: 'drafts' } as const, {} as Record<string, Draft>)
 const DISCARDED = atom({ plugin: 'inbox', key: 'discarded' } as const, {} as Record<string, number>)
-/** Null while the pane is closed. */
 const SHOWN = atom({ plugin: 'inbox', key: 'shown' } as const, null as Shown | null)
 const NOTES = atom({ plugin: 'inbox', key: 'notes' } as const, {} as Record<string, RowNote>)
 const REDRAW = atom({ plugin: 'inbox', key: 'redraw' } as const, 0)
@@ -347,7 +345,6 @@ let taskProjection: ModTaskProjection | null = null
 let lastTaskReportQueue = ''
 const PANE = 'inbox'
 
-/** Adds the person's words to the turn, as a shell command does. */
 function notePerson($: EngineInterface, line: string) {
   return commit($, currentOwner(), s => ({
     ...s,
@@ -355,7 +352,6 @@ function notePerson($: EngineInterface, line: string) {
   }))
 }
 
-/** Notes the main agent's activity, and runs the Status call when the running turn is due one. */
 async function noteActivity($: EngineInterface, line: string) {
   const owner = currentOwner()
   const now = await $.clock.now()
@@ -413,7 +409,6 @@ function publishStatus($: EngineInterface, isEnding = false): Promise<boolean> {
   })
 }
 
-/** Applies a Herdr look's press. False when it is for another conversation. */
 async function herdrPress($: EngineInterface, id: string, f: HerdrFile): Promise<boolean> {
   if (id !== conversation.id) return false
   if ((await applyHerdrFile(hostOf($, currentOwner(), 'terminal'), f)).wakesAfterSettle)
@@ -430,14 +425,14 @@ async function setStop($: EngineInterface, stop: Stop | null) {
   void publishStatus($)
 }
 
-/** Sets the stop from the error text the transcript ends on, where no StopFailure hook ran. */
+/** Sets a stop from the transcript if StopFailure did not run. */
 async function setStopFromLastReply($: EngineInterface) {
   const last = (await $.session.messages().catch(() => [])).at(-1)
   const message = last?.role === 'assistant' ? last.text : ''
   await setStop($, { ...stopOfMessage(message), at: await $.clock.now() })
 }
 
-/** Waits for auto mode to settle before showing an ask; PreToolUse-only asks have no row. */
+/** Waits for auto mode to settle before showing a permission row. */
 async function waitForPermission($: EngineInterface, id: string, tool: string, rawInput: unknown) {
   const input = (rawInput ?? {}) as Record<string, unknown>
   const key = callKey(tool, input)
@@ -456,7 +451,6 @@ async function waitForPermission($: EngineInterface, id: string, tool: string, r
   }
 }
 
-/** Ends the wait for a permission row, and closes the row, for a call that has started running. */
 function endWaitFor($: EngineInterface, id: string | undefined) {
   const key = id ? askedCalls.get(id) : undefined
   if (!id || key === undefined) return
@@ -520,7 +514,7 @@ const OLD_UNTRACKED_SENT = atom(
   [] as { sessionId: string; text: string }[],
 )
 
-/** Merges legacy fields from an older build; uncertain sends cannot credit later presses. */
+/** Merges legacy fields without crediting uncertain sends. */
 async function fromOldFields($: EngineInterface): Promise<Session> {
   const [id, ledger, presence, prViews, stop, lastActions, sent, untracked] = await Promise.all([
     $.session.id(),
@@ -541,7 +535,6 @@ async function fromOldFields($: EngineInterface): Promise<Session> {
   return sessionFromOldFields(id, { ledger, presence, prViews, stop, lastActions, sent, untracked })
 }
 
-/** Brings the drawn session to the current shape. */
 async function upgradeDrawn($: EngineInterface): Promise<ModSession> {
   const written = await $.state.get({ plugin: 'inbox', key: 'session' })
   const base = written.value === undefined ? await fromOldFields($) : upgradeSession(written.value as SavedSession)
@@ -596,7 +589,7 @@ async function changeSession(
   throw new Error('The session kept changing under this write.')
 }
 
-/** The store, clock, debug log and running-conversation calls that `hooks/mod-saves.ts` makes. */
+/** Services used by `hooks/mod-saves.ts`. */
 function saveEngine($: EngineInterface): SaveEngine {
   return {
     store: {
@@ -792,7 +785,6 @@ function sessionHost(
   }
 }
 
-/** Changes one session's ledger. */
 function commitLedger(
   $: EngineInterface,
   change: (l: Ledger) => Ledger,
@@ -804,7 +796,6 @@ function commitLedger(
   })
 }
 
-/** Writes a session; drawn writes also refresh Status and new rows. */
 async function commit(
   $: EngineInterface,
   owner: Owner,
@@ -866,7 +857,7 @@ async function redrawAtCompareEnd($: EngineInterface) {
   })
 }
 
-/** Redraws after the loaded frame so Undo can animate, and after results or notes settle. */
+/** Redraws after load and when results or notes settle. */
 async function redrawAfterReload($: EngineInterface) {
   const { lastActions, notes, now } = await drawnState($)
   const times = [
@@ -940,10 +931,10 @@ async function catchUpNow($: EngineInterface) {
   updateLedger($)
 }
 
-/** Runs pending exchanges serially, catching up when a failed update or reload may have lost a turn. */
-function updateLedger($: EngineInterface) {
+/** Runs queued exchanges in order, catching up after missed turns. */
+function updateLedger($: EngineInterface): Promise<void> {
   const owner = currentOwner()
-  mod.queue = mod.queue.then(async () => {
+  const run = mod.queue.then(async () => {
     if (!isCurrent(owner)) return
     await runUpdates({
       ...hostOf($, owner),
@@ -957,7 +948,9 @@ function updateLedger($: EngineInterface) {
     if (isCurrent(owner)) void publishStatus($)
   })
   // A rejected link would skip every later update, so the chain swallows it.
-  mod.queue = mod.queue.catch(() => undefined)
+  mod.queue = run.catch(() => undefined)
+
+  return mod.queue
 }
 
 function recordsOf($: EngineInterface, owner: Owner): StatusRecords | undefined {
@@ -1106,7 +1099,7 @@ function openPane($: EngineInterface, isFieldOpen = false) {
   return opened
 }
 
-/** Tracks the visible Status page; demo sessions do not change the real session's look. */
+/** Tracks visible Status without changing demo sessions. */
 async function syncLook($: EngineInterface, isOpen?: boolean) {
   if (await read($, DEMO)) return
   const [page, isPaneOpen, now] = await Promise.all([readPage($), isOpen ?? isPaneShown($), $.clock.now()])
@@ -1116,7 +1109,6 @@ async function syncLook($: EngineInterface, isOpen?: boolean) {
   followDelegates($, isShown)
 }
 
-/** Tracks Status delegates. */
 function followDelegates($: EngineInterface, isShown: boolean) {
   followHerdrDelegates(isShown, paneState, herdrCalls($).every, () => {
     const owner = currentOwner()
@@ -1153,12 +1145,11 @@ async function readShownTab($: EngineInterface): Promise<ShownTab> {
   return page ?? tab
 }
 
-/** When the pane began showing the tab it shows now. Null while the pane is closed. */
 async function readShownSince($: EngineInterface): Promise<number | null> {
   return (await read($, SHOWN))?.since ?? null
 }
 
-/** What the pane holds in place: the rows replies hold, and the rows closed since it showed its tab. */
+/** Rows held by pending replies and those closed since the tab appeared. */
 async function readHolds($: EngineInterface): Promise<Holds> {
   const [typing, drafts, discarded, shownSince] = await Promise.all([
     read($, TYPING),
@@ -1222,7 +1213,7 @@ async function showInbox($: EngineInterface, opening: ReturnType<typeof openInHe
 async function openInbox($: EngineInterface, isDemo: boolean) {
   const opening = isDemo ? null : openInHerdr(herdrCalls($))
   if (opening instanceof Promise && (await opening).isShown) return
-  // Open before awaiting so a closed pane stays placed below 144 columns; Herdr opening is the exception.
+  // Keep a closed pane below 144 columns; Herdr is the exception.
   await openPane($)
   const { view } = await drawnState($)
   if (view.needsYou.count > 0) await writeRowTab($, 'needsYou')
@@ -1241,7 +1232,7 @@ async function sendTyped($: EngineInterface, id: string, text: string, surface: 
   else await focusField($, id)
 }
 
-/** Opens `id`'s field with its draft, or with `seed` as a fresh one, and gives it the keys. */
+/** Opens a draft field and binds its keys. */
 async function startTyping($: EngineInterface, id: string, seed?: string) {
   paneState.focusHint = `type-${id}`
   const now = await $.clock.now()
@@ -1272,7 +1263,7 @@ async function focusField($: EngineInterface, id: string) {
     r => r.deny === undefined,
     () => false,
   )
-  // A deny also comes when the field's `autoFocus` took the keys first, so the pane says whether it has them.
+  // Report when autoFocus kept the keys first.
   const isWithoutKeys = !isMoved && (await $.ui.panes()).some(p => p.id === PANE && !p.isFocused)
   if (isWithoutKeys === (paneState.fieldWithoutKeys === id)) return
   paneState.fieldWithoutKeys = isWithoutKeys ? id : null
@@ -1311,7 +1302,6 @@ async function showTab($: EngineInterface, tab: ShownTab) {
   await scrollToOpenRow($, tab)
 }
 
-/** Marks the fetch before the tab draws, so it can show "Checking for PRs…". */
 async function findPrs($: EngineInterface) {
   if (await read($, DEMO)) return
   await markFetching($, true)
@@ -1633,7 +1623,7 @@ function markFetching($: EngineInterface, isFetching: boolean) {
   )
 }
 
-/** Serializes session PR fetches; queued requests retain whether any needs a branch PR. */
+/** Serializes PR fetches and keeps queued branch-fetch requests. */
 function fetchPrs($: EngineInterface, findsBranchPr: boolean, isPress = false): Promise<void> {
   const waiting = mod.nextFetch
   if (waiting) {
@@ -1660,7 +1650,7 @@ async function fetchPrsNow($: EngineInterface, ask: FetchAsk) {
     await fetchSessionPrs(hostOf($, owner), ask.findsBranchPr, ask.isPress)
   } finally {
     mod.prFetchEndedAt = await $.clock.now()
-    // Fetches run one at a time across conversations, so the drawn session reads whether one still runs.
+    // Keep fetch state in each saved session.
     await markFetching($, mod.nextFetch !== null)
   }
   void followNewRows($).catch(() => undefined)
@@ -1685,7 +1675,6 @@ async function pollPrs($: EngineInterface) {
   await fetchPrs($, isTabShown)
 }
 
-/** Settles held Answers and Fixes after Undo, removes dismissed PRs once their rows settle, and sends Done messages. */
 async function wakeAfterSettle($: EngineInterface) {
   await wakeSessionAfterSettle(hostOf($, currentOwner()))
 }
@@ -1724,7 +1713,7 @@ async function runPressNow(
       ? update($, DRAFTS, d => (d[p.id] ? d : { ...d, [p.id]: { text: p.text, since: draft?.since ?? now } }))
       : undefined
   if (!isPrPress(p) && p.action === 'type') {
-    // A held row stays drawn by its draft's words once its field closes, until the press records its reply.
+    // A held row uses its draft until its reply is recorded.
     await update($, DRAFTS, d => {
       const typed = d[p.id]
       return typed ? { ...d, [p.id]: { ...typed, text: p.text } } : d
@@ -2055,8 +2044,7 @@ async function setDemo($: EngineInterface, isShown: boolean, isRecording = false
     update($, DEMO_RECORDING, () => isShown && isRecording),
   ])
   await Promise.all([update($, SELECTION, () => NO_SELECTION), update($, TYPING, () => null)])
-  // The sample closes a row as it starts, at `now`, so its showing starts then too and the row stays in place. The
-  // pane shows the sample or opens on it next.
+  // The sample starts at now and stays in place.
   await syncShown($, { isOpen: true, since: now })
   await syncLook($, true)
   if ((await read($, TAB)) === 'prs') await findPrs($)
@@ -2073,7 +2061,6 @@ async function registerInboxCommand($: EngineInterface) {
   return $.command.register({ name: 'inbox', description, immediate: true }).catch(() => undefined)
 }
 
-/** Detects Claude Desktop, whose process has an entrypoint but no child-session variable. */
 async function isStartedByDesktopApp($: EngineInterface) {
   const [entrypoint, childSession] = await Promise.all([
     $.env.get('CLAUDE_CODE_ENTRYPOINT'),
@@ -2202,9 +2189,9 @@ async function prepareConversation(
   if (revision !== sessionState.loadRevision) return
   const applying = sessionState.applyingConversation.then(async () => {
     if (revision !== sessionState.loadRevision) return
-    // A write to a saved session after the read above, such as a refused Done message, is read again.
+    // Re-read writes made after the initial session read.
     const latest = writesAtRead === sessionState.savedWrites ? saved : await readSettled(saveEngine($), id)
-    // A fork continues its parent's inbox, so a new id with no saved state starts from the parent's.
+    // New forks inherit the parent's inbox.
     const parent = latest?.session || !forkedFrom ? null : await readSettled(saveEngine($), forkedFrom)
     await applyConversation($, id, revision, by, sessionRoot, latest, parent?.session)
   })
@@ -2278,7 +2265,7 @@ async function applyConversation(
   await syncShown($, { since: loadedAt })
   const turns = await $.session.turns().catch(() => null)
   const cutOff = (s: Session) => statusChanged(cutOffTurn(cutOffUpdate(s)), o => childrenCutOff(o, loadedAt))
-  // Before notePlace's save, so this conversation is never saved with the previous one's tool fields.
+  // Save the new place before its tool fields.
   await replaceDrawn($, s => withLoadedToolFields(cutOff(s), by, saved?.session, parent, turns))
   if (revision !== sessionState.loadRevision) return
   await taskProjection?.exportSnapshot(id, await read($, SESSION))
@@ -2469,7 +2456,7 @@ export const register: Register = on => {
 
   on('prompt.submit', async ($, e, next) => {
     if (!mod.isOn) return next(e)
-    // Compare ids on the first prompt when SessionStart was skipped; reloads that ran it already match.
+    // Session ids also catch reloads that skipped SessionStart.
     const sessionId = await $.session.id()
     if (sessionId !== conversation.id) {
       const reason = sessionState.endReason
@@ -2738,9 +2725,48 @@ export const register: Register = on => {
     return r
   })
 
-  on('classic.Stop', async (_$, e, next) => {
+  on('classic.Stop', async ($, e, next) => {
     const r = await next(e)
-    return questionStopResult(r, e as never, mod.isOn, sessionState.inboxRecordOrCloseCalled)
+    const input = e as { last_assistant_message?: string; stop_hook_active?: boolean; agent_id?: string }
+    const question = questionStopResult(r, input, mod.isOn, sessionState.inboxRecordOrCloseCalled)
+    const reply = turnReply([
+      turnReply(sessionState.stepTexts, input.last_assistant_message ?? ''),
+      sessionState.turnBox ?? '',
+    ])
+    if (
+      !mod.isOn ||
+      !mod.recordedItemsOnly ||
+      input.agent_id ||
+      input.stop_hook_active ||
+      sessionState.inboxRecordOrCloseCalled ||
+      !reply.trim()
+    )
+      return question
+    const [tab, isOpen, state] = await Promise.all([shownScreenTab($), isPaneShown($), read($, SESSION)])
+    const ended = endTurn(CLAUDE_CODE, state, reply, isOpen, { tab })
+    if (
+      state.pending.length ||
+      state.presence.isUpdating ||
+      state.presence.ledgerState !== 'current' ||
+      ended.pending.length === state.pending.length
+    )
+      return question
+    await commit($, currentOwner(), current => ({
+      ...endTurn(CLAUDE_CODE, current, reply, isOpen, { tab }),
+      turn: current.turn,
+    }))
+    sessionState.stopUpdateReply = reply
+    const finished = await Promise.race([updateLedger($).then(() => true), $.clock.sleep(9_000).then(() => false)])
+    if (!finished) return question
+    const after = await read($, SESSION)
+    if (after.pending.length || !after.ledger.unrecordedDecisions.length) return question
+    const reason = unrecordedDecisionsText(after.ledger.unrecordedDecisions)
+    await commit($, currentOwner(), current => ({ ...current, ledger: { ...current.ledger, unrecordedDecisions: [] } }))
+    sessionState.stopUpdateReply = null
+    sessionState.stepTexts = []
+    const block = (question as { block?: string }).block
+
+    return { ...question, block: block ? `${block}\n\n${reason}` : reason }
   })
 
   on('turn.step', async function* (_$, e, next) {
@@ -2788,9 +2814,15 @@ export const register: Register = on => {
       read($, SESSION),
     ])
     const queuesEmptyReply = sessionState.isDialogDismissed
+    const stopUpdateReply = sessionState.stopUpdateReply
     resetTurn()
     await update($, AWAY, a => ({ ...a, lastActiveAt: now }))
-    await commit($, currentOwner(), s => endTurn(CLAUDE_CODE, s, reply, isShown, { tab: screenTab, queuesEmptyReply }))
+    await commit($, currentOwner(), s => {
+      const ended = endTurn(CLAUDE_CODE, s, reply, isShown, { tab: screenTab, queuesEmptyReply })
+      return stopUpdateReply === reply && ended.pending.length > s.pending.length
+        ? { ...ended, pending: ended.pending.slice(0, -1) }
+        : ended
+    })
     updateLedger($)
     const after = await read($, SESSION)
     const linksNewPr = after.ledger.prs.some(ref => !before.ledger.prs.includes(ref))
@@ -2902,7 +2934,7 @@ export const register: Register = on => {
         surface: e.surface,
       })
     else if (e.element.startsWith('links-') && followUp && typeof data?.key === 'string') {
-      // The Client is not a focusable key, so the next drawing moves the focus to the hint, when it is drawn.
+      // Focus the hint when a Client cannot take focus.
       paneState.focusedKey = e.element
       paneState.focusHint = focusHintFor(data.key)
       followUp({
@@ -3152,7 +3184,7 @@ export const register: Register = on => {
       )
     const undoEnd = lastUndoEnd(view)
     if (undoEnd !== null) redrawWhileUndoLasts($, undoEnd)
-    // A hot reload keeps TYPING but empties openFields, so an open field takes its key and seed again here.
+    // Re-seed open fields after hot reload.
     if (typing !== null && !openFields.has(typing)) openFields.set(typing, openedField(typing, drafts[typing]))
     if (e.props.isFocused || typing !== paneState.fieldWithoutKeys) paneState.fieldWithoutKeys = null
     // Escape, or a click outside the pane, closes the field and keeps its draft, as Cancel does.
@@ -3811,7 +3843,7 @@ export const register: Register = on => {
         const focusKey = hint && keys.has(hint) ? hint : null
         paneState.focusedKey = focusKey
         paneState.focusHint = null
-        // After this hook returns, since a focus asked from inside a drawing's own hook cannot wait on it.
+        // Focus again after this hook returns.
         if (focusKey) later($, 0, () => $.ui.focus({ requestId: PANE, key: focusKey }))
       }
     }

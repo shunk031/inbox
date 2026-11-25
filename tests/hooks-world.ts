@@ -15,6 +15,7 @@ class World {
   statusPrompts: string[] = []
   modelSystems: string[] = []
   statusHold: Promise<void> | null = null
+  ledgerHold: (() => Promise<void>) | null = null
   sessionId = 'session-1'
 
   sent: string[] = []
@@ -460,6 +461,7 @@ export function world($: Engine, on: On, prompts: string[], vars: Record<string,
     if (isStatusCall) w.statusPrompts.push(e.prompt)
     else prompts.push(e.prompt)
     if (isStatusCall) await w.statusHold
+    else await w.ledgerHold?.()
     const statusText = !isStatusCall
       ? null
       : Array.isArray(w.statusReply)

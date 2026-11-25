@@ -3450,10 +3450,17 @@ function inboxText(host, ledger, isOpen, taskTree = [], taskStatusMismatches = [
       out.push(findingLine(f));
   }
   if (ledger.unrecordedDecisions.length > 0) {
-    out.push("Possibly unrecorded decisions in your last reply:", ...ledger.unrecordedDecisions.map((candidate) => `- ${candidate.kind}: ${JSON.stringify(candidate.ask)} \u2014 reply quote: ${JSON.stringify(candidate.quote)}`), "Record each candidate that waits on the user with `record`, and ignore the rest.");
+    out.push(unrecordedDecisionsText(ledger.unrecordedDecisions));
   }
   out.push(isOpen ? `The user has ${host.surface} open beside the conversation.` : `${surfaceAtStart(host)} is closed.`);
   return out.join(NL5);
+}
+function unrecordedDecisionsText(candidates) {
+  return [
+    "Possibly unrecorded decisions in your last reply:",
+    ...candidates.map((candidate) => `- ${candidate.kind}: ${JSON.stringify(candidate.ask)} \u2014 reply quote: ${JSON.stringify(candidate.quote)}`),
+    "Record each candidate that waits on the user with `record`, and ignore the rest."
+  ].join(NL5);
 }
 function closedText(closed) {
   if (closed.length === 0)
@@ -12046,8 +12053,8 @@ var CODEX_SUPPORT = {
     reason: "Codex keeps finished Timeline roots inline while the terminal look ships the fold first."
   },
   "stop-question-guard": {
-    kind: "unsupported",
-    reason: "This guard runs in the Claude Code mod Stop hook; Codex uses a separate hook host."
+    kind: "different",
+    reason: "Codex runs its ledger update in a separate process; same-turn feedback needs a request and response path."
   }
 };
 
@@ -12185,8 +12192,8 @@ var OMP_SUPPORT = {
     reason: "omp keeps finished Timeline roots inline while the terminal look ships the fold first."
   },
   "stop-question-guard": {
-    kind: "unsupported",
-    reason: "This guard runs in the Claude Code mod Stop hook; omp uses a separate hook host."
+    kind: "different",
+    reason: "omp delivers detected decisions in the next prompt because its agent_end handler cannot return feedback to the ended turn."
   }
 };
 

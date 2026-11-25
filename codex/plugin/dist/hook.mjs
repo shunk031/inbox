@@ -1011,16 +1011,19 @@ function inboxText(host, ledger, isOpen2, taskTree = [], taskStatusMismatches = 
     for (const f of findings) out.push(findingLine(f));
   }
   if (ledger.unrecordedDecisions.length > 0) {
-    out.push(
-      "Possibly unrecorded decisions in your last reply:",
-      ...ledger.unrecordedDecisions.map(
-        (candidate) => `- ${candidate.kind}: ${JSON.stringify(candidate.ask)} \u2014 reply quote: ${JSON.stringify(candidate.quote)}`
-      ),
-      "Record each candidate that waits on the user with `record`, and ignore the rest."
-    );
+    out.push(unrecordedDecisionsText(ledger.unrecordedDecisions));
   }
   out.push(isOpen2 ? `The user has ${host.surface} open beside the conversation.` : `${surfaceAtStart(host)} is closed.`);
   return out.join(NL2);
+}
+function unrecordedDecisionsText(candidates) {
+  return [
+    "Possibly unrecorded decisions in your last reply:",
+    ...candidates.map(
+      (candidate) => `- ${candidate.kind}: ${JSON.stringify(candidate.ask)} \u2014 reply quote: ${JSON.stringify(candidate.quote)}`
+    ),
+    "Record each candidate that waits on the user with `record`, and ignore the rest."
+  ].join(NL2);
 }
 function closedText(closed) {
   if (closed.length === 0) return null;

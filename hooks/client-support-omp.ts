@@ -139,7 +139,8 @@ export const OMP_SUPPORT: ClientSupport['support'] = {
     reason: 'omp keeps finished Timeline roots inline while the terminal look ships the fold first.',
   },
   'stop-question-guard': {
-    kind: 'unsupported',
-    reason: 'This guard runs in the Claude Code mod Stop hook; omp uses a separate hook host.',
+    kind: 'different',
+    reason:
+      'omp delivers detected decisions in the next prompt because its agent_end handler cannot return feedback to the ended turn.',
   },
 }

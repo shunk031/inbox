@@ -194,7 +194,7 @@ export const CODEX_SUPPORT: ClientSupport['support'] = {
     reason: 'Codex keeps finished Timeline roots inline while the terminal look ships the fold first.',
   },
   'stop-question-guard': {
-    kind: 'unsupported',
-    reason: 'This guard runs in the Claude Code mod Stop hook; Codex uses a separate hook host.',
+    kind: 'different',
+    reason: 'Codex runs its ledger update in a separate process; same-turn feedback needs a request and response path.',
   },
 }
