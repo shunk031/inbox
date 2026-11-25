@@ -326,6 +326,8 @@ function SettledView({ settled: r, panel }: { settled: RowView; panel: Row | und
           </div>
           <UndoPlace
             start={start}
+            durationMs={state.undoUntil === undefined ? SETTLED_MS : Math.max(0, state.undoUntil - start)}
+            undoUntil={state.undoUntil}
             isUndoing={undoing.has(r.id)}
             canUndo={state.canUndo}
             offersUndo={state.offersUndo}

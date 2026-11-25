@@ -363,17 +363,19 @@ export function paneRowParts(
         ]
   }
   const svgClientElements = hasClient && 'Svg' in elements ? elements : null
-  const undoButton = (undo: RowPress | PrPress, at: number | null) => {
+  const undoButton = (undo: RowPress | PrPress, at: number | null, undoUntil?: number) => {
     const key = `undo-${pressRowId(undo)}`
     const label = ` ↺ ${UNDO_KEY}: ${ROW_COPY.undo} `
     const onPress = (press: { surface: UiPressArgument['surface'] }) => runPress(undo, press.surface)
     if (svgClientElements) {
       followUpPresses.set(key, onPress)
-      const leftMs = at === null ? 0 : Math.max(0, SETTLED_MS - (now - at))
+      const start = at ?? now
+      const durationMs = undoUntil === undefined ? SETTLED_MS : Math.max(0, undoUntil - start)
+      const leftMs = at === null ? 0 : Math.max(0, (undoUntil ?? start + SETTLED_MS) - now)
       return (
         <Box key={`${key}-${at}`} width={UNDO_CELLS} height={UNDO_HEIGHT_PT / DESKTOP_LINE_PT}>
           <svgClientElements.Svg
-            source={undoSvg(leftMs / SETTLED_MS, leftMs)}
+            source={undoSvg(durationMs > 0 ? leftMs / durationMs : 0, leftMs)}
             alt={ROW_COPY.undo}
             width={UNDO_CELLS * DESKTOP_CELL_PT}
             height={UNDO_HEIGHT_PT}
@@ -393,7 +395,9 @@ export function paneRowParts(
     if (look !== 'terminal' || at === null) return <Button key={key} label="↺ Undo" onPress={onPress} />
     const cells = [...label]
     const keyAt = cells.indexOf(UNDO_KEY)
-    const filled = Math.ceil((Math.max(0, SETTLED_MS - (now - at)) / SETTLED_MS) * cells.length)
+    const durationMs = undoUntil === undefined ? SETTLED_MS : Math.max(0, undoUntil - at)
+    const leftMs = Math.max(0, (undoUntil ?? at + SETTLED_MS) - now)
+    const filled = durationMs > 0 ? Math.ceil((leftMs / durationMs) * cells.length) : 0
 
     return (
       <Button key={key} onPress={onPress}>
@@ -410,17 +414,23 @@ export function paneRowParts(
     )
   }
   // A desktop title wraps beside Undo, so Undo's place keeps its size after Undo ends and the title keeps its wrap.
-  const undoPlace = (id: string, undo: RowPress | PrPress | null, at: number, offersUndo: boolean) =>
+  const undoPlace = (
+    id: string,
+    undo: RowPress | PrPress | null,
+    at: number,
+    offersUndo: boolean,
+    undoUntil?: number,
+  ) =>
     svgClientElements && offersUndo ? (
       <Box key={`undo-place-${id}`} width={UNDO_CELLS} height={UNDO_HEIGHT_PT / DESKTOP_LINE_PT}>
-        {undo ? undoButton(undo, at) : null}
+        {undo ? undoButton(undo, at, undoUntil) : null}
       </Box>
     ) : undo ? (
-      undoButton(undo, at)
+      undoButton(undo, at, undoUntil)
     ) : null
   const settledContent = (
     what: string,
-    { label, at, delivery, closedAs, reply }: SettledState,
+    { label, at, delivery, closedAs, reply, undoUntil }: SettledState,
     undo: RowPress | PrPress | null,
     mark: ResultMark | null,
     context: string | null = null,
@@ -453,7 +463,7 @@ export function paneRowParts(
             {inlineText(settledLabel(label, delivery, reply))}
           </Text>,
         )}
-        {undo ? undoButton(undo, at) : null}
+        {undo ? undoButton(undo, at, undoUntil) : null}
       </Box>
     </Box>
   )
@@ -472,7 +482,7 @@ export function paneRowParts(
         key: `settled-${r.id}`,
         markCells: DESKTOP_MARK_CELLS,
         mark: markGlyph(mark, `settled-${r.id}`, pal.muted),
-        side: undoPlace(r.id, undo, state.at, state.offersUndo),
+        side: undoPlace(r.id, undo, state.at, state.offersUndo, state.undoUntil),
         padY: space.settledPad,
         isSideCentered: true,
         children: [

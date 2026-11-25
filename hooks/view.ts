@@ -6,7 +6,7 @@ import { baseName } from './open-targets'
 import { stepsOf } from './help-steps'
 import type { HelpStep } from './help-steps'
 import { isFixSent, isHandedOff } from './last-actions'
-import { isHeldSend, isUndoable } from './pressed'
+import { isUndoable } from './pressed'
 import { FINDING_GROUPS } from './help'
 import { isSettledInPlace, canUndoClose, isUndoLeft, pendingDeliveryAt, earliestOf } from './timing'
 import type { ListInput } from './timing'
@@ -159,9 +159,12 @@ export function inboxView({
   }
   const isPressedAnswer = (c: Closed | ClosedFinding) =>
     c.how === 'answered' && lastActions[c.id]?.kind === 'mark' && lastActions[c.id]?.at === closedAt(c)
+  const answerUndoUntil = (id: string) => {
+    const delivery = lastActions[id]?.delivery
+    return delivery?.state === 'held' ? delivery.until : undefined
+  }
   const isOwnClose = (c: Closed | ClosedFinding) => c.how === 'done' || c.how === 'dismissed' || isPressedAnswer(c)
-  const isAnswerHeld = (c: Closed | ClosedFinding) =>
-    isPressedAnswer(c) && isHeldSend(lastActions[c.id]) && isUndoLeft(closedAt(c), now, settleWindowMs)
+  const isAnswerHeld = (c: Closed | ClosedFinding) => isPressedAnswer(c) && now < (answerUndoUntil(c.id) ?? -Infinity)
   const isHeld = (c: Closed | ClosedFinding) => {
     const since = replies[c.id]
 
@@ -218,6 +221,7 @@ export function inboxView({
           ? { error: closed.doneNotification.error, canUndo: isUndoable(closed) }
           : pendingDeliveryAt(pressedSend(closed), now),
         isPressedAnswer(closed),
+        answerUndoUntil(closed.id),
       )
     }
 

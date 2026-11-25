@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { NO_HOLDS } from '../../hooks/timing'
+import { ANSWER_HOLD_MS, NO_HOLDS } from '../../hooks/timing'
 import { createInbox } from '../src/host'
 import type { TaskNode } from '../../types'
 import {
@@ -80,7 +80,7 @@ test('omp polls a local task owner through its host runner and derives the stall
 })
 
 async function afterSettle() {
-  w.clock += 5000
+  w.clock += ANSWER_HOLD_MS
   w.timers.at(-1)!.fn()
   await settle()
 }
@@ -88,6 +88,10 @@ async function afterSettle() {
 test('an answer press sends one follow-up once Undo ends, and the arriving prompt matches it', async () => {
   const { inbox, id } = await withQuestion()
   const outcome = await inbox.press(makeCtx(), { action: 'answer', id, option: 'Node' }, NO_HOLDS)
+  const answerAt = state().lastActions[id]!.at
+  const undoUntil = answerAt + ANSWER_HOLD_MS
+  expect(state().lastActions[id]?.delivery).toMatchObject({ state: 'held', until: undoUntil })
+  expect(w.timers.at(-1)?.ms).toBe(ANSWER_HOLD_MS)
   expect(outcome).toEqual({
     copy: null,
     error: null,
@@ -97,8 +101,19 @@ test('an answer press sends one follow-up once Undo ends, and the arriving promp
     wakesAfterSettle: true,
   })
   expect(w.sent).toEqual([])
-  await afterSettle()
+  const holds = { ...NO_HOLDS, shownSince: answerAt }
+  expect((await inbox.screen(makeCtx(), holds)).view.needsYou.questions[0]?.state).toMatchObject({
+    canUndo: true,
+    undoUntil,
+  })
+  w.clock += ANSWER_HOLD_MS - 1
+  expect(w.sent).toEqual([])
+  w.clock += 1
+  w.timers.at(-1)!.fn()
+  await settle()
   expect(w.sent).toEqual([{ text: 'Re "Use Node or Python?": Node', options: { deliverAs: 'followUp' } }])
+  const sentState = (await inbox.screen(makeCtx(), holds)).view.needsYou.questions[0]?.state
+  expect(sentState?.is === 'settled' ? sentState.canUndo : undefined).toBe(false)
   expect(state().sent.map((x: { phase: string }) => x.phase)).toEqual(['accepted'])
 
   await prompt(w.sent[0]!.text)
@@ -106,6 +121,42 @@ test('an answer press sends one follow-up once Undo ends, and the arriving promp
   expect(state().turn.press).toMatchObject({ id, action: 'answer' })
   const screen = await inbox.screen(makeCtx())
   expect(screen.view.lastActions[id]?.delivery?.state).toBe('arrived')
+})
+
+test('a Herdr app answer file uses the two-second Undo hold', async () => {
+  const appHome = join(w.dir, 'herdr-app')
+  const target = { kind: 'terminal', terminal: 't1', appHome, hc: ['hc'], herdrApp: ['herdr-app'] } as const
+  const inbox = createInbox(pi(), { ...deps(), herdrTarget: target })
+  await prompt('Add a greeting CLI')
+  await endAgent('Plan written. Which runtime?')
+  await settle()
+  const id = state().ledger.items[0]!.id
+  const answer = {
+    format: 1,
+    id: 'answer-hold',
+    pressedAt: w.clock,
+    press: { action: 'answer', id, option: 'Node' },
+    holds: { ...NO_HOLDS, shownSince: w.clock },
+  } as const
+  await inbox.herdrFile(makeCtx(), answer)
+  await settle()
+
+  const answerAt = state().lastActions[id].at
+  expect(state().lastActions[id].delivery).toMatchObject({ state: 'held', until: answerAt + ANSWER_HOLD_MS })
+  expect(w.timers.at(-1)?.ms).toBe(ANSWER_HOLD_MS)
+  expect(w.sent).toEqual([])
+  const holds = { ...NO_HOLDS, shownSince: answerAt }
+  const heldState = (await inbox.screen(makeCtx(), holds)).view.needsYou.questions[0]?.state
+  expect(heldState?.is === 'settled' ? heldState.canUndo : false).toBe(true)
+  w.clock += ANSWER_HOLD_MS - 1
+  expect(w.sent).toEqual([])
+  w.clock += 1
+  w.timers.at(-1)!.fn()
+  await settle()
+
+  expect(w.sent).toHaveLength(1)
+  const sentState = (await inbox.screen(makeCtx(), holds)).view.needsYou.questions[0]?.state
+  expect(sentState?.is === 'settled' ? sentState.canUndo : undefined).toBe(false)
 })
 
 test('a follow-up that starts inside a running turn matches its press once', async () => {
@@ -237,7 +288,7 @@ test('a press sent while the agent is idle counts as sent once its run starts, b
   w.isIdle = true
   w.sendAnswer = () => new Promise(() => {})
   await inbox.press(makeCtx(), { action: 'answer', id, option: 'Node' }, NO_HOLDS)
-  w.clock += 5000
+  w.clock += ANSWER_HOLD_MS
   w.timers.at(-1)!.fn()
   for (let waited = 0; w.sent.length === 0 && waited < 200; waited += 1) await new Promise(r => setTimeout(r, 5))
   await call('agent_start', { type: 'agent_start' })

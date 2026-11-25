@@ -1,19 +1,19 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
-import { PRESS_GUARD_MS, QUEUED_AFTER_MS, SETTLED_MS } from '../hooks/timing'
+import { ANSWER_HOLD_MS, PRESS_GUARD_MS, QUEUED_AFTER_MS, SETTLED_MS } from '../hooks/timing'
 import { RUNNING_FRAMES } from '../hooks/help'
 import { waitForPressWindow } from '../hooks/held-sends'
 import { deliverPrompt } from '../hooks/mod-delivery'
 import { w, arrive, arriveFirst, world } from './hooks-world'
 import { BAND, PANE, selectRow, replyKey } from './hooks-helpers'
 
-async function answerPane($: Engine, on: On) {
+async function answerPane($: Engine, on: On, surface: 'terminal' | 'desktop' = 'terminal') {
   const clock = mock.clock(on, { now: 1_000_000 })
   world($, on, [])
   on('ui.focus', () => ({}))
   w.paneState = { isShown: true, isFocused: true }
-  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  await $.session.start({ cwd: '/tmp/project', surface, isInteractive: true })
   await $.prompt.submit({ text: 'add a greeting cli', wait: false, origin: { kind: 'composer' } })
   await $.turn.complete({ answer: 'Plan ready.', durationMs: 5, isAborted: false, turnId: 't1', reason: 'answer' })
   await clock.settle()
@@ -108,7 +108,7 @@ test(
     expect(drafts).toEqual({ i1: { text: 'Deno, actually', since: expect.any(Number) } })
     const answer = pane.press({ key: 'answer-i1-0' })
     w.inFlight.push(answer)
-    await clock.advance(SETTLED_MS)
+    await clock.advance(ANSWER_HOLD_MS)
     await Promise.all(w.inFlight)
     w.inFlight = []
     expect(w.sent.at(-1)).toBe('Re "Use Node or Python?": Node')
@@ -126,7 +126,7 @@ test(
     expect(prompts.at(-1)).not.toContain('Re "Use Node or Python?"')
 
     w.inFlight.push(pane.press({ key: 'retry-i1' }))
-    await clock.advance(SETTLED_MS)
+    await clock.advance(ANSWER_HOLD_MS)
     await Promise.all(w.inFlight)
     w.inFlight = []
     expect(w.sent.at(-1)).toBe('Re "Use Node or Python?": Node')
@@ -203,13 +203,13 @@ test('Undo works while an Answer press is holding the host vouch, and cancels it
   expect(await pane.find({ key: 'answer-i1-0' })).toBeDefined()
   const answer = pane.press({ key: 'answer-i1-0' })
   w.inFlight.push(answer)
-  await clock.advance(SETTLED_MS / 2)
+  await clock.advance(ANSWER_HOLD_MS / 2)
 
   expect(JSON.parse(w.stored.get('s:session-1')!).lastActions.i1.delivery.state).toBe('held')
   expect(await pane.find({ key: 'undo-i1' })).toBeDefined()
   expect(w.sent).toEqual([])
   await pane.press({ key: 'undo-i1' })
-  await clock.advance(SETTLED_MS)
+  await clock.advance(ANSWER_HOLD_MS)
   await Promise.all(w.inFlight)
   w.inFlight = []
 
@@ -217,15 +217,31 @@ test('Undo works while an Answer press is holding the host vouch, and cancels it
   expect(await pane.find({ key: 'answer-i1-0' })).toBeDefined()
 })
 
+for (const surface of ['terminal', 'desktop'] as const)
+  test(`${surface} Answer sends at 2 seconds and its Undo disappears at that deadline`, async ($, on) => {
+    const { clock, pane } = await answerPane($, on, surface)
+    const answer = pane.press({ key: 'answer-i1-0' })
+    w.inFlight.push(answer)
+    await clock.advance(ANSWER_HOLD_MS - 1)
+
+    expect(w.sent).toEqual([])
+    expect(await pane.find({ key: 'undo-i1' })).toBeDefined()
+
+    await Promise.all([clock.advance(1), answer])
+    w.inFlight = []
+    expect(w.sent).toEqual(['Re "Use Node or Python?": Node'])
+    expect(await pane.find({ key: 'undo-i1' })).toBeUndefined()
+  })
+
 test('Undo after a stopped-session latch returns the Answer press and leaves nothing to resend', async ($, on) => {
   const { clock, pane } = await answerPane($, on)
   w.submitAnswer = { drop: 'the session was stopped and nobody has sent input since' }
   let returned = false
   const answer = pane.press({ key: 'answer-i1-0' }).then(() => (returned = true))
-  await clock.advance(SETTLED_MS / 2)
+  await clock.advance(ANSWER_HOLD_MS / 2)
   await pane.press({ key: 'undo-i1' }).then(() => clock.settle())
   const returnedBeforeExpiry = returned
-  await Promise.all([clock.advance(SETTLED_MS), answer])
+  await Promise.all([clock.advance(ANSWER_HOLD_MS), answer])
   expect(returnedBeforeExpiry).toBe(true)
   w.submitAnswer = 'enter'
   await $.prompt.submit({ text: 'continue', wait: false, origin: { kind: 'composer' } }).then(() => clock.settle())
@@ -239,7 +255,7 @@ test('the exact host-stop refusal stays queued, then retries once after a human 
   w.submitAnswer = { drop: 'the session was stopped and nobody has sent input since' }
   const answer = pane.press({ key: 'answer-i1-0' })
   w.inFlight.push(answer)
-  await clock.advance(SETTLED_MS)
+  await clock.advance(ANSWER_HOLD_MS)
   await Promise.all(w.inFlight)
   w.inFlight = []
 
@@ -263,7 +279,7 @@ test('closing the pane leaves a held Answer to send when its Undo window ends', 
   await clock.advance(1)
   await pane.unmount()
   expect(w.sent).toEqual([])
-  await clock.advance(SETTLED_MS)
+  await clock.advance(ANSWER_HOLD_MS)
   await answer
   expect(w.sent).toEqual(['Re "Use Node or Python?": Node'])
 })

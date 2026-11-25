@@ -10,6 +10,14 @@ import type { ViewInput } from './view'
 /** How long Undo can take back a close or a press. Once it passes, Done tells the agent. */
 export const SETTLED_MS = 5120
 
+/** How long an Answer press can still be undone before it is sent. */
+export const ANSWER_HOLD_MS = 2000
+
+/** How long an answer or another held press waits before sending. */
+export function pressHoldMs(action: string, settleWindowMs: number): number {
+  return action === 'answer' ? ANSWER_HOLD_MS : settleWindowMs
+}
+
 /** How long an ask waits before its permission row shows, where no classic.PermissionRequest hook runs. */
 export const PERMISSION_FALLBACK_DELAY_MS = 1500
 export const PRESS_GUARD_MS = 400

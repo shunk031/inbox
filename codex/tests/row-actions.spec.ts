@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { applyPress } from '../../hooks/press-reducer'
 import type { RowPress } from '../../hooks/presses'
 import { shortAgo } from '../../hooks/rows'
-import { FOLD_QUIET_MS, PRESS_GUARD_MS, SETTLED_MS } from '../../hooks/timing'
+import { ANSWER_HOLD_MS, FOLD_QUIET_MS, PRESS_GUARD_MS, SETTLED_MS } from '../../hooks/timing'
 import type { Holds } from '../../hooks/timing'
 import { recordClose, recordItem } from '../../hooks/tools'
 import { CODEX } from '../src/texts'
@@ -77,7 +77,7 @@ test('the actual Codex tab replaces actions and shortcuts while replying, restor
         extraSteps: [],
         comparePage: '/plugin/dist/compare-page.html',
         compareInBackground: false,
-        holdMs: 1000,
+        holdMs: press.action === 'answer' ? ANSWER_HOLD_MS : 1000,
       })
       assert.ok(!('stale' in applied))
       state.ledger = applied.ledger
@@ -297,6 +297,15 @@ test('the actual Codex tab replaces actions and shortcuts while replying, restor
     } finally {
       Date.now = realNow
     }
+    state.ledger = emptyState('renderer').ledger
+    state.ledger = recordItem(CODEX, state.ledger, { kind: 'question', ask: '?', options: ['R'] }, Date.now()).ledger
+    await pause(POLL_MS + 100)
+    root.querySelector<HTMLElement>('.row .line')!.click()
+    await pause(PRESS_GUARD_MS + 50)
+    named(root, 'R').click()
+    await until(() => root.querySelector('.key.undo:not(.spent)') !== null)
+    await pause(ANSWER_HOLD_MS + 100)
+    assert.equal(root.querySelector('.key.undo:not(.spent)'), null)
   } finally {
     await window.happyDOM.abort()
     for (const [key, descriptor] of previous) {

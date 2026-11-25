@@ -8,7 +8,7 @@ import { press, wakeAfterSettle } from '../hooks/host-press'
 import type { Ask, SessionHost, UpdateHost } from '../hooks/session-host'
 import type { Host } from '../hooks/model-text'
 import { allRows } from '../hooks/rows'
-import { NO_HOLDS } from '../hooks/timing'
+import { ANSWER_HOLD_MS, NO_HOLDS } from '../hooks/timing'
 import type { Effect } from '../hooks/press-reducer'
 import { TOOL_FIELDS } from '../hooks/tool-schemas'
 
@@ -152,7 +152,7 @@ export async function runSessionScript<S extends Session>(makeHost: MakeHost<S>,
     'while Undo can take the answer back',
   )
 
-  await wakeAfterSettle({ ...host, now: async () => (await host.now()) + SETTLE_WINDOW_MS })
+  await wakeAfterSettle({ ...host, now: async () => (await host.now()) + ANSWER_HOLD_MS })
   equal(
     await snapshot(),
     {

@@ -12,6 +12,7 @@ import type { PublishFiles } from '../../hooks/herdr-app'
 import { endTurn, turnEnded } from '../../hooks/session-turns'
 import { forkedFrom, hasLedger, isUnseen, statusChanged } from '../../hooks/session-status'
 import { sessionView } from '../../hooks/session-view'
+import { pressHoldMs } from '../../hooks/timing'
 import { delegatesSettled } from '../../hooks/children'
 import {
   askOverConversation,
@@ -317,8 +318,9 @@ export function sessionCalls(context: HostContext) {
     )
   }
 
-  function wakeLater(ctx: OmpContext): void {
-    ctx.setTimeout(() => deps.background(wakeAfterSettle(hostFor(ctx))), deps.settleWindowMs + WAKE_MARGIN_MS)
+  function wakeLater(ctx: OmpContext, action: string): void {
+    const delay = pressHoldMs(action, deps.settleWindowMs) + (action === 'answer' ? 0 : WAKE_MARGIN_MS)
+    ctx.setTimeout(() => deps.background(wakeAfterSettle(hostFor(ctx))), delay)
   }
 
   return {

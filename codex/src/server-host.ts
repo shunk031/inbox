@@ -17,7 +17,7 @@ import { NO_PR_SHARED } from '../../hooks/pr-fetch'
 import type { PrShared } from '../../hooks/pr-fetch'
 import { press, wakeAfterSettle as wakeSessionAfterSettle } from '../../hooks/host-press'
 import type { SessionHost } from '../../hooks/session-host'
-import { NO_HOLDS } from '../../hooks/timing'
+import { NO_HOLDS, pressHoldMs } from '../../hooks/timing'
 import { applyHerdrFile } from '../../hooks/herdr-app'
 import { isLookFile } from '../../hooks/herdr-press-file'
 import type { HerdrFile, PressFile } from '../../hooks/herdr-press-file'
@@ -192,7 +192,7 @@ export function makeSessionHost(
       await linkRunningDialogs(id, p.id).catch(() => undefined)
     const outcome = await (look ? applyHerdrFile(hostFor(id), look) : press(hostFor(id), p, thread !== id, holds))
     if (outcome.wakesAfterSettle)
-      setTimeout(() => void wakeAfterSettle(id).catch(() => undefined), SETTLE_WINDOW_MS).unref()
+      setTimeout(() => void wakeAfterSettle(id).catch(() => undefined), pressHoldMs(p.action, SETTLE_WINDOW_MS)).unref()
     const { isUnconfirmed, wakesAfterSettle: _wakes, ...rest } = outcome
 
     return {

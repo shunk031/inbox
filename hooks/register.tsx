@@ -114,7 +114,7 @@ import { ghIn } from './gh'
 import { isGhUnstartable, pathProbe, placeChange, runOf, sessionFolder, type CommandCalls } from './mod-commands'
 import { delegatesInHerdr } from './herdr'
 import type { HerdrFile } from './herdr-press-file'
-import { applyHerdrFile } from './herdr-app'
+import { applyHerdrFileAndWake } from './herdr-app'
 import {
   followDelegates as followHerdrDelegates,
   listenForHerdrPresses,
@@ -409,10 +409,15 @@ function publishStatus($: EngineInterface, isEnding = false): Promise<boolean> {
   })
 }
 
-async function herdrPress($: EngineInterface, id: string, f: HerdrFile): Promise<boolean> {
+async function herdrPress($: EngineInterface, id: string, f: HerdrFile) {
   if (id !== conversation.id) return false
-  if ((await applyHerdrFile(hostOf($, currentOwner(), 'terminal'), f)).wakesAfterSettle)
-    later($, SETTLED_MS, () => wakeAfterSettle($))
+  await applyHerdrFileAndWake(
+    hostOf($, currentOwner(), 'terminal'),
+    f,
+    SETTLED_MS,
+    (ms, run) => later($, ms, run),
+    () => wakeAfterSettle($),
+  )
 
   return true
 }
