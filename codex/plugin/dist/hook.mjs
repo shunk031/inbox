@@ -850,22 +850,11 @@ function taskTreeFromStatus(status) {
   return [...milestones, ...subjects];
 }
 
-// ../hooks/task-text.ts
-function currentTaskText(task) {
-  const detailIndex = task.history.findLastIndex((event) => event.kind === "detail");
-  const noteEvent = task.history.map((event, index) => ({ event, index })).filter(({ event }) => event.kind === "note" && event.detail !== void 0 && task.notes.includes(event.detail)).toSorted((a, b) => b.event.at - a.event.at || b.index - a.index)[0];
-  const latestNote = noteEvent ? { text: noteEvent.event.detail, at: noteEvent.event.at, index: noteEvent.index } : task.notes.length > 0 ? { text: task.notes.at(-1), at: task.createdAt, index: -1 } : null;
-  if (detailIndex < 0) {
-    if (latestNote) return { text: latestNote.text, at: latestNote.at };
-    return task.detail ? { text: task.detail, at: task.createdAt } : null;
-  }
-  const detailAt = task.history[detailIndex].at;
-  if (latestNote && (latestNote.at > detailAt || latestNote.at === detailAt && latestNote.index > detailIndex))
-    return { text: latestNote.text, at: latestNote.at };
-  return task.detail ? { text: task.detail, at: detailAt } : latestNote;
-}
-
 // ../hooks/inbox-text.ts
+function taskFactLine(task, facts) {
+  const row = facts.taskRows?.[task.id];
+  return `- ${task.id} | ${row?.status ?? task.status} | ${task.title}${row?.report ? ` | ${row.report}` : ""}`;
+}
 var START_TITLE = 'inbox: where this session stands, as of the last reply. An "inbox:" text beside a later prompt replaces this.';
 function surfaceAtStart(host) {
   return host.surface.charAt(0).toUpperCase() + host.surface.slice(1);
@@ -945,16 +934,12 @@ function itemLine(item) {
 function findingLine(finding) {
   return `- ${finding.kind}: ${finding.title} (close id: ${finding.id})`;
 }
-function taskSnapshotLines(ledger, taskTree) {
+function taskSnapshotLines(taskTree, facts) {
   const open2 = taskTree.filter((task) => task.status !== "done" && task.status !== "dropped");
   if (open2.length === 0) return [];
-  const rows = open2.slice(0, 12).map((task) => {
-    const text2 = currentTaskText(task)?.text.replace(/\s+/g, " ").trim();
-    const row = [`- ${task.id}`, task.status, task.title, text2].filter(Boolean).join(" | ");
-    return clipLabel(row, 96);
-  });
+  const rows = open2.slice(0, 12).map((task) => taskFactLine(task, facts));
   return [
-    `Task tree check for turn ${ledger.turn} (current work). Keep it current with \`tasks\` when work starts, changes, becomes blocked, or finishes. Task status changes only through \`tasks\` or when a linked pull request merges.`,
+    `Open tasks with each owner's latest report and linked PR.`,
     ...rows,
     ...open2.length > rows.length ? [`- ${open2.length - rows.length} more open ${open2.length - rows.length === 1 ? "task" : "tasks"} omitted.`] : []
   ];
@@ -964,25 +949,22 @@ function statusFocusLines(ledger) {
   const focus = head ? [head.title, head.description].filter(Boolean).join(": ") : "";
   return focus ? [`Working on: ${focus}`] : [];
 }
-function statusSummaryLines(ledger, taskTree = []) {
+function statusSummaryLines(ledger, taskTree = [], facts = {}) {
   const open2 = (ledger.overview?.subjects ?? []).filter(isOpen);
   const groups = taskRootGroups(taskTree).filter(
     ({ roots }) => roots.some((task) => task.status !== "done" && task.status !== "dropped")
   );
-  const taskLines = groups.map(({ roots }) => {
-    const name = roots.map((task) => task.title).join(", ");
-    const current = roots.map((task) => currentTaskText(task)?.text).filter(Boolean).join("; ");
-    const status = roots.some((task) => task.status === "working") ? "working" : roots.some((task) => task.status === "waits-on-other") ? "waiting on others" : "queued";
-    return `- ${name}: ${current || "-"} (${status})`;
-  });
+  const taskLines = groups.map(
+    ({ roots }) => roots.filter((task) => task.status !== "done" && task.status !== "dropped").map((task) => taskFactLine(task, facts).slice(2)).join("; ").replace(/^/, "- ")
+  );
   return [
     ...statusFocusLines(ledger),
     ...taskLines.length > 0 ? ["Where it stands:", ...taskLines] : open2.length > 0 ? ["Where it stands:", ...open2.map((s) => `- ${s.name}: ${s.text || "-"} (${s.status})`)] : []
   ];
 }
-function carryText(ledger, title, taskTree = []) {
+function carryText(ledger, title, taskTree = [], facts = {}) {
   const findings = ledger.findings.filter((f) => !f.feedOwned && !f.sourceManaged && f.kind !== "progress");
-  const lines = statusSummaryLines(ledger, taskTree);
+  const lines = statusSummaryLines(ledger, taskTree, facts);
   if (lines.length === 0 && promptItems(ledger).length === 0 && findings.length === 0) return null;
   const out = [title, ...lines];
   if (promptItems(ledger).length > 0) {
@@ -1000,7 +982,7 @@ function carryText(ledger, title, taskTree = []) {
   return out.join(NL2);
 }
 var CLOSE_ID_RULE = "A close id is only for the close tool. Never write one in a reply.";
-function inboxText(host, ledger, isOpen2, taskTree = [], taskStatusMismatches = []) {
+function inboxText(host, ledger, isOpen2, taskTree = [], taskStatusMismatches = [], taskFacts = {}) {
   const findings = ledger.findings.filter((f) => !f.feedOwned && !f.sourceManaged && f.kind !== "progress");
   const taskById = new Map(taskTree.map((task) => [task.id, task]));
   const mismatches = taskStatusMismatches.flatMap((mismatch) => {
@@ -1016,7 +998,7 @@ function inboxText(host, ledger, isOpen2, taskTree = [], taskStatusMismatches = 
     `inbox: what waits on the user, as of your last reply. Anything not listed here is closed. ${CLOSE_ID_RULE}`
   ];
   out.push(...statusFocusLines(ledger));
-  out.push(...taskSnapshotLines(ledger, taskTree));
+  out.push(...taskSnapshotLines(taskTree, taskFacts));
   if (mismatches.length > 0) out.push("Task status mismatches:", ...mismatches);
   if (promptItems(ledger).length > 0) {
     out.push("Waiting on the user:");
@@ -1049,11 +1031,11 @@ function closedText(closed) {
   ].join(NL2);
 }
 var TOLD_NOTHING = { inbox: null, closed: [] };
-function promptNotes(host, ledger, prompt, told, taskTree = [], taskStatusMismatches = []) {
+function promptNotes(host, ledger, prompt, told, taskTree = [], taskStatusMismatches = [], taskFacts = {}) {
   const notes = [];
   const answer = prompt.isPress ? null : answerNote(ledger, prompt.text);
   if (answer) notes.push(answer);
-  const inbox = inboxText(host, ledger, prompt.isOpen, taskTree, taskStatusMismatches);
+  const inbox = inboxText(host, ledger, prompt.isOpen, taskTree, taskStatusMismatches, taskFacts);
   const toldClosed = new Set(told.closed);
   const closed = closedText(ledger.closed.filter((d) => !toldClosed.has(d.id)));
   const hasUnrecorded = ledger.unrecordedDecisions.length > 0;
@@ -1679,6 +1661,21 @@ function partRows(shown, c, depth, afterOpen = [], afterClosed = []) {
   if (firstClosed === -1) rows.push(...afterOpen);
   rows.push(...afterClosed);
   return rows;
+}
+
+// ../hooks/task-text.ts
+function currentTaskText(task) {
+  const detailIndex = task.history.findLastIndex((event) => event.kind === "detail");
+  const noteEvent = task.history.map((event, index) => ({ event, index })).filter(({ event }) => event.kind === "note" && event.detail !== void 0 && task.notes.includes(event.detail)).toSorted((a, b) => b.event.at - a.event.at || b.index - a.index)[0];
+  const latestNote = noteEvent ? { text: noteEvent.event.detail, at: noteEvent.event.at, index: noteEvent.index } : task.notes.length > 0 ? { text: task.notes.at(-1), at: task.createdAt, index: -1 } : null;
+  if (detailIndex < 0) {
+    if (latestNote) return { text: latestNote.text, at: latestNote.at };
+    return task.detail ? { text: task.detail, at: task.createdAt } : null;
+  }
+  const detailAt = task.history[detailIndex].at;
+  if (latestNote && (latestNote.at > detailAt || latestNote.at === detailAt && latestNote.index > detailIndex))
+    return { text: latestNote.text, at: latestNote.at };
+  return task.detail ? { text: task.detail, at: detailAt } : latestNote;
 }
 
 // ../hooks/status-page.ts
@@ -3804,8 +3801,8 @@ The answer to a question is the user's to give. Close a question with their answ
 }
 
 // ../hooks/session-turns.ts
-function startContext(host, s, source) {
-  const carried = carryText(s.ledger, START_TITLE, s.taskTree);
+function startContext(host, s, source, taskFacts = {}) {
+  const carried = carryText(s.ledger, START_TITLE, s.taskTree, taskFacts);
   const parts = [source === "resume" ? null : guidanceText(host), carried].filter((x) => x !== null);
   return parts.length > 0 ? parts.join("\n\n") : null;
 }
@@ -3833,9 +3830,12 @@ function cleared(s) {
     lastOverviewCallAt: null
   };
 }
-function notePrompt(host, s, text2, isOpen2) {
+function notePrompt(host, s, text2, isOpen2, taskFacts = {}) {
   const matched = matchSent(s, text2);
-  return { ...recordPrompt(host, startTurn(matched.state), text2, isOpen2, matched.sentBy), sentBy: matched.sentBy };
+  return {
+    ...recordPrompt(host, startTurn(matched.state), text2, isOpen2, matched.sentBy, taskFacts),
+    sentBy: matched.sentBy
+  };
 }
 function matchSent(s, text2) {
   const matchingAt = s.sent.findIndex((x) => x.text === text2);
@@ -3884,7 +3884,7 @@ function startTurn(s) {
     stop: null
   };
 }
-function recordPrompt(host, s, text2, isOpen2, sentBy) {
+function recordPrompt(host, s, text2, isOpen2, sentBy, taskFacts = {}) {
   const ledger = { ...s.ledger, turn: s.ledger.turn + 1 };
   const r = promptNotes(
     host,
@@ -3892,7 +3892,8 @@ function recordPrompt(host, s, text2, isOpen2, sentBy) {
     { text: text2, isPress: sentBy !== null, isOpen: isOpen2 },
     s.told,
     s.taskTree,
-    s.taskStatusMismatches
+    s.taskStatusMismatches,
+    taskFacts
   );
   const person = s.turn.person === null ? text2 : `${s.turn.person}
 
@@ -4000,8 +4001,8 @@ var TAB_OPEN_MS = 15e3;
 function isTabOpen(s, now) {
   return now - s.tabSeenAt < TAB_OPEN_MS;
 }
-function notePrompt2(s, text2, now) {
-  return notePrompt(CODEX, s, text2, isTabOpen(s, now));
+function notePrompt2(s, text2, now, taskFacts = {}) {
+  return notePrompt(CODEX, s, text2, isTabOpen(s, now), taskFacts);
 }
 function patchFiles(patch) {
   return [...patch.matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)].map((m) => (m[1] ?? "").trim()).filter(Boolean);
@@ -4504,6 +4505,7 @@ function herdrOnWrite(env, run2, dir, now, log = herdrLog(dir)) {
 // src/hook.ts
 import { resolve as resolve4 } from "node:path";
 import { homedir as homedir2 } from "node:os";
+import { readFile as readFile3 } from "node:fs/promises";
 
 // src/cli.ts
 function namedCli(env) {
@@ -5504,6 +5506,63 @@ async function resolveInboxFeedPath(explicit, home, identity, run2) {
   }
 }
 
+// ../hooks/task-report.ts
+async function readTaskReportQueue(env, read) {
+  const stateDir = env.HERDR_META_PATROL_STATE_DIR?.trim();
+  const dir = stateDir || (env.HOME ? `${env.HOME.replace(/\/+$/, "")}/.local/state/herdr-meta-patrol` : "");
+  return dir ? read(`${dir.replace(/\/+$/, "")}/queue.jsonl`).catch(() => "") : "";
+}
+function taskOwnerReports(tree, queue) {
+  const latest = /* @__PURE__ */ new Map();
+  for (const line of queue.split("\n"))
+    try {
+      const r = JSON.parse(line);
+      if (typeof r?.from !== "string" || typeof r.text !== "string") continue;
+      const prefix = /^(STATUS|DONE|BLOCKED)\b/i.exec(r.text);
+      const kind = (prefix?.[1] ?? /^(STATUS|DONE|BLOCKED)$/i.exec(String(r.kind))?.[1])?.toUpperCase();
+      const key = JSON.stringify([r.from, typeof r.machine === "string" ? r.machine : "local"]);
+      const seq = Number(r.seq) || 0, at = typeof r.t === "number" ? r.t * 1e3 : Date.parse(r.at);
+      if (!kind || seq <= (latest.get(key)?.seq ?? -1) || !Number.isFinite(at)) continue;
+      latest.set(key, { kind, line: prefix ? r.text : `${kind} ${r.text}`, at, seq });
+    } catch {
+    }
+  return Object.fromEntries(
+    tree.flatMap(({ id, links, history, changedAt }) => {
+      const report = links?.owner && latest.get(JSON.stringify([links.owner.agent, links.owner.machine]));
+      const lastChange = changedAt ?? history?.reduce((at, event) => Math.max(at, "at" in event ? event.at : at), -Infinity) ?? -Infinity;
+      return report && report.at >= lastChange ? [[id, report]] : [];
+    })
+  );
+}
+var reportedStatus = (status, report) => report ? { STATUS: "working", DONE: "done", BLOCKED: "waits-on-other" }[report.kind] : status;
+function taskReportText(report, hasReport, url, facts, now) {
+  const parts = hasReport ? [report ? `${report.line} \xB7 ${shortAgo(Math.max(0, now - report.at))}` : "No report yet"] : [];
+  if (url)
+    parts.push(
+      `PR ${facts.taskPrStates[url]?.toLowerCase() ?? "state unavailable"}`,
+      `CI ${facts.taskPrCiStates[url]?.replace("-", " ") ?? "unavailable"}`
+    );
+  return parts.join(" \xB7 ");
+}
+function taskReportRows(tree, queue, facts, now) {
+  const reports = taskOwnerReports(tree, queue);
+  return Object.fromEntries(
+    tree.map((task) => {
+      const report = reports[task.id];
+      return [
+        task.id,
+        {
+          status: reportedStatus(task.status, report),
+          report: taskReportText(report, !!task.links?.owner || !!task.links?.pr, task.links?.pr, facts, now)
+        }
+      ];
+    })
+  );
+}
+function taskTextFacts(session, queue, now) {
+  return { taskRows: taskReportRows(session.taskTree, queue, session, now) };
+}
+
 // src/hook.ts
 var withoutActivity = (s, lines) => {
   const activity = s.turn.activity.filter((line) => !lines.includes(line));
@@ -5582,14 +5641,27 @@ async function handleHook(input, deps) {
         )
       );
       if (isMarkedBehind) deps.startUpdate(id);
-      const context = startContext(CODEX, s, input.source);
+      const taskFacts = {
+        reportQueue: await readTaskReportQueue(env, (path) => readFile3(path, "utf8")),
+        now: now()
+      };
+      const context = startContext(CODEX, s, input.source, {
+        ...taskTextFacts(s, taskFacts.reportQueue, taskFacts.now)
+      });
       return context ? { hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: context } } : null;
     }
     case "UserPromptSubmit": {
       let notes = [];
       const withHistory = await readHistoryAhead(read);
+      const taskFacts = {
+        reportQueue: await readTaskReportQueue(env, (path) => readFile3(path, "utf8")),
+        now: now()
+      };
       await write(async (s) => {
-        const r = notePrompt2(withHost(await withHistory(s)), input.prompt ?? "", now());
+        const current = withHost(await withHistory(s));
+        const r = notePrompt2(current, input.prompt ?? "", now(), {
+          ...taskTextFacts(current, taskFacts.reportQueue, taskFacts.now)
+        });
         notes = r.notes;
         if (input.agent_id) return r.state;
         const started = noteHook(turnStarted({ ...r.state, delegateCalls: [] }, now()), "prompt", now(), input.turn_id);

@@ -3312,23 +3312,11 @@ function taskTreeFromStatus(status) {
   return [...milestones, ...subjects];
 }
 
-// ../hooks/task-text.ts
-function currentTaskText(task) {
-  const detailIndex = task.history.findLastIndex((event) => event.kind === "detail");
-  const noteEvent = task.history.map((event, index) => ({ event, index })).filter(({ event }) => event.kind === "note" && event.detail !== undefined && task.notes.includes(event.detail)).toSorted((a, b) => b.event.at - a.event.at || b.index - a.index)[0];
-  const latestNote = noteEvent ? { text: noteEvent.event.detail, at: noteEvent.event.at, index: noteEvent.index } : task.notes.length > 0 ? { text: task.notes.at(-1), at: task.createdAt, index: -1 } : null;
-  if (detailIndex < 0) {
-    if (latestNote)
-      return { text: latestNote.text, at: latestNote.at };
-    return task.detail ? { text: task.detail, at: task.createdAt } : null;
-  }
-  const detailAt = task.history[detailIndex].at;
-  if (latestNote && (latestNote.at > detailAt || latestNote.at === detailAt && latestNote.index > detailIndex))
-    return { text: latestNote.text, at: latestNote.at };
-  return task.detail ? { text: task.detail, at: detailAt } : latestNote;
-}
-
 // ../hooks/inbox-text.ts
+function taskFactLine(task, facts) {
+  const row = facts.taskRows?.[task.id];
+  return `- ${task.id} | ${row?.status ?? task.status} | ${task.title}${row?.report ? ` | ${row.report}` : ""}`;
+}
 function surfaceAtStart(host) {
   return host.surface.charAt(0).toUpperCase() + host.surface.slice(1);
 }
@@ -3416,17 +3404,13 @@ function itemLine(item) {
 function findingLine(finding) {
   return `- ${finding.kind}: ${finding.title} (close id: ${finding.id})`;
 }
-function taskSnapshotLines(ledger, taskTree) {
+function taskSnapshotLines(taskTree, facts) {
   const open = taskTree.filter((task) => task.status !== "done" && task.status !== "dropped");
   if (open.length === 0)
     return [];
-  const rows = open.slice(0, 12).map((task) => {
-    const text = currentTaskText(task)?.text.replace(/\s+/g, " ").trim();
-    const row = [`- ${task.id}`, task.status, task.title, text].filter(Boolean).join(" | ");
-    return clipLabel(row, 96);
-  });
+  const rows = open.slice(0, 12).map((task) => taskFactLine(task, facts));
   return [
-    `Task tree check for turn ${ledger.turn} (current work). Keep it current with \`tasks\` when work starts, changes, becomes blocked, or finishes. Task status changes only through \`tasks\` or when a linked pull request merges.`,
+    `Open tasks with each owner's latest report and linked PR.`,
     ...rows,
     ...open.length > rows.length ? [`- ${open.length - rows.length} more open ${open.length - rows.length === 1 ? "task" : "tasks"} omitted.`] : []
   ];
@@ -3437,7 +3421,7 @@ function statusFocusLines(ledger) {
   return focus ? [`Working on: ${focus}`] : [];
 }
 var CLOSE_ID_RULE = "A close id is only for the close tool. Never write one in a reply.";
-function inboxText(host, ledger, isOpen, taskTree = [], taskStatusMismatches = []) {
+function inboxText(host, ledger, isOpen, taskTree = [], taskStatusMismatches = [], taskFacts = {}) {
   const findings = ledger.findings.filter((f) => !f.feedOwned && !f.sourceManaged && f.kind !== "progress");
   const taskById = new Map(taskTree.map((task) => [task.id, task]));
   const mismatches = taskStatusMismatches.flatMap((mismatch) => {
@@ -3450,7 +3434,7 @@ function inboxText(host, ledger, isOpen, taskTree = [], taskStatusMismatches = [
     `inbox: what waits on the user, as of your last reply. Anything not listed here is closed. ${CLOSE_ID_RULE}`
   ];
   out.push(...statusFocusLines(ledger));
-  out.push(...taskSnapshotLines(ledger, taskTree));
+  out.push(...taskSnapshotLines(taskTree, taskFacts));
   if (mismatches.length > 0)
     out.push("Task status mismatches:", ...mismatches);
   if (promptItems(ledger).length > 0) {
@@ -3481,12 +3465,12 @@ function closedText(closed) {
   ].join(NL5);
 }
 var TOLD_NOTHING = { inbox: null, closed: [] };
-function promptNotes(host, ledger, prompt, told, taskTree = [], taskStatusMismatches = []) {
+function promptNotes(host, ledger, prompt, told, taskTree = [], taskStatusMismatches = [], taskFacts = {}) {
   const notes = [];
   const answer = prompt.isPress ? null : answerNote(ledger, prompt.text);
   if (answer)
     notes.push(answer);
-  const inbox = inboxText(host, ledger, prompt.isOpen, taskTree, taskStatusMismatches);
+  const inbox = inboxText(host, ledger, prompt.isOpen, taskTree, taskStatusMismatches, taskFacts);
   const toldClosed = new Set(told.closed);
   const closed = closedText(ledger.closed.filter((d) => !toldClosed.has(d.id)));
   const hasUnrecorded = ledger.unrecordedDecisions.length > 0;
@@ -4481,6 +4465,22 @@ function partRows(shown, c, depth, afterOpen = [], afterClosed = []) {
 }
 function unfoldedRows(rows, isUnfolded) {
   return rows.flatMap((r) => r.kind === "done-fold" && isUnfolded(r.id) ? [r, ...r.rows] : [r]);
+}
+
+// ../hooks/task-text.ts
+function currentTaskText(task) {
+  const detailIndex = task.history.findLastIndex((event) => event.kind === "detail");
+  const noteEvent = task.history.map((event, index) => ({ event, index })).filter(({ event }) => event.kind === "note" && event.detail !== undefined && task.notes.includes(event.detail)).toSorted((a, b) => b.event.at - a.event.at || b.index - a.index)[0];
+  const latestNote = noteEvent ? { text: noteEvent.event.detail, at: noteEvent.event.at, index: noteEvent.index } : task.notes.length > 0 ? { text: task.notes.at(-1), at: task.createdAt, index: -1 } : null;
+  if (detailIndex < 0) {
+    if (latestNote)
+      return { text: latestNote.text, at: latestNote.at };
+    return task.detail ? { text: task.detail, at: task.createdAt } : null;
+  }
+  const detailAt = task.history[detailIndex].at;
+  if (latestNote && (latestNote.at > detailAt || latestNote.at === detailAt && latestNote.index > detailIndex))
+    return { text: latestNote.text, at: latestNote.at };
+  return task.detail ? { text: task.detail, at: detailAt } : latestNote;
 }
 
 // ../hooks/status-page.ts
@@ -8843,28 +8843,47 @@ function taskOwnerReports(tree, queue) {
     return report && report.at >= lastChange ? [[id, report]] : [];
   }));
 }
+var reportedStatus = (status, report) => report ? { STATUS: "working", DONE: "done", BLOCKED: "waits-on-other" }[report.kind] : status;
+function taskReportText(report, hasReport, url, facts, now) {
+  const parts = hasReport ? [report ? `${report.line} \xB7 ${shortAgo(Math.max(0, now - report.at))}` : "No report yet"] : [];
+  if (url)
+    parts.push(`PR ${facts.taskPrStates[url]?.toLowerCase() ?? "state unavailable"}`, `CI ${facts.taskPrCiStates[url]?.replace("-", " ") ?? "unavailable"}`);
+  return parts.join(" \xB7 ");
+}
 function taskTreeWithReports(tree, queue) {
   const reports = taskOwnerReports(tree, queue);
   return tree.map((task) => {
-    const kind = reports[task.id]?.kind;
-    const status = kind ? { STATUS: "working", DONE: "done", BLOCKED: "waits-on-other" }[kind] : task.status;
+    const status = reportedStatus(task.status, reports[task.id]);
     return status === task.status ? task : { ...task, status };
   });
 }
+function taskReportRows(tree, queue, facts, now) {
+  const reports = taskOwnerReports(tree, queue);
+  return Object.fromEntries(tree.map((task) => {
+    const report = reports[task.id];
+    return [
+      task.id,
+      {
+        status: reportedStatus(task.status, report),
+        report: taskReportText(report, !!task.links?.owner || !!task.links?.pr, task.links?.pr, facts, now)
+      }
+    ];
+  }));
+}
+function taskTextFacts(session, queue, now) {
+  return { taskRows: taskReportRows(session.taskTree, queue, session, now) };
+}
 function taskReportPage(page, tree, queue, facts, now, preserveTaskDetail = false) {
   const reports = taskOwnerReports(tree, queue);
-  const reportText = (id, url) => {
-    const report = reports[id];
-    return `${report ? `${report.line} \xB7 ${shortAgo(Math.max(0, now - report.at))}` : "No report yet"}${url ? ` \xB7 PR ${facts.taskPrStates[url]?.toLowerCase() ?? "state unavailable"} \xB7 CI ${facts.taskPrCiStates[url]?.replace("-", " ") ?? "unavailable"}` : ""}`;
-  };
-  const withReport = (row) => !row.isCompletedFold && (row.task.links?.owner || row.task.links?.pr) ? { ...row, reportLine: reportText(row.task.id, row.task.links?.pr) } : { ...row, reportLine: undefined };
+  const reportText = (id, hasOwner, url) => taskReportText(reports[id], hasOwner || !!url, url, facts, now);
+  const withReport = (row) => !row.isCompletedFold && (row.task.links?.owner || row.task.links?.pr) ? { ...row, reportLine: reportText(row.task.id, !!row.task.links?.owner, row.task.links?.pr) } : { ...row, reportLine: undefined };
   const selected = page.selected && {
     ...page.selected,
     row: withReport(page.selected.row),
     details: [
       {
         label: "Latest report",
-        text: reportText(page.selected.row.task.id, page.selected.row.task.links?.pr)
+        text: reportText(page.selected.row.task.id, true, page.selected.row.task.links?.pr)
       },
       ...page.selected.details.filter((line) => preserveTaskDetail || line.label !== "Detail")
     ]
@@ -12298,9 +12317,12 @@ The answer to a question is the user's to give. Close a question with their answ
 }
 
 // ../hooks/session-turns.ts
-function notePrompt(host, s, text, isOpen) {
+function notePrompt(host, s, text, isOpen, taskFacts = {}) {
   const matched = matchSent(s, text);
-  return { ...recordPrompt(host, startTurn(matched.state), text, isOpen, matched.sentBy), sentBy: matched.sentBy };
+  return {
+    ...recordPrompt(host, startTurn(matched.state), text, isOpen, matched.sentBy, taskFacts),
+    sentBy: matched.sentBy
+  };
 }
 function matchSent(s, text) {
   const matchingAt = s.sent.findIndex((x) => x.text === text);
@@ -12345,9 +12367,9 @@ function startTurn(s) {
     stop: null
   };
 }
-function recordPrompt(host, s, text, isOpen, sentBy) {
+function recordPrompt(host, s, text, isOpen, sentBy, taskFacts = {}) {
   const ledger = { ...s.ledger, turn: s.ledger.turn + 1 };
-  const r = promptNotes(host, ledger, { text, isPress: sentBy !== null, isOpen }, s.told, s.taskTree, s.taskStatusMismatches);
+  const r = promptNotes(host, ledger, { text, isPress: sentBy !== null, isOpen }, s.told, s.taskTree, s.taskStatusMismatches, taskFacts);
   const person = s.turn.person === null ? text : `${s.turn.person}
 
 ${text}`;
@@ -15143,10 +15165,13 @@ function turnHandlers(context, sessions) {
   async function arrive(ctx, id, text, finishedReply) {
     const at = deps.now();
     const hostTasks = finishedReply === null ? [] : ompTodoFromBranch(ctx.sessionManager.getBranch());
+    const reportQueue = await deps.taskReportQueue?.() ?? "";
     let notes = [];
     const written = await change(id, (s) => {
       const before = finishedReply === null ? s : turnStarted(endedTurn(id, s, finishedReply, at, { hostTasks }), at);
-      const r = notePrompt(OMP, before, text, openPanels.has(id));
+      const r = notePrompt(OMP, before, text, openPanels.has(id), {
+        ...deps.taskTextFacts?.(before, reportQueue, at)
+      });
       notes = r.notes;
       return r.state;
     });
@@ -15424,6 +15449,7 @@ import { readFile as readFile5 } from "fs/promises";
 function readOmpTaskReportQueue() {
   return readTaskReportQueue({ HOME: process.env.HOME, HERDR_META_PATROL_STATE_DIR: process.env.HERDR_META_PATROL_STATE_DIR }, (path) => readFile5(path, "utf8"));
 }
+var ompTaskTextFacts = (session, queue, now) => taskTextFacts(session, queue, now);
 
 // src/host.ts
 var INBOX_MODEL_TIMEOUT_MS = 120000;
@@ -15463,7 +15489,8 @@ var defaultDeps = {
   herdrPane: process.env.HERDR_PANE_ID || null,
   recordedItemsOnly: process.env.INBOX_RECORDED_ITEMS_ONLY,
   feedPath: process.env.INBOX_FEED,
-  taskReportQueue: readOmpTaskReportQueue
+  taskReportQueue: readOmpTaskReportQueue,
+  taskTextFacts: ompTaskTextFacts
 };
 var messageOf = (err) => err instanceof Error ? err.message : String(err);
 function createInbox(pi, deps = defaultDeps) {

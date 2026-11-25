@@ -58,7 +58,7 @@ import {
 import { runtimeFeedPath } from './host-feed'
 import { copyToClipboard } from './host-clipboard'
 import { inboxModel } from './host-model'
-import { readOmpTaskReportQueue } from './host-task-reports'
+import { ompTaskTextFacts, readOmpTaskReportQueue } from './host-task-reports'
 
 const INBOX_MODEL_TIMEOUT_MS = 120_000
 
@@ -113,6 +113,7 @@ export type HostDeps = {
   recordedItemsOnly: string | undefined
   feedPath?: FeedPathSetting
   taskReportQueue?: () => Promise<string>
+  taskTextFacts?: typeof ompTaskTextFacts
 }
 
 async function defaultComplete(
@@ -150,6 +151,7 @@ const defaultDeps: HostDeps = {
   recordedItemsOnly: process.env.INBOX_RECORDED_ITEMS_ONLY,
   feedPath: process.env.INBOX_FEED,
   taskReportQueue: readOmpTaskReportQueue,
+  taskTextFacts: ompTaskTextFacts,
 }
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err))

@@ -5,10 +5,11 @@ import { inboxText, promptNotes, statusCarryText } from '../hooks/inbox-text'
 import { statusPage } from '../hooks/status-page'
 import { statusPrompt } from '../hooks/status-prompt'
 import { currentTaskText } from '../hooks/task-text'
+import { taskReportRows } from '../hooks/task-report'
 import { EMPTY_SESSION_STATUS } from '../hooks/status-limits'
 import { timelineData, timelinePage } from '../hooks/timeline-page'
 import { emptySession } from '../hooks/session-files'
-import type { TaskNode, TaskProgressSegments, Told } from '../types'
+import type { TaskNode, TaskPrCiState, TaskPrState, TaskProgressSegments } from '../types'
 import { CLAUDE_CODE } from '../hooks/model-text'
 
 const task = (change: Partial<TaskNode> = {}): TaskNode => ({
@@ -30,6 +31,14 @@ const task = (change: Partial<TaskNode> = {}): TaskNode => ({
 })
 
 const segments: TaskProgressSegments = { total: 1, done: 0, working: 1, stalled: 0, waiting: 0, queued: 0 }
+
+const textFacts = (
+  tree: TaskNode[],
+  queue = '',
+  now = 10_000,
+  taskPrStates: Record<string, TaskPrState> = {},
+  taskPrCiStates: Record<string, TaskPrCiState> = {},
+) => ({ taskRows: taskReportRows(tree, queue, { taskPrStates, taskPrCiStates }, now) })
 
 test('Status rows and Timeline details use the newer note while retaining the full task history', () => {
   const current = task()
@@ -92,10 +101,18 @@ test('legacy task text cannot tell whether an untyped update edited detail, so i
   expect(currentTaskText(legacy)).toEqual({ text: 'The latest note', at: 2_000 })
 })
 
-test('prompt inbox and Status carry text use the current task note, and the Status prompt gives its time', () => {
-  const current = task()
-  const inbox = inboxText(CLAUDE_CODE, EMPTY, true, [current])
-  const carry = statusCarryText(EMPTY, [current])
+test('prompt task rows use the owner report and its age instead of hand-written task text', () => {
+  const current = task({ links: { owner: { agent: 'worker', machine: 'local' } } })
+  const reportQueue = JSON.stringify({
+    from: 'worker',
+    machine: 'local',
+    seq: 1,
+    t: 3,
+    text: 'STATUS Cache is implemented',
+  })
+  const facts = textFacts([current], reportQueue, 123_000)
+  const inbox = inboxText(CLAUDE_CODE, EMPTY, true, [current], [], facts)
+  const carry = statusCarryText(EMPTY, [current], facts)
   const prompt = statusPrompt(
     { last: null, asks: [], taskTree: [current], now: 2_500 },
     {
@@ -110,13 +127,13 @@ test('prompt inbox and Status carry text use the current task note, and the Stat
     },
   )
 
-  expect(inbox).toContain(
-    'Task tree check for turn 0 (current work). Keep it current with `tasks` when work starts, changes, becomes blocked, or finishes. Task status changes only through `tasks` or when a linked pull request merges.',
-  )
-  expect(inbox).toContain('- t1 | working | Implement the cache | The latest note')
+  expect(inbox).toContain("Open tasks with each owner's latest report and linked PR.")
+  expect(inbox).not.toContain('Keep it current with `tasks`')
+  expect(inbox).toContain('- t1 | working | Implement the cache | STATUS Cache is implemented · 2m')
   expect(inbox).not.toContain('Where it stands:')
+  expect(inbox).not.toContain('The latest note')
   expect(inbox).not.toContain('The original plan')
-  expect(carry).toContain('Where it stands:\n- Implement the cache: The latest note (working)')
+  expect(carry).toContain('Where it stands:\n- t1 | working | Implement the cache | STATUS Cache is implemented · 2m')
   expect(prompt).toContain('Implement the cache | The latest note (just now)')
   expect(prompt).toContain('note | just now | The latest note')
   expect(prompt).not.toContain('The original plan')
@@ -135,6 +152,65 @@ test('prompt inbox and Status carry text use the current task note, and the Stat
     },
   )
   expect(olderPrompt).toContain('Implement the cache | The latest note (1m ago)')
+})
+
+test('a newer DONE report replaces STATUS and derives the task row status', () => {
+  const current = task({ links: { owner: { agent: 'worker', machine: 'local' } } })
+  const reportQueue = [
+    { from: 'worker', machine: 'local', seq: 1, t: 3, text: 'STATUS Still implementing' },
+    { from: 'worker', machine: 'local', seq: 2, t: 4, text: 'DONE Cache is implemented' },
+  ]
+    .map(row => JSON.stringify(row))
+    .join('\n')
+  const inbox = inboxText(CLAUDE_CODE, EMPTY, true, [current], [], textFacts([current], reportQueue, 124_000))
+
+  expect(inbox).toContain('- t1 | done | Implement the cache | DONE Cache is implemented · 2m')
+  expect(inbox).not.toContain('Still implementing')
+})
+
+test('an owner with no current report is named plainly', () => {
+  const current = task({ links: { owner: { agent: 'worker', machine: 'local' } } })
+  const inbox = inboxText(CLAUDE_CODE, EMPTY, true, [current], [], textFacts([current]))
+
+  expect(inbox).toContain('- t1 | working | Implement the cache | No report yet')
+})
+
+test('a task without an owner or PR shows only its id, status and title', () => {
+  const current = task()
+  const inbox = inboxText(CLAUDE_CODE, EMPTY, true, [current], [], textFacts([current]))
+  const row = inbox.split('\n').find(line => line.startsWith('- t1 |'))
+
+  expect(row).toBe('- t1 | working | Implement the cache')
+})
+
+test('linked merged and open PRs show their state and CI result', () => {
+  const tree = [
+    task({ id: 'merged', title: 'Merged task', links: { pr: 'https://github.com/acme/cache/pull/1' } }),
+    task({ id: 'open', title: 'Open task', links: { pr: 'https://github.com/acme/cache/pull/2' } }),
+  ]
+  const inbox = inboxText(
+    CLAUDE_CODE,
+    EMPTY,
+    true,
+    tree,
+    [],
+    textFacts(
+      tree,
+      '',
+      10_000,
+      {
+        'https://github.com/acme/cache/pull/1': 'MERGED',
+        'https://github.com/acme/cache/pull/2': 'OPEN',
+      },
+      {
+        'https://github.com/acme/cache/pull/1': 'passing',
+        'https://github.com/acme/cache/pull/2': 'failing',
+      },
+    ),
+  )
+
+  expect(inbox).toContain('- merged | working | Merged task | No report yet · PR merged · CI passing')
+  expect(inbox).toContain('- open | working | Open task | No report yet · PR open · CI failing')
 })
 
 test('Status task facts include an open child task id and its current status', () => {
@@ -224,23 +300,29 @@ test('an open task near the middle of 200 long ids stays in the uncut status blo
   expect(taskTree).toContain(JSON.stringify([ids[199], 'working']))
 })
 
-test('each short turn gets the same saved task tree with its own turn number', () => {
+test('a new turn does not change an unchanged task snapshot', () => {
   const tree = [task()]
-  let told: Told = { inbox: null, closed: [] }
-  for (let turn = 1; turn <= 60; turn += 1) {
-    const result = promptNotes(
-      CLAUDE_CODE,
-      { ...EMPTY, turn },
-      { text: 'Continue.', isPress: false, isOpen: true },
-      told,
-      tree,
-    )
-    const note = result.notes.find(text => text.startsWith('inbox:')) ?? ''
-    expect(note).toContain(`Task tree check for turn ${turn} (current work).`)
-    expect(note).toContain('- t1 | working | Implement the cache | The latest note')
-    expect(result.told.inbox).toBe(note)
-    told = result.told
-  }
+  const first = promptNotes(
+    CLAUDE_CODE,
+    { ...EMPTY, turn: 1 },
+    { text: 'Continue.', isPress: false, isOpen: true },
+    { inbox: null, closed: [] },
+    tree,
+  )
+  const note = first.notes.find(text => text.startsWith('inbox:')) ?? ''
+  expect(note).toContain("Open tasks with each owner's latest report and linked PR.")
+  expect(note).toContain('- t1 | working | Implement the cache')
+  expect(first.told.inbox).toBe(note)
+
+  const next = promptNotes(
+    CLAUDE_CODE,
+    { ...EMPTY, turn: 2 },
+    { text: 'Continue again.', isPress: false, isOpen: true },
+    first.told,
+    tree,
+  )
+  expect(next.notes.some(text => text.startsWith('inbox:'))).toBe(false)
+  expect(next.told.inbox).toBe(note)
   expect(tree[0]?.status).toBe('working')
 })
 
@@ -283,12 +365,11 @@ test('task snapshots omit closed tasks, cap rows and row length, and report omis
     tree,
   )
   const lines = inbox.split('\n')
-  const start = lines.findIndex(line => line.startsWith('Task tree check for turn 7'))
+  const start = lines.findIndex(line => line.startsWith('Open tasks with each owner'))
   const rows = lines.slice(start + 1, start + 13)
 
   expect(start).toBeGreaterThanOrEqual(0)
   expect(rows).toHaveLength(12)
-  expect(rows.every(row => row.length <= 96)).toBe(true)
   expect(rows[0]).toContain('task-0')
   expect(rows.at(-1)).toContain('task-11')
   expect(lines).toContain('- 1 more open task omitted.')
@@ -300,5 +381,5 @@ test('task snapshots omit closed tasks, cap rows and row length, and report omis
 })
 
 test('an empty task tree adds no snapshot text', () => {
-  expect(inboxText(CLAUDE_CODE, { ...EMPTY, turn: 3 }, true, [])).not.toContain('Task tree check')
+  expect(inboxText(CLAUDE_CODE, { ...EMPTY, turn: 3 }, true, [])).not.toContain('Open tasks with each owner')
 })

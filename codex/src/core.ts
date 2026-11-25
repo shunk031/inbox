@@ -1,5 +1,6 @@
 import type { HooksTrust } from './hook-trust'
 import { endTurn as endSessionTurn, notePrompt as notePromptIn } from '../../hooks/session-turns'
+import type { TaskTextFacts } from '../../hooks/inbox-text'
 import { lookEndedOn, withLook } from '../../hooks/session-status'
 import { sessionView } from '../../hooks/session-view'
 import type { SentBy } from '../../hooks/session-turns'
@@ -44,8 +45,9 @@ export function notePrompt(
   s: SessionState,
   text: string,
   now: number,
+  taskFacts: TaskTextFacts = {},
 ): { state: SessionState; notes: string[]; sentBy: SentBy | null } {
-  return notePromptIn(CODEX, s, text, isTabOpen(s, now))
+  return notePromptIn(CODEX, s, text, isTabOpen(s, now), taskFacts)
 }
 
 export function patchFiles(patch: string): string[] {

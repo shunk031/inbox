@@ -41,10 +41,13 @@ export function turnHandlers(context: HostContext, sessions: SessionCalls) {
   async function arrive(ctx: OmpContext, id: string, text: string, finishedReply: string | null): Promise<string[]> {
     const at = deps.now()
     const hostTasks = finishedReply === null ? [] : ompTodoFromBranch(ctx.sessionManager.getBranch())
+    const reportQueue = (await deps.taskReportQueue?.()) ?? ''
     let notes: string[] = []
     const written = await change(id, s => {
       const before = finishedReply === null ? s : turnStarted(endedTurn(id, s, finishedReply, at, { hostTasks }), at)
-      const r = notePrompt(OMP, before, text, openPanels.has(id))
+      const r = notePrompt(OMP, before, text, openPanels.has(id), {
+        ...deps.taskTextFacts?.(before, reportQueue, at),
+      })
       notes = r.notes
 
       return r.state

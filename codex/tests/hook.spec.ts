@@ -59,6 +59,43 @@ test('a session starts with the guidance, records the prompt, and ends the turn 
   assert.deepEqual(deps.updates, ['s1'])
 })
 
+test('Codex prompt text includes the derived owner report and status', async () => {
+  const dir = tempDir()
+  const reportDir = tempDir()
+  mkdirSync(reportDir, { recursive: true })
+  writeFileSync(
+    join(reportDir, 'queue.jsonl'),
+    `${JSON.stringify({ from: 'worker', machine: 'local', seq: 1, t: 3, text: 'STATUS Cache is implemented' })}\n`,
+  )
+  const deps = hookDeps(dir)
+  deps.env.HERDR_META_PATROL_STATE_DIR = reportDir
+  await handleHook(input('SessionStart', { cwd: '/repo', source: 'startup' }), deps)
+  await updateState(dir, 's1', s => ({
+    ...s,
+    taskTree: [
+      {
+        id: 't1',
+        parentId: null,
+        status: 'queued',
+        weight: 1,
+        title: 'Implement the cache',
+        detail: 'Private task text stays out of the inbox block.',
+        notes: [],
+        createdAt: 1_000,
+        updatedAt: 2_000,
+        history: [{ at: 2_000, source: 'agent', kind: 'created' }],
+        links: { owner: { agent: 'worker', machine: 'local' } },
+      },
+    ],
+  }))
+
+  const result = await handleHook(input('UserPromptSubmit', { prompt: 'Continue', turn_id: 't1' }), deps)
+  const context = (result as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput.additionalContext
+
+  assert.match(context, /- t1 \| working \| Implement the cache \| STATUS Cache is implemented/u)
+  assert.doesNotMatch(context, /Private task text/u)
+})
+
 test('PostToolUse reminds across prompts without a task tree and ignores subagent calls', async () => {
   const dir = tempDir()
   const deps = hookDeps(dir)
