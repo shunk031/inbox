@@ -208,3 +208,37 @@ test('an Explain under way on the tab keeps a closed row in place past its fold 
   await clock.settle()
   expect(await pane.find({ key: 'settled-i1' })).toBeUndefined()
 })
+
+test('an Explain reply leaves its open question and options in Asks', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  world($, on, [])
+  w.paneState = { isShown: true, isFocused: true }
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  await $.tool.call({
+    tool: 'mcp__inbox__record',
+    kind: 'question',
+    ask: 'Use Node or Python?',
+    options: ['Node', 'Python'],
+  })
+  const pane = await $.ui.mount(PANE)
+  w.ledgerReply = 'CLOSED: i1 | The agent explained the choice'
+
+  await pane.press({ key: 'explain-i1-key' })
+  const sent = w.sent.at(-1)!
+  await $.turn.start({ text: sent, turnId: 't1' })
+  const started = JSON.parse(w.stored.get('s:session-1')!)
+  expect(started.turn.press).toEqual({ id: 'i1', action: 'explain' })
+  await $.turn.complete({
+    answer: 'Node is simpler for this project.',
+    durationMs: 5,
+    isAborted: false,
+    turnId: 't1',
+    reason: 'answer',
+  })
+  await clock.settle()
+
+  expect(await pane.find({ key: 'row-i1' })).toBeDefined()
+  expect(await pane.find({ text: /^Node$/ })).toBeDefined()
+  expect(await pane.find({ text: /^Python$/ })).toBeDefined()
+  expect(await pane.find({ text: /Explained/ })).toBeDefined()
+})

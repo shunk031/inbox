@@ -57,16 +57,24 @@ export function applyExchangeUpdate(
   now: number,
   promptAt: number,
 ): Ledger {
-  const press = exchange.press
-  const talkedAboutId = press && SENT_PRESS_KINDS[press.action] === 'talk' ? press.id : null
-
   return applyUpdate(
     ledger,
-    { ...update, closed: update.closed.filter(c => c.id !== talkedAboutId) },
+    keepTalkedAboutOpen(update, new Set([talkedAboutId(exchange)].filter((id): id is string => id !== null))),
     now,
     exchange.turn,
     promptAt,
   )
+}
+
+export function talkedAboutId(exchange: Pick<Exchange, 'press'>): string | null {
+  const press = exchange.press
+
+  return press && SENT_PRESS_KINDS[press.action] === 'talk' ? press.id : null
+}
+
+/** A Talk reply explains an item; it does not answer that item, including when a catch-up reads the reply. */
+export function keepTalkedAboutOpen(update: Update, ids: ReadonlySet<string>): Update {
+  return ids.size === 0 ? update : { ...update, closed: update.closed.filter(c => !ids.has(c.id)) }
 }
 
 /** The CLOSED outcome forms that are not the person's answer: systemText's "done:" and "no longer applies:", and the words closedState reads as overtaken. */
