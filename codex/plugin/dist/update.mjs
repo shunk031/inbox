@@ -746,15 +746,25 @@ var SENT_PRESS_KINDS = {
   done: "mark"
 };
 function applyExchangeUpdate(ledger, update, exchange, now, promptAt) {
-  const press2 = exchange.press;
-  const talkedAboutId = press2 && SENT_PRESS_KINDS[press2.action] === "talk" ? press2.id : null;
   return applyUpdate(
     ledger,
-    { ...update, closed: update.closed.filter((c) => c.id !== talkedAboutId) },
+    keepTalkedAboutOpen(update, new Set([talkedAboutId(exchange)].filter((id) => id !== null))),
     now,
     exchange.turn,
     promptAt
   );
+}
+function talkedAboutId(exchange) {
+  const press2 = exchange.press;
+  return press2 && SENT_PRESS_KINDS[press2.action] === "talk" ? press2.id : null;
+}
+function talkedAboutIds(exchanges) {
+  const last = exchanges[exchanges.length - 1];
+  const id = last ? talkedAboutId(last) : null;
+  return id === null ? /* @__PURE__ */ new Set() : /* @__PURE__ */ new Set([id]);
+}
+function keepTalkedAboutOpen(update, ids) {
+  return ids.size === 0 ? update : { ...update, closed: update.closed.filter((c) => !ids.has(c.id)) };
 }
 var NOT_AN_ANSWER = new RegExp(`^\\s*(?:done\\s*:|(?:${OVERTAKEN_OUTCOMES}|no longer relevant|dealt with)\\b)`, "i");
 function isPersonsAnswer(outcome) {
@@ -4316,9 +4326,10 @@ function needsCatchUp(s) {
 var pendingKey = (p) => `${p.turnsStarted}:${p.ex.turn}`;
 function appliedCatchUp(s, begun, parsed, now) {
   const covered = new Set(begun.pending.map(pendingKey));
+  const talkedAbout = talkedAboutIds(begun.pending.map(({ ex }) => ex));
   return linkDialogs({
     ...s,
-    ledger: parsed ? applyUpdate(s.ledger, parsed, now, s.ledger.turn, now) : s.ledger,
+    ledger: parsed ? applyUpdate(s.ledger, keepTalkedAboutOpen(parsed, talkedAbout), now, s.ledger.turn, now) : s.ledger,
     pending: s.pending.filter((p) => !covered.has(pendingKey(p))),
     presence: {
       ...s.presence,

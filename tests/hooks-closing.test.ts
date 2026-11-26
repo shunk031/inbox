@@ -208,3 +208,74 @@ test('an Explain under way on the tab keeps a closed row in place past its fold 
   await clock.settle()
   expect(await pane.find({ key: 'settled-i1' })).toBeUndefined()
 })
+
+test('an Explain reply leaves its open question and options in Asks', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  world($, on, [])
+  w.paneState = { isShown: true, isFocused: true }
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  await $.tool.call({
+    tool: 'mcp__inbox__record',
+    kind: 'question',
+    ask: 'Use Node or Python?',
+    options: ['Node', 'Python'],
+  })
+  const pane = await $.ui.mount(PANE)
+  w.ledgerReply = 'CLOSED: i1 | The agent explained the choice'
+
+  await pane.press({ key: 'explain-i1-key' })
+  const sent = w.sent.at(-1)!
+  await $.turn.start({ text: sent, turnId: 't1' })
+  const started = JSON.parse(w.stored.get('s:session-1')!)
+  expect(started.turn.press).toEqual({ id: 'i1', action: 'explain' })
+  await $.turn.complete({
+    answer: 'Node is simpler for this project.',
+    durationMs: 5,
+    isAborted: false,
+    turnId: 't1',
+    reason: 'answer',
+  })
+  await clock.settle()
+
+  expect(await pane.find({ key: 'row-i1' })).toBeDefined()
+  expect(await pane.find({ text: /^Node$/ })).toBeDefined()
+  expect(await pane.find({ text: /^Python$/ })).toBeDefined()
+  expect(await pane.find({ text: /Explained/ })).toBeDefined()
+})
+
+test('when the ledger call fails after Explain, the oldest of ten open questions stays in the rendered terminal Asks pane', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  world($, on, [])
+  w.paneState = { isShown: true, isFocused: true }
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+
+  for (let n = 1; n <= 10; n++) {
+    w.ledgerReply = `NEW: decide | 1 | Question ${n}? | Yes / No | Yes`
+    await $.tool.call({ tool: 'mcp__inbox__record', kind: 'question', ask: `Question ${n}?`, options: ['Yes', 'No'] })
+    await clock.advance(1)
+  }
+
+  expect(JSON.parse(w.stored.get('s:session-1')!).ledger.items).toHaveLength(10)
+  const pane = await $.ui.mount({ ...PANE, props: { ...PANE.props, scroll: { offset: 0, bodyRows: 100 } } })
+  expect(await pane.find({ key: 'row-i1' })).toBeDefined()
+  await pane.press({ key: 'explain-i1-key' })
+  await $.turn.start({ text: w.sent.at(-1)!, turnId: 't1' })
+  const pressed = JSON.parse(w.stored.get('s:session-1')!).lastActions.i1
+  expect(pressed.delivery.state).toBe('arrived')
+  w.ledgerReply = 'not a ledger'
+  await $.turn.complete({
+    answer: 'Here is why Yes is recommended.',
+    durationMs: 5,
+    isAborted: false,
+    turnId: 't1',
+    reason: 'answer',
+  })
+  await clock.settle()
+
+  const saved = JSON.parse(w.stored.get('s:session-1')!)
+  expect(saved.presence.turnsApplied).toBeLessThanOrEqual(pressed.turnsStarted)
+  expect(saved.ledger.items.some((item: { id: string }) => item.id === 'i1')).toBe(true)
+  expect(await pane.find({ key: 'row-i1' })).toBeDefined()
+  expect(await pane.find({ key: 'answer-i1-0' })).toBeDefined()
+  expect(await pane.find({ key: 'answer-i1-1' })).toBeDefined()
+})

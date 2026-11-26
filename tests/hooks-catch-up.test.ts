@@ -170,6 +170,55 @@ test('after a failed update, the next reply catches up over the whole conversati
   expect(await pane.find({ text: /Review the welcome copy/ })).toBeDefined()
 })
 
+test('a catch-up after Explain leaves the question and options open', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  world($, on, [])
+  w.paneState = { isShown: true, isFocused: true }
+  w.ledgerReply = 'NEW: decide | - | Use Node or Python? | Node / Python | Node'
+  on('model.fork', () => ({
+    value: {
+      isAnswered: true,
+      text: 'CLOSED: i1 | The agent explained the choice',
+      usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+    },
+  }))
+
+  await $.session.start({ cwd: '/tmp/project', surface: 'terminal', isInteractive: true })
+  await $.prompt.submit({ text: 'Build a greeting CLI.', wait: false, origin: { kind: 'composer' } })
+  await $.turn.start({ text: 'Build a greeting CLI.', turnId: 't1' })
+  await $.turn.complete({ answer: 'Plan ready.', durationMs: 5, isAborted: false, turnId: 't1', reason: 'answer' })
+  await clock.settle()
+  const pane = await $.ui.mount(PANE)
+
+  w.ledgerReply = 'not a ledger'
+  await $.prompt.submit({ text: 'Keep going.', wait: false, origin: { kind: 'composer' } })
+  await $.turn.start({ text: 'Keep going.', turnId: 't2' })
+  await $.turn.complete({
+    answer: 'I am checking the options.',
+    durationMs: 5,
+    isAborted: false,
+    turnId: 't2',
+    reason: 'answer',
+  })
+  await clock.settle()
+  expect(await pane.find({ text: /couldn't update/ })).toBeDefined()
+
+  await pane.press({ key: 'explain-i1-key' })
+  await $.turn.start({ text: w.sent.at(-1)!, turnId: 't3' })
+  await $.turn.complete({
+    answer: 'Node is simpler for this project.',
+    durationMs: 5,
+    isAborted: false,
+    turnId: 't3',
+    reason: 'answer',
+  })
+  await clock.settle()
+
+  expect(await pane.find({ key: 'row-i1' })).toBeDefined()
+  expect(await pane.find({ text: /^Node$/ })).toBeDefined()
+  expect(await pane.find({ text: /^Python$/ })).toBeDefined()
+})
+
 test('a reload that cuts off the end-of-turn hook catches up on load, and a subagent’s turn leaves nothing to catch up', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   world($, on, [])
