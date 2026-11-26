@@ -2304,16 +2304,9 @@ function talkedAboutId(exchange) {
   return press && SENT_PRESS_KINDS[press.action] === "talk" ? press.id : null;
 }
 function talkedAboutIds(exchanges) {
-  const ids = new Set;
-  for (const { press } of exchanges) {
-    if (!press)
-      continue;
-    if (SENT_PRESS_KINDS[press.action] === "talk")
-      ids.add(press.id);
-    else
-      ids.delete(press.id);
-  }
-  return ids;
+  const last = exchanges[exchanges.length - 1];
+  const id = last ? talkedAboutId(last) : null;
+  return id === null ? new Set : new Set([id]);
 }
 function keepTalkedAboutOpen(update, ids) {
   return ids.size === 0 ? update : { ...update, closed: update.closed.filter((c) => !ids.has(c.id)) };
@@ -12645,7 +12638,8 @@ function isUnseen(s) {
 var pendingKey = (p) => `${p.turnsStarted}:${p.ex.turn}`;
 function appliedCatchUp(s, begun, parsed, now) {
   const covered = new Set(begun.pending.map(pendingKey));
-  const talkedAbout = talkedAboutIds(begun.pending.map(({ ex }) => ex));
+  const hasLaterPending = s.pending.some((p) => !covered.has(pendingKey(p)));
+  const talkedAbout = hasLaterPending ? new Set : talkedAboutIds(begun.pending.map(({ ex }) => ex));
   return linkDialogs({
     ...s,
     ledger: parsed ? applyUpdate(s.ledger, keepTalkedAboutOpen(parsed, talkedAbout), now, s.ledger.turn, now) : s.ledger,

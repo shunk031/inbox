@@ -225,7 +225,8 @@ const pendingKey = (p: Session['pending'][number]) => `${p.turnsStarted}:${p.ex.
  */
 export function appliedCatchUp<S extends Session>(s: S, begun: Session, parsed: Update | null, now: number): S {
   const covered = new Set(begun.pending.map(pendingKey))
-  const talkedAbout = talkedAboutIds(begun.pending.map(({ ex }) => ex))
+  const hasLaterPending = s.pending.some(p => !covered.has(pendingKey(p)))
+  const talkedAbout = hasLaterPending ? new Set<string>() : talkedAboutIds(begun.pending.map(({ ex }) => ex))
 
   return linkDialogs({
     ...s,

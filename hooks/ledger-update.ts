@@ -72,17 +72,12 @@ function talkedAboutId(exchange: Pick<Exchange, 'press'>): string | null {
   return press && SENT_PRESS_KINDS[press.action] === 'talk' ? press.id : null
 }
 
-/** The items whose latest pending press is Talk: a later answer or hand-off must be allowed to close its item. */
+/** Items pressed with Talk in the last exchange covered by catch-up. */
 export function talkedAboutIds(exchanges: readonly Pick<Exchange, 'press'>[]): Set<string> {
-  const ids = new Set<string>()
+  const last = exchanges[exchanges.length - 1]
+  const id = last ? talkedAboutId(last) : null
 
-  for (const { press } of exchanges) {
-    if (!press) continue
-    if (SENT_PRESS_KINDS[press.action] === 'talk') ids.add(press.id)
-    else ids.delete(press.id)
-  }
-
-  return ids
+  return id === null ? new Set() : new Set([id])
 }
 
 /** A Talk reply explains an item; it does not answer that item, including when a catch-up reads the reply. */

@@ -160,10 +160,9 @@ test('after a failed update, the next reply catches up over the whole conversati
     reason: 'answer',
   })
   await clock.settle()
-  expect(await pane.find({ key: 'row-i1' })).toBeDefined()
+  expect(await pane.find({ key: 'row-i1' })).toBeUndefined()
   expect(await pane.find({ text: /^Use Node or Python\?$/ })).toBeDefined()
   expect(await pane.find({ text: /^Node$/ })).toBeDefined()
-  expect(await pane.find({ text: /^Python$/ })).toBeDefined()
   expect(await pane.find({ text: /Name the command greet\?/ })).toBeDefined()
   expect(await pane.find({ text: /Review the welcome copy/ })).toBeDefined()
   expect(await pane.find({ text: /couldn't update/ })).toBeUndefined()
