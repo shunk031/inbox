@@ -4326,8 +4326,7 @@ function needsCatchUp(s) {
 var pendingKey = (p) => `${p.turnsStarted}:${p.ex.turn}`;
 function appliedCatchUp(s, begun, parsed, now) {
   const covered = new Set(begun.pending.map(pendingKey));
-  const hasLaterPending = s.pending.some((p) => !covered.has(pendingKey(p)));
-  const talkedAbout = hasLaterPending ? /* @__PURE__ */ new Set() : talkedAboutIds(begun.pending.map(({ ex }) => ex));
+  const talkedAbout = talkedAboutIds(begun.pending.map(({ ex }) => ex));
   return linkDialogs({
     ...s,
     ledger: parsed ? applyUpdate(s.ledger, keepTalkedAboutOpen(parsed, talkedAbout), now, s.ledger.turn, now) : s.ledger,

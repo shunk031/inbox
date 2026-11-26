@@ -278,6 +278,46 @@ test('a catch-up after Talk still applies a later Answer press for the same ques
   expect(applied.ledger.closed.find(closed => closed.id === item.id)?.outcome).toBe('The person chose Node')
 })
 
+test('an exchange that arrives during catch-up does not change which covered press protects a row', () => {
+  const base = emptySession()
+  const item = { ...ITEM, from: 'update' as const }
+  const exchange = (action: 'explain' | 'answer', turn: number) => ({
+    ex: {
+      person: null,
+      trigger: null,
+      activity: [],
+      reply: '',
+      turn,
+      press: { id: item.id, action },
+      screen: '',
+      tasks: [],
+    },
+    turnsStarted: turn,
+  })
+  const talked = exchange('explain', 1)
+  const answered = exchange('answer', 2)
+  const begun: Session = {
+    ...base,
+    ledger: { ...EMPTY, items: [item], turn: 2, nextId: 2 },
+    pending: [talked],
+    presence: { ...base.presence, turnsStarted: 1, ledgerState: 'failed' },
+  }
+  const duringCatchUp: Session = {
+    ...begun,
+    pending: [talked, answered],
+    presence: { ...begun.presence, turnsStarted: 2 },
+  }
+  const applied = appliedCatchUp(
+    duringCatchUp,
+    begun,
+    parseReply(`CLOSED: ${item.id} | The agent explained the choice`)!,
+    3,
+  )
+
+  expect(applied.ledger.items.some(open => open.id === item.id)).toBe(true)
+  expect(applied.pending).toEqual([answered])
+})
+
 test('a session write keeps every closed ask and finding and prunes only unneeded PR views', () => {
   const tasks = Array.from({ length: 14 }, (_, n) => `NEW: do | - | Task ${n} | - | -`).join('\n')
   const opened = applyUpdate(EMPTY, parseReply(tasks)!, 10, 1)
