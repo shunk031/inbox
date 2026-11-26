@@ -1,6 +1,6 @@
 import { linkDialogs } from './dialogs'
 import { isBlankLedger } from './ledger'
-import { applyUpdate, keepTalkedAboutOpen, talkedAboutId } from './ledger-update'
+import { applyUpdate, keepTalkedAboutOpen, talkedAboutIds } from './ledger-update'
 import type { Update } from './reply-parse'
 import { lookEnded, lookReported, lookStarted } from './status-children'
 import type { ReportedLook, ShownRows } from './status-children'
@@ -225,12 +225,7 @@ const pendingKey = (p: Session['pending'][number]) => `${p.turnsStarted}:${p.ex.
  */
 export function appliedCatchUp<S extends Session>(s: S, begun: Session, parsed: Update | null, now: number): S {
   const covered = new Set(begun.pending.map(pendingKey))
-  const talkedAbout = new Set(
-    begun.pending.flatMap(({ ex }) => {
-      const id = talkedAboutId(ex)
-      return id === null ? [] : [id]
-    }),
-  )
+  const talkedAbout = talkedAboutIds(begun.pending.map(({ ex }) => ex))
 
   return linkDialogs({
     ...s,

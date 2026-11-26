@@ -758,6 +758,15 @@ function talkedAboutId(exchange) {
   const press2 = exchange.press;
   return press2 && SENT_PRESS_KINDS[press2.action] === "talk" ? press2.id : null;
 }
+function talkedAboutIds(exchanges) {
+  const ids = /* @__PURE__ */ new Set();
+  for (const { press: press2 } of exchanges) {
+    if (!press2) continue;
+    if (SENT_PRESS_KINDS[press2.action] === "talk") ids.add(press2.id);
+    else ids.delete(press2.id);
+  }
+  return ids;
+}
 function keepTalkedAboutOpen(update, ids) {
   return ids.size === 0 ? update : { ...update, closed: update.closed.filter((c) => !ids.has(c.id)) };
 }
@@ -4321,12 +4330,7 @@ function needsCatchUp(s) {
 var pendingKey = (p) => `${p.turnsStarted}:${p.ex.turn}`;
 function appliedCatchUp(s, begun, parsed, now) {
   const covered = new Set(begun.pending.map(pendingKey));
-  const talkedAbout = new Set(
-    begun.pending.flatMap(({ ex }) => {
-      const id = talkedAboutId(ex);
-      return id === null ? [] : [id];
-    })
-  );
+  const talkedAbout = talkedAboutIds(begun.pending.map(({ ex }) => ex));
   return linkDialogs({
     ...s,
     ledger: parsed ? applyUpdate(s.ledger, keepTalkedAboutOpen(parsed, talkedAbout), now, s.ledger.turn, now) : s.ledger,
